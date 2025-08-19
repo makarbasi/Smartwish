@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 export async function GET() {
   try {
   const url = new URL('/templates-enhanced/categories', process.env.NEXT_PUBLIC_API_BASE).toString()
+  console.log(url)
 
   const response = await fetch(url, {
       headers: {

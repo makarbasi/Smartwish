@@ -9,6 +9,7 @@ import Image from 'next/image'
 import HTMLFlipBook from "react-pageflip"
 import PinturaEditorModal from '@/components/PinturaEditorModal'
 import useSWR from 'swr'
+import { saveTemplateWithImages } from '@/utils/templateUtils'
 
 type Template = {
   id: string
@@ -62,6 +63,10 @@ export default function CustomizeCardPage() {
   const [editorVisible, setEditorVisible] = useState(false)
   const [editingPageIndex, setEditingPageIndex] = useState<number | null>(null)
   const [pageImages, setPageImages] = useState<string[]>([])
+  
+  // Save functionality state
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
   
   // Swipe functionality state
   const [touchStart, setTouchStart] = useState<number | null>(null)
@@ -136,16 +141,94 @@ export default function CustomizeCardPage() {
   }
 
   // Save functions
-  const handleSave = () => {
-    console.log('💾 Saving card:', cardData?.name)
-    // TODO: Implement save functionality
-    alert('Card saved successfully!')
+  const handleSave = async () => {
+    if (!cardData) {
+      alert('No card data available')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveMessage('')
+
+    try {
+      console.log('💾 Saving card:', cardData.name)
+      console.log('📸 Current page images:', pageImages)
+
+      // Use a dummy userId for now - in a real app, this would come from auth context
+      const userId = 'user_123' // TODO: Replace with actual user ID from auth
+
+      const result = await saveTemplateWithImages(cardData.id, pageImages, {
+        action: 'update',
+        title: cardData.name,
+        userId,
+        designId: `updated_${cardData.id}_${Date.now()}`
+      })
+
+      console.log('✅ Save result:', result)
+      setSaveMessage('Card saved successfully! Images uploaded to cloud.')
+      
+      // Log the cloud URLs for verification
+      if (result.uploadResult?.cloudUrls) {
+        console.log('🌐 Uploaded cloud URLs:', result.uploadResult.cloudUrls)
+      }
+      
+      // Show success message for a few seconds
+      setTimeout(() => setSaveMessage(''), 3000)
+
+    } catch (error) {
+      console.error('❌ Save failed:', error)
+      setSaveMessage('Failed to save card. Please try again.')
+      
+      // Show error message for a few seconds
+      setTimeout(() => setSaveMessage(''), 5000)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleSaveNewCopy = () => {
-    console.log('📄 Saving new copy of card:', cardData?.name)
-    // TODO: Implement save as new copy functionality
-    alert('New copy saved successfully!')
+  const handleSaveNewCopy = async () => {
+    if (!cardData) {
+      alert('No card data available')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveMessage('')
+
+    try {
+      console.log('📄 Saving new copy of card:', cardData.name)
+      console.log('📸 Current page images:', pageImages)
+
+      // Use a dummy userId for now - in a real app, this would come from auth context
+      const userId = 'user_123' // TODO: Replace with actual user ID from auth
+
+      const result = await saveTemplateWithImages(cardData.id, pageImages, {
+        action: 'duplicate',
+        title: `Copy of ${cardData.name}`,
+        userId,
+        designId: `copy_${cardData.id}_${Date.now()}`
+      })
+
+      console.log('✅ Duplicate result:', result)
+      setSaveMessage('New copy saved successfully! Images uploaded to cloud.')
+      
+      // Log the cloud URLs for verification
+      if (result.uploadResult?.cloudUrls) {
+        console.log('🌐 Uploaded cloud URLs:', result.uploadResult.cloudUrls)
+      }
+      
+      // Show success message for a few seconds
+      setTimeout(() => setSaveMessage(''), 3000)
+
+    } catch (error) {
+      console.error('❌ Duplicate failed:', error)
+      setSaveMessage('Failed to save new copy. Please try again.')
+      
+      // Show error message for a few seconds
+      setTimeout(() => setSaveMessage(''), 5000)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   if (isLoading) {
@@ -331,11 +414,27 @@ export default function CustomizeCardPage() {
             </div>
             
             <div className="flex items-center gap-2 lg:gap-4 flex-shrink-0">
+                {/* Save Status Message */}
+                {saveMessage && (
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    saveMessage.includes('Failed') 
+                      ? 'bg-red-100 text-red-700' 
+                      : 'bg-green-100 text-green-700'
+                  }`}>
+                    {saveMessage}
+                  </div>
+                )}
+
                 {/* Save Menu */}
                 <Menu as="div" className="relative inline-block text-left">
-                  <MenuButton className="inline-flex items-center gap-1 lg:gap-2 px-2 lg:px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200">
+                  <MenuButton 
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-1 lg:gap-2 px-2 lg:px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <EllipsisVerticalIcon className="h-4 w-4" />
-                    <span className="hidden lg:inline">Options</span>
+                    <span className="hidden lg:inline">
+                      {isSaving ? 'Saving...' : 'Options'}
+                    </span>
                   </MenuButton>
                   <MenuItems
                     anchor="bottom end"
@@ -344,17 +443,19 @@ export default function CustomizeCardPage() {
                     <MenuItem>
                       <button
                         onClick={handleSave}
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50"
+                        disabled={isSaving}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        💾 Save
+                        💾 {isSaving ? 'Saving...' : 'Save'}
                       </button>
                     </MenuItem>
                     <MenuItem>
                       <button
                         onClick={handleSaveNewCopy}
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50"
+                        disabled={isSaving}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        📄 Save a new copy
+                        📄 {isSaving ? 'Creating copy...' : 'Save a new copy'}
                       </button>
                     </MenuItem>
                   </MenuItems>
