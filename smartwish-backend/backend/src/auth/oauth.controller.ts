@@ -31,11 +31,11 @@ export class OAuthController {
 
       // Redirect to frontend with token
       const callbackUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      console.log('Google OAuth: Redirecting to frontend with token:', { 
-        callbackUrl, 
+      console.log('Google OAuth: Redirecting to frontend with token:', {
+        callbackUrl,
         hasToken: !!result.access_token,
         tokenLength: result.access_token?.length,
-        userInfo: result.user
+        userInfo: result.user,
       });
       res.redirect(
         `${callbackUrl}?token=${result.access_token}&provider=google`,

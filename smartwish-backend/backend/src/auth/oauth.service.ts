@@ -35,7 +35,7 @@ export class OAuthService {
   async handleOAuthCallback(profile: OAuthProfile) {
     try {
       const oauthProvider = this.mapProviderToEnum(profile.provider);
-      
+
       // Check if user exists by OAuth ID
       let user = await this.userService.findByOAuthId(
         oauthProvider,
@@ -70,14 +70,14 @@ export class OAuthService {
       await this.userService.updateLastLogin(user.id);
 
       // Generate JWT token with all necessary user information
-      const payload = { 
-        email: user.email, 
+      const payload = {
+        email: user.email,
         sub: user.id,
         name: user.name,
         picture: user.profileImage,
         iat: Math.floor(Date.now() / 1000),
         iss: process.env.JWT_ISSUER || 'smartwish-app',
-        aud: process.env.JWT_AUDIENCE || 'smartwish-users'
+        aud: process.env.JWT_AUDIENCE || 'smartwish-users',
       };
       const token = this.jwtService.sign(payload);
 

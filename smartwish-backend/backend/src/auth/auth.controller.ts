@@ -8,7 +8,9 @@ import {
   Req,
   Headers,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { AuthService } from './auth.service';
+import { Public } from './public.decorator';
 import { UserService } from '../user/user.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -27,22 +29,44 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @Public()
   async login(
     @Body() loginDto: { email: string; password: string },
     @Req() req: any,
     @Headers('user-agent') userAgent?: string,
   ) {
     console.log('LOGIN: Received login request for email:', loginDto.email);
-    
-    // Extract IP address
-    const ipAddress = (req as any).ip || (req as any).connection?.remoteAddress || (req.headers as any)['x-forwarded-for'] || 'unknown';
-    
-    const user = await this.authService.validateUser(
+
+    const ipAddress: string =
+      (typeof (req as { ip?: unknown }).ip === 'string' &&
+        (req as { ip?: string }).ip) ||
+      ((req as { connection?: { remoteAddress?: unknown } }).connection &&
+        typeof (req as { connection: { remoteAddress?: unknown } }).connection
+          .remoteAddress === 'string' &&
+        (req as { connection: { remoteAddress: string } }).connection
+          .remoteAddress) ||
+      ((req as { headers?: { [key: string]: unknown } }).headers &&
+        typeof (req as { headers: { [key: string]: unknown } }).headers[
+          'x-forwarded-for'
+        ] === 'string' &&
+        (req as { headers: { [key: string]: string } }).headers[
+          'x-forwarded-for'
+        ]) ||
+      'unknown';
+
+    const userResult: unknown = await this.authService.validateUser(
       loginDto.email,
       loginDto.password,
       ipAddress,
       userAgent,
     );
+    const user: { id: string; email: string } | null =
+      typeof userResult === 'object' &&
+      userResult !== null &&
+      'id' in userResult &&
+      'email' in userResult
+        ? (userResult as { id: string; email: string })
+        : null;
     console.log('LOGIN: validateUser result:', user);
     if (!user) {
       console.log('LOGIN: Invalid credentials, throwing UnauthorizedException');
@@ -54,30 +78,68 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @UseGuards(JwtAuthGuard)
+  @Public()
   async refresh(
+    @Body() refreshDto: { refresh_token: string },
+    @Req() req: Request,
+    @Headers('user-agent') userAgent?: string,
+  ) {
+    const ipAddress =
+      (req as { ip?: string }).ip ||
+      (req as { connection?: { remoteAddress?: string } }).connection
+        ?.remoteAddress ||
+      (req.headers as unknown as { [key: string]: string | undefined })[
+        'x-forwarded-for'
+      ] ||
+      'unknown';
+
+    return this.authService.refreshTokenWithRefreshToken(
+      refreshDto.refresh_token,
+      ipAddress,
+      userAgent,
+    );
+  }
+
+  @Post('refresh-legacy')
+  @UseGuards(JwtAuthGuard)
+  async refreshLegacy(
     @Req() req: AuthenticatedRequest,
     @Headers('user-agent') userAgent?: string,
   ) {
     if (!req.user?.id) {
       throw new UnauthorizedException('Invalid token');
     }
-    
-    // Extract IP address
-    const ipAddress = (req as any).ip || (req as any).connection?.remoteAddress || (req.headers as any)['x-forwarded-for'] || 'unknown';
-    
+
+    const ipAddress =
+      (req as { ip?: string }).ip ||
+      (req as { connection?: { remoteAddress?: string } }).connection
+        ?.remoteAddress ||
+      (req.headers as unknown as { [key: string]: string | undefined })[
+        'x-forwarded-for'
+      ] ||
+      'unknown';
+
     return this.authService.refreshToken(req.user.id, ipAddress, userAgent);
   }
-
   @Post('signup')
+  @Public()
   async signup(
     @Body() signupDto: { email: string; password: string; name: string },
-    @Req() req: any,
+    @Req() req: Request,
     @Headers('user-agent') userAgent?: string,
   ) {
-    // Extract IP address
-    const ipAddress = (req as any).ip || (req as any).connection?.remoteAddress || (req.headers as any)['x-forwarded-for'] || 'unknown';
-    
+    const ipAddress =
+      (typeof req.ip === 'string' && req.ip) ||
+      (req.socket &&
+        typeof req.socket.remoteAddress === 'string' &&
+        req.socket.remoteAddress) ||
+      (req.headers &&
+        typeof (
+          req.headers as { [key: string]: string | string[] | undefined }
+        )['x-forwarded-for'] === 'string' &&
+        (req.headers as { [key: string]: string })['x-forwarded-for']) ||
+      'unknown';
+
     return this.authService.signup(
       signupDto.email,
       signupDto.password,
@@ -96,10 +158,22 @@ export class AuthController {
     if (!req.user?.id) {
       throw new UnauthorizedException('Invalid token');
     }
-    
-    // Extract IP address
-    const ipAddress = (req as any).ip || (req as any).connection?.remoteAddress || (req.headers as any)['x-forwarded-for'] || 'unknown';
-    
+
+    const maybeIp = typeof req.ip === 'string' ? req.ip : undefined;
+    const maybeRemote =
+      typeof (req as { connection?: { remoteAddress?: string } }).connection
+        ?.remoteAddress === 'string'
+        ? (req as { connection: { remoteAddress: string } }).connection
+            .remoteAddress
+        : undefined;
+    const maybeForwarded =
+      typeof (req.headers as { [key: string]: string | undefined })[
+        'x-forwarded-for'
+      ] === 'string'
+        ? (req.headers as { [key: string]: string })['x-forwarded-for']
+        : undefined;
+    const ipAddress = maybeIp || maybeRemote || maybeForwarded || 'unknown';
+
     return this.authService.logout(req.user.id, ipAddress, userAgent);
   }
 

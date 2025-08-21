@@ -24,7 +24,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         signOptions: {
           expiresIn: configService.get<string>('JWT_EXPIRES_IN', '24h'),
           issuer: configService.get<string>('JWT_ISSUER', 'smartwish-app'),
-          audience: configService.get<string>('JWT_AUDIENCE', 'smartwish-users'),
+          audience: configService.get<string>(
+            'JWT_AUDIENCE',
+            'smartwish-users',
+          ),
           algorithm: 'HS256',
         },
       }),

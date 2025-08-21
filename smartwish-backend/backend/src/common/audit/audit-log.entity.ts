@@ -6,7 +6,7 @@ import {
   Index,
 } from 'typeorm';
 
-export enum AuditEventType {
+export enum AuditAction {
   // Authentication events
   USER_LOGIN = 'user_login',
   USER_LOGOUT = 'user_logout',
@@ -50,26 +50,10 @@ export enum AuditEventType {
   MAINTENANCE_MODE = 'maintenance_mode',
 }
 
-export enum AuditEventSeverity {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
-  CRITICAL = 'critical',
-}
-
-export enum AuditEventStatus {
-  SUCCESS = 'success',
-  FAILURE = 'failure',
-  PARTIAL = 'partial',
-}
-
 @Entity('audit_logs')
 @Index(['userId'])
-@Index(['eventType'])
-@Index(['severity'])
+@Index(['action'])
 @Index(['createdAt'])
-@Index(['ipAddress'])
-@Index(['userAgent'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -77,68 +61,33 @@ export class AuditLog {
   @Column({ type: 'uuid', nullable: true, name: 'user_id' })
   userId?: string;
 
-  @Column({
-    type: 'enum',
-    enum: AuditEventType,
-    name: 'event_type'
-  })
-  eventType: AuditEventType;
+  @Column({ type: 'varchar', length: 100 })
+  action: string;
 
-  @Column({
-    type: 'enum',
-    enum: AuditEventSeverity,
-    default: AuditEventSeverity.LOW,
-    name: 'severity'
-  })
-  severity: AuditEventSeverity;
+  @Column({ type: 'varchar', length: 100, nullable: true, name: 'table_name' })
+  tableName?: string;
 
-  @Column({
-    type: 'enum',
-    enum: AuditEventStatus,
-    default: AuditEventStatus.SUCCESS,
-    name: 'status'
-  })
-  status: AuditEventStatus;
+  @Column({ type: 'uuid', nullable: true, name: 'record_id' })
+  recordId?: string;
 
-  @Column({ type: 'varchar', length: 255 })
-  description: string;
+  @Column({ type: 'jsonb', nullable: true, name: 'old_values' })
+  oldValues?: Record<string, any>;
 
-  @Column({ type: 'jsonb', nullable: true })
-  details?: Record<string, any>;
+  @Column({ type: 'jsonb', nullable: true, name: 'new_values' })
+  newValues?: Record<string, any>;
 
-  @Column({ type: 'varchar', length: 45, nullable: true, name: 'ip_address' })
-  ipAddress?: string;
-
-  @Column({ type: 'varchar', length: 500, nullable: true, name: 'user_agent' })
-  userAgent?: string;
-
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  endpoint?: string;
-
-  @Column({ type: 'varchar', length: 10, nullable: true, name: 'http_method' })
-  httpMethod?: string;
-
-  @Column({ type: 'int', nullable: true, name: 'http_status_code' })
-  httpStatusCode?: number;
-
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'request_id' })
+  @Column({ type: 'uuid', nullable: true, name: 'request_id' })
   requestId?: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'session_id' })
+  @Column({ type: 'uuid', nullable: true, name: 'session_id' })
   sessionId?: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  metadata?: Record<string, any>;
+  @Column({ type: 'inet', nullable: true, name: 'ip_address' })
+  ipAddress?: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'error_message' })
-  errorMessage?: string;
-
-  @Column({ type: 'text', nullable: true, name: 'stack_trace' })
-  stackTrace?: string;
+  @Column({ type: 'text', nullable: true, name: 'user_agent' })
+  userAgent?: string;
 
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   createdAt: Date;
-
-  @Column({ type: 'timestamp', nullable: true, name: 'expires_at' })
-  expiresAt?: Date;
 }

@@ -312,6 +312,9 @@ export class UserService {
         throw new NotFoundException('User not found');
       }
 
+      // Keep original user data for audit log
+      const originalUser = { ...user };
+
       // Check if email is being changed and if it's already taken
       if (updateData.email && updateData.email !== user.email) {
         const existingUser = await this.findByEmail(updateData.email);
@@ -335,7 +338,8 @@ export class UserService {
         userId,
         'update',
         'user_profile',
-        true,
+        userId,
+        originalUser,
         { updatedFields: Object.keys(updateData) },
       );
 
@@ -376,7 +380,8 @@ export class UserService {
         userId,
         'update',
         'user_profile_image',
-        true,
+        userId,
+        { profileImage: user.profileImage },
         { imageUrl },
       );
 
@@ -454,14 +459,11 @@ export class UserService {
       // Audit log the OAuth linking
       await this.auditService.log({
         userId,
-        eventType: 'oauth_link' as any,
-        severity: 'medium' as any,
-        status: 'success' as any,
-        description: 'OAuth provider ' + provider + ' linked',
-        details: { provider, oauthId, profileImage },
+        action: 'oauth_link',
+        tableName: 'users',
+        recordId: userId,
+        newValues: { provider, oauthId, profileImage },
         ipAddress,
-        endpoint: '/auth/oauth/link',
-        httpMethod: 'POST',
       });
 
       return updatedUser;
@@ -502,7 +504,7 @@ export class UserService {
         throw new NotFoundException('User not found');
       }
 
-      user.loginAttempts += 1;
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
       if (user.loginAttempts >= 5) {
         user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // Lock for 15 minutes
 
@@ -647,11 +649,10 @@ export class UserService {
       // Audit log the email verification
       await this.auditService.log({
         userId,
-        eventType: 'email_verification' as any,
-        severity: 'medium' as any,
-        status: 'success' as any,
-        description: 'Email verified',
-        details: { token },
+        action: 'email_verification',
+        tableName: 'users',
+        recordId: userId,
+        newValues: { token },
       });
 
       return true;
@@ -678,7 +679,6 @@ export class UserService {
 
       // Soft delete
       await this.userRepository.update(userId, {
-        deletedAt: new Date(),
         status: UserStatus.INACTIVE,
         updatedAt: new Date(),
       });
@@ -690,7 +690,8 @@ export class UserService {
         userId,
         'delete',
         'user_account',
-        true,
+        userId,
+        undefined,
         { softDelete: true },
       );
     } catch (error) {

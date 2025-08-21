@@ -3,30 +3,22 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, LessThan } from 'typeorm';
 import {
   AuditLog,
-  AuditEventType,
-  AuditEventSeverity,
-  AuditEventStatus,
+  AuditAction,
 } from './audit-log.entity';
 import { LoggerService } from '../logger/logger.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface AuditLogData {
   userId?: string;
-  eventType: AuditEventType;
-  severity?: AuditEventSeverity;
-  status?: AuditEventStatus;
-  description: string;
-  details?: Record<string, any>;
+  action: string;
+  tableName?: string;
+  recordId?: string;
+  oldValues?: Record<string, any>;
+  newValues?: Record<string, any>;
   ipAddress?: string;
   userAgent?: string;
-  endpoint?: string;
-  httpMethod?: string;
-  httpStatusCode?: number;
   requestId?: string;
   sessionId?: string;
-  metadata?: Record<string, any>;
-  errorMessage?: string;
-  stackTrace?: string;
 }
 
 @Injectable()
@@ -41,29 +33,24 @@ export class AuditService {
     try {
       const auditLog = this.auditLogRepository.create({
         ...data,
-        severity: data.severity || AuditEventSeverity.LOW,
-        status: data.status || AuditEventStatus.SUCCESS,
         requestId: data.requestId || uuidv4(),
-        expiresAt: new Date(Date.now() + 7 * 365 * 24 * 60 * 60 * 1000), // 7 years retention
       });
 
       const savedLog = await this.auditLogRepository.save(auditLog);
 
       // Also log to Winston logger for immediate visibility
-      this.logger.log('AUDIT: ' + data.description, {
+      this.logger.log('AUDIT: ' + data.action, {
         userId: data.userId,
-        eventType: data.eventType,
-        severity: data.severity,
+        action: data.action,
+        tableName: data.tableName,
         ipAddress: data.ipAddress,
-        endpoint: data.endpoint,
         requestId: data.requestId,
       });
 
       return savedLog;
     } catch (error) {
       this.logger.error('Failed to save audit log', error.stack, {
-        eventType: data.eventType,
-        description: data.description,
+        action: data.action,
         error: error.message,
       });
       throw error;
@@ -80,15 +67,12 @@ export class AuditService {
   ): Promise<void> {
     await this.log({
       userId,
-      eventType: AuditEventType.USER_LOGIN,
-      severity: success ? AuditEventSeverity.LOW : AuditEventSeverity.HIGH,
-      status: success ? AuditEventStatus.SUCCESS : AuditEventStatus.FAILURE,
-      description: success ? 'User login successful' : 'User login failed',
-      details,
+      action: success ? 'user_login_success' : 'user_login_failed',
+      tableName: 'users',
+      recordId: userId,
+      newValues: details,
       ipAddress,
       userAgent,
-      endpoint: '/auth/login',
-      httpMethod: 'POST',
     });
   }
 
@@ -99,14 +83,11 @@ export class AuditService {
   ): Promise<void> {
     await this.log({
       userId,
-      eventType: AuditEventType.USER_LOGOUT,
-      severity: AuditEventSeverity.LOW,
-      status: AuditEventStatus.SUCCESS,
-      description: 'User logout',
+      action: 'user_logout',
+      tableName: 'users',
+      recordId: userId,
       ipAddress,
       userAgent,
-      endpoint: '/auth/logout',
-      httpMethod: 'POST',
     });
   }
 
@@ -118,81 +99,15 @@ export class AuditService {
   ): Promise<void> {
     await this.log({
       userId,
-      eventType: AuditEventType.USER_REGISTRATION,
-      severity: AuditEventSeverity.MEDIUM,
-      status: AuditEventStatus.SUCCESS,
-      description: 'User registration',
-      details,
+      action: 'user_registration',
+      tableName: 'users',
+      recordId: userId,
+      newValues: details,
       ipAddress,
       userAgent,
-      endpoint: '/auth/signup',
-      httpMethod: 'POST',
     });
   }
 
-  async logPasswordChange(
-    userId: string,
-    ipAddress?: string,
-    userAgent?: string,
-  ): Promise<void> {
-    await this.log({
-      userId,
-      eventType: AuditEventType.PASSWORD_CHANGE,
-      severity: AuditEventSeverity.MEDIUM,
-      status: AuditEventStatus.SUCCESS,
-      description: 'Password changed',
-      ipAddress,
-      userAgent,
-      endpoint: '/auth/change-password',
-      httpMethod: 'POST',
-    });
-  }
-
-  async logPasswordReset(
-    userId: string,
-    success: boolean,
-    ipAddress?: string,
-    userAgent?: string,
-  ): Promise<void> {
-    await this.log({
-      userId,
-      eventType: AuditEventType.PASSWORD_RESET,
-      severity: success ? AuditEventSeverity.MEDIUM : AuditEventSeverity.HIGH,
-      status: success ? AuditEventStatus.SUCCESS : AuditEventStatus.FAILURE,
-      description: success
-        ? 'Password reset successful'
-        : 'Password reset failed',
-      ipAddress,
-      userAgent,
-      endpoint: '/auth/reset-password',
-      httpMethod: 'POST',
-    });
-  }
-
-  // OAuth event logging
-  async logOAuthLogin(
-    userId: string,
-    provider: string,
-    success: boolean,
-    ipAddress?: string,
-    userAgent?: string,
-    details?: Record<string, any>,
-  ): Promise<void> {
-    await this.log({
-      userId,
-      eventType: AuditEventType.OAUTH_LOGIN,
-      severity: success ? AuditEventSeverity.LOW : AuditEventSeverity.HIGH,
-      status: success ? AuditEventStatus.SUCCESS : AuditEventStatus.FAILURE,
-      description: provider + ' OAuth login ' + (success ? 'successful' : 'failed'),
-      details,
-      ipAddress,
-      userAgent,
-      endpoint: '/auth/' + provider,
-      httpMethod: 'GET',
-    });
-  }
-
-  // Security event logging
   async logLoginAttempt(
     email: string,
     success: boolean,
@@ -201,15 +116,11 @@ export class AuditService {
     details?: Record<string, any>,
   ): Promise<void> {
     await this.log({
-      eventType: AuditEventType.LOGIN_ATTEMPT,
-      severity: success ? AuditEventSeverity.LOW : AuditEventSeverity.MEDIUM,
-      status: success ? AuditEventStatus.SUCCESS : AuditEventStatus.FAILURE,
-      description: 'Login attempt for ' + email + ' ' + (success ? 'successful' : 'failed'),
-      details,
+      action: success ? 'login_attempt_success' : 'login_attempt_failed',
+      tableName: 'users',
+      newValues: { email, ...details },
       ipAddress,
       userAgent,
-      endpoint: '/auth/login',
-      httpMethod: 'POST',
     });
   }
 
@@ -221,94 +132,45 @@ export class AuditService {
   ): Promise<void> {
     await this.log({
       userId,
-      eventType: AuditEventType.ACCOUNT_LOCKED,
-      severity: AuditEventSeverity.HIGH,
-      status: AuditEventStatus.SUCCESS,
-      description: 'Account locked: ' + reason,
-      details: { reason },
+      action: 'account_locked',
+      tableName: 'users',
+      recordId: userId,
+      newValues: { reason },
       ipAddress,
       userAgent,
     });
   }
 
-  async logSuspiciousActivity(
+  async logPasswordChange(
     userId: string,
-    activity: string,
     ipAddress?: string,
     userAgent?: string,
-    details?: Record<string, any>,
   ): Promise<void> {
     await this.log({
       userId,
-      eventType: AuditEventType.SUSPICIOUS_ACTIVITY,
-      severity: AuditEventSeverity.HIGH,
-      status: AuditEventStatus.SUCCESS,
-      description: 'Suspicious activity detected: ' + activity,
-      details,
+      action: 'password_change',
+      tableName: 'users',
+      recordId: userId,
       ipAddress,
       userAgent,
     });
   }
 
-  // Authorization event logging
-  async logRoleChange(
-    userId: string,
-    oldRole: string,
-    newRole: string,
-    changedBy: string,
-    ipAddress?: string,
-  ): Promise<void> {
-    await this.log({
-      userId,
-      eventType: AuditEventType.ROLE_CHANGE,
-      severity: AuditEventSeverity.HIGH,
-      status: AuditEventStatus.SUCCESS,
-      description: 'User role changed from ' + oldRole + ' to ' + newRole,
-      details: { oldRole, newRole, changedBy },
-      ipAddress,
-    });
-  }
-
-  // Data event logging
   async logDataOperation(
     userId: string,
     operation: 'create' | 'update' | 'delete' | 'export',
     resource: string,
-    success: boolean,
-    details?: Record<string, any>,
+    recordId?: string,
+    oldValues?: Record<string, any>,
+    newValues?: Record<string, any>,
   ): Promise<void> {
-    const eventType =
-      operation === 'create'
-        ? AuditEventType.DATA_CREATED
-        : operation === 'update'
-          ? AuditEventType.DATA_UPDATED
-          : operation === 'delete'
-            ? AuditEventType.DATA_DELETED
-            : AuditEventType.DATA_EXPORTED;
-
     await this.log({
       userId,
-      eventType,
-      severity: success ? AuditEventSeverity.LOW : AuditEventSeverity.MEDIUM,
-      status: success ? AuditEventStatus.SUCCESS : AuditEventStatus.FAILURE,
-      description: operation + ' operation on ' + resource + ' ' + (success ? 'successful' : 'failed'),
-      details,
-      metadata: { resource, operation },
-    });
-  }
-
-  // System event logging
-  async logSystemEvent(
-    event: string,
-    severity: AuditEventSeverity = AuditEventSeverity.MEDIUM,
-    details?: Record<string, any>,
-  ): Promise<void> {
-    await this.log({
-      eventType: AuditEventType.SYSTEM_STARTUP, // This will be overridden
-      severity,
-      status: AuditEventStatus.SUCCESS,
-      description: event,
-      details,
+      action: `${resource}_${operation}`,
+      tableName: resource,
+      recordId,
+      oldValues,
+      newValues,
     });
   }
 
@@ -324,23 +186,12 @@ export class AuditService {
     });
   }
 
-  async getAuditLogsByType(
-    eventType: AuditEventType,
+  async getAuditLogsByAction(
+    action: string,
     limit: number = 100,
   ): Promise<AuditLog[]> {
     return this.auditLogRepository.find({
-      where: { eventType },
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
-  }
-
-  async getAuditLogsBySeverity(
-    severity: AuditEventSeverity,
-    limit: number = 100,
-  ): Promise<AuditLog[]> {
-    return this.auditLogRepository.find({
-      where: { severity },
+      where: { action },
       order: { createdAt: 'DESC' },
       take: limit,
     });

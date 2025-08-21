@@ -188,9 +188,6 @@ export class User {
   @UpdateDateColumn({ type: 'timestamp', name: 'updated_at' })
   updatedAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true, name: 'deleted_at' })
-  @IsOptional()
-  deletedAt?: Date;
 
   // Hooks
   @BeforeInsert()

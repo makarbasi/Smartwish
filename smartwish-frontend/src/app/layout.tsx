@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppChrome from "@/components/AppChrome";
 import CookieConsent from "@/components/CookieConsent";
+import AuthProvider from "@/components/AuthProvider";
+import RequireAuthModal from "@/components/RequireAuthModal";
+import { AuthModalProvider } from "@/contexts/AuthModalContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,9 +29,19 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full bg-background">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased h-full text-foreground`}>
-        <AppChrome>{children}</AppChrome>
-        <CookieConsent />
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased h-full text-foreground`}
+      >
+        <AuthProvider>
+          <AuthModalProvider>
+            <RequireAuthModal
+              protectedPaths={["/contacts", "/my-cards", "/event"]}
+            >
+              <AppChrome>{children}</AppChrome>
+            </RequireAuthModal>
+            <CookieConsent />
+          </AuthModalProvider>
+        </AuthProvider>
       </body>
     </html>
   );

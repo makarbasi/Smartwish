@@ -1,15 +1,18 @@
 "use client"
 
-import { useMemo, useState, useEffect, useRef, Suspense } from 'react'
+import { useMemo, useState, useEffect, useCallback, Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { HeartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
-import { EllipsisHorizontalIcon, MagnifyingGlassIcon, FlagIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { Dialog, DialogBackdrop, DialogPanel, Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
-import HTMLFlipBook from "react-pageflip"
+import { useSession } from 'next-auth/react'
+import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
 import useSWR from 'swr'
-import HeroSearch from '@/components/HeroSearch'
+import AuthModal from '@/components/AuthModal'
+import TemplatePreviewModal from '@/components/TemplatePreviewModal'
+import TemplateCard from '@/components/TemplateCard'
+import TemplateCardSkeleton from '@/components/TemplateCardSkeleton'
+import FloatingSearch from '@/components/FloatingSearch'
+import { AuthModalProvider, useAuthModal } from '@/contexts/AuthModalContext'
+
 // Lazy-load the heavy editor (Pintura) only on the client when needed
 const GiftCardEditorSimple = dynamic(() => import('@/components/GiftCardEditorSimple'), {
   ssr: false,
@@ -64,7 +67,7 @@ type CategoriesResponse = {
   count: number
 }
 
-type TemplateCard = {
+export type TemplateCard = {
   id: string
   name: string
   price: string
@@ -104,29 +107,8 @@ function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
   }
 }
 
-function TemplateCardSkeleton() {
-  return (
-    <div className="group cursor-pointer rounded-2xl bg-white ring-1 ring-gray-200">
-      <div className="relative overflow-hidden rounded-t-2xl">
-        <div className="aspect-[640/989] w-full bg-gray-200 animate-pulse" />
-        <div className="absolute right-3 top-3 flex gap-2">
-          <div className="h-8 w-16 bg-gray-300 rounded-lg animate-pulse"></div>
-          <div className="h-8 w-8 bg-gray-300 rounded-lg animate-pulse"></div>
-        </div>
-      </div>
-      <div className="px-4 pt-3 pb-5 text-left">
-        <div className="flex items-start justify-between gap-3">
-          <div className="h-5 bg-gray-200 rounded animate-pulse w-3/4"></div>
-          <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse"></div>
-        </div>
-        <div className="mt-1.5 h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
-      </div>
-    </div>
-  )
-}
-
-
 function TemplatesPageContent() {
+  const { data: session, status } = useSession()
   const sp = useSearchParams()
   const q = sp?.get('q') ?? ''
   const region = sp?.get('region') ?? ''
@@ -136,13 +118,26 @@ function TemplatesPageContent() {
   const initialPage = Math.max(1, parseInt(pageFromQuery || '1', 10) || 1)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewProduct, setPreviewProduct] = useState<TemplateCard | null>(null)
+  
   const [editorOpen, setEditorOpen] = useState(false)
   const [editorProduct, setEditorProduct] = useState<TemplateCard | null>(null)
   const [page, setPage] = useState<number>(initialPage)
   const [selectedCategory, setSelectedCategory] = useState<string>(category)
   const router = useRouter()
+  const { authModalOpen, openAuthModal, closeAuthModal } = useAuthModal()
   
-  console.log('🔍 Template page state:', { editorOpen, editorProduct: editorProduct?.name, previewOpen, previewProduct: previewProduct?.name })
+  // Debug: Track authModalOpen state changes (only when it changes)
+  useEffect(() => {
+    console.log('🎭 PARENT AuthModal state changed to:', authModalOpen)
+    if (authModalOpen) {
+      console.log('✅ AuthModal should now be visible!')
+    }
+  }, [authModalOpen])
+  
+  // Debug: Track auth state changes (only when status changes)
+  useEffect(() => {
+    console.log('🔒 Auth state changed:', { session: !!session, status, user: session?.user?.email })
+  }, [session, status])
   
   // Fetch categories
   const { data: categoriesResponse } = useSWR<CategoriesResponse>('/api/categories', fetcher)
@@ -215,7 +210,18 @@ function TemplatesPageContent() {
 
   const openEditor = async (product: TemplateCard) => {
     console.log('🚀 Opening editor for:', product.name)
+    console.log('🔍 Auth state check - session:', !!session, 'status:', status)
     
+    // Check authentication first
+    if (!session || status !== 'authenticated') {
+      console.log('🚨 User not authenticated, opening auth modal')
+      console.log('🔗 Calling openAuthModal function...')
+      openAuthModal()
+      console.log('✅ openAuthModal called')
+      return
+    }
+    
+    console.log('✅ User is authenticated, proceeding to editor')
     try {
       // Convert external image to blob URL for Pintura compatibility
       const blobImageUrl = await convertImageToBlob(product.imageSrc)
@@ -287,146 +293,50 @@ function TemplatesPageContent() {
     return images
   }
 
-  const productHref = '/product/template'
+  const handlePreviewTemplate = (template: TemplateCard) => {
+    console.log('🔍 handlePreviewTemplate called for:', template.name, 'at', Date.now())
+    setPreviewProduct(template)
+    setPreviewOpen(true)
+  }
+
+  const handleAuthRequired = useCallback(() => {
+    console.log('🚨🚨🚨 HANDLE AUTH REQUIRED CALLED 🚨🚨🚨')
+    openAuthModal()
+  }, [openAuthModal])
 
   return (
     <main className="pb-24">
       <div className="px-4 pt-6 sm:px-6 lg:px-8" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          
-          {/* sticky show-on-scroll-up search */}
-          <FloatingSearch initialQuery={q} categories={categories} selectedCategory={selectedCategory} />
-          
-          <section>
-            {isLoading ? (
+        {/* sticky show-on-scroll-up search */}
+        <FloatingSearch initialQuery={q} categories={categories} selectedCategory={selectedCategory} />
+        
+        <section>
+          {isLoading ? (
+            <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
+              {Array(9).fill(0).map((_, i) => (
+                <TemplateCardSkeleton key={`skeleton-${i}`} />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
+              Failed to load templates. Please try again later.
+            </div>
+          ) : products.length === 0 ? (
+            <div className="rounded-lg border border-gray-200 p-12 text-center text-gray-600">No templates found.</div>
+          ) : (
+            <>
               <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
-                {Array(9).fill(0).map((_, i) => (
-                  <TemplateCardSkeleton key={`skeleton-${i}`} />
+                {pagedProducts.map((template, index) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    index={index}
+                    onPreview={handlePreviewTemplate}
+                    onAuthRequired={handleAuthRequired}
+                  />
                 ))}
-              </div>
-            ) : error ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
-                Failed to load templates. Please try again later.
-              </div>
-            ) : products.length === 0 ? (
-              <div className="rounded-lg border border-gray-200 p-12 text-center text-gray-600">No templates found.</div>
-            ) : (
-              <>
-              <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
-                {pagedProducts.map((p, index) => {
-                  const href = productHref
-                  return (
-                    <div
-                      key={p.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        console.log('📋 Template card clicked for:', p.name)
-                        alert(`Clicked on ${p.name}`)
-                        setPreviewProduct(p)
-                        setPreviewOpen(true)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setPreviewProduct(p)
-                          setPreviewOpen(true)
-                        }
-                      }}
-                      className="group cursor-pointer rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm"
-                    >
-                      <div className="relative overflow-hidden rounded-t-2xl">
-                        <a
-                          href={href}
-                          className="block overflow-hidden"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setPreviewProduct(p)
-                            setPreviewOpen(true)
-                          }}
-                        >
-                          <Image
-                            alt={p.imageAlt}
-                            src={p.imageSrc}
-                            width={640}
-                            height={989}
-                            className="aspect-[640/989] w-full bg-gray-100 object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                          />
-                        </a>
-                        <div className="absolute right-3 top-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
-                          <button className="inline-flex items-center gap-1 rounded-lg bg-black/80 px-2.5 py-1.5 text-white shadow-sm hover:bg-black" onClick={(e) => e.stopPropagation()}>
-                            <HeartIcon className="h-4 w-4 text-white drop-shadow" />
-                            <span className="text-xs">{p.likes.toLocaleString()}</span>
-                          </button>
-                          <Menu as="div" className="relative inline-block text-left">
-                            <MenuButton className="inline-flex items-center justify-center rounded-lg bg-black/80 p-1.5 text-white shadow-sm hover:bg-black" onClick={(e) => e.stopPropagation()}>
-                              <EllipsisHorizontalIcon className="h-4 w-4" />
-                            </MenuButton>
-                            <MenuItems
-                              anchor={{
-                                to: (index + 1) % 2 === 0 ? "bottom start" : "bottom end",
-                                gap: 8
-                              }}
-                              className="z-50 w-72 origin-top-right rounded-xl bg-white text-gray-900 shadow-2xl ring-1 ring-black/5 transition data-closed:scale-95 data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
-                            >
-                              <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold leading-snug">
-                                {p.name}
-                              </div>
-                              <div className="py-1">
-                                <MenuItem>
-                                  <button
-                                    onClick={() => {
-                                      setPreviewProduct(p)
-                                      setPreviewOpen(true)
-                                    }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-gray-50"
-                                  >
-                                    <MagnifyingGlassIcon className="h-4 w-4 text-gray-500" />
-                                    Preview template
-                                  </button>
-                                </MenuItem>
-                                <MenuItem>
-                                  <button className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-gray-50">
-                                    <FlagIcon className="h-4 w-4 text-gray-500" />
-                                    Report
-                                  </button>
-                                </MenuItem>
-                              </div>
-                            </MenuItems>
-                          </Menu>
-                        </div>
-
-                      </div>
-                      <div className="px-4 pt-3 pb-5 text-left">
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="line-clamp-1 text-[16px] font-semibold leading-6 text-gray-900">
-                            <a
-                              href={href}
-                              className="relative inline-block"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setPreviewProduct(p)
-                                setPreviewOpen(true)
-                              }}
-                            >
-                              {p.name}
-                            </a>
-                          </h3>
-                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${p.price === '$0' ? 'bg-green-50 text-green-700 ring-green-200' : 'bg-gray-100 text-gray-900 ring-gray-200'}`}>
-                            {p.price === '$0' ? 'Free' : p.price}
-                          </span>
-                        </div>
-                        <div className="mt-1.5 text-[13px] text-gray-600">
-                          by <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">{p.publisher.name}</a>
-                        </div>
-                        {/* bottom row removed: likes are shown on the image; price is overlaid */}
-                      </div>
-                    </div>
-                  )
-                })}
               </div>
 
               {/* Pagination */}
@@ -461,20 +371,22 @@ function TemplatesPageContent() {
                   </div>
                 </nav>
               )}
-              </>
-            )}
-          </section>
-
-          {/* My cards moved to /my-cards */}
+            </>
+          )}
+        </section>
       </div>
+
+      {/* Template Preview Modal */}
       {previewProduct && (
         <TemplatePreviewModal 
           open={previewOpen} 
-          onClose={setPreviewOpen} 
+          onClose={() => setPreviewOpen(false)} 
           product={previewProduct}
           onCustomize={openEditor}
         />
       )}
+
+      {/* Editor Modal */}
       {editorProduct && (
         <GiftCardEditorSimple
           open={editorOpen}
@@ -493,309 +405,14 @@ function TemplatesPageContent() {
           })()}
         />
       )}
+      
+      {/* Auth Modal - shared for both main page and preview modal */}
+      <AuthModal 
+        open={authModalOpen} 
+        onClose={closeAuthModal}
+      />
+      
     </main>
-  )
-}
-
-function TemplatePreviewModal({ open, onClose, product, onCustomize }: { 
-  open: boolean; 
-  onClose: (v: boolean) => void; 
-  product: TemplateCard | null;
-  onCustomize: (product: TemplateCard) => Promise<void>;
-}) {
-  const [currentPage, setCurrentPage] = useState(0)
-  const flipBookRef = useRef<any>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  
-  if (!product) return null
-  
-  const templatePages = product.pages || [product.imageSrc]
-  const totalPages = templatePages.length
-  
-  const handleNextPage = () => {
-    // Check if we're on desktop (flipbook is visible)
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      // Desktop: use flipbook
-      if (flipBookRef.current && currentPage < totalPages - 1) {
-        flipBookRef.current.pageFlip().flipNext()
-      }
-    } else {
-      // Tablet/Mobile: use scroll navigation
-      if (currentPage < totalPages - 1) {
-        scrollToPage(currentPage + 1)
-      }
-    }
-  }
-  
-  const handlePrevPage = () => {
-    // Check if we're on desktop (flipbook is visible)
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      // Desktop: use flipbook
-      if (flipBookRef.current && currentPage > 0) {
-        flipBookRef.current.pageFlip().flipPrev()
-      }
-    } else {
-      // Tablet/Mobile: use scroll navigation
-      if (currentPage > 0) {
-        scrollToPage(currentPage - 1)
-      }
-    }
-  }
-  
-  const handlePageFlip = (e: { data: number }) => {
-    setCurrentPage(e.data)
-  }
-  
-  // Handle scroll to update current page indicator
-  const handleScroll = () => {
-    if (!scrollContainerRef.current) return
-    
-    const container = scrollContainerRef.current
-    const scrollLeft = container.scrollLeft
-    const containerWidth = container.clientWidth
-    const newPage = Math.round(scrollLeft / containerWidth)
-    
-    if (newPage !== currentPage && newPage >= 0 && newPage < totalPages) {
-      setCurrentPage(newPage)
-    }
-  }
-  
-  // Scroll to specific page
-  const scrollToPage = (pageIndex: number) => {
-    if (!scrollContainerRef.current) return
-    
-    const container = scrollContainerRef.current
-    const containerWidth = container.clientWidth
-    const scrollLeft = pageIndex * containerWidth
-    
-    container.scrollTo({
-      left: scrollLeft,
-      behavior: 'smooth'
-    })
-    setCurrentPage(pageIndex)
-  }
-  
-  // Reset to first page when modal opens
-  useEffect(() => {
-    if (open) {
-      setCurrentPage(0)
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTo({ left: 0 })
-      }
-    }
-  }, [open])
-  
-  return (
-    <Dialog open={open} onClose={onClose} className="relative z-50">
-      <DialogBackdrop className="fixed inset-0 bg-black/40" />
-      <div className="fixed inset-0 overflow-y-auto p-4 sm:p-8">
-        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 sm:grid-cols-[2fr_1fr]">
-          <DialogPanel className="col-span-1 rounded-2xl bg-transparent">
-            <div className="relative overflow-hidden rounded-xl bg-white shadow-2xl">
-              {/* Desktop: Flipbook View */}
-              <div className="hidden lg:flex items-center justify-center relative" onClick={(e) => e.stopPropagation()}>
-                {/* Previous Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handlePrevPage()
-                  }}
-                  disabled={currentPage === 0}
-                  className="absolute left-8 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronLeftIcon className="h-6 w-6" />
-                </button>
-                
-                {/* Flipbook Container */}
-                <div className="flipbook-container-desktop">
-                  <HTMLFlipBook
-                    ref={flipBookRef}
-                    width={400}
-                    height={550}
-                    size="fixed"
-                    startPage={0}
-                    minWidth={200}
-                    maxWidth={1000}
-                    minHeight={200}
-                    maxHeight={1000}
-                    style={{}}
-                    maxShadowOpacity={0.8}
-                    showCover={true}
-                    mobileScrollSupport={false}
-                    onFlip={handlePageFlip}
-                    className="flipbook-shadow"
-                    flippingTime={800}
-                    usePortrait={false}
-                    startZIndex={10}
-                    autoSize={false}
-                    clickEventForward={true}
-                    useMouseEvents={true}
-                    swipeDistance={30}
-                    showPageCorners={true}
-                    disableFlipByClick={false}
-                    drawShadow={true}
-                  >
-                    {templatePages.map((page, index) => (
-                      <div key={index} className="page-hard">
-                        <div className="page-content w-full h-full relative">
-                          <Image
-                            src={page}
-                            alt={`${product.imageAlt} - Page ${index + 1}`}
-                            width={400}
-                            height={550}
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </HTMLFlipBook>
-                </div>
-                
-                {/* Next Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleNextPage()
-                  }}
-                  disabled={currentPage === totalPages - 1}
-                  className="absolute right-8 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronRightIcon className="h-6 w-6" />
-                </button>
-                
-                {/* Page indicator */}
-                <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 bg-black/60 text-white px-3 py-1 rounded-full text-sm backdrop-blur-sm">
-                  {currentPage + 1} / {totalPages}
-                </div>
-              </div>
-
-              {/* Tablet & Mobile: Scrollable Pages View */}
-              <div className="lg:hidden relative" onClick={(e) => e.stopPropagation()}>
-                {/* Previous Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handlePrevPage()
-                  }}
-                  disabled={currentPage === 0}
-                  className="absolute left-4 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronLeftIcon className="h-5 w-5" />
-                </button>
-                
-                <div 
-                  ref={scrollContainerRef}
-                  className="overflow-x-auto scrollbar-hide"
-                  onScroll={handleScroll}
-                >
-                  <div className="flex snap-x snap-mandatory">
-                    {templatePages.map((page, index) => (
-                      <div key={index} className="flex-none w-full snap-center">
-                        <Image 
-                          src={page} 
-                          alt={`${product.imageAlt} - Page ${index + 1}`} 
-                          width={600} 
-                          height={800} 
-                          className="w-full" 
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Next Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleNextPage()
-                  }}
-                  disabled={currentPage === totalPages - 1}
-                  className="absolute right-4 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronRightIcon className="h-5 w-5" />
-                </button>
-                
-                {/* Page indicator dots */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                  {templatePages.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        scrollToPage(index)
-                      }}
-                      className={`w-2 h-2 rounded-full transition-all ${
-                        index === currentPage ? 'bg-white' : 'bg-white/50'
-                      }`}
-                    />
-                  ))}
-                </div>
-                
-                {/* Page counter */}
-                <div className="absolute top-4 right-4 bg-black/60 text-white px-2 py-1 rounded-full text-xs backdrop-blur-sm">
-                  {currentPage + 1}/{totalPages}
-                </div>
-              </div>
-            </div>
-          </DialogPanel>
-          
-          {/* Desktop Sidebar */}
-          <div className="relative rounded-xl bg-white p-6 text-gray-900 shadow-2xl ring-1 ring-gray-100">
-            <button onClick={() => onClose(false)} className="absolute right-3 top-3 rounded-md p-1 text-gray-500 hover:bg-gray-100">
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-            <h2 className="text-xl font-bold leading-snug">{product.name}</h2>
-            <div className="mt-2 text-sm text-gray-600">By {product.publisher.name}</div>
-            <div className="mt-1 text-xs text-gray-500">Document (A4 Portrait) • 21 × 29.7 cm • {totalPages} pages</div>
-            <button 
-              onClick={() => {
-                console.log('🎯 Redirecting to my-cards for template:', product.name)
-                window.location.href = '/my-cards'
-              }}
-              className="mt-5 inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-            >
-              Customize this template
-            </button>
-            <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
-              <button className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 hover:bg-gray-200">
-                <HeartIcon className="h-4 w-4 text-rose-500" />
-                {product.likes.toLocaleString()}
-              </button>
-            </div>
-            <div className="mt-4 text-xs text-gray-500">This template may contain paid elements</div>
-          </div>
-        </div>
-      </div>
-    </Dialog>
-  )
-}
-
-function FloatingSearch({ initialQuery, categories, selectedCategory }: { initialQuery: string; categories?: Category[]; selectedCategory?: string }) {
-  const [visible, setVisible] = useState(true)
-  const prevY = useRef<number>(0)
-  useEffect(() => {
-    prevY.current = window.scrollY
-    const onScroll = () => {
-      const y = window.scrollY
-      if (y > prevY.current + 10) {
-        // scrolling down
-        setVisible(false)
-      } else if (y < prevY.current - 10) {
-        // scrolling up
-        setVisible(true)
-      }
-      prevY.current = y
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  return (
-    <div className={`sticky top-4 z-30 mb-6 transition-all duration-200 ${visible ? 'opacity-100 translate-y-0' : 'pointer-events-none -translate-y-3 opacity-0'}`}>
-      <div className="mx-auto max-w-3xl">
-  <HeroSearch initialQuery={initialQuery} categories={categories} selectedCategory={selectedCategory} />
-      </div>
-    </div>
   )
 }
 
@@ -854,9 +471,11 @@ export default function TemplatesPage() {
   return (
     <>
       <FlipbookStyles />
-      <Suspense fallback={<div>Loading...</div>}>
-        <TemplatesPageContent />
-      </Suspense>
+      <AuthModalProvider>
+        <Suspense fallback={<div>Loading...</div>}>
+          <TemplatesPageContent />
+        </Suspense>
+      </AuthModalProvider>
     </>
   )
 }
