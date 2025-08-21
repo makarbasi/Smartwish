@@ -16,7 +16,24 @@ export async function GET(request: NextRequest) {
 
     console.log('Saved designs API - User ID:', session.user.id);
     console.log('Saved designs API - Access Token exists:', !!accessToken);
+    console.log('Saved designs API - API_BASE_URL:', API_BASE_URL);
 
+    // First try a simple health check
+    console.log('Testing backend connectivity...');
+    try {
+      const healthResponse = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      console.log('Health check response:', healthResponse.status);
+    } catch (healthError) {
+      console.error('Health check failed:', healthError);
+    }
+
+    // Now try the actual request
+    console.log('Making saved-designs request...');
     const response = await fetch(`${API_BASE_URL}/saved-designs`, {
       method: 'GET',
       headers: {
