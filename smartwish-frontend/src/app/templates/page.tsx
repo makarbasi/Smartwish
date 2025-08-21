@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import useSWR from "swr";
@@ -127,7 +127,8 @@ function TemplatesPageContent() {
   const [page, setPage] = useState<number>(initialPage);
   const [selectedCategory, setSelectedCategory] = useState<string>(category);
   const router = useRouter();
-  const { authModalOpen, openAuthModal, closeAuthModal } = useAuthModal();
+  const pathname = usePathname();
+  const { authModalOpen, openAuthModal, closeAuthModal, setRedirectUrl } = useAuthModal();
 
   // Debug: Track authModalOpen state changes (only when it changes)
   useEffect(() => {
@@ -241,6 +242,8 @@ function TemplatesPageContent() {
         console.log("❌ User not authenticated, opening auth modal");
         console.log("🔍 Session:", session);
         console.log("🔍 Status:", status);
+        // When using a template, redirect to my-cards after sign-in instead of back to templates
+        setRedirectUrl("/my-cards");
         openAuthModal();
         return;
       }
@@ -287,10 +290,10 @@ function TemplatesPageContent() {
         alert(`Failed to copy template: ${error.message}`);
       }
     },
-    [session, status, openAuthModal, router]
+    [session, status, openAuthModal, setRedirectUrl, pathname, router]
   );
 
-  // Handle successful authentication - close auth modal and redirect to saved-cards
+  // Handle successful authentication - close auth modal and redirect to redirect URL or default
   useEffect(() => {
     // Only run this effect when user becomes authenticated AND auth modal is open
     if (
@@ -299,17 +302,16 @@ function TemplatesPageContent() {
       authModalOpen
     ) {
       console.log(
-        "🎉 User authenticated successfully, closing auth modal and redirecting to saved-cards"
+        "🎉 User authenticated successfully, closing auth modal"
       );
       closeAuthModal();
-      router.push("/my-cards");
+      // Don't redirect here - let the sign-in page handle the redirect
     }
   }, [
     session,
     status,
     authModalOpen,
     closeAuthModal,
-    router,
   ]);
 
 
@@ -326,8 +328,9 @@ function TemplatesPageContent() {
 
   const handleAuthRequired = useCallback(() => {
     console.log("🚨🚨🚨 HANDLE AUTH REQUIRED CALLED 🚨🚨🚨");
+    setRedirectUrl(pathname + (typeof window !== "undefined" ? window.location.search : ""));
     openAuthModal();
-  }, [openAuthModal]);
+  }, [openAuthModal, setRedirectUrl, pathname]);
 
   return (
     <main className="pb-24">

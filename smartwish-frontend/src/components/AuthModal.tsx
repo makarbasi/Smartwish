@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuthModal } from "@/contexts/AuthModalContext";
 
 type Props = {
   open: boolean;
@@ -11,6 +12,7 @@ type Props = {
 
 export default function AuthModal({ open, onClose, closable = true }: Props) {
   const router = useRouter();
+  const { redirectUrl } = useAuthModal();
 
   console.log("🎭 AuthModal render - open:", open);
 
@@ -73,7 +75,8 @@ export default function AuthModal({ open, onClose, closable = true }: Props) {
           )}
           <button
             onClick={() => {
-              router.push("/sign-in");
+              const redirectParam = redirectUrl ? `?callbackUrl=${encodeURIComponent(redirectUrl)}` : "";
+              router.push(`/sign-in${redirectParam}`);
               onClose();
             }}
             className="px-4 py-2 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium"

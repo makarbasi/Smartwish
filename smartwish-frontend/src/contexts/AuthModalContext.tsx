@@ -7,6 +7,8 @@ interface AuthModalContextType {
   setAuthModalOpen: (open: boolean) => void;
   openAuthModal: () => void;
   closeAuthModal: () => void;
+  redirectUrl: string;
+  setRedirectUrl: (url: string) => void;
 }
 
 const AuthModalContext = createContext<AuthModalContextType | undefined>(
@@ -15,6 +17,7 @@ const AuthModalContext = createContext<AuthModalContextType | undefined>(
 
 export function AuthModalProvider({ children }: { children: React.ReactNode }) {
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState("");
 
   const openAuthModal = () => {
     console.log("🎯 AuthModal Context: Opening auth modal");
@@ -38,6 +41,8 @@ export function AuthModalProvider({ children }: { children: React.ReactNode }) {
         setAuthModalOpen,
         openAuthModal,
         closeAuthModal,
+        redirectUrl,
+        setRedirectUrl,
       }}
     >
       {children}

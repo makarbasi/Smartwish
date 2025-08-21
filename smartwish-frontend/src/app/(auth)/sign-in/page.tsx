@@ -33,8 +33,8 @@ function SignInForm() {
         console.error("Sign in error:", result.error);
         setError("Invalid email or password. Please try again.");
       } else if (result?.ok) {
-        console.log("Sign in successful, redirecting to dashboard");
-        router.push("/templates");
+        console.log("Sign in successful, redirecting to:", callbackUrl);
+        router.push(callbackUrl);
       } else {
         setError("An unexpected error occurred. Please try again.");
       }
@@ -178,7 +178,7 @@ function SignInForm() {
 
               <div className="mt-6 grid grid-cols-2 gap-4">
                 <a
-                  href={`${API_BASE}/auth/google`}
+                  href={`${API_BASE}/auth/google${callbackUrl !== "/" ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ""}`}
                   className="flex w-full items-center justify-center gap-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 focus-visible:inset-ring-transparent"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
@@ -203,7 +203,7 @@ function SignInForm() {
                 </a>
 
                 <a
-                  href={`${API_BASE}/auth/instagram`}
+                  href={`${API_BASE}/auth/instagram${callbackUrl !== "/" ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ""}`}
                   className="flex w-full items-center justify-center gap-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 focus-visible:inset-ring-transparent"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">

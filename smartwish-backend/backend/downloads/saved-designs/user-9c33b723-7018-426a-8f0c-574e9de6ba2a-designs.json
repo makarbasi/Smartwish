@@ -603,5 +603,60 @@
     "popularity": 0,
     "num_downloads": 0,
     "status": "draft"
+  },
+  {
+    "title": "Elegant Wedding Ceremony - Copy 2",
+    "description": "Updated on 8/19/2025",
+    "category": "General",
+    "designData": {
+      "templateKey": "wedding-elegant-ceremony",
+      "pages": [
+        {
+          "header": "Page 1",
+          "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+          "text": "",
+          "footer": ""
+        },
+        {
+          "header": "Page 2",
+          "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583552271_page_2.png",
+          "text": "",
+          "footer": ""
+        },
+        {
+          "header": "Page 3",
+          "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583553649_page_3.png",
+          "text": "",
+          "footer": ""
+        },
+        {
+          "header": "Page 4",
+          "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583554497_page_4.png",
+          "text": "",
+          "footer": ""
+        }
+      ],
+      "editedPages": {},
+      "originalTemplate": {
+        "id": "328c241f-9b5f-48de-ada5-b7a2b930c17a",
+        "title": "Elegant Wedding Ceremony",
+        "slug": "wedding-elegant-ceremony",
+        "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Wedding/wedding_1.jpg"
+      }
+    },
+    "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Wedding/wedding_1.jpg",
+    "searchKeywords": [],
+    "language": "en",
+    "region": "US",
+    "userId": "9c33b723-7018-426a-8f0c-574e9de6ba2a",
+    "id": "1755817372630",
+    "createdAt": "2025-08-21T23:02:52.630Z",
+    "updatedAt": "2025-08-21T23:02:52.630Z",
+    "author": "User",
+    "upload_time": "2025-08-21T23:02:52.630Z",
+    "price": 0,
+    "popularity": 0,
+    "num_downloads": 0,
+    "status": "draft"
   }
 ]
