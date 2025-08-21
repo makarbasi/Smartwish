@@ -12,7 +12,7 @@ import {
   Cog6ToothIcon,
   QuestionMarkCircleIcon,
   MegaphoneIcon,
-  CurrencyDollarIcon,
+  // CurrencyDollarIcon, // commented out because pricing link is commented below
   ShoppingBagIcon,
   ArrowRightStartOnRectangleIcon,
   // UserIcon removed (unused)
@@ -261,6 +261,7 @@ export default function Sidebar() {
                 >
                   <MegaphoneIcon className="h-5 w-5 text-gray-400" /> Whats new
                 </a>
+                {/*
                 <a
                   href="#"
                   className="flex items-center gap-3 rounded-md px-2 py-2 text-gray-700 hover:bg-gray-50"
@@ -268,6 +269,7 @@ export default function Sidebar() {
                   <CurrencyDollarIcon className="h-5 w-5 text-gray-400" /> Plans
                   and pricing
                 </a>
+                */}
                 <a
                   href="#"
                   className="flex items-center gap-3 rounded-md px-2 py-2 text-gray-700 hover:bg-gray-50"

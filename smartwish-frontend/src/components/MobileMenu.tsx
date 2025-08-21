@@ -11,8 +11,8 @@ import {
     PencilSquareIcon,
     Cog6ToothIcon,
     QuestionMarkCircleIcon,
-    MegaphoneIcon,
-    CurrencyDollarIcon,
+    // MegaphoneIcon, // feedback link is commented out below
+    // CurrencyDollarIcon, // pricing link commented out below
     ShoppingBagIcon,
     ArrowRightStartOnRectangleIcon,
     UserGroupIcon,
@@ -69,7 +69,7 @@ export default function MobileMenu() {
             {/* Mobile Hamburger Menu Overlay */}
             <div className={`fixed inset-0 z-50 transition-all duration-300 ease-in-out ${
                 mobileMenuOpen 
-                    ? 'bg-black bg-opacity-50 pointer-events-auto' 
+                    ? 'bg-gray-700/30 pointer-events-auto' 
                     : 'bg-transparent pointer-events-none'
             }`}>
                 <div className={`w-80 bg-white h-full shadow-xl transform transition-all duration-300 ease-out ${
@@ -133,6 +133,7 @@ export default function MobileMenu() {
                                     <QuestionMarkCircleIcon className="w-6 h-6" />
                                     Help & Support
                                 </Link>
+                                {/*
                                 <Link 
                                     href="/feedback" 
                                     onClick={() => setMobileMenuOpen(false)}
@@ -149,6 +150,7 @@ export default function MobileMenu() {
                                     <CurrencyDollarIcon className="w-6 h-6" />
                                     Pricing
                                 </Link>
+                                */}
                                 <button 
                                     onClick={() => setMobileMenuOpen(false)}
                                     className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-red-600 hover:bg-red-50 w-full text-left transition-colors"

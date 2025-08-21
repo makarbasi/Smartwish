@@ -41,7 +41,8 @@ export default function TemplateCard({ template, index, onPreview, onAuthRequire
     console.log('✅ User authenticated, liking template:', template.name)
   }
 
-  const handleCardClick = () => {
+  const handleCardClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
     console.log('📋 Template card clicked for:', template.name)
     onPreview(template)
   }

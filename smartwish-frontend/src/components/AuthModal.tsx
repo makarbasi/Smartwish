@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useRouter } from "next/navigation";
 
 type Props = {
@@ -10,65 +10,30 @@ type Props = {
 
 export default function AuthModal({ open, onClose }: Props) {
   const router = useRouter();
-  const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(false);
 
-  console.log(
-    "🎭 AuthModal render - open:",
-    open,
-    "mounted:",
-    mounted,
-    "visible:",
-    visible
-  );
+  console.log("🎭 AuthModal render - open:", open);
 
-  // Handle mount/unmount with a small show animation
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      // next frame to allow CSS transition from initial state
-      requestAnimationFrame(() => setVisible(true));
-    } else {
-      setVisible(false);
-      const t = setTimeout(() => setMounted(false), 220);
-      return () => clearTimeout(t);
-    }
-  }, [open]);
-
-  function handleCloseAnimated() {
-    setVisible(false);
-    setTimeout(() => onClose(), 220);
-  }
-
-  if (!mounted) return null;
+  if (!open) return null;
 
   return (
     <div
-      className={`fixed inset-0 z-[9999] flex items-center justify-center ${
-        visible ? "pointer-events-auto" : "pointer-events-none"
-      }`}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       aria-modal="true"
       role="dialog"
     >
-      {/* Backdrop */}
+      {/* Backdrop - separate layer */}
       <div
-        onClick={handleCloseAnimated}
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-all duration-200 ${
-          visible ? "opacity-100" : "opacity-0"
-        }`}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
       />
-
       {/* Modal panel */}
       <div
-        className={`relative w-full max-w-md rounded-lg bg-white p-6 shadow-lg transform transition-all duration-200 ${
-          visible
-            ? "opacity-100 translate-y-0 scale-100"
-            : "opacity-0 translate-y-2 scale-95"
-        }`}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-lg z-10"
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Sign in required</h3>
-          <button onClick={handleCloseAnimated} className="text-gray-500">
+          <button onClick={onClose} className="text-gray-500">
             ✕
           </button>
         </div>
@@ -80,16 +45,15 @@ export default function AuthModal({ open, onClose }: Props) {
 
         <div className="flex justify-end gap-2">
           <button
-            onClick={handleCloseAnimated}
+            onClick={onClose}
             className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
           >
             Cancel
           </button>
           <button
             onClick={() => {
-              // navigate to the sign-in page and close modal with animation
               router.push("/sign-in");
-              handleCloseAnimated();
+              onClose();
             }}
             className="px-4 py-2 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium"
           >
