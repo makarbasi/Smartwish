@@ -13,6 +13,7 @@
     "@heroicons/react": "^2.1.5",
     "@pqina/pintura": "^8.92.19",
     "@pqina/react-pintura": "^9.0.4",
+    "axios": "^1.11.0",
     "next": "15.4.6",
     "next-auth": "^5.0.0-beta.29",
     "react": "19.1.0",

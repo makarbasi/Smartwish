@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
@@ -48,16 +48,17 @@ const transformSavedDesign = (design: SavedDesign): MyCard => {
   };
 };
 
-export default function MyCardsPage() {
+// Component that uses useSearchParams - wrapped in Suspense
+function MyCardsContent() {
   const searchParams = useSearchParams();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  
+
   // Fetch saved designs from API first
-  const { 
-    data: savedDesignsResponse, 
-    error: savedDesignsError, 
+  const {
+    data: savedDesignsResponse,
+    error: savedDesignsError,
     isLoading: savedDesignsLoading,
-    mutate: mutateSavedDesigns 
+    mutate: mutateSavedDesigns
   } = useSWR<SavedDesignsResponse>('/api/saved-designs', fetcher, {
     refreshInterval: 0, // Don't auto-refresh
     revalidateOnFocus: false, // Don't revalidate on focus
@@ -68,33 +69,33 @@ export default function MyCardsPage() {
   useEffect(() => {
     const newDesignId = searchParams?.get('newDesign');
     const message = searchParams?.get('message');
-    
+
     if (newDesignId && message) {
       setSuccessMessage(decodeURIComponent(message));
-      
+
       // Force a refresh of the saved designs data
       mutateSavedDesigns();
-      
+
       // Clear the message after 5 seconds
       const timer = setTimeout(() => {
         setSuccessMessage(null);
         // Clean up URL parameters
         window.history.replaceState({}, '', '/my-cards');
       }, 5000);
-      
+
       return () => clearTimeout(timer);
     }
   }, [searchParams, mutateSavedDesigns]);
-  
+
   // Transform saved designs to cards format
   const savedCards: MyCard[] = savedDesignsResponse?.data ? savedDesignsResponse.data.map(transformSavedDesign) : [];
-  
+
   // Debug logging
   console.log('My Cards - Saved designs response:', savedDesignsResponse);
   console.log('My Cards - Saved cards:', savedCards);
   console.log('My Cards - Loading state:', savedDesignsLoading);
   console.log('My Cards - Error state:', savedDesignsError);
-  
+
   // For now, keep published cards empty since we don't have published designs yet
   const publishedCards: MyCard[] = [];
 
@@ -135,7 +136,7 @@ export default function MyCardsPage() {
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">My Cards</h1>
         <p className="mt-2 text-lg text-gray-600">Manage your saved and published greeting cards</p>
       </div>
-      
+
       {/* Saved Cards Section */}
       <div className="mb-16">
         <div className="mb-6">
@@ -432,5 +433,25 @@ export default function MyCardsPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Main component with Suspense boundary
+export default function MyCardsPage() {
+  return (
+    <Suspense fallback={
+      <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-12">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">My Cards</h1>
+          <p className="mt-2 text-lg text-gray-600">Manage your saved and published greeting cards</p>
+        </div>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-500">Loading...</p>
+        </div>
+      </main>
+    }>
+      <MyCardsContent />
+    </Suspense>
   );
 }
