@@ -163,8 +163,21 @@ export default function Sidebar() {
       {/* Desktop Sidebar - Same as before */}
       <nav
         aria-label="Primary"
-        className="fixed inset-y-0 left-0 z-20 hidden w-14 flex-col items-center border-r border-gray-200 bg-white py-6 md:flex lg:w-16"
+        className="fixed inset-y-0 left-0 z-50 hidden w-14 flex-col items-center border-r border-gray-200 bg-white py-6 md:flex lg:w-16"
       >
+        {/* Logo placed above the + button (desktop) */}
+        <div className="mb-4 flex items-center justify-center">
+          <Link href="/" title="Home" className="inline-block">
+            <Image
+              src="/resources/logo/logo.png"
+              alt="Smartwish"
+              width={36}
+              height={36}
+              className="h-9 w-9 object-contain"
+            />
+          </Link>
+        </div>
+
         <Link
           href="/templates"
           title="Templates"
@@ -215,7 +228,7 @@ export default function Sidebar() {
           </button>
 
           {profileOpen && (
-            <div className="absolute bottom-12 left-12 z-30 w-72 rounded-xl border border-gray-200 bg-white text-sm shadow-xl">
+            <div className="absolute bottom-12 left-12 z-60 w-72 rounded-xl border border-gray-200 bg-white text-sm shadow-xl">
               <div className="p-3">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                   Accounts

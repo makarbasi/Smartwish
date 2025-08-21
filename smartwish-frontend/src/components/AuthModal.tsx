@@ -1,30 +1,47 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  closable?: boolean;
 };
 
-export default function AuthModal({ open, onClose }: Props) {
+export default function AuthModal({ open, onClose, closable = true }: Props) {
   const router = useRouter();
 
   console.log("🎭 AuthModal render - open:", open);
+
+  // Handle ESC key only if closable
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && open && closable) {
+        onClose();
+      }
+    };
+
+    if (open && closable) {
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.removeEventListener('keydown', handleEscape);
+      };
+    }
+  }, [open, closable, onClose]);
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      className={`fixed inset-0 ${closable ? 'z-[9999]' : 'z-[40]'} flex items-center justify-center p-4`}
       aria-modal="true"
       role="dialog"
     >
       {/* Backdrop - separate layer */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={closable ? onClose : undefined}
       />
       {/* Modal panel */}
       <div
@@ -33,9 +50,11 @@ export default function AuthModal({ open, onClose }: Props) {
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Sign in required</h3>
-          <button onClick={onClose} className="text-gray-500">
-            ✕
-          </button>
+          {closable && (
+            <button onClick={onClose} className="text-gray-500">
+              ✕
+            </button>
+          )}
         </div>
 
         <div className="text-sm text-gray-700 mb-4">
@@ -44,12 +63,14 @@ export default function AuthModal({ open, onClose }: Props) {
         </div>
 
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
-          >
-            Cancel
-          </button>
+          {closable && (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+          )}
           <button
             onClick={() => {
               router.push("/sign-in");

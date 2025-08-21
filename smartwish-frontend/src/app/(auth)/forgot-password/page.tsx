@@ -3,7 +3,6 @@ export default function Example() {
     <>
       <div className="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <img alt="Your Company" src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=indigo&shade=600" className="mx-auto h-10 w-auto" />
           <h2 className="mt-6 text-center text-2xl/9 font-bold tracking-tight text-gray-900">Reset your password</h2>
           <p className="mt-2 text-center text-sm/6 text-gray-500">Enter the email you use for your account and we'll send you a reset link.</p>
         </div>

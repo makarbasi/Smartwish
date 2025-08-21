@@ -1,6 +1,9 @@
-'use client'
+ 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import {
   Dialog,
   DialogPanel,
@@ -60,19 +63,22 @@ const marketplace = [
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { data: session, status } = useSession()
 
   return (
     <header className="relative isolate z-10 bg-white">
       <nav aria-label="Global" className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex lg:flex-1">
-          <a href="#" className="-m-1.5 p-1.5">
-            <span className="sr-only">SmartWish</span>
-            <img
-              alt="SmartWish"
+          <Link href="/" className="-m-1.5 p-1.5 inline-block">
+            <span className="sr-only">Smartwish</span>
+            <Image
+              alt="Smartwish"
               src="/resources/logo/logo-full.png"
+              width={160}
+              height={48}
               className="h-24 w-auto"
             />
-          </a>
+          </Link>
         </div>
         <div className="flex lg:hidden">
           <button
@@ -185,53 +191,34 @@ export default function Header() {
           </a>
         </PopoverGroup>
         <div className="hidden lg:flex lg:flex-1 lg:justify-end">
-          {/* Avatar menu */}
-          <Popover className="relative">
-            <PopoverButton className="inline-flex items-center focus:outline-none">
-              <img
-                src="https://i.pravatar.cc/80?img=2"
-                alt="User avatar"
-                className="h-9 w-9 rounded-full ring-1 ring-gray-200"
-              />
-            </PopoverButton>
-            <PopoverPanel
-              transition
-              className="absolute right-0 z-20 mt-2 w-44 origin-top-right rounded-md bg-white p-1 shadow-lg ring-1 ring-black/5 transition data-closed:scale-95 data-closed:opacity-0 data-enter:duration-150 data-enter:ease-out data-leave:duration-100 data-leave:ease-in"
+          {status === 'loading' ? (
+            // Show loading skeleton while session is loading
+            <div className="h-10 w-32 rounded-full bg-gray-200 animate-pulse"></div>
+          ) : (
+            // Always show Start Designing button - goes to templates if authenticated, sign-in if not
+            <Link
+              href={session && status === 'authenticated' ? '/templates' : '/sign-in'}
+              className="inline-flex items-center justify-center rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors"
             >
-              <a
-                href="#"
-                className="block rounded px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Profile
-              </a>
-              <a
-                href="/settings"
-                className="block rounded px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Settings
-              </a>
-              <a
-                href="/sign-in"
-                className="block rounded px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-              >
-                Sign out
-              </a>
-            </PopoverPanel>
-          </Popover>
+              Start Designing
+            </Link>
+          )}
         </div>
       </nav>
       <Dialog open={mobileMenuOpen} onClose={setMobileMenuOpen} className="lg:hidden">
         <div className="fixed inset-0 z-50" />
         <DialogPanel className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto bg-white p-6 sm:max-w-sm sm:ring-1 sm:ring-gray-900/10">
           <div className="flex items-center justify-between">
-            <a href="#" className="-m-1.5 p-1.5">
-              <span className="sr-only">SmartWish</span>
-              <img
-                alt="SmartWish"
+            <Link href="/" className="-m-1.5 p-1.5 inline-block">
+              <span className="sr-only">Smartwish</span>
+              <Image
+                alt="Smartwish"
                 src="/resources/logo/logo.png"
+                width={80}
+                height={28}
                 className="h-10 w-auto"
               />
-            </a>
+            </Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
@@ -294,16 +281,19 @@ export default function Header() {
                 </a>
               </div>
               <div className="py-6">
-                <div className="flex items-center gap-3 px-3">
-                  <img src="https://i.pravatar.cc/80?img=2" alt="User avatar" className="h-9 w-9 rounded-full ring-1 ring-gray-200" />
-                  <div className="text-sm/6 font-semibold text-gray-900">Account</div>
-                </div>
-                <a
-                  href="/sign-in"
-                  className="-mx-3 mt-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-red-600 hover:bg-red-50"
-                >
-                  Sign out
-                </a>
+                {status === 'loading' ? (
+                  // Show loading state
+                  <div className="-mx-3 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+                ) : (
+                  // Always show Start Designing button - goes to templates if authenticated, sign-in if not
+                  <Link
+                    href={session && status === 'authenticated' ? '/templates' : '/sign-in'}
+                    className="-mx-3 block rounded-lg bg-indigo-600 px-3 py-2.5 text-base/7 font-semibold text-white hover:bg-indigo-500 text-center"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Start Designing
+                  </Link>
+                )}
               </div>
             </div>
           </div>

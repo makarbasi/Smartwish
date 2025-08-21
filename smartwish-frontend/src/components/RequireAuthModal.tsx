@@ -35,10 +35,17 @@ export default function RequireAuthModal({
     }
   }, [status, session, pathname, protectedPaths]);
 
+  // Check if current path should have unclosable modal
+  const isUnclosablePath = protectedPaths.some((p) => (pathname || "/").startsWith(p));
+
   return (
     <>
       {children}
-      <AuthModal open={open} onClose={() => setOpen(false)} />
+      <AuthModal 
+        open={open} 
+        onClose={() => setOpen(false)} 
+        closable={!isUnclosablePath} 
+      />
     </>
   );
 }
