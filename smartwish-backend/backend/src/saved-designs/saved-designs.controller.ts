@@ -341,4 +341,121 @@ export class SavedDesignsController {
       });
     }
   }
+
+  // New endpoints for sw_templates compatibility
+
+  @Post('copy-from-template/:templateId')
+  async copyFromTemplate(
+    @Param('templateId') templateId: string,
+    @Body() copyData: { title?: string },
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+
+      const copiedDesign = await this.savedDesignsService.copyFromTemplate(
+        templateId,
+        userId,
+        copyData.title,
+      );
+
+      if (!copiedDesign) {
+        return res.status(404).json({ message: 'Template not found' });
+      }
+
+      res.json(copiedDesign);
+    } catch (error) {
+      console.error('Error copying from template:', error);
+      res.status(500).json({
+        message: 'Failed to copy from template',
+        error: error.message,
+      });
+    }
+  }
+
+  @Post(':id/publish-to-templates')
+  async publishToTemplates(
+    @Param('id') designId: string,
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+
+      const result = await this.savedDesignsService.publishToTemplates(
+        designId,
+        userId,
+      );
+
+      if (!result) {
+        return res.status(404).json({ message: 'Design not found' });
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error('Error publishing to templates:', error);
+      res.status(500).json({
+        message: 'Failed to publish to templates',
+        error: error.message,
+      });
+    }
+  }
+
+  @Get('available-templates')
+  async getAvailableTemplates(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      const category = req.query.category as string;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const templates = await this.savedDesignsService.getAvailableTemplates(
+        userId,
+        category,
+        limit,
+        offset,
+      );
+
+      res.json(templates);
+    } catch (error) {
+      console.error('Error getting available templates:', error);
+      res.status(500).json({
+        message: 'Failed to get available templates',
+        error: error.message,
+      });
+    }
+  }
+
+  @Get('published-to-templates')
+  async getPublishedToTemplates(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+
+      const publishedDesigns = await this.savedDesignsService.getPublishedToTemplates(userId);
+
+      res.json(publishedDesigns);
+    } catch (error) {
+      console.error('Error getting published to templates:', error);
+      res.status(500).json({
+        message: 'Failed to get published to templates',
+        error: error.message,
+      });
+    }
+  }
 }

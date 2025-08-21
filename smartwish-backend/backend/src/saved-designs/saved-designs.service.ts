@@ -35,7 +35,24 @@ export interface SavedDesign {
   num_downloads?: number;
   searchKeywords?: string[];
   // Status field for future use
-  status?: 'draft' | 'published' | 'archived';
+  status?: 'draft' | 'published' | 'archived' | 'template_candidate' | 'published_to_templates';
+  // New fields for sw_templates compatibility
+  templateId?: string;
+  slug?: string;
+  categoryId?: string;
+  authorId?: string;
+  createdByUserId?: string;
+  coverImage?: string;
+  image1?: string;
+  image2?: string;
+  image3?: string;
+  image4?: string;
+  isFeatured?: boolean;
+  isUserGenerated?: boolean;
+  tags?: string[];
+  currentVersion?: string;
+  publishedAt?: Date;
+  sourceTemplateId?: string;
 }
 
 @Injectable()
@@ -560,6 +577,87 @@ export class SavedDesignsService {
     } catch (error) {
       console.error('Error saving shared design:', error);
       throw new Error('Failed to save shared design');
+    }
+  }
+
+  // New methods for sw_templates compatibility
+
+  /**
+   * Copy a template from sw_templates to saved_designs for user editing
+   */
+  async copyFromTemplate(
+    templateId: string,
+    userId: string,
+    title?: string,
+  ): Promise<SavedDesign | null> {
+    try {
+      // Try to use Supabase first (it should have the SQL function)
+      return await this.supabaseService.copyFromTemplate(templateId, userId, title);
+    } catch (error) {
+      console.log(
+        'Supabase not available for template copying, not supported in file storage:',
+        error.message,
+      );
+      throw new Error('Template copying requires database connection');
+    }
+  }
+
+  /**
+   * Publish a saved design back to sw_templates
+   */
+  async publishToTemplates(
+    designId: string,
+    userId: string,
+  ): Promise<{ templateId: string; savedDesign: SavedDesign } | null> {
+    try {
+      // Try to use Supabase first (it should have the SQL function)
+      return await this.supabaseService.publishToTemplates(designId, userId);
+    } catch (error) {
+      console.log(
+        'Supabase not available for template publishing, not supported in file storage:',
+        error.message,
+      );
+      throw new Error('Template publishing requires database connection');
+    }
+  }
+
+  /**
+   * Get templates that can be copied (from sw_templates)
+   */
+  async getAvailableTemplates(
+    userId?: string,
+    category?: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<any[]> {
+    try {
+      // Try to use Supabase first
+      return await this.supabaseService.getAvailableTemplates(userId, category, limit, offset);
+    } catch (error) {
+      console.log(
+        'Supabase not available for template fetching, not supported in file storage:',
+        error.message,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Get designs that have been published to templates
+   */
+  async getPublishedToTemplates(userId: string): Promise<SavedDesign[]> {
+    try {
+      // Try to use Supabase first
+      return await this.supabaseService.getPublishedToTemplates(userId);
+    } catch (error) {
+      console.log(
+        'Supabase not available, falling back to file storage:',
+        error.message,
+      );
+
+      // Fallback to file-based storage
+      const designs = this.loadUserDesigns(userId);
+      return designs.filter(design => design.status === 'published_to_templates');
     }
   }
 }
