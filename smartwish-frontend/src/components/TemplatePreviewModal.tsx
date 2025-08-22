@@ -149,7 +149,20 @@ export default function TemplatePreviewModal({
       <DialogBackdrop className="fixed inset-0 bg-black/40" />
       <div
         className="fixed inset-0 overflow-y-auto p-4 sm:p-8"
-        onClick={() => onClose()}
+        onClick={(e) => {
+          console.log("🌍 Background container clicked!");
+          console.log("🎯 Click target:", e.target);
+          console.log("🎯 Current target:", e.currentTarget);
+          console.log("🔍 Are they the same?", e.target === e.currentTarget);
+          // Only close if clicking the backdrop, not the content areas
+          if (e.target === e.currentTarget) {
+            console.log("✅ Closing modal - clicked on backdrop");
+            onClose();
+          } else {
+            console.log("❌ Not closing - clicked on content");
+          }
+        }}
+        style={{ touchAction: 'manipulation' }}
       >
         <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 sm:grid-cols-[2fr_1fr]">
           <DialogPanel className="col-span-1 rounded-2xl bg-transparent">
@@ -243,7 +256,7 @@ export default function TemplatePreviewModal({
                     handlePrevPage();
                   }}
                   disabled={currentPage === 0}
-                  className="absolute left-4 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
+                  className="absolute left-4 top-1/2 z-30 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
                 >
                   <ChevronLeftIcon className="h-5 w-5" />
                 </button>
@@ -275,7 +288,7 @@ export default function TemplatePreviewModal({
                     handleNextPage();
                   }}
                   disabled={currentPage === totalPages - 1}
-                  className="absolute right-4 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
+                  className="absolute right-4 top-1/2 z-30 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
                 >
                   <ChevronRightIcon className="h-5 w-5" />
                 </button>
@@ -306,12 +319,42 @@ export default function TemplatePreviewModal({
 
           {/* Desktop Sidebar */}
           <div
-            className="relative rounded-xl bg-white p-6 text-gray-900 shadow-2xl ring-1 ring-gray-100"
-            onClick={(e) => e.stopPropagation()}
+            className="relative z-30 rounded-xl bg-white p-6 text-gray-900 shadow-2xl ring-1 ring-gray-100 touch-auto min-h-fit"
+            onClick={(e) => {
+              console.log("📦 Sidebar container clicked!");
+              e.stopPropagation();
+            }}
+            onTouchStart={() => {
+              console.log("👆 Sidebar touch start detected!");
+            }}
+            onTouchEnd={() => {
+              console.log("👆 Sidebar touch end detected!");
+            }}
+            style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
           >
             <button
-              onClick={() => onClose()}
-              className="absolute right-3 top-3 rounded-md p-1 text-gray-500 hover:bg-gray-100"
+              onClick={(e) => {
+                console.log("🚀 Close button clicked!");
+                console.log("📱 Event details:", { type: e.type, target: e.target });
+                e.stopPropagation();
+                e.preventDefault();
+                console.log("🚀 About to call onClose()");
+                onClose();
+                console.log("✅ onClose() called successfully");
+              }}
+              onTouchStart={() => {
+                console.log("👆 Close button touch start!");
+              }}
+              onTouchEnd={(e) => {
+                console.log("👆 Close button touch end!");
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("🚀 Touch end - calling onClose()");
+                onClose();
+                console.log("✅ onClose() called from touch end");
+              }}
+              className="absolute right-3 top-3 z-40 rounded-md p-2 text-gray-500 hover:bg-gray-100 touch-auto min-w-[44px] min-h-[44px] flex items-center justify-center"
+              style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
             >
               <XMarkIcon className="h-5 w-5" />
             </button>
@@ -326,25 +369,49 @@ export default function TemplatePreviewModal({
             <button
               onClick={(e) => {
                 console.log("🚀 Use this template button clicked!");
-                console.log("📦 Product data:", product);
+                console.log("� Event details:", { type: e.type, target: e.target });
+                console.log("�📦 Product data:", product);
                 console.log("🔧 onCustomize function:", typeof onCustomize);
                 e.stopPropagation();
                 e.preventDefault();
                 try {
+                  console.log("🎯 About to call onCustomize...");
                   onCustomize(product);
+                  console.log("✅ onCustomize called successfully");
                 } catch (error) {
                   console.error("❌ Error calling onCustomize:", error);
-                  alert(`Error: ${error.message}`);
+                  alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 }
               }}
-              className="mt-5 inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+              onTouchStart={() => {
+                console.log("👆 Use template button touch start!");
+              }}
+              onTouchEnd={(e) => {
+                console.log("👆 Use template button touch end!");
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("🚀 Touch end - calling onCustomize()");
+                try {
+                  console.log("🎯 About to call onCustomize from touch...");
+                  onCustomize(product);
+                  console.log("✅ onCustomize called successfully from touch");
+                } catch (error) {
+                  console.error("❌ Error calling onCustomize from touch:", error);
+                  alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+              }}
+              className="relative z-30 mt-5 w-full inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-500 touch-auto min-h-[48px]"
+              style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
             >
               Use this template
             </button>
             <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
               <button
-                className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 hover:bg-gray-200"
-                onClick={() => {
+                className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 hover:bg-gray-200 touch-auto"
+                style={{ pointerEvents: 'auto' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log("❤️ Like button clicked!");
                   // Handle like action - could implement later
                 }}
               >

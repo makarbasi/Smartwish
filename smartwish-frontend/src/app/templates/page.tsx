@@ -248,46 +248,27 @@ function TemplatesPageContent() {
         return;
       }
 
-      console.log("✅ User is authenticated, copying template and opening editor");
+      console.log("✅ User is authenticated, redirecting to editor mode");
       
       try {
-        // Show loading state (you could add a loading state here)
-        console.log("📋 Copying template...");
+        console.log("🎨 Opening template in editor mode");
         console.log("🔍 Template product data:", product);
         console.log("🔍 Template ID:", product.id);
         
-        // Copy the template to user's saved designs
-        const response = await fetch(`/api/templates/${product.id}/copy`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        console.log("📡 Copy API response status:", response.status);
+        // Store template data temporarily for editor access
+        sessionStorage.setItem('templateForEditor', JSON.stringify({
+          id: product.id,
+          name: product.name,
+          pages: product.pages || [product.imageSrc]
+        }));
         
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("❌ Copy API error response:", errorText);
-          let errorData;
-          try {
-            errorData = JSON.parse(errorText);
-          } catch {
-            errorData = { error: errorText };
-          }
-          throw new Error(errorData.error || 'Failed to copy template');
-        }
-
-        const result = await response.json();
-        console.log("✅ Template copied successfully:", result.data);
-        
-        // For now, redirect to my-cards with the new design ID
-        // Later this can be changed to open a dedicated editor
-        router.push(`/my-cards?newDesign=${result.data.id}&message=${encodeURIComponent(result.message)}`);
+        // Redirect directly to editor mode without copying to saved_designs yet
+        // The editor will handle copying to saved_designs only when user saves
+        router.push(`/my-cards/template-editor?templateId=${product.id}&templateName=${encodeURIComponent(product.name)}`);
         
       } catch (error) {
-        console.error("❌ Error copying template:", error);
-        alert(`Failed to copy template: ${error.message}`);
+        console.error("❌ Error opening template editor:", error);
+        alert(`Failed to open template editor: ${error.message}`);
       }
     },
     [session, status, openAuthModal, setRedirectUrl, pathname, router]

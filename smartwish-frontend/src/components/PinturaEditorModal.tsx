@@ -11,7 +11,6 @@ import {
   plugin_retouch,
   plugin_finetune_defaults,
   plugin_filter_defaults,
-  plugin_retouch_defaults,
   plugin_frame_defaults,
   markup_editor_defaults,
   locale_en_gb,
@@ -24,10 +23,7 @@ import {
   createDefaultImageReader,
   createDefaultImageWriter,
   createDefaultShapePreprocessor,
-  createMarkupEditorToolStyles,
-  createMarkupEditorShapeStyleControls,
-  createMarkupEditorSelectionToolStyles,
-  createMarkupEditorSelectionTools
+  createMarkupEditorShapeStyleControls
 } from '@pqina/pintura';
 
 // Set up the plugins WITHOUT crop but WITH retouch
@@ -41,7 +37,6 @@ const editorDefaults = {
   shapePreprocessor: createDefaultShapePreprocessor(),
   ...plugin_finetune_defaults,
   ...plugin_filter_defaults,
-  ...plugin_retouch_defaults,
   ...plugin_frame_defaults,
   ...markup_editor_defaults,
   // Add default stickers
@@ -51,7 +46,6 @@ const editorDefaults = {
     ['Celebration', ['🎊', '🎉', '🥳', '🎈', '🎁', '🎂', '🍰', '🧁', '🎪', '🎭', '🎨', '🎵']]
   ],
   // Add retouch tools configuration
-  ...plugin_retouch_defaults,
   retouchTools: [
 
 

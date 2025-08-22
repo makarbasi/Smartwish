@@ -16,19 +16,7 @@ export async function POST(
     }
 
     const accessToken = (session.user as any).access_token;
-    // Body is optional for duplication – safely parse only if present
-    let body: any = {};
-    try {
-      if (request.headers.get('content-type')?.includes('application/json')) {
-        const raw = await request.text();
-        if (raw && raw.trim().length > 0) {
-          body = JSON.parse(raw);
-        }
-      }
-    } catch (e) {
-      console.warn('Duplicate API - ignoring invalid JSON body');
-      body = {};
-    }
+    const body = await request.json();
     
     console.log('Duplicate API - Design ID:', params.id);
     console.log('Duplicate API - Body:', body);
@@ -41,14 +29,15 @@ export async function POST(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken || ''}`,
       },
-      body: JSON.stringify(body), // Safe (may be "{}")
+      body: JSON.stringify(body), // Pass the updated data including title and images
     });
 
     console.log('Duplicate API - Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Duplicate API - Error:', errorText);
+      console.error('Duplicate API - Error response text:', errorText);
+      console.error('Duplicate API - Error response headers:', Object.fromEntries(response.headers.entries()));
       
       if (response.status === 404) {
         return NextResponse.json({ error: 'Design not found' }, { status: 404 });
@@ -56,7 +45,22 @@ export async function POST(
       throw new Error(`Failed to duplicate design: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
+    const responseText = await response.text();
+    console.log('Duplicate API - Success response text:', responseText);
+    
+    if (!responseText) {
+      console.error('Duplicate API - Empty response received');
+      throw new Error('Empty response from backend');
+    }
+
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Duplicate API - JSON parse error:', parseError);
+      console.error('Duplicate API - Response text that failed to parse:', responseText);
+      throw new Error('Invalid JSON response from backend');
+    }
     
     return NextResponse.json({
       success: true,
@@ -66,8 +70,9 @@ export async function POST(
 
   } catch (error) {
     console.error('Error duplicating design:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to duplicate design', details: error.message },
+      { error: 'Failed to duplicate design', details: errorMessage },
       { status: 500 }
     );
   }

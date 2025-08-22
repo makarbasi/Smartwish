@@ -125,9 +125,7 @@ export class SavedDesignsService {
       duplicateTitle = `${baseName} - Copy`;
       let counter = 1;
       
-      while (
-        existingDesigns.some((design) => design.title === duplicateTitle)
-      ) {
+      while (existingDesigns.some(design => design.title === duplicateTitle)) {
         counter++;
         duplicateTitle = `${baseName} - Copy ${counter}`;
       }
@@ -301,19 +299,7 @@ export class SavedDesignsService {
     designId: string,
     userId: string,
   ): Promise<{ templateId: string; savedDesign: SavedDesign } | null> {
-    // Delegate to promoteToTemplate to avoid relying on missing primary RPC
-    return await this.supabaseService.promoteToTemplate(designId, userId);
-  }
-
-  /**
-   * Directly promote a saved design to a template using the fallback RPC only.
-   * Use this when the primary publish_saved_design_to_templates function is missing.
-   */
-  async promoteToTemplate(
-    designId: string,
-    userId: string,
-  ): Promise<{ templateId: string; savedDesign: SavedDesign } | null> {
-    return await this.supabaseService.promoteToTemplate(designId, userId);
+    return await this.supabaseService.publishToTemplates(designId, userId);
   }
 
   async getAvailableTemplates(
@@ -322,12 +308,7 @@ export class SavedDesignsService {
     limit = 20,
     offset = 0,
   ): Promise<any[]> {
-    return await this.supabaseService.getAvailableTemplates(
-      userId,
-      category,
-      limit,
-      offset,
-    );
+    return await this.supabaseService.getAvailableTemplates(userId, category, limit, offset);
   }
 
   async getPublishedToTemplates(userId: string): Promise<SavedDesign[]> {

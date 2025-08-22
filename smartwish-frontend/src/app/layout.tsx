@@ -31,6 +31,7 @@ export default function RootLayout({
     <html lang="en" className="h-full bg-background">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased h-full text-foreground`}
+        suppressHydrationWarning={true}
       >
         <AuthProvider>
           <AuthModalProvider>

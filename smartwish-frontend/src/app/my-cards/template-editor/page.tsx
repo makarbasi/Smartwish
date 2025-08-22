@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { useParams } from 'next/navigation'
-import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, PencilIcon, CheckIcon, XMarkIcon, ArrowUturnLeftIcon, ArrowPathIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline'
+import { useState, useRef, useEffect, useCallback, Suspense, useMemo } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, PencilIcon, CheckIcon, XMarkIcon, ArrowUturnLeftIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { ChevronUpDownIcon } from '@heroicons/react/20/solid'
@@ -10,42 +10,13 @@ import Link from 'next/link'
 import Image from 'next/image'
 import HTMLFlipBook from "react-pageflip"
 import PinturaEditorModal from '@/components/PinturaEditorModal'
-import useSWR from 'swr'
-import { saveSavedDesignWithImages } from '@/utils/savedDesignUtils'
 import { useSession } from 'next-auth/react'
+import { saveSavedDesignWithImages, ensureSupabaseUrls } from '@/utils/savedDesignUtils'
+import useSWR from 'swr'
 
-type SavedDesign = {
-  id: string
-  title: string
-  imageUrls?: string[]
-  thumbnail?: string
-  createdAt: string | Date
-  categoryId?: string
-  categoryName?: string
-  category_id?: string
-  category_name?: string
-  designData?: {
-    templateKey: string
-    pages: Array<{
-      header: string
-      image: string
-      text: string
-      footer: string
-    }>
-    editedPages: Record<number, string>
-  }
-}
-
-type ApiResponse = {
-  success: boolean
-  data: SavedDesign[]
-  count?: number
-}
-
-type CardData = {
+type TemplateData = {
   id: string
   name: string
-  createdAt: string
   pages: string[]
   categoryId?: string
   categoryName?: string
@@ -64,60 +35,19 @@ type CategoriesResponse = {
   count: number
 }
 
-const fetcher = (url: string) => fetch(url, {
-  credentials: 'include', // Include cookies for authentication
-}).then((res) => res.json())
-
-// Transform saved design to card data
-const transformSavedDesignToCard = (savedDesign: SavedDesign): CardData => {
-  // First priority: Extract images from designData.pages
-  let pages: string[] = []
-  
-  if (savedDesign.designData?.pages && savedDesign.designData.pages.length > 0) {
-    // Extract image URLs from each page
-    pages = savedDesign.designData.pages.map(page => page.image).filter(Boolean)
-  }
-  
-  // Second priority: Use imageUrls array if no pages found
-  if (pages.length === 0 && savedDesign.imageUrls && savedDesign.imageUrls.length > 0) {
-    pages = savedDesign.imageUrls
-  }
-  
-  // Third priority: Use thumbnail as fallback for all pages
-  if (pages.length === 0 && savedDesign.thumbnail) {
-    pages = [savedDesign.thumbnail, savedDesign.thumbnail, savedDesign.thumbnail, savedDesign.thumbnail]
-  }
-  
-  // Remove any null/undefined values
-  pages = pages.filter(Boolean)
-  
-  // Ensure we have at least 4 pages for the card view
-  while (pages.length < 4) {
-    if (pages.length > 0) {
-      pages.push(pages[0]) // Duplicate first page if we don't have enough
-    } else {
-      pages.push('') // Add empty string as fallback
-    }
-  }
-
-  return {
-    id: savedDesign.id,
-    name: savedDesign.title,
-    createdAt: typeof savedDesign.createdAt === 'string' ? savedDesign.createdAt : savedDesign.createdAt.toISOString(),
-    pages: pages.slice(0, 4), // Limit to 4 pages
-    // Extract category info from saved design if available
-    categoryId: (savedDesign as any).category_id || (savedDesign as any).categoryId,
-    categoryName: (savedDesign as any).category_name || (savedDesign as any).categoryName
-  }
-}
-
-export default function CustomizeCardPage() {
+function TemplateEditorContent() {
   const { data: session, status } = useSession()
-  const params = useParams()
-  const cardId = params?.id as string
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const templateId = searchParams?.get('templateId')
+  const templateName = searchParams?.get('templateName')
+  
   const [currentPage, setCurrentPage] = useState(0)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flipBookRef = useRef<any>(null)
+  
+  // Template data
+  const [templateData, setTemplateData] = useState<TemplateData | null>(null)
   
   // Editing state
   const [isEditingName, setIsEditingName] = useState(false)
@@ -139,48 +69,97 @@ export default function CustomizeCardPage() {
   const [undoStack, setUndoStack] = useState<string[][]>([])
   const [originalName, setOriginalName] = useState<string>('')
   
-  // Save As functionality state
-  const [showSaveAsModal, setShowSaveAsModal] = useState(false)
-  const [saveAsName, setSaveAsName] = useState('')
-  const [isSavingAs, setIsSavingAs] = useState(false)
-  
   // Swipe functionality state
   const [touchStart, setTouchStart] = useState<number | null>(null)
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
 
-  // Fetch all saved designs and find the specific one
-  const { data: apiResponse, error, isLoading } = useSWR<ApiResponse>('/api/saved-designs', fetcher)
-  
   // Fetch categories
-  const categoriesResponse = useSWR<CategoriesResponse>('/api/categories', fetcher)
-  const categories = categoriesResponse?.data?.data || []
-  
-  const cardData = useMemo(() => {
-    if (!apiResponse?.data || !cardId) return null
-    const savedDesign = apiResponse.data.find(d => d.id === cardId)
-    return savedDesign ? transformSavedDesignToCard(savedDesign) : null
-  }, [apiResponse, cardId])
+  const fetcher = (url: string) => fetch(url).then((res) => res.json())
+  const { data: categoriesResponse } = useSWR<CategoriesResponse>('/api/categories', fetcher)
+  const categories = useMemo(() => {
+    const cats = categoriesResponse?.data || [];
+    console.log('📋 Available categories:', cats.map(c => ({ id: c.id, name: c.name })));
+    return cats;
+  }, [categoriesResponse?.data])
 
-  // Initialize page images when card data is available
+  // Load template data from session storage or fallback to URL params
   useEffect(() => {
-    if (cardData) {
-      setPageImages([...cardData.pages])
-      setOriginalImages([...cardData.pages]) // Save original for revert
-      setOriginalName(cardData.name) // Save original name
-      setEditedName(cardData.name)
+    const loadTemplate = async () => {
+      // First try to get from session storage (preferred method)
+      const storedTemplate = sessionStorage.getItem('templateForEditor')
+      if (storedTemplate) {
+        try {
+          const parsed = JSON.parse(storedTemplate)
+          console.log('✅ Loaded template from session storage:', parsed.name)
+          setTemplateData(parsed)
+          setPageImages([...parsed.pages])
+          setOriginalImages([...parsed.pages]) // Save original for revert
+          setOriginalName(parsed.name) // Save original name
+          sessionStorage.removeItem('templateForEditor') // Clean up
+          return
+        } catch (error) {
+          console.error('Failed to parse stored template:', error)
+        }
+      }
+
+      // Fallback: fetch from API if we have templateId
+      if (templateId) {
+        console.log('⚠️ Fetching template data from API:', templateId)
+        
+        try {
+          const response = await fetch(`/api/templates/${templateId}`)
+          if (response.ok) {
+            const result = await response.json()
+            if (result.success && result.data) {
+              const template: TemplateData = {
+                id: templateId,
+                name: templateName ? decodeURIComponent(templateName) : result.data.title || 'Untitled Template',
+                pages: [
+                  result.data.image_1,
+                  result.data.image_2,
+                  result.data.image_3,
+                  result.data.image_4
+                ].filter(Boolean)
+              }
+              
+              console.log('✅ Loaded template from API:', template.name, 'with', template.pages.length, 'pages')
+              setTemplateData(template)
+              setPageImages([...template.pages])
+              setOriginalImages([...template.pages]) // Save original for revert
+              setOriginalName(template.name) // Save original name
+              return
+            } else {
+              console.error('Invalid API response:', result)
+              throw new Error('Invalid template data received')
+            }
+          } else {
+            console.error('Failed to fetch template, status:', response.status)
+            throw new Error(`Failed to fetch template: ${response.status}`)
+          }
+        } catch (error) {
+          console.error('Error fetching template:', error)
+          alert('Failed to load template data. Please try again or select a different template.')
+          router.push('/templates')
+          return
+        }
+      }
+
+      // No template data available at all
+      console.warn('❌ No template data available, redirecting to templates')
+      alert('No template data found. Please select a template from the templates page.')
+      router.push('/templates')
     }
-  }, [cardData])
+
+    loadTemplate()
+  }, [templateId, templateName, router])
 
   // Define callback functions before early returns
   const handleFlipNext = useCallback(() => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
     if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-      // Mobile/Tablet: directly update currentPage state
       if (currentPage < 3) {
         setCurrentPage(currentPage + 1)
       }
     } else {
-      // Desktop: use flipbook
       if (flipBookRef.current && currentPage < 3) {
         flipBookRef.current.pageFlip().flipNext()
       }
@@ -188,14 +167,11 @@ export default function CustomizeCardPage() {
   }, [currentPage])
 
   const handleFlipPrev = useCallback(() => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
     if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-      // Mobile/Tablet: directly update currentPage state
       if (currentPage > 0) {
         setCurrentPage(currentPage - 1)
       }
     } else {
-      // Desktop: use flipbook
       if (flipBookRef.current && currentPage > 0) {
         flipBookRef.current.pageFlip().flipPrev()
       }
@@ -203,12 +179,9 @@ export default function CustomizeCardPage() {
   }, [currentPage])
 
   const goToPage = useCallback((pageIndex: number) => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
     if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-      // Mobile/Tablet: directly update currentPage state
       setCurrentPage(pageIndex)
     } else {
-      // Desktop: use flipbook
       if (flipBookRef.current) {
         flipBookRef.current.pageFlip().flip(pageIndex)
       }
@@ -219,38 +192,9 @@ export default function CustomizeCardPage() {
     setCurrentPage(e.data)
   }, [])
 
-  // Listen for page navigation events from Sidebar
-  useEffect(() => {
-    const handlePageNavigation = (event: Event) => {
-      const customEvent = event as CustomEvent
-      const { action, page } = customEvent.detail
-      
-      switch (action) {
-        case 'prev':
-          handleFlipPrev()
-          break
-        case 'next':
-          handleFlipNext()
-          break
-        case 'goto':
-          goToPage(page)
-          break
-      }
-    }
-
-    window.addEventListener('pageNavigation', handlePageNavigation)
-    return () => window.removeEventListener('pageNavigation', handlePageNavigation)
-  }, [currentPage, handleFlipNext, handleFlipPrev, goToPage])
-
-  // Notify Sidebar about current page changes
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent('pageChanged', { detail: { currentPage } }))
-  }, [currentPage])
-
   // Keyboard navigation for flipbook
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Only handle keyboard events on desktop when flipbook is visible
       if (typeof window !== 'undefined' && window.innerWidth >= 1280) {
         switch (event.key) {
           case 'ArrowLeft':
@@ -276,43 +220,6 @@ export default function CustomizeCardPage() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleFlipNext, handleFlipPrev, goToPage])
-
-  // Initialize editing states when card loads
-  useEffect(() => {
-    if (cardData && categories.length > 0) {
-      setEditedName(cardData.name)
-      console.log('🔍 Card data:', cardData)
-      console.log('🔍 Categories:', categories)
-      
-      // Find and set the initial category if it exists
-      let foundCategory = null
-      
-      if (cardData.categoryId) {
-        foundCategory = categories.find(cat => cat.id === cardData.categoryId)
-        console.log('🎯 Found category by ID:', foundCategory)
-      }
-      
-      if (!foundCategory && cardData.categoryName) {
-        // Fallback: try to match by name if ID doesn't work
-        foundCategory = categories.find(cat => cat.name === cardData.categoryName)
-        console.log('🎯 Found category by name:', foundCategory)
-      }
-      
-      if (foundCategory) {
-        setSelectedCategory(foundCategory)
-      } else {
-        // If no category is found, optionally set the first category as default
-        // or leave it as null to show "Select category"
-        console.log('⚠️ No category found for card, available categories:', categories.map(c => ({ id: c.id, name: c.name })))
-        console.log('💡 Leaving category selection empty for user to choose')
-      }
-    }
-  }, [cardData, categories])
-
-  // Debug effect to track category changes
-  useEffect(() => {
-    console.log('🔄 Selected category changed:', selectedCategory)
-  }, [selectedCategory])
 
   // Swipe handling functions
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -355,9 +262,10 @@ export default function CustomizeCardPage() {
 
   // Revert function - restore to original state
   const handleRevert = () => {
-    if (window.confirm('Are you sure you want to revert all changes? This will restore the original card state and cannot be undone.')) {
+    if (window.confirm('Are you sure you want to revert all changes? This will restore the original template state and cannot be undone.')) {
       setPageImages([...originalImages])
-      if (cardData && originalName) {
+      if (templateData && originalName) {
+        setTemplateData({ ...templateData, name: originalName })
         setEditedName(originalName)
       }
       setUndoStack([])
@@ -367,63 +275,10 @@ export default function CustomizeCardPage() {
     }
   }
 
-  // Save As function - save as new card
-  const handleSaveAs = () => {
-    if (!cardData) {
-      alert('No card data available')
-      return
-    }
-    setSaveAsName(`${cardData.name} - Copy`)
-    setShowSaveAsModal(true)
-  }
-
-  // Handle Save As modal submission
-  const handleSaveAsSubmit = async () => {
-    if (!cardData || !saveAsName.trim()) {
-      return
-    }
-
-    if (!session?.user?.id) {
-      alert('Please sign in to save cards')
-      return
-    }
-
-    setIsSavingAs(true)
-
-    try {
-      const result = await saveSavedDesignWithImages(
-        cardData.id,
-        pageImages,
-        {
-          action: 'duplicate',
-          title: saveAsName.trim(),
-          userId: session.user.id,
-          categoryId: selectedCategory?.id || cardData.categoryId,
-          categoryName: selectedCategory?.name || cardData.categoryName
-        }
-      )
-
-      if (result.saveResult.success) {
-        setSaveMessage(`✅ Saved as "${saveAsName.trim()}"`)
-        setShowSaveAsModal(false)
-        setSaveAsName('')
-        setTimeout(() => setSaveMessage(''), 3000)
-      } else {
-        throw new Error(result.saveResult.error || 'Save failed')
-      }
-    } catch (error) {
-      console.error('Error saving as new card:', error)
-      setSaveMessage(`❌ Failed to save as new card`)
-      setTimeout(() => setSaveMessage(''), 3000)
-    } finally {
-      setIsSavingAs(false)
-    }
-  }
-
-  // Save functions
+  // Save function - copies template to saved_designs
   const handleSave = async () => {
-    if (!cardData) {
-      alert('No card data available')
+    if (!templateData) {
+      alert('No template data available')
       return
     }
 
@@ -436,128 +291,167 @@ export default function CustomizeCardPage() {
     setSaveMessage('')
 
     try {
-      const finalName = editedName.trim() || cardData.name
-      console.log('💾 Saving card:', finalName)
+      console.log('💾 Saving template to saved designs:', templateData.name)
       console.log('📂 Category:', selectedCategory?.name || 'None')
-      console.log('📸 Current page images:', pageImages)
-      console.log('🖼️ Cover image (first):', pageImages[0])
+      console.log('� Category ID:', selectedCategory?.id || templateData.categoryId || 'None')
+      console.log('�📸 Current page images:', pageImages)
       const userId = session.user.id
-      console.log('🆔 Using user ID:', userId)
 
-      const result = await saveSavedDesignWithImages(cardData.id, pageImages, {
-        action: 'update',
-        title: finalName,
-        userId,
-        designId: `updated_${cardData.id}_${Date.now()}`,
-        categoryId: selectedCategory?.id,
-        categoryName: selectedCategory?.name
-      })
+      // Copy the template to saved designs with updated metadata and images
+      const selectedCategoryId = selectedCategory?.id || templateData.categoryId;
+      const selectedCategoryName = selectedCategory?.name || templateData.categoryName;
+      
+      console.log('🔍 Category debugging:');
+      console.log('  - selectedCategory:', selectedCategory);
+      console.log('  - selectedCategory?.id:', selectedCategory?.id);
+      console.log('  - selectedCategory?.name:', selectedCategory?.name);
+      console.log('  - templateData.categoryId:', templateData.categoryId);
+      console.log('  - templateData.categoryName:', templateData.categoryName);
+      console.log('  - Final selectedCategoryId:', selectedCategoryId);
+      console.log('  - Final selectedCategoryName:', selectedCategoryName);
+      console.log('  - Available categories:', categories.map(c => ({ id: c.id, name: c.name })));
+      
+      // If no category is selected, find "General" category as default
+      let finalCategoryId = selectedCategoryId;
+      let finalCategoryName = selectedCategoryName;
+      
+      if (!finalCategoryId && categories.length > 0) {
+        console.log('🔍 No category selected, looking for default category...');
+        const generalCategory = categories.find(cat => cat.name.toLowerCase() === 'general');
+        if (generalCategory) {
+          finalCategoryId = generalCategory.id;
+          finalCategoryName = generalCategory.name;
+          console.log('✅ Using General category as default:', { id: finalCategoryId, name: finalCategoryName });
+        } else {
+          // Use first category as fallback
+          finalCategoryId = categories[0].id;
+          finalCategoryName = categories[0].name;
+          console.log('✅ Using first category as fallback:', { id: finalCategoryId, name: finalCategoryName });
+        }
+      }
+      
+      // Final validation - ensure we ALWAYS have a category ID
+      if (!finalCategoryId) {
+        console.error('❌ CRITICAL: No category ID available! This will cause NULL in database.');
+        console.log('   - Available categories:', categories);
+        console.log('   - Selected category:', selectedCategory);
+        alert('Error: No category selected. Please select a category before saving.');
+        return;
+      }
+      
+      // CRITICAL: Ensure all blob URLs are converted to Supabase URLs before copying
+      console.log('🔄 Ensuring all images are uploaded to Supabase...');
+      const hasImageChanges = pageImages.some((img, index) => img !== templateData.pages[index]);
+      let finalImages = pageImages;
+      
+      if (hasImageChanges) {
+        try {
+          // Convert any blob URLs to Supabase URLs
+          finalImages = await ensureSupabaseUrls(pageImages, userId, templateData.id);
+          console.log('✅ All images converted to Supabase URLs');
+        } catch (error) {
+          console.error('❌ Failed to upload images to Supabase:', error);
+          alert('Failed to upload edited images. Please try again.');
+          return;
+        }
+      }
+      
+      const copyData = {
+        title: templateData.name,
+        categoryId: finalCategoryId,
+        categoryName: finalCategoryName,
+        // Include edited images directly in the copy request - now guaranteed to be Supabase URLs
+        editedImages: hasImageChanges ? finalImages : undefined
+      }
 
-      console.log('✅ Save result:', result)
-      setSaveMessage('Card saved successfully!')
+      console.log('📤 Copy data being sent:', JSON.stringify(copyData, null, 2));
+      console.log('📂 Final category ID being sent:', finalCategoryId);
+      console.log('📂 Final category name being sent:', finalCategoryName);
+      if (copyData.editedImages) {
+        console.log('🖼️ Images being copied:', copyData.editedImages.length, 'images (all converted from blob URLs to Supabase URLs)');
+        copyData.editedImages.forEach((img, index) => {
+          if (img.startsWith('blob:')) {
+            console.error('❌ CRITICAL: Blob URL detected in copy data:', img);
+          } else {
+            console.log(`✅ Image ${index + 1}: Supabase URL confirmed`);
+          }
+        });
+      }
+
+      const response = await fetch(`/api/templates/${templateData.id}/copy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(copyData)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { error: errorText }
+        }
+        throw new Error(errorData.error || 'Failed to copy template')
+      }
+
+      const result = await response.json()
+      console.log('✅ Template copied to saved designs:', result.data)
+
+      // Only update with images if we have changes and the copy didn't include them
+      const hasRemainingImageChanges = finalImages.some((img, index) => img !== templateData.pages[index])
+
+      if (hasRemainingImageChanges && !copyData.editedImages) {
+        console.log('📝 Updating saved design with remaining edited images')
+        try {
+          await saveSavedDesignWithImages(result.data.id, finalImages, {
+            action: 'update',
+            title: templateData.name,
+            userId,
+            designId: result.data.id,
+            categoryId: finalCategoryId,
+            categoryName: finalCategoryName
+          })
+        } catch (updateError) {
+          console.error('Failed to update with edited images, but copy was successful:', updateError)
+          // Continue anyway since the basic copy worked
+        }
+      }
+
       setHasUnsavedChanges(false) // Clear unsaved changes flag
+      setSaveMessage('Template saved to My Cards!')
       
-      // Update local card data
-      if (cardData) {
-        cardData.name = finalName
-        cardData.categoryId = selectedCategory?.id
-        cardData.categoryName = selectedCategory?.name
-      }
-      
-      // Log the save result for verification
-      if (result.saveResult) {
-        console.log('💾 Save result:', result.saveResult)
-      }
-      
-      // Show success message for a few seconds
-      setTimeout(() => setSaveMessage(''), 3000)
+      // Redirect to the saved card in editor mode after a short delay
+      setTimeout(() => {
+        router.push(`/my-cards/${result.data.id}?message=${encodeURIComponent('Template saved successfully!')}`)
+      }, 1500)
 
     } catch (error) {
       console.error('❌ Save failed:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setSaveMessage(`Failed to save card: ${errorMessage}`)
+      setSaveMessage(`Failed to save template: ${errorMessage}`)
       
-      // Show error message for a few seconds
       setTimeout(() => setSaveMessage(''), 8000)
     } finally {
       setIsSaving(false)
     }
   }
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading session...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (status === 'unauthenticated') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h1>
-          <p className="text-gray-600 mb-6">Please sign in to view your cards.</p>
-          <Link 
-            href="/sign-in"
-            className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-          >
-            Sign In
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading card...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error || !cardData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Card Not Found</h1>
-          <p className="text-gray-600 mb-6">The card you&apos;re looking for doesn&apos;t exist.</p>
-          <Link 
-            href="/my-cards"
-            className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            Back
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
-
-
   // Function to handle editing a specific page
   const handleEditPage = async (pageIndex: number) => {
     console.log('🎨 Opening Pintura editor for page:', pageIndex)
     
-    if (!cardData || pageIndex >= cardData.pages.length) {
-      console.error('❌ Invalid page index or no card data')
+    if (!templateData || pageIndex >= templateData.pages.length) {
+      console.error('❌ Invalid page index or no template data')
       return
     }
 
     try {
-      // Convert image to blob URL for Pintura compatibility if needed
-      const imageUrl = pageImages[pageIndex] || cardData.pages[pageIndex]
+      const imageUrl = pageImages[pageIndex] || templateData.pages[pageIndex]
       const blobImageUrl = await convertImageToBlob(imageUrl)
       
-      // Update the page images with blob URL if needed
       if (imageUrl !== blobImageUrl) {
         const updatedImages = [...pageImages]
         updatedImages[pageIndex] = blobImageUrl
@@ -575,29 +469,21 @@ export default function CustomizeCardPage() {
   // Convert external image URL to blob URL for Pintura
   const convertImageToBlob = async (imageUrl: string): Promise<string> => {
     try {
-      console.log('🔄 Converting image to blob URL for Pintura compatibility:', imageUrl)
-      
-      // Check if it's already a blob URL
       if (imageUrl.startsWith('blob:')) {
-        console.log('✅ Image is already a blob URL, returning as-is:', imageUrl)
         return imageUrl
       }
       
-      console.log('🌐 Fetching image...')
       const response = await fetch(imageUrl)
       if (!response.ok) {
         throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`)
       }
       
-      console.log('📦 Converting response to blob...')
       const blob = await response.blob()
       const blobUrl = URL.createObjectURL(blob)
       
-      console.log('✅ Successfully created blob URL:', blobUrl)
       return blobUrl
     } catch (error) {
       console.error('❌ Failed to convert image to blob:', error)
-      console.log('🔄 Falling back to original URL:', imageUrl)
       return imageUrl
     }
   }
@@ -610,10 +496,8 @@ export default function CustomizeCardPage() {
       // Save current state to undo stack before making changes
       setUndoStack(prev => [...prev, [...pageImages]])
       
-      // Create blob URL from the edited image
       const blobUrl = URL.createObjectURL(dest)
       
-      // Update the page images
       const updatedImages = [...pageImages]
       updatedImages[editingPageIndex] = blobUrl
       setPageImages(updatedImages)
@@ -623,21 +507,28 @@ export default function CustomizeCardPage() {
     }
   }
 
+  // Handle editor close
+  const handleEditorClose = () => {
+    setEditorVisible(false)
+    setEditingPageIndex(null)
+  }
+
   // Handle name editing
   const handleStartEditingName = () => {
-    setEditedName(cardData?.name || '')
+    setEditedName(templateData?.name || '')
     setIsEditingName(true)
   }
 
   const handleSaveName = () => {
-    if (cardData && editedName.trim() && editedName.trim() !== cardData.name) {
+    if (templateData && editedName.trim() && editedName.trim() !== templateData.name) {
+      setTemplateData({ ...templateData, name: editedName.trim() })
       setHasUnsavedChanges(true)
     }
     setIsEditingName(false)
   }
 
   const handleCancelNameEdit = () => {
-    setEditedName(cardData?.name || '')
+    setEditedName(templateData?.name || '')
     setIsEditingName(false)
   }
 
@@ -651,19 +542,77 @@ export default function CustomizeCardPage() {
 
   // Handle category selection
   const handleCategoryChange = (category: Category) => {
+    console.log('🏷️ Category changed to:', category);
+    console.log('🏷️ Category ID:', category.id);
+    console.log('🏷️ Category Name:', category.name);
     setSelectedCategory(category)
-    setHasUnsavedChanges(true)
+    if (templateData) {
+      setTemplateData({
+        ...templateData,
+        categoryId: category.id,
+        categoryName: category.name
+      })
+      setHasUnsavedChanges(true)
+    }
   }
 
+  // Initialize editing states when template loads
+  useEffect(() => {
+    if (templateData) {
+      setEditedName(templateData.name)
+      // Find and set the initial category if it exists
+      if (templateData.categoryId && categories.length > 0) {
+        const category = categories.find(cat => cat.id === templateData.categoryId)
+        if (category) {
+          console.log('🔄 Found and setting initial category:', category);
+          setSelectedCategory(category)
+        } else {
+          console.log('⚠️ Template category ID not found in categories list:', templateData.categoryId);
+        }
+      } else {
+        console.log('🔄 No template category ID or categories not loaded yet');
+        // Set default category to first available category if none selected
+        if (categories.length > 0 && !selectedCategory) {
+          const defaultCategory = categories.find(cat => cat.name.toLowerCase() === 'general') || categories[0];
+          console.log('🎯 Setting default category:', defaultCategory);
+          setSelectedCategory(defaultCategory);
+          setTemplateData({
+            ...templateData,
+            categoryId: defaultCategory.id,
+            categoryName: defaultCategory.name
+          });
+        }
+      }
+    }
+  }, [templateData, categories, selectedCategory])
 
-  // Handle editor close
-  const handleEditorClose = () => {
-    console.log('🚪 Closing editor')
-    setEditorVisible(false)
-    setEditingPageIndex(null)
+  if (status === 'loading' || !templateData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading template editor...</p>
+        </div>
+      </div>
+    )
   }
 
-  // Chat / Style Assistant removed
+  if (status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h1>
+          <p className="text-gray-600 mb-6">Please sign in to use the template editor.</p>
+          <Link 
+            href="/sign-in"
+            className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+          >
+            Sign In
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -675,7 +624,7 @@ export default function CustomizeCardPage() {
             {/* Top Row - Back and Save */}
             <div className="flex items-center justify-between py-4">
               <Link 
-                href="/my-cards"
+                href="/templates"
                 className="inline-flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors"
               >
                 <ArrowLeftIcon className="h-5 w-5" />
@@ -683,21 +632,12 @@ export default function CustomizeCardPage() {
               </Link>
               
               <div className="flex items-center gap-3">
-                {/* Save Status Message - Mobile */}
-                {saveMessage && (
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    saveMessage.includes('Failed') 
-                      ? 'bg-red-100 text-red-700' 
-                      : 'bg-green-100 text-green-700'
-                  }`}>
-                    ✓
-                  </div>
-                )}
+                {/* Removed Save functionality */}
               </div>
             </div>
 
             {/* Title Row - Mobile */}
-            <div className="pb-3">
+            <div className="pb-4">
               {isEditingName ? (
                 <div className="flex items-center gap-2">
                   <input
@@ -708,7 +648,7 @@ export default function CustomizeCardPage() {
                     onBlur={handleSaveName}
                     className="text-xl font-bold text-gray-900 bg-transparent border-2 border-indigo-500 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent flex-1"
                     autoFocus
-                    placeholder="Enter card name..."
+                    placeholder="Enter template name..."
                   />
                   <button
                     onClick={handleSaveName}
@@ -728,7 +668,7 @@ export default function CustomizeCardPage() {
               ) : (
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <h1 className="text-xl font-bold text-gray-900 leading-tight">{cardData.name}</h1>
+                    <h1 className="text-xl font-bold text-gray-900 leading-tight">{templateData.name}</h1>
                     <button
                       onClick={handleStartEditingName}
                       className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
@@ -745,7 +685,6 @@ export default function CustomizeCardPage() {
                   )}
                 </div>
               )}
-              <p className="text-sm text-gray-500 mt-1">Created on {new Date(cardData.createdAt).toLocaleDateString()}</p>
             </div>
 
             {/* Category Row - Mobile */}
@@ -806,11 +745,11 @@ export default function CustomizeCardPage() {
               {/* Left Section */}
               <div className="flex items-center gap-6 min-w-0 flex-1">
                 <Link 
-                  href="/my-cards"
+                  href="/templates"
                   className="inline-flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors flex-shrink-0"
                 >
                   <ArrowLeftIcon className="h-5 w-5" />
-                  <span>Back</span>
+                  <span>Back to Templates</span>
                 </Link>
                 
                 <div className="h-6 w-px bg-gray-300 flex-shrink-0" />
@@ -827,7 +766,7 @@ export default function CustomizeCardPage() {
                         onBlur={handleSaveName}
                         className="text-xl font-bold text-gray-900 bg-transparent border-2 border-indigo-500 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent min-w-0 flex-1 max-w-md"
                         autoFocus
-                        placeholder="Enter card name..."
+                        placeholder="Enter template name..."
                       />
                       <button
                         onClick={handleSaveName}
@@ -846,7 +785,7 @@ export default function CustomizeCardPage() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-3">
-                      <h1 className="text-xl font-bold text-gray-900">{cardData.name}</h1>
+                      <h1 className="text-xl font-bold text-gray-900">{templateData.name}</h1>
                       <button
                         onClick={handleStartEditingName}
                         className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -862,7 +801,6 @@ export default function CustomizeCardPage() {
                       )}
                     </div>
                   )}
-                  <p className="text-sm text-gray-500 mt-1">Created on {new Date(cardData.createdAt).toLocaleDateString()}</p>
                 </div>
               </div>
               
@@ -917,16 +855,7 @@ export default function CustomizeCardPage() {
               
               {/* Right Section */}
               <div className="flex items-center gap-4 flex-shrink-0">
-                {/* Save Status Message - Desktop */}
-                {saveMessage && (
-                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    saveMessage.includes('Failed') 
-                      ? 'bg-red-100 text-red-700' 
-                      : 'bg-green-100 text-green-700'
-                  }`}>
-                    {saveMessage}
-                  </div>
-                )}
+                {/* Removed Save functionality */}
               </div>
             </div>
           </div>
@@ -946,22 +875,13 @@ export default function CustomizeCardPage() {
                 ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md' 
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
-            title="Save Changes"
+            title="Save to My Cards"
           >
             {isSaving ? (
               <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 border-t-current rounded-full animate-spin" />
             ) : (
               <BookmarkSolidIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             )}
-          </button>
-
-          {/* Save As Button */}
-          <button
-            onClick={handleSaveAs}
-            className="p-1.5 sm:p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-all duration-200 touch-manipulation"
-            title="Save As New Card"
-          >
-            <DocumentDuplicateIcon className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
           {/* Undo Button */}
@@ -984,9 +904,9 @@ export default function CustomizeCardPage() {
             <ArrowPathIcon className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
         </div>
-        
-        {/* Center - Card Editor */}
-  <div className={`flex-1 flex items-center justify-center min-h-[calc(100vh-200px)] py-4 lg:py-8 transition-all duration-300 px-4`}>
+
+        {/* Center - Template Editor */}
+        <div className="flex-1 flex items-center justify-center min-h-[calc(100vh-200px)] py-4 lg:py-8 transition-all duration-300 px-4">
           
           {/* Previous Page Button */}
           <button
@@ -1026,207 +946,52 @@ export default function CustomizeCardPage() {
               disableFlipByClick={false}
               drawShadow={true}
             >
-              {/* Front Cover - Page 1 */}
-              <div className="page-hard">
-                <div className="page-content w-full h-full relative">
-                  <Image
-                    src={pageImages[0] || cardData.pages[0]}
-                    alt="Gift Card Cover"
-                    width={500}
-                    height={700}
-                    className="w-full h-full object-cover rounded-lg"
-                    priority
-                  />
-                  {/* Edit icon blocking zone */}
-                  <div 
-                    className="absolute top-0 right-0 w-20 h-20 z-30 flex items-start justify-end pt-4 pr-4"
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onMouseUp={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchEnd={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onPointerDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onPointerUp={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    style={{ pointerEvents: 'auto' }}
-                  >
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        e.preventDefault()
-                        handleEditPage(0)
-                      }}
-                      className="p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200"
+              {/* Render each page */}
+              {pageImages.map((pageImage, index) => (
+                <div key={index} className="page-hard">
+                  <div className="page-content w-full h-full relative">
+                    <Image
+                      src={pageImage}
+                      alt={`Template Page ${index + 1}`}
+                      width={500}
+                      height={700}
+                      className="w-full h-full object-cover rounded-lg"
+                      priority={index === 0}
+                    />
+                    {/* Edit icon */}
+                    <div 
+                      className="absolute top-0 right-0 w-20 h-20 z-30 flex items-start justify-end pt-4 pr-4"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onMouseUp={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      style={{ pointerEvents: 'auto' }}
                     >
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          handleEditPage(index)
+                        }}
+                        className="p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200"
+                      >
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Inner Left Page - Page 2 */}
-              <div className="page-hard">
-                <div className="page-content w-full h-full relative">
-                  <Image
-                    src={pageImages[1] || cardData.pages[1]}
-                    alt="Gift Card Page 2"
-                    width={500}
-                    height={700}
-                    className="w-full h-full object-cover rounded-lg"
-                  />
-                  {/* Edit icon blocking zone */}
-                  <div 
-                    className="absolute top-0 right-0 w-20 h-20 z-30 flex items-start justify-end pt-4 pr-4"
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onMouseUp={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchEnd={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onPointerDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onPointerUp={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    style={{ pointerEvents: 'auto' }}
-                  >
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        e.preventDefault()
-                        handleEditPage(1)
-                      }}
-                      className="p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200"
-                    >
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Inner Right Page - Page 3 */}
-              <div className="page-hard">
-                <div className="page-content w-full h-full relative">
-                  <Image
-                    src={pageImages[2] || cardData.pages[2]}
-                    alt="Gift Card Page 3"
-                    width={500}
-                    height={700}
-                    className="w-full h-full object-cover rounded-lg"
-                  />
-                  {/* Edit icon */}
-                  <button 
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onMouseUp={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchEnd={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      handleEditPage(2)
-                    }}
-                    className="absolute top-4 right-4 p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200 z-20"
-                  >
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Back Cover - Page 4 */}
-              <div className="page-hard">
-                <div className="page-content w-full h-full relative">
-                  <Image
-                    src={pageImages[3] || cardData.pages[3]}
-                    alt="Gift Card Page 4"
-                    width={500}
-                    height={700}
-                    className="w-full h-full object-cover rounded-lg"
-                  />
-                  {/* Edit icon */}
-                  <button 
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onMouseUp={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onTouchEnd={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
-                      handleEditPage(3)
-                    }}
-                    className="absolute top-4 right-4 p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200 z-20"
-                  >
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              ))}
             </HTMLFlipBook>
           </div>
           
           {/* Desktop Page Indicator */}
           <div className="hidden xl:block absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
             <div className="bg-black/60 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm shadow-lg">
-              Page {currentPage + 1} of 4
+              Page {currentPage + 1} of {pageImages.length}
             </div>
           </div>
           
@@ -1240,23 +1005,16 @@ export default function CustomizeCardPage() {
             >
               <div className="w-full h-full relative">
                 <Image
-                  src={pageImages[currentPage] || cardData.pages[currentPage]}
-                  alt={`Card Page ${currentPage + 1}`}
+                  src={pageImages[currentPage]}
+                  alt={`Template Page ${currentPage + 1}`}
                   width={320}
                   height={384}
                   className="w-full h-full object-cover"
                 />
-                {/* Edit icon blocking zone */}
+                {/* Edit icon */}
                 <div 
                   className="absolute top-0 right-0 w-16 h-16 z-30 flex items-start justify-end pt-3 pr-3"
-                  onMouseDown={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                  }}
+                  onTouchStart={(e) => e.stopPropagation()}
                   style={{ pointerEvents: 'auto' }}
                 >
                   <button 
@@ -1276,7 +1034,7 @@ export default function CustomizeCardPage() {
                 {/* Mobile Page Indicator */}
                 <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
                   <div className="bg-black/60 text-white px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm shadow-lg">
-                    Page {currentPage + 1} of 4
+                    Page {currentPage + 1} of {pageImages.length}
                   </div>
                 </div>
               </div>
@@ -1286,24 +1044,18 @@ export default function CustomizeCardPage() {
           {/* Next Page Button */}
           <button
             onClick={handleFlipNext}
-            disabled={currentPage >= 3}
+            disabled={currentPage >= pageImages.length - 1}
             className="hidden xl:flex flex-shrink-0 p-4 rounded-full bg-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ml-4 xl:ml-8 text-gray-700"
           >
             <ChevronRightIcon className="h-6 w-6" />
           </button>
         </div>
-
-  {/* Right Sidebar removed */}
       </div>
-
-
-      {/* Mobile Overlay */}
-  {/* Mobile Overlay placeholder (no assistant) */}
 
       {/* Pintura Editor Modal */}
       {editingPageIndex !== null && (
         <PinturaEditorModal
-          imageSrc={pageImages[editingPageIndex] || cardData.pages[editingPageIndex]}
+          imageSrc={pageImages[editingPageIndex]}
           isVisible={editorVisible}
           onHide={handleEditorClose}
           onProcess={handleEditorProcess}
@@ -1375,58 +1127,14 @@ export default function CustomizeCardPage() {
           opacity: 1;
         }
       `}</style>
-
-      {/* Save As Modal */}
-      {showSaveAsModal && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-30 flex items-center justify-center z-30 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Save As New Card
-              </h3>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Card Name
-                </label>
-                <input
-                  type="text"
-                  value={saveAsName}
-                  onChange={(e) => setSaveAsName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Enter card name..."
-                  autoFocus
-                />
-              </div>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowSaveAsModal(false)
-                    setSaveAsName('')
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                  disabled={isSavingAs}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveAsSubmit}
-                  disabled={isSavingAs || !saveAsName.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isSavingAs ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save As New Card'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
+  )
+}
+
+export default function TemplateEditorPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <TemplateEditorContent />
+    </Suspense>
   )
 }

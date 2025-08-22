@@ -20,6 +20,65 @@ export interface UploadImagesResponse {
 }
 
 /**
+ * Validate that no blob URLs are present in image array
+ */
+export function validateNoBlobUrls(images: string[]): void {
+  const blobUrls = images.filter(url => url && url.startsWith('blob:'))
+  if (blobUrls.length > 0) {
+    console.error('❌ CRITICAL: Blob URLs detected in images:', blobUrls)
+    throw new Error(`Cannot save images with blob URLs. Found ${blobUrls.length} blob URLs that must be uploaded to Supabase first.`)
+  }
+}
+
+/**
+ * Ensure all blob URLs are converted to Supabase URLs before saving
+ */
+export async function ensureSupabaseUrls(
+  images: string[],
+  userId: string,
+  designId?: string
+): Promise<string[]> {
+  const blobUrls = images.filter(url => url && url.startsWith('blob:'))
+  
+  if (blobUrls.length === 0) {
+    console.log('✅ No blob URLs found, all images are already uploaded')
+    return images
+  }
+  
+  console.log('🔄 Found blob URLs, uploading to Supabase:', blobUrls.length)
+  
+  try {
+    // Convert blob URLs to base64
+    const base64Images = await convertBlobUrlsToBase64(blobUrls)
+    
+    // Upload to Supabase
+    const uploadResult = await uploadImages(base64Images, userId, designId)
+    
+    if (!uploadResult.success) {
+      throw new Error(`Image upload failed: ${uploadResult.error}`)
+    }
+    
+    console.log('✅ Images uploaded successfully:', uploadResult.cloudUrls.length)
+    
+    // Replace blob URLs with Supabase URLs
+    const finalImages = images.map(url => {
+      if (url && url.startsWith('blob:')) {
+        const blobIndex = blobUrls.indexOf(url)
+        return uploadResult.cloudUrls[blobIndex] || url
+      }
+      return url
+    })
+    
+    console.log('🔄 Replaced blob URLs with Supabase URLs')
+    return finalImages
+    
+  } catch (error) {
+    console.error('❌ Failed to upload blob images:', error)
+    throw new Error(`Failed to upload images to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
  * Convert blob URLs to base64 data for upload
  */
 export async function convertBlobUrlsToBase64(imageUrls: string[]): Promise<string[]> {
@@ -111,12 +170,17 @@ export async function saveSavedDesign(
     action?: 'update' | 'duplicate'
     title?: string
     userId: string
+    categoryId?: string
+    categoryName?: string
   }
 ): Promise<SaveSavedDesignResponse> {
   try {
+    // CRITICAL: Ensure no blob URLs are being saved
+    validateNoBlobUrls(pageImages)
+    
     let endpoint: string
     let method: string
-    let body: any
+    let body: Record<string, unknown>
 
     if (options.action === 'duplicate') {
       // For duplicate, create a new design using POST to /api/saved-designs
@@ -125,18 +189,25 @@ export async function saveSavedDesign(
       body = {
         title: options.title,
         description: `Copy of design`,
+        categoryId: options.categoryId,
+        categoryName: options.categoryName,
+        image_1: pageImages[0] || null,
+        image_2: pageImages[1] || null,
+        image_3: pageImages[2] || null,
+        image_4: pageImages[3] || null,
+        cover_image: pageImages[0],
         imageUrls: pageImages, // Updated page images
         thumbnail: pageImages[0], // First image becomes cover
         designData: {
           templateKey: 'custom',
-          pages: pageImages.map((image, index) => ({
+          pages: pageImages.map((image) => ({
             header: '',
             image: image,
             text: '',
             footer: ''
           })),
           editedPages: Object.fromEntries(
-            pageImages.map((_, index) => [index, pageImages[index]])
+            pageImages.map((image, index) => [index, image])
           )
         }
       }
@@ -146,21 +217,31 @@ export async function saveSavedDesign(
       method = 'PUT'
       body = {
         title: options.title,
+        categoryId: options.categoryId,
+        categoryName: options.categoryName,
+        image_1: pageImages[0] || null,
+        image_2: pageImages[1] || null,
+        image_3: pageImages[2] || null,
+        image_4: pageImages[3] || null,
+        cover_image: pageImages[0],
         imageUrls: pageImages, // Updated page images
         thumbnail: pageImages[0], // First image becomes cover
         designData: {
           templateKey: 'custom',
-          pages: pageImages.map((image, index) => ({
+          pages: pageImages.map((image) => ({
             header: '',
             image: image,
             text: '',
             footer: ''
           })),
           editedPages: Object.fromEntries(
-            pageImages.map((_, index) => [index, pageImages[index]])
+            pageImages.map((image, index) => [index, image])
           )
         }
       }
+      
+      console.log('📝 Update body categoryId:', options.categoryId);
+      console.log('📝 Update body categoryName:', options.categoryName);
     }
     
     const response = await fetch(endpoint, {
@@ -196,18 +277,29 @@ export async function saveSavedDesignWithImages(
     title?: string
     userId: string
     designId?: string
+    categoryId?: string
+    categoryName?: string
   }
 ): Promise<{
   saveResult: SaveSavedDesignResponse
 }> {
   try {
     console.log('🔄 Saving design with images...')
+    console.log('📸 Input images:', pageImages.map(url => url ? `${url.substring(0, 50)}...` : 'null'))
     
-    // Save design directly with image URLs
-    const saveResult = await saveSavedDesign(designId, pageImages, {
+    // CRITICAL: Convert ALL blob URLs to Supabase URLs first
+    const finalPageImages = await ensureSupabaseUrls(pageImages, options.userId, designId)
+    
+    console.log('✅ All images are now Supabase URLs')
+    console.log('📸 Final images:', finalPageImages.map(url => url ? `${url.substring(0, 50)}...` : 'null'))
+    
+    // Save design with final image URLs (now all Supabase URLs)
+    const saveResult = await saveSavedDesign(designId, finalPageImages, {
       action: options.action,
       title: options.title,
-      userId: options.userId
+      userId: options.userId,
+      categoryId: options.categoryId,
+      categoryName: options.categoryName
     })
     
     if (!saveResult.success) {

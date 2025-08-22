@@ -67,6 +67,93 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Helper function to convert blob URL to base64
+async function blobUrlToBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Helper function to extract image URLs that need uploading
+function extractImageUrls(body: any): string[] {
+  const imageUrls: string[] = [];
+  
+  // From imageUrls array
+  if (body.imageUrls && Array.isArray(body.imageUrls)) {
+    imageUrls.push(...body.imageUrls);
+  }
+  
+  // From designData.pages
+  if (body.designData?.pages && Array.isArray(body.designData.pages)) {
+    for (const page of body.designData.pages) {
+      if (page.image) {
+        imageUrls.push(page.image);
+      }
+    }
+  }
+  
+  // From designData.editedPages
+  if (body.designData?.editedPages) {
+    for (const key in body.designData.editedPages) {
+      if (body.designData.editedPages[key]) {
+        imageUrls.push(body.designData.editedPages[key]);
+      }
+    }
+  }
+  
+  // From individual image fields
+  ['image_1', 'image_2', 'image_3', 'image_4'].forEach(field => {
+    if (body[field]) {
+      imageUrls.push(body[field]);
+    }
+  });
+  
+  return [...new Set(imageUrls)]; // Remove duplicates
+}
+
+// Helper function to replace image URLs in the body
+function replaceImageUrls(body: any, urlMapping: Record<string, string>): any {
+  const updatedBody = { ...body };
+  
+  // Replace in imageUrls array
+  if (updatedBody.imageUrls && Array.isArray(updatedBody.imageUrls)) {
+    updatedBody.imageUrls = updatedBody.imageUrls.map(url => urlMapping[url] || url);
+  }
+  
+  // Replace in designData.pages
+  if (updatedBody.designData?.pages && Array.isArray(updatedBody.designData.pages)) {
+    updatedBody.designData.pages = updatedBody.designData.pages.map(page => ({
+      ...page,
+      image: urlMapping[page.image] || page.image
+    }));
+  }
+  
+  // Replace in designData.editedPages
+  if (updatedBody.designData?.editedPages) {
+    const editedPages = { ...updatedBody.designData.editedPages };
+    for (const key in editedPages) {
+      if (editedPages[key] && urlMapping[editedPages[key]]) {
+        editedPages[key] = urlMapping[editedPages[key]];
+      }
+    }
+    updatedBody.designData.editedPages = editedPages;
+  }
+  
+  // Replace individual image fields
+  ['image_1', 'image_2', 'image_3', 'image_4'].forEach(field => {
+    if (updatedBody[field] && urlMapping[updatedBody[field]]) {
+      updatedBody[field] = urlMapping[updatedBody[field]];
+    }
+  });
+  
+  return updatedBody;
+}
+
 // POST /api/saved-designs - Create a new saved design
 export async function POST(request: NextRequest) {
   try {
@@ -80,7 +167,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     console.log('Create saved design API - User ID:', session.user.id);
-    console.log('Create saved design API - Body:', body);
+
+    // Check for blob URLs - these should be uploaded on frontend before reaching API
+    const imageUrls = extractImageUrls(body);
+    const blobUrls = imageUrls.filter(url => url && url.startsWith('blob:'));
+    
+    if (blobUrls.length > 0) {
+      console.error('Create saved design API - Blob URLs found, these should be uploaded on frontend first:', blobUrls);
+      return NextResponse.json(
+        { error: 'Blob URLs detected. Please upload images before saving.', blobUrls },
+        { status: 400 }
+      );
+    }
 
     const response = await fetch(`${API_BASE_URL}/saved-designs`, {
       method: 'POST',
