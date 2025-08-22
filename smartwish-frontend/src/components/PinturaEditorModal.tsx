@@ -106,33 +106,58 @@ export default function PinturaEditorModal({
   const handleLoad = (res: unknown) => {
     console.log('📷 Load editor image:', res);
     
+    // Rename Retouch tab to AI
+    const renameRetouchToAI = () => {
+      const retouchTab = Array.from(document.querySelectorAll('button[role="tab"]')).find(btn => 
+        btn.textContent?.includes('Retouch')
+      );
+      
+      if (retouchTab && !retouchTab.hasAttribute('data-renamed-to-ai')) {
+        // Find text nodes and replace only the "Retouch" text, keeping icons
+        const walker = document.createTreeWalker(
+          retouchTab,
+          NodeFilter.SHOW_TEXT
+        );
+        
+        let textNode;
+        while (textNode = walker.nextNode()) {
+          if (textNode.textContent && textNode.textContent.includes('Retouch')) {
+            textNode.textContent = textNode.textContent.replace('Retouch', 'AI');
+          }
+        }
+        
+        retouchTab.setAttribute('data-renamed-to-ai', 'true');
+        console.log('✅ Renamed Retouch tab to AI (keeping icon)');
+      }
+    };
+    
     // Inject AI prompt interface into retouch tab
     const injectAIPromptIntoRetouch = () => {
       const modifyRetouchTab = () => {
-        // Find the retouch tab button
+        // Find the AI tab button (formerly retouch)
         const retouchTab = Array.from(document.querySelectorAll('button[role="tab"]')).find(btn => 
-          btn.textContent?.includes('Retouch')
+          btn.textContent?.includes('AI') || btn.textContent?.includes('Retouch')
         );
         
         if (!retouchTab) {
-          console.log('❌ Retouch tab not found');
+          console.log('❌ AI tab not found');
           return false;
         }
 
-        // Check if retouch tab is active
+        // Check if AI tab is active
         const isRetouchTabActive = retouchTab.getAttribute('aria-selected') === 'true';
         
         if (!isRetouchTabActive) {
-          console.log('🔍 Retouch tab not active, skipping AI injection');
+          console.log('🔍 AI tab not active, skipping AI injection');
           return false;
         }
 
-        // Find the retouch tools area within the active retouch panel
+        // Find the retouch tools area within the active AI panel
         const retouchPanel = document.querySelector('.PinturaUtilPanel[data-util="retouch"]') ||
                             document.querySelector('[data-util="retouch"]');
         
         if (!retouchPanel) {
-          console.log('❌ Retouch panel not found');
+          console.log('❌ AI panel not found');
           return false;
         }
 
@@ -141,17 +166,17 @@ export default function PinturaEditorModal({
                              retouchPanel.querySelector('[class*="Footer"]');
         
         if (!retouchFooter) {
-          console.log('❌ Retouch footer not found');
+          console.log('❌ AI footer not found');
           return false;
         }
 
         // Check if AI interface already exists
         if (retouchFooter.querySelector('.ai-prompt-interface')) {
-          console.log('✅ AI interface already exists in retouch footer');
+          console.log('✅ AI interface already exists in AI footer');
           return true;
         }
 
-        console.log('🎯 Found retouch footer, injecting AI interface');
+        console.log('🎯 Found AI footer, injecting AI interface');
 
         // Store original content
         if (!retouchFooter.hasAttribute('data-original-content-stored')) {
@@ -485,21 +510,21 @@ export default function PinturaEditorModal({
         // Focus input when interface is created
         setTimeout(() => promptInput?.focus(), 100);
 
-        console.log('✅ AI prompt interface injected into retouch footer');
+        console.log('✅ AI prompt interface injected into AI footer');
         return true;
       };
 
-      // Monitor for retouch tab activation
+      // Monitor for AI tab activation
       const addRetouchTabListener = () => {
         const retouchTab = Array.from(document.querySelectorAll('button[role="tab"]')).find(btn => 
-          btn.textContent?.includes('Retouch')
+          btn.textContent?.includes('AI') || btn.textContent?.includes('Retouch')
         );
 
         if (retouchTab && !retouchTab.hasAttribute('data-ai-listener-added')) {
           retouchTab.setAttribute('data-ai-listener-added', 'true');
           retouchTab.addEventListener('click', () => {
-            console.log('🎯 Retouch tab clicked, will inject AI interface');
-            // Delay to allow Pintura to set up the retouch panel
+            console.log('🎯 AI tab clicked, will inject AI interface');
+            // Delay to allow Pintura to set up the AI panel
             setTimeout(modifyRetouchTab, 200);
           });
         }
@@ -507,10 +532,10 @@ export default function PinturaEditorModal({
         // Also add listeners to other tabs to restore original content
         const allTabs = document.querySelectorAll('button[role="tab"]');
         allTabs.forEach(tab => {
-          if (!tab.textContent?.includes('Retouch') && !tab.hasAttribute('data-restore-listener-added')) {
+          if (!tab.textContent?.includes('AI') && !tab.textContent?.includes('Retouch') && !tab.hasAttribute('data-restore-listener-added')) {
             tab.setAttribute('data-restore-listener-added', 'true');
             tab.addEventListener('click', () => {
-              // Restore original retouch content when switching away
+              // Restore original AI content when switching away
               const retouchPanel = document.querySelector('.PinturaUtilPanel[data-util="retouch"]');
               if (retouchPanel) {
                 const retouchFooter = retouchPanel.querySelector('.PinturaUtilFooter');
@@ -530,18 +555,20 @@ export default function PinturaEditorModal({
       const attempts = [100, 300, 500, 1000, 2000];
       attempts.forEach((delay, index) => {
         setTimeout(() => {
-          console.log(`🔄 Attempt ${index + 1} to set up retouch AI interface (delay: ${delay}ms)`);
+          console.log(`🔄 Attempt ${index + 1} to set up AI interface (delay: ${delay}ms)`);
+          renameRetouchToAI(); // Rename the tab first
           addRetouchTabListener();
-          modifyRetouchTab(); // Also try immediate modification if retouch is already active
+          modifyRetouchTab(); // Also try immediate modification if AI is already active
         }, delay);
       });
 
       // Use MutationObserver to catch dynamic changes
       const observer = new MutationObserver(() => {
+        renameRetouchToAI(); // Keep renaming any new Retouch tabs
         addRetouchTabListener();
-        // Check if retouch tab is currently active and modify if needed
+        // Check if AI tab is currently active and modify if needed
         const retouchTab = Array.from(document.querySelectorAll('button[role="tab"]')).find(btn => 
-          btn.textContent?.includes('Retouch')
+          btn.textContent?.includes('AI') || btn.textContent?.includes('Retouch')
         );
         if (retouchTab && retouchTab.getAttribute('aria-selected') === 'true') {
           setTimeout(modifyRetouchTab, 100);
