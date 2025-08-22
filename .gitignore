@@ -1,0 +1,5 @@
+
+# local logs and temp
+logs/
+.claude/
+.claude/settings.local.json
