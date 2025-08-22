@@ -1,6 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
 import { SupabaseSavedDesignsService } from './supabase-saved-designs.service';
 
 export interface SavedDesign {
@@ -57,48 +55,14 @@ export interface SavedDesign {
 
 @Injectable()
 export class SavedDesignsService {
-  private readonly designsDir = path.join(
-    process.cwd(),
-    'downloads',
-    'saved-designs',
-  );
   private supabaseService: SupabaseSavedDesignsService;
 
   constructor() {
-    // Ensure the designs directory exists
-    if (!fs.existsSync(this.designsDir)) {
-      fs.mkdirSync(this.designsDir, { recursive: true });
-    }
-
     // Initialize Supabase service
     this.supabaseService = new SupabaseSavedDesignsService();
-  }
-
-  private getUserDesignsFile(userId: string): string {
-    return path.join(this.designsDir, `user-${userId}-designs.json`);
-  }
-
-  private loadUserDesigns(userId: string): SavedDesign[] {
-    const filePath = this.getUserDesignsFile(userId);
-    if (!fs.existsSync(filePath)) {
-      return [];
-    }
-    try {
-      const data = fs.readFileSync(filePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      console.error(`Error loading designs for user ${userId}:`, error);
-      return [];
-    }
-  }
-
-  private saveUserDesigns(userId: string, designs: SavedDesign[]): void {
-    const filePath = this.getUserDesignsFile(userId);
-    try {
-      fs.writeFileSync(filePath, JSON.stringify(designs, null, 2));
-    } catch (error) {
-      console.error(`Error saving designs for user ${userId}:`, error);
-      throw new Error('Failed to save design');
+    
+    if (!this.supabaseService.isAvailable()) {
+      throw new Error('Supabase is required for saved designs functionality. Please configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
     }
   }
 
@@ -106,144 +70,28 @@ export class SavedDesignsService {
     userId: string,
     designData: Omit<SavedDesign, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
   ): Promise<SavedDesign> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.saveDesign(userId, designData);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      const designs = this.loadUserDesigns(userId);
-      const newDesign: SavedDesign = {
-        ...designData,
-        userId,
-        id: Date.now().toString(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        // Set default metadata if not provided
-        author: designData.author || 'User',
-        upload_time: designData.upload_time || new Date().toISOString(),
-        price: designData.price || 0,
-        language: designData.language || 'en',
-        region: designData.region || 'US',
-        popularity: designData.popularity || 0,
-        num_downloads: designData.num_downloads || 0,
-        searchKeywords: designData.searchKeywords || [],
-        status: designData.status || 'draft',
-      };
-
-      designs.push(newDesign);
-      this.saveUserDesigns(userId, designs);
-
-      return newDesign;
-    }
+    return await this.supabaseService.saveDesign(userId, designData);
   }
 
   async getUserDesigns(userId: string): Promise<SavedDesign[]> {
     console.log('SavedDesignsService: Getting designs for userId:', userId);
-    try {
-      // Try to use Supabase first
-      const designs = await this.supabaseService.getUserDesigns(userId);
-      console.log(
-        'SavedDesignsService: Found designs count (Supabase):',
-        designs.length,
-      );
-      return designs;
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      const designs = this.loadUserDesigns(userId);
-      console.log(
-        'SavedDesignsService: Found designs count (File):',
-        designs.length,
-      );
-      return designs;
-    }
+    const designs = await this.supabaseService.getUserDesigns(userId);
+    console.log(
+      'SavedDesignsService: Found designs count:',
+      designs.length,
+    );
+    return designs;
   }
 
   async getDesignById(
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.getDesignById(userId, designId);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      const designs = this.loadUserDesigns(userId);
-      return designs.find((design) => design.id === designId) || null;
-    }
+    return await this.supabaseService.getDesignById(userId, designId);
   }
 
   async getPublicDesignById(designId: string): Promise<SavedDesign | null> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.getPublicDesignById(designId);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      // First check if it's a shared design
-      const sharedDesignsFile = path.join(
-        this.designsDir,
-        'shared-designs.json',
-      );
-      if (fs.existsSync(sharedDesignsFile)) {
-        try {
-          const data = fs.readFileSync(sharedDesignsFile, 'utf8');
-          const sharedDesigns = JSON.parse(data);
-          const sharedDesign = sharedDesigns.find(
-            (d: SavedDesign) => d.id === designId,
-          );
-          if (sharedDesign) {
-            return sharedDesign;
-          }
-        } catch (error) {
-          console.error('Error reading shared designs file:', error);
-        }
-      }
-
-      // If not found in shared designs, search through all user design files
-      if (!fs.existsSync(this.designsDir)) {
-        return null;
-      }
-
-      const userFiles = fs.readdirSync(this.designsDir);
-
-      for (const userFile of userFiles) {
-        if (userFile.endsWith('.json') && userFile !== 'shared-designs.json') {
-          const filePath = path.join(this.designsDir, userFile);
-          try {
-            const data = fs.readFileSync(filePath, 'utf8');
-            const designs = JSON.parse(data);
-            const design = designs.find((d: SavedDesign) => d.id === designId);
-            if (design) {
-              return design;
-            }
-          } catch (error) {
-            console.error(`Error reading file ${userFile}:`, error);
-            continue;
-          }
-        }
-      }
-
-      return null;
-    }
+    return await this.supabaseService.getPublicDesignById(designId);
   }
 
   async updateDesign(
@@ -251,76 +99,144 @@ export class SavedDesignsService {
     designId: string,
     updates: Partial<SavedDesign>,
   ): Promise<SavedDesign | null> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.updateDesign(userId, designId, updates);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      const designs = this.loadUserDesigns(userId);
-      const designIndex = designs.findIndex((design) => design.id === designId);
-
-      if (designIndex === -1) {
-        return null;
-      }
-
-      designs[designIndex] = {
-        ...designs[designIndex],
-        ...updates,
-        updatedAt: new Date(),
-      };
-
-      this.saveUserDesigns(userId, designs);
-      return designs[designIndex];
-    }
+    return await this.supabaseService.updateDesign(userId, designId, updates);
   }
 
   async deleteDesign(userId: string, designId: string): Promise<boolean> {
+    return await this.supabaseService.deleteDesign(userId, designId);
+  }
+
+  async duplicateDesign(
+    userId: string,
+    designId: string,
+    title?: string,
+  ): Promise<SavedDesign | null> {
+    // Get the original design
+    const originalDesign = await this.getDesignById(userId, designId);
+    if (!originalDesign) {
+      return null;
+    }
+
+    // Generate a unique title
+    let duplicateTitle = title;
+    if (!duplicateTitle) {
+      const existingDesigns = await this.getUserDesigns(userId);
+      const baseName = originalDesign.title || 'Design';
+      duplicateTitle = `${baseName} - Copy`;
+      let counter = 1;
+      
+      while (
+        existingDesigns.some((design) => design.title === duplicateTitle)
+      ) {
+        counter++;
+        duplicateTitle = `${baseName} - Copy ${counter}`;
+      }
+    }
+
+    // Copy images if they exist and create new URLs
+    let copiedImageUrls: string[] = [];
+    let copiedThumbnail: string | undefined;
+    
     try {
-      // Try to use Supabase first
-      return await this.supabaseService.deleteDesign(userId, designId);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      const designs = this.loadUserDesigns(userId);
-      const initialLength = designs.length;
-      const filteredDesigns = designs.filter(
-        (design) => design.id !== designId,
-      );
-
-      if (filteredDesigns.length === initialLength) {
-        return false; // Design not found
+      // Copy thumbnail if it exists
+      if (originalDesign.thumbnail) {
+        copiedThumbnail = await this.supabaseService.copyImage(originalDesign.thumbnail, userId);
       }
 
-      this.saveUserDesigns(userId, filteredDesigns);
-      return true;
+      // Copy image URLs if they exist
+      if (originalDesign.imageUrls && originalDesign.imageUrls.length > 0) {
+        copiedImageUrls = await Promise.all(
+          originalDesign.imageUrls.map(url => 
+            this.supabaseService.copyImage(url, userId)
+          )
+        );
+      }
+
+      // Copy images from design data pages
+      let copiedDesignData = { ...originalDesign.designData };
+      if (copiedDesignData.pages) {
+        copiedDesignData.pages = await Promise.all(
+          copiedDesignData.pages.map(async (page) => {
+            if (page.image && page.image.includes('supabase')) {
+              const copiedImage = await this.supabaseService.copyImage(page.image, userId);
+              return { ...page, image: copiedImage };
+            }
+            return page;
+          })
+        );
+      }
+
+      // Create the duplicate with copied images
+      const duplicateData = {
+        title: duplicateTitle,
+        description: originalDesign.description || `Copy of ${originalDesign.title}`,
+        category: originalDesign.category,
+        designData: copiedDesignData,
+        thumbnail: copiedThumbnail,
+        imageUrls: copiedImageUrls,
+        imageTimestamp: Date.now(),
+        author: originalDesign.author || 'User',
+        price: originalDesign.price || 0,
+        language: originalDesign.language || 'en',
+        region: originalDesign.region || 'US',
+        popularity: 0,
+        num_downloads: 0,
+        searchKeywords: originalDesign.searchKeywords || [],
+        status: 'draft' as const,
+        // Copy template-related fields
+        templateId: originalDesign.templateId,
+        slug: undefined, // Generate new slug
+        categoryId: originalDesign.categoryId,
+        authorId: originalDesign.authorId,
+        createdByUserId: userId,
+        sourceTemplateId: originalDesign.sourceTemplateId,
+        tags: originalDesign.tags,
+        currentVersion: originalDesign.currentVersion,
+      };
+
+      return await this.saveDesign(userId, duplicateData);
+    } catch (error) {
+      console.error('Error copying images during duplication:', error);
+      // Fallback: create duplicate without copying images
+      const duplicateData = {
+        title: duplicateTitle,
+        description: originalDesign.description || `Copy of ${originalDesign.title}`,
+        category: originalDesign.category,
+        designData: originalDesign.designData,
+        thumbnail: originalDesign.thumbnail,
+        imageUrls: originalDesign.imageUrls,
+        imageTimestamp: originalDesign.imageTimestamp,
+        author: originalDesign.author || 'User',
+        price: originalDesign.price || 0,
+        language: originalDesign.language || 'en',
+        region: originalDesign.region || 'US',
+        popularity: 0,
+        num_downloads: 0,
+        searchKeywords: originalDesign.searchKeywords || [],
+        status: 'draft' as const,
+        templateId: originalDesign.templateId,
+        slug: undefined,
+        categoryId: originalDesign.categoryId,
+        authorId: originalDesign.authorId,
+        createdByUserId: userId,
+        sourceTemplateId: originalDesign.sourceTemplateId,
+        tags: originalDesign.tags,
+        currentVersion: originalDesign.currentVersion,
+      };
+
+      return await this.saveDesign(userId, duplicateData);
     }
+  }
+
+  async getPublishedDesigns(): Promise<SavedDesign[]> {
+    return await this.supabaseService.getPublishedDesigns();
   }
 
   async publishDesign(
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.publishDesign(userId, designId);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      return await this.updateDesign(userId, designId, { status: 'published' });
-    }
+    return await this.supabaseService.publishDesign(userId, designId);
   }
 
   async publishDesignWithMetadata(
@@ -335,329 +251,86 @@ export class SavedDesignsService {
       region?: string;
     },
   ): Promise<SavedDesign | null> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.publishDesignWithMetadata(
-        userId,
-        designId,
-        metadata,
-      );
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      const updateData = {
-        status: 'published' as const,
-        title: metadata.title,
-        description: metadata.description,
-        category: metadata.category,
-        searchKeywords: metadata.searchKeywords,
-        language: metadata.language || 'en',
-        region: metadata.region || 'US',
-        upload_time: new Date().toISOString(),
-        popularity: 0,
-        num_downloads: 0,
-        price: 0,
-      };
-
-      return await this.updateDesign(userId, designId, updateData);
-    }
+    return await this.supabaseService.publishDesignWithMetadata(userId, designId, metadata);
   }
 
   async unpublishDesign(
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.unpublishDesign(userId, designId);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      return await this.updateDesign(userId, designId, { status: 'draft' });
-    }
-  }
-
-  async getPublishedDesigns(): Promise<SavedDesign[]> {
-    try {
-      console.log('Attempting to fetch published designs from Supabase...');
-      // Try to use Supabase first
-      const supabaseResults = await this.supabaseService.getPublishedDesigns();
-      console.log(
-        `Successfully fetched ${supabaseResults.length} published designs from Supabase`,
-      );
-      return supabaseResults;
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage - search through all user files for published designs
-      const publishedDesigns: SavedDesign[] = [];
-
-      if (!fs.existsSync(this.designsDir)) {
-        console.log('Designs directory does not exist, returning empty array');
-        return publishedDesigns;
-      }
-
-      const userFiles = fs.readdirSync(this.designsDir);
-      console.log(
-        `Found ${userFiles.length} user design files to check for published designs`,
-      );
-
-      for (const userFile of userFiles) {
-        if (userFile.endsWith('.json')) {
-          const filePath = path.join(this.designsDir, userFile);
-          try {
-            const data = fs.readFileSync(filePath, 'utf8');
-            const designs = JSON.parse(data);
-            const published = designs.filter(
-              (d: SavedDesign) => d.status === 'published',
-            );
-            if (published.length > 0) {
-              console.log(
-                `Found ${published.length} published designs in ${userFile}`,
-              );
-            }
-            publishedDesigns.push(...published);
-          } catch (error) {
-            console.error(`Error reading file ${userFile}:`, error);
-            continue;
-          }
-        }
-      }
-
-      console.log(
-        `Total published designs found in file storage: ${publishedDesigns.length}`,
-      );
-      return publishedDesigns;
-    }
+    return await this.supabaseService.unpublishDesign(userId, designId);
   }
 
   async createSharedCopy(
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    // Find the original design
+    // Get the original design
     const originalDesign = await this.getDesignById(userId, designId);
     if (!originalDesign) {
       return null;
     }
 
-    // Create a new unique ID for the shared copy
-    const sharedId = `shared_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Create a deep copy of the design data
-    const sharedDesignData = JSON.parse(
-      JSON.stringify(originalDesign.designData),
-    );
-
-    // Copy images to shared location and update paths
-    if (sharedDesignData.pages) {
-      for (let i = 0; i < sharedDesignData.pages.length; i++) {
-        const page = sharedDesignData.pages[i];
-        if (page.image) {
-          const newImagePath = await this.copyImageToShared(
-            page.image,
-            sharedId,
-            i,
-          );
-          page.image = newImagePath;
-        }
-      }
-    }
-
-    // Copy edited pages if they exist
-    if (sharedDesignData.editedPages) {
-      const newEditedPages: Record<number, string> = {};
-      for (const [pageIndex, imagePath] of Object.entries(
-        sharedDesignData.editedPages,
-      )) {
-        const newImagePath = await this.copyImageToShared(
-          imagePath as string,
-          sharedId,
-          parseInt(pageIndex),
-        );
-        newEditedPages[parseInt(pageIndex)] = newImagePath;
-      }
-      sharedDesignData.editedPages = newEditedPages;
-    }
-
-    // Create the shared design object
-    const sharedDesign: SavedDesign = {
+    // Create a shared copy with public visibility
+    const sharedData = {
       ...originalDesign,
-      id: sharedId,
-      title: `${originalDesign.title} (Shared Copy)`,
-      description: originalDesign.description,
-      designData: sharedDesignData,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      title: `${originalDesign.title} (Shared)`,
+      userId, // Keep original user
+      status: 'published' as const,
     };
 
-    // Save the shared design to a special shared designs file
-    await this.saveSharedDesign(sharedDesign);
+    // Remove fields that shouldn't be copied
+    delete (sharedData as any).id;
+    delete (sharedData as any).createdAt;
+    delete (sharedData as any).updatedAt;
 
-    return sharedDesign;
-  }
-
-  private async copyImageToShared(
-    originalImagePath: string,
-    sharedId: string,
-    pageIndex: number,
-  ): Promise<string> {
-    try {
-      // Extract filename from path
-      const pathParts = originalImagePath.split('/');
-      const filename = pathParts[pathParts.length - 1];
-      const extension = filename.split('.').pop() || 'jpg';
-
-      // Create new filename for shared copy
-      const newFilename = `shared_${sharedId}_page_${pageIndex}.${extension}`;
-      const sharedImagesDir = path.join(
-        process.cwd(),
-        'public',
-        'shared-images',
-      );
-
-      // Ensure shared images directory exists
-      if (!fs.existsSync(sharedImagesDir)) {
-        fs.mkdirSync(sharedImagesDir, { recursive: true });
-      }
-
-      const originalFilePath = path.join(
-        process.cwd(),
-        'public',
-        originalImagePath,
-      );
-      const newFilePath = path.join(sharedImagesDir, newFilename);
-
-      // Copy the file
-      if (fs.existsSync(originalFilePath)) {
-        fs.copyFileSync(originalFilePath, newFilePath);
-        return `shared-images/${newFilename}`;
-      } else {
-        console.warn(`Original image file not found: ${originalFilePath}`);
-        return originalImagePath; // Fallback to original path
-      }
-    } catch (error) {
-      console.error('Error copying image to shared location:', error);
-      return originalImagePath; // Fallback to original path
-    }
-  }
-
-  private async saveSharedDesign(sharedDesign: SavedDesign): Promise<void> {
-    const sharedDesignsFile = path.join(this.designsDir, 'shared-designs.json');
-    let sharedDesigns: SavedDesign[] = [];
-
-    if (fs.existsSync(sharedDesignsFile)) {
-      try {
-        const data = fs.readFileSync(sharedDesignsFile, 'utf8');
-        sharedDesigns = JSON.parse(data);
-      } catch (error) {
-        console.error('Error loading shared designs:', error);
-        sharedDesigns = [];
-      }
-    }
-
-    sharedDesigns.push(sharedDesign);
-
-    try {
-      fs.writeFileSync(
-        sharedDesignsFile,
-        JSON.stringify(sharedDesigns, null, 2),
-      );
-    } catch (error) {
-      console.error('Error saving shared design:', error);
-      throw new Error('Failed to save shared design');
-    }
+    return await this.saveDesign(userId, sharedData);
   }
 
   // New methods for sw_templates compatibility
 
-  /**
-   * Copy a template from sw_templates to saved_designs for user editing
-   */
   async copyFromTemplate(
     templateId: string,
     userId: string,
     title?: string,
   ): Promise<SavedDesign | null> {
-    try {
-      // Try to use Supabase first (it should have the SQL function)
-      return await this.supabaseService.copyFromTemplate(templateId, userId, title);
-    } catch (error) {
-      console.log(
-        'Supabase not available for template copying, not supported in file storage:',
-        error.message,
-      );
-      throw new Error('Template copying requires database connection');
-    }
+    return await this.supabaseService.copyFromTemplate(templateId, userId, title);
   }
 
-  /**
-   * Publish a saved design back to sw_templates
-   */
   async publishToTemplates(
     designId: string,
     userId: string,
   ): Promise<{ templateId: string; savedDesign: SavedDesign } | null> {
-    try {
-      // Try to use Supabase first (it should have the SQL function)
-      return await this.supabaseService.publishToTemplates(designId, userId);
-    } catch (error) {
-      console.log(
-        'Supabase not available for template publishing, not supported in file storage:',
-        error.message,
-      );
-      throw new Error('Template publishing requires database connection');
-    }
+    // Delegate to promoteToTemplate to avoid relying on missing primary RPC
+    return await this.supabaseService.promoteToTemplate(designId, userId);
   }
 
   /**
-   * Get templates that can be copied (from sw_templates)
+   * Directly promote a saved design to a template using the fallback RPC only.
+   * Use this when the primary publish_saved_design_to_templates function is missing.
    */
+  async promoteToTemplate(
+    designId: string,
+    userId: string,
+  ): Promise<{ templateId: string; savedDesign: SavedDesign } | null> {
+    return await this.supabaseService.promoteToTemplate(designId, userId);
+  }
+
   async getAvailableTemplates(
     userId?: string,
     category?: string,
-    limit?: number,
-    offset?: number,
+    limit = 20,
+    offset = 0,
   ): Promise<any[]> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.getAvailableTemplates(userId, category, limit, offset);
-    } catch (error) {
-      console.log(
-        'Supabase not available for template fetching, not supported in file storage:',
-        error.message,
-      );
-      return [];
-    }
+    return await this.supabaseService.getAvailableTemplates(
+      userId,
+      category,
+      limit,
+      offset,
+    );
   }
 
-  /**
-   * Get designs that have been published to templates
-   */
   async getPublishedToTemplates(userId: string): Promise<SavedDesign[]> {
-    try {
-      // Try to use Supabase first
-      return await this.supabaseService.getPublishedToTemplates(userId);
-    } catch (error) {
-      console.log(
-        'Supabase not available, falling back to file storage:',
-        error.message,
-      );
-
-      // Fallback to file-based storage
-      const designs = this.loadUserDesigns(userId);
-      return designs.filter(design => design.status === 'published_to_templates');
-    }
+    return await this.supabaseService.getPublishedToTemplates(userId);
   }
 }

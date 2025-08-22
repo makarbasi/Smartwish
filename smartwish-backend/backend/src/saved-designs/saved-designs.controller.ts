@@ -9,6 +9,7 @@ import {
   Req,
   Res,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { SavedDesignsService, SavedDesign } from './saved-designs.service';
@@ -52,11 +53,10 @@ export class SavedDesignsController {
       );
       console.log('saveDesign: Design saved successfully');
       res.json(savedDesign);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error saving design:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to save design', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({ message: 'Failed to save design', error: msg });
     }
   }
 
@@ -78,17 +78,42 @@ export class SavedDesignsController {
       const designs = await this.savedDesignsService.getUserDesigns(userId);
       console.log('getUserDesigns: Found designs count:', designs.length);
       res.json(designs);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error getting user designs:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to get designs', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ message: 'Failed to get designs', error: msg });
     }
   }
 
+  // NOTE: Place static specific route BEFORE dynamic ':id' to avoid capturing
+  @Get('published-to-templates')
+  async getPublishedToTemplates(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+
+      const publishedDesigns =
+        await this.savedDesignsService.getPublishedToTemplates(userId);
+
+      res.json(publishedDesigns);
+    } catch (error: unknown) {
+      console.error('Error getting published to templates:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      res
+        .status(500)
+        .json({ message: 'Failed to get published to templates', error: msg });
+    }
+  }
+
+  // Constrain :id to UUID to avoid capturing static routes like 'published-to-templates'
   @Get(':id')
   async getDesignById(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
@@ -107,11 +132,10 @@ export class SavedDesignsController {
       }
 
       res.json(design);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error getting design:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to get design', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({ message: 'Failed to get design', error: msg });
     }
   }
 
@@ -129,17 +153,16 @@ export class SavedDesignsController {
       }
 
       res.json(design);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error getting public design:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to get design', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({ message: 'Failed to get design', error: msg });
     }
   }
 
   @Put(':id')
   async updateDesign(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Body() updates: Partial<SavedDesign>,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -160,17 +183,16 @@ export class SavedDesignsController {
       }
 
       res.json(updatedDesign);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error updating design:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to update design', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({ message: 'Failed to update design', error: msg });
     }
   }
 
   @Delete(':id')
   async deleteDesign(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
@@ -189,17 +211,57 @@ export class SavedDesignsController {
       }
 
       res.json({ message: 'Design deleted successfully' });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error deleting design:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to delete design', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({ message: 'Failed to delete design', error: msg });
+    }
+  }
+
+  @Post(':id/duplicate')
+  async duplicateDesign(
+    @Param('id', new ParseUUIDPipe()) designId: string,
+    @Body() body: { title?: string },
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+
+  console.log(`Duplicating design ${designId} for user ${userId}`);
+      const duplicatedDesign = await this.savedDesignsService.duplicateDesign(
+        userId,
+        designId,
+        body.title,
+      );
+      
+      if (!duplicatedDesign) {
+        return res.status(404).json({ message: 'Design not found' });
+      }
+
+      console.log(
+        `Design duplicated successfully with ID: ${duplicatedDesign.id}`,
+      );
+      res.json({
+        message: `Design duplicated as "${duplicatedDesign.title}"`,
+        design: duplicatedDesign,
+      });
+    } catch (error: unknown) {
+      console.error('Error duplicating design:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({
+        message: 'Failed to duplicate design',
+        error: msg,
+      });
     }
   }
 
   @Post(':id/share')
   async createSharedCopy(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
@@ -218,18 +280,19 @@ export class SavedDesignsController {
       }
 
       res.json(sharedDesign);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error creating shared copy:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         message: 'Failed to create shared copy',
-        error: error.message,
+        error: msg,
       });
     }
   }
 
   @Post(':id/publish')
   async publishDesign(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
@@ -248,17 +311,16 @@ export class SavedDesignsController {
       }
 
       res.json(publishedDesign);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error publishing design:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to publish design', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({ message: 'Failed to publish design', error: msg });
     }
   }
 
   @Post(':id/publish-with-metadata')
   async publishDesignWithMetadata(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Body()
     publishData: {
       title: string;
@@ -289,17 +351,16 @@ export class SavedDesignsController {
       }
 
       res.json(publishedDesign);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error publishing design with metadata:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to publish design', error: error.message });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({ message: 'Failed to publish design', error: msg });
     }
   }
 
   @Post(':id/unpublish')
   async unpublishDesign(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
@@ -318,11 +379,12 @@ export class SavedDesignsController {
       }
 
       res.json(unpublishedDesign);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error unpublishing design:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       res
         .status(500)
-        .json({ message: 'Failed to unpublish design', error: error.message });
+        .json({ message: 'Failed to unpublish design', error: msg });
     }
   }
 
@@ -333,11 +395,12 @@ export class SavedDesignsController {
       const publishedDesigns =
         await this.savedDesignsService.getPublishedDesigns();
       res.json(publishedDesigns);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error getting published designs:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         message: 'Failed to get published designs',
-        error: error.message,
+        error: msg,
       });
     }
   }
@@ -368,18 +431,19 @@ export class SavedDesignsController {
       }
 
       res.json(copiedDesign);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error copying from template:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         message: 'Failed to copy from template',
-        error: error.message,
+        error: msg,
       });
     }
   }
 
   @Post(':id/publish-to-templates')
   async publishToTemplates(
-    @Param('id') designId: string,
+    @Param('id', new ParseUUIDPipe()) designId: string,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
@@ -388,8 +452,8 @@ export class SavedDesignsController {
       if (!userId) {
         return res.status(401).json({ message: 'User not authenticated' });
       }
-
-      const result = await this.savedDesignsService.publishToTemplates(
+      // Directly use promoteToTemplate to bypass missing primary RPC function issues
+      const result = await this.savedDesignsService.promoteToTemplate(
         designId,
         userId,
       );
@@ -399,11 +463,41 @@ export class SavedDesignsController {
       }
 
       res.json(result);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error publishing to templates:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         message: 'Failed to publish to templates',
-        error: error.message,
+        error: msg,
+      });
+    }
+  }
+
+  @Post(':id/promote-to-template')
+  async promoteToTemplate(
+    @Param('id', new ParseUUIDPipe()) designId: string,
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+      const result = await this.savedDesignsService.promoteToTemplate(
+        designId,
+        userId,
+      );
+      if (!result) {
+        return res.status(404).json({ message: 'Design not found' });
+      }
+      res.json(result);
+    } catch (error: unknown) {
+      console.error('Error promoting to template:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({
+        message: 'Failed to promote to template',
+        error: msg,
       });
     }
   }
@@ -427,34 +521,12 @@ export class SavedDesignsController {
       );
 
       res.json(templates);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error getting available templates:', error);
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         message: 'Failed to get available templates',
-        error: error.message,
-      });
-    }
-  }
-
-  @Get('published-to-templates')
-  async getPublishedToTemplates(
-    @Req() req: AuthenticatedRequest,
-    @Res() res: Response,
-  ) {
-    try {
-      const userId = req.user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ message: 'User not authenticated' });
-      }
-
-      const publishedDesigns = await this.savedDesignsService.getPublishedToTemplates(userId);
-
-      res.json(publishedDesigns);
-    } catch (error) {
-      console.error('Error getting published to templates:', error);
-      res.status(500).json({
-        message: 'Failed to get published to templates',
-        error: error.message,
+        error: msg,
       });
     }
   }

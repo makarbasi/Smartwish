@@ -38,7 +38,12 @@ export default function TemplatePreviewModal({
   product,
   onCustomize,
 }: TemplatePreviewModalProps) {
-  console.log("🎭 TemplatePreviewModal render - open:", open, "product:", !!product);
+  console.log(
+    "🎭 TemplatePreviewModal render - open:",
+    open,
+    "product:",
+    !!product
+  );
   const [currentPage, setCurrentPage] = useState(0);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,15 +63,15 @@ export default function TemplatePreviewModal({
   // Handle ESC key to close modal
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && open) {
+      if (event.key === "Escape" && open) {
         onClose();
       }
     };
 
     if (open) {
-      document.addEventListener('keydown', handleEscape);
+      document.addEventListener("keydown", handleEscape);
       return () => {
-        document.removeEventListener('keydown', handleEscape);
+        document.removeEventListener("keydown", handleEscape);
       };
     }
   }, [open, onClose]);
@@ -142,14 +147,18 @@ export default function TemplatePreviewModal({
   return (
     <Dialog open={open} onClose={() => {}} className="relative z-50">
       <DialogBackdrop className="fixed inset-0 bg-black/40" />
-      <div className="fixed inset-0 overflow-y-auto p-4 sm:p-8" onClick={() => onClose()}>
+      <div
+        className="fixed inset-0 overflow-y-auto p-4 sm:p-8"
+        onClick={() => onClose()}
+      >
         <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 sm:grid-cols-[2fr_1fr]">
           <DialogPanel className="col-span-1 rounded-2xl bg-transparent">
-            <div className="relative overflow-hidden rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="relative overflow-hidden rounded-xl bg-white shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
               {/* Desktop: Flipbook View */}
-              <div
-                className="hidden lg:flex items-center justify-center relative"
-              >
+              <div className="hidden lg:flex items-center justify-center relative">
                 {/* Previous Page Button */}
                 <button
                   onClick={(e) => {
@@ -193,13 +202,13 @@ export default function TemplatePreviewModal({
                   >
                     {templatePages.map((page, index) => (
                       <div key={index} className="page-hard">
-                        <div className="page-content w-full h-full relative">
+                        <div className="page-content">
                           <Image
                             src={page}
                             alt={`${product.imageAlt} - Page ${index + 1}`}
-                            width={400}
-                            height={550}
-                            className="w-full h-full object-cover rounded-lg"
+                            fill
+                            className="object-cover"
+                            sizes="400px"
                           />
                         </div>
                       </div>
@@ -226,9 +235,7 @@ export default function TemplatePreviewModal({
               </div>
 
               {/* Tablet & Mobile: Scrollable Pages View */}
-              <div
-                className="lg:hidden relative"
-              >
+              <div className="lg:hidden relative">
                 {/* Previous Page Button */}
                 <button
                   onClick={(e) => {
@@ -298,7 +305,10 @@ export default function TemplatePreviewModal({
           </DialogPanel>
 
           {/* Desktop Sidebar */}
-          <div className="relative rounded-xl bg-white p-6 text-gray-900 shadow-2xl ring-1 ring-gray-100" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative rounded-xl bg-white p-6 text-gray-900 shadow-2xl ring-1 ring-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               onClick={() => onClose()}
               className="absolute right-3 top-3 rounded-md p-1 text-gray-500 hover:bg-gray-100"
@@ -315,9 +325,17 @@ export default function TemplatePreviewModal({
 
             <button
               onClick={(e) => {
+                console.log("🚀 Use this template button clicked!");
+                console.log("📦 Product data:", product);
+                console.log("🔧 onCustomize function:", typeof onCustomize);
                 e.stopPropagation();
                 e.preventDefault();
-                onCustomize(product);
+                try {
+                  onCustomize(product);
+                } catch (error) {
+                  console.error("❌ Error calling onCustomize:", error);
+                  alert(`Error: ${error.message}`);
+                }
               }}
               className="mt-5 inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
             >
@@ -340,6 +358,97 @@ export default function TemplatePreviewModal({
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .flipbook-shadow {
+          filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.3));
+          transition: transform 0.3s ease, filter 0.3s ease;
+        }
+
+        .flipbook-shadow:hover {
+          transform: scale(1.02);
+          filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.4));
+        }
+
+        .flipbook-container-desktop {
+          padding: 20px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 600px;
+        }
+
+        .page-hard {
+          width: 100%;
+          height: 100%;
+          background: #fff;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15),
+            0 2px 10px rgba(0, 0, 0, 0.1);
+          display: flex;
+          flex-direction: column;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform: translateZ(0);
+          transition: box-shadow 0.3s ease;
+          cursor: grab;
+        }
+
+        .page-hard:active {
+          cursor: grabbing;
+        }
+
+        .page-content {
+          width: 100%;
+          height: 100%;
+          border-radius: 8px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform: translateZ(0);
+          position: relative;
+        }
+
+        /* Page corner hint animation */
+        .page-hard::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          right: 0;
+          width: 30px;
+          height: 30px;
+          background: linear-gradient(
+            -45deg,
+            transparent 0%,
+            transparent 48%,
+            rgba(0, 0, 0, 0.1) 49%,
+            rgba(0, 0, 0, 0.1) 51%,
+            transparent 52%,
+            transparent 100%
+          );
+          z-index: 10;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+
+        .page-hard:hover::before {
+          opacity: 1;
+        }
+
+        /* Hide scrollbar for mobile view */
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </Dialog>
   );
 }

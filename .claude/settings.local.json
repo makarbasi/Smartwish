@@ -7,12 +7,14 @@
       "Bash(taskkill:*)",
       "Bash(npm run type-check:*)",
       "Bash(npm run:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(cmd /c:*)"
     ],
     "deny": [],
     "ask": [],
     "additionalDirectories": [
-      "f:\\Frontend_Smartwish\\smartwish-frontend"
+      "f:\\Frontend_Smartwish\\smartwish-frontend",
+      "f:\\Frontend_Smartwish\\smartwish-backend\\backend"
     ]
   }
 }

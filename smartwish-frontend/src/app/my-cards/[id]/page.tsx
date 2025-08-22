@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
@@ -9,22 +9,31 @@ import Image from 'next/image'
 import HTMLFlipBook from "react-pageflip"
 import PinturaEditorModal from '@/components/PinturaEditorModal'
 import useSWR from 'swr'
-import { saveTemplateWithImages } from '@/utils/templateUtils'
+import { saveSavedDesignWithImages } from '@/utils/savedDesignUtils'
+import { useSession } from 'next-auth/react'
 
-type Template = {
+type SavedDesign = {
   id: string
   title: string
-  image_1: string
-  image_2: string
-  image_3: string
-  image_4: string
-  created_at: string
+  imageUrls?: string[]
+  thumbnail?: string
+  createdAt: string | Date
+  designData?: {
+    templateKey: string
+    pages: Array<{
+      header: string
+      image: string
+      text: string
+      footer: string
+    }>
+    editedPages: Record<number, string>
+  }
 }
 
 type ApiResponse = {
   success: boolean
-  data: Template[]
-  count: number
+  data: SavedDesign[]
+  count?: number
 }
 
 type CardData = {
@@ -34,29 +43,56 @@ type CardData = {
   pages: string[]
 }
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+const fetcher = (url: string) => fetch(url, {
+  credentials: 'include', // Include cookies for authentication
+}).then((res) => res.json())
 
-// Transform template to card data
-const transformTemplateToCard = (template: Template): CardData => {
-  const pages = [
-    template.image_1,
-    template.image_2 || template.image_1, // Fallback to image_1 if image_2 doesn't exist
-    template.image_3 || template.image_1, // Fallback to image_1 if image_3 doesn't exist  
-    template.image_4 || template.image_1  // Fallback to image_1 if image_4 doesn't exist
-  ].filter(Boolean) // Remove any null/undefined values
+// Transform saved design to card data
+const transformSavedDesignToCard = (savedDesign: SavedDesign): CardData => {
+  // First priority: Extract images from designData.pages
+  let pages: string[] = []
+  
+  if (savedDesign.designData?.pages && savedDesign.designData.pages.length > 0) {
+    // Extract image URLs from each page
+    pages = savedDesign.designData.pages.map(page => page.image).filter(Boolean)
+  }
+  
+  // Second priority: Use imageUrls array if no pages found
+  if (pages.length === 0 && savedDesign.imageUrls && savedDesign.imageUrls.length > 0) {
+    pages = savedDesign.imageUrls
+  }
+  
+  // Third priority: Use thumbnail as fallback for all pages
+  if (pages.length === 0 && savedDesign.thumbnail) {
+    pages = [savedDesign.thumbnail, savedDesign.thumbnail, savedDesign.thumbnail, savedDesign.thumbnail]
+  }
+  
+  // Remove any null/undefined values
+  pages = pages.filter(Boolean)
+  
+  // Ensure we have at least 4 pages for the card view
+  while (pages.length < 4) {
+    if (pages.length > 0) {
+      pages.push(pages[0]) // Duplicate first page if we don't have enough
+    } else {
+      pages.push('') // Add empty string as fallback
+    }
+  }
 
   return {
-    id: template.id,
-    name: template.title,
-    createdAt: template.created_at,
-    pages
+    id: savedDesign.id,
+    name: savedDesign.title,
+    createdAt: typeof savedDesign.createdAt === 'string' ? savedDesign.createdAt : savedDesign.createdAt.toISOString(),
+    pages: pages.slice(0, 4) // Limit to 4 pages
   }
 }
 
 export default function CustomizeCardPage() {
+  const { data: session, status } = useSession()
   const params = useParams()
   const cardId = params?.id as string
   const [currentPage, setCurrentPage] = useState(0)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flipBookRef = useRef<any>(null)
   
   // Pintura Editor state
@@ -72,13 +108,13 @@ export default function CustomizeCardPage() {
   const [touchStart, setTouchStart] = useState<number | null>(null)
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
 
-  // Fetch all templates and find the specific one
-  const { data: apiResponse, error, isLoading } = useSWR<ApiResponse>('/api/templates', fetcher)
+  // Fetch all saved designs and find the specific one
+  const { data: apiResponse, error, isLoading } = useSWR<ApiResponse>('/api/saved-designs', fetcher)
   
   const cardData = useMemo(() => {
     if (!apiResponse?.data || !cardId) return null
-    const template = apiResponse.data.find(t => t.id === cardId)
-    return template ? transformTemplateToCard(template) : null
+    const savedDesign = apiResponse.data.find(d => d.id === cardId)
+    return savedDesign ? transformSavedDesignToCard(savedDesign) : null
   }, [apiResponse, cardId])
 
   // Initialize page images when card data is available
@@ -88,10 +124,59 @@ export default function CustomizeCardPage() {
     }
   }, [cardData])
 
+  // Define callback functions before early returns
+  const handleFlipNext = useCallback(() => {
+    // Check if we're on mobile/tablet (flipbook is hidden)
+    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
+      // Mobile/Tablet: directly update currentPage state
+      if (currentPage < 3) {
+        setCurrentPage(currentPage + 1)
+      }
+    } else {
+      // Desktop: use flipbook
+      if (flipBookRef.current && currentPage < 3) {
+        flipBookRef.current.pageFlip().flipNext()
+      }
+    }
+  }, [currentPage])
+
+  const handleFlipPrev = useCallback(() => {
+    // Check if we're on mobile/tablet (flipbook is hidden)
+    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
+      // Mobile/Tablet: directly update currentPage state
+      if (currentPage > 0) {
+        setCurrentPage(currentPage - 1)
+      }
+    } else {
+      // Desktop: use flipbook
+      if (flipBookRef.current && currentPage > 0) {
+        flipBookRef.current.pageFlip().flipPrev()
+      }
+    }
+  }, [currentPage])
+
+  const goToPage = useCallback((pageIndex: number) => {
+    // Check if we're on mobile/tablet (flipbook is hidden)
+    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
+      // Mobile/Tablet: directly update currentPage state
+      setCurrentPage(pageIndex)
+    } else {
+      // Desktop: use flipbook
+      if (flipBookRef.current) {
+        flipBookRef.current.pageFlip().flip(pageIndex)
+      }
+    }
+  }, [])
+
+  const handlePageFlip = useCallback((e: { data: number }) => {
+    setCurrentPage(e.data)
+  }, [])
+
   // Listen for page navigation events from Sidebar
   useEffect(() => {
-    const handlePageNavigation = (event: any) => {
-      const { action, page } = event.detail
+    const handlePageNavigation = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const { action, page } = customEvent.detail
       
       switch (action) {
         case 'prev':
@@ -108,12 +193,42 @@ export default function CustomizeCardPage() {
 
     window.addEventListener('pageNavigation', handlePageNavigation)
     return () => window.removeEventListener('pageNavigation', handlePageNavigation)
-  }, [currentPage])
+  }, [currentPage, handleFlipNext, handleFlipPrev, goToPage])
 
   // Notify Sidebar about current page changes
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('pageChanged', { detail: { currentPage } }))
   }, [currentPage])
+
+  // Keyboard navigation for flipbook
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle keyboard events on desktop when flipbook is visible
+      if (typeof window !== 'undefined' && window.innerWidth >= 1280) {
+        switch (event.key) {
+          case 'ArrowLeft':
+            event.preventDefault()
+            handleFlipPrev()
+            break
+          case 'ArrowRight':
+            event.preventDefault()
+            handleFlipNext()
+            break
+          case 'Home':
+            event.preventDefault()
+            goToPage(0)
+            break
+          case 'End':
+            event.preventDefault()
+            goToPage(3)
+            break
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleFlipNext, handleFlipPrev, goToPage])
 
   // Swipe handling functions
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -147,17 +262,22 @@ export default function CustomizeCardPage() {
       return
     }
 
+    if (!session?.user?.id) {
+      alert('Please sign in to save cards')
+      return
+    }
+
     setIsSaving(true)
     setSaveMessage('')
 
     try {
       console.log('💾 Saving card:', cardData.name)
       console.log('📸 Current page images:', pageImages)
+      console.log('🖼️ Cover image (first):', pageImages[0])
+  const userId = session.user.id
+  console.log('🆔 Using user ID:', userId)
 
-      // Use a dummy userId for now - in a real app, this would come from auth context
-      const userId = 'user_123' // TODO: Replace with actual user ID from auth
-
-      const result = await saveTemplateWithImages(cardData.id, pageImages, {
+      const result = await saveSavedDesignWithImages(cardData.id, pageImages, {
         action: 'update',
         title: cardData.name,
         userId,
@@ -165,11 +285,11 @@ export default function CustomizeCardPage() {
       })
 
       console.log('✅ Save result:', result)
-      setSaveMessage('Card saved successfully! Images uploaded to cloud.')
+      setSaveMessage('Card saved successfully!')
       
-      // Log the cloud URLs for verification
-      if (result.uploadResult?.cloudUrls) {
-        console.log('🌐 Uploaded cloud URLs:', result.uploadResult.cloudUrls)
+      // Log the save result for verification
+      if (result.saveResult) {
+        console.log('💾 Save result:', result.saveResult)
       }
       
       // Show success message for a few seconds
@@ -177,10 +297,11 @@ export default function CustomizeCardPage() {
 
     } catch (error) {
       console.error('❌ Save failed:', error)
-      setSaveMessage('Failed to save card. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setSaveMessage(`Failed to save card: ${errorMessage}`)
       
       // Show error message for a few seconds
-      setTimeout(() => setSaveMessage(''), 5000)
+      setTimeout(() => setSaveMessage(''), 8000)
     } finally {
       setIsSaving(false)
     }
@@ -192,17 +313,22 @@ export default function CustomizeCardPage() {
       return
     }
 
+    if (!session?.user?.id) {
+      alert('Please sign in to save cards')
+      return
+    }
+
     setIsSaving(true)
     setSaveMessage('')
 
     try {
       console.log('📄 Saving new copy of card:', cardData.name)
       console.log('📸 Current page images:', pageImages)
+      console.log('🖼️ Cover image (first):', pageImages[0])
+  const userId = session.user.id
+  console.log('🆔 Using user ID:', userId)
 
-      // Use a dummy userId for now - in a real app, this would come from auth context
-      const userId = 'user_123' // TODO: Replace with actual user ID from auth
-
-      const result = await saveTemplateWithImages(cardData.id, pageImages, {
+      const result = await saveSavedDesignWithImages(cardData.id, pageImages, {
         action: 'duplicate',
         title: `Copy of ${cardData.name}`,
         userId,
@@ -210,11 +336,11 @@ export default function CustomizeCardPage() {
       })
 
       console.log('✅ Duplicate result:', result)
-      setSaveMessage('New copy saved successfully! Images uploaded to cloud.')
+      setSaveMessage('New copy saved successfully!')
       
-      // Log the cloud URLs for verification
-      if (result.uploadResult?.cloudUrls) {
-        console.log('🌐 Uploaded cloud URLs:', result.uploadResult.cloudUrls)
+      // Log the save result for verification
+      if (result.saveResult) {
+        console.log('📄 Duplicate result:', result.saveResult)
       }
       
       // Show success message for a few seconds
@@ -222,13 +348,42 @@ export default function CustomizeCardPage() {
 
     } catch (error) {
       console.error('❌ Duplicate failed:', error)
-      setSaveMessage('Failed to save new copy. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setSaveMessage(`Failed to save new copy: ${errorMessage}`)
       
       // Show error message for a few seconds
-      setTimeout(() => setSaveMessage(''), 5000)
+      setTimeout(() => setSaveMessage(''), 8000)
     } finally {
       setIsSaving(false)
     }
+  }
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading session...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h1>
+          <p className="text-gray-600 mb-6">Please sign in to view your cards.</p>
+          <Link 
+            href="/sign-in"
+            className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+          >
+            Sign In
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   if (isLoading) {
@@ -260,52 +415,7 @@ export default function CustomizeCardPage() {
     )
   }
 
-  const handleFlipNext = () => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
-    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-      // Mobile/Tablet: directly update currentPage state
-      if (currentPage < 3) {
-        setCurrentPage(currentPage + 1)
-      }
-    } else {
-      // Desktop: use flipbook
-      if (flipBookRef.current && currentPage < 3) {
-        flipBookRef.current.pageFlip().flipNext()
-      }
-    }
-  }
 
-  const handleFlipPrev = () => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
-    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-      // Mobile/Tablet: directly update currentPage state
-      if (currentPage > 0) {
-        setCurrentPage(currentPage - 1)
-      }
-    } else {
-      // Desktop: use flipbook
-      if (flipBookRef.current && currentPage > 0) {
-        flipBookRef.current.pageFlip().flipPrev()
-      }
-    }
-  }
-
-  const handlePageFlip = (e: { data: number }) => {
-    setCurrentPage(e.data)
-  }
-
-  const goToPage = (pageIndex: number) => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
-    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
-      // Mobile/Tablet: directly update currentPage state
-      setCurrentPage(pageIndex)
-    } else {
-      // Desktop: use flipbook
-      if (flipBookRef.current) {
-        flipBookRef.current.pageFlip().flip(pageIndex)
-      }
-    }
-  }
 
   // Function to handle editing a specific page
   const handleEditPage = async (pageIndex: number) => {
@@ -498,15 +608,15 @@ export default function CustomizeCardPage() {
               mobileScrollSupport={true}
               onFlip={handlePageFlip}
               className="flipbook-shadow"
-              flippingTime={800}
+              flippingTime={600}
               usePortrait={false}
               startZIndex={10}
               autoSize={false}
               clickEventForward={true}
               useMouseEvents={true}
               swipeDistance={30}
-              showPageCorners={false}
-              disableFlipByClick={true}
+              showPageCorners={true}
+              disableFlipByClick={false}
               drawShadow={true}
             >
               {/* Front Cover - Page 1 */}
@@ -796,6 +906,12 @@ export default function CustomizeCardPage() {
       <style jsx>{`
         .flipbook-shadow {
           filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.3));
+          transition: transform 0.3s ease, filter 0.3s ease;
+        }
+        
+        .flipbook-shadow:hover {
+          transform: scale(1.02);
+          filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.4));
         }
         
         .page-hard {
@@ -804,12 +920,20 @@ export default function CustomizeCardPage() {
           background: #fff;
           border-radius: 8px;
           overflow: hidden;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+          box-shadow: 
+            0 4px 20px rgba(0, 0, 0, 0.15),
+            0 2px 10px rgba(0, 0, 0, 0.1);
           display: flex;
           flex-direction: column;
           backface-visibility: hidden;
           -webkit-backface-visibility: hidden;
           transform: translateZ(0);
+          transition: box-shadow 0.3s ease;
+          cursor: grab;
+        }
+        
+        .page-hard:active {
+          cursor: grabbing;
         }
         
         .page-content {
@@ -822,6 +946,26 @@ export default function CustomizeCardPage() {
           backface-visibility: hidden;
           -webkit-backface-visibility: hidden;
           transform: translateZ(0);
+          position: relative;
+        }
+        
+        /* Page corner hint animation */
+        .page-hard::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          right: 0;
+          width: 30px;
+          height: 30px;
+          background: linear-gradient(-45deg, transparent 0%, transparent 48%, rgba(0,0,0,0.1) 49%, rgba(0,0,0,0.1) 51%, transparent 52%, transparent 100%);
+          z-index: 10;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        
+        .page-hard:hover::before {
+          opacity: 1;
         }
       `}</style>
     </div>

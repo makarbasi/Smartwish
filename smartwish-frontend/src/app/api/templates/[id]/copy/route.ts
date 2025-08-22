@@ -6,7 +6,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 // POST /api/templates/[id]/copy - Copy a template to user's saved designs
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -16,13 +16,14 @@ export async function POST(
     }
 
     const accessToken = (session.user as any).access_token;
+    const resolvedParams = await params;
     
-    console.log('Copy API - Template ID:', params.id);
+    console.log('Copy API - Template ID:', resolvedParams.id);
     console.log('Copy API - API Base URL:', API_BASE_URL);
     console.log('Copy API - Access Token exists:', !!accessToken);
 
     // First, get the template data
-    const templateUrl = `${API_BASE_URL}/templates-enhanced/templates/${params.id}`;
+    const templateUrl = `${API_BASE_URL}/templates-enhanced/templates/${resolvedParams.id}`;
     console.log('Copy API - Fetching template from:', templateUrl);
     
     const templateResponse = await fetch(templateUrl, {

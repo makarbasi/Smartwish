@@ -66,3 +66,52 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// POST /api/saved-designs - Create a new saved design
+export async function POST(request: NextRequest) {
+  try {
+    const session = await auth();
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const accessToken = (session.user as any).access_token;
+    const body = await request.json();
+
+    console.log('Create saved design API - User ID:', session.user.id);
+    console.log('Create saved design API - Body:', body);
+
+    const response = await fetch(`${API_BASE_URL}/saved-designs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken || ''}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('Create saved design API - Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Create saved design API - Error:', errorText);
+      throw new Error(`Backend API responded with status: ${response.status}`);
+    }
+
+    const newDesign = await response.json();
+    console.log('Create saved design API - Created successfully');
+    
+    return NextResponse.json({
+      success: true,
+      data: newDesign,
+    });
+
+  } catch (error) {
+    console.error('Error creating saved design:', error);
+    return NextResponse.json(
+      { error: 'Failed to create saved design' },
+      { status: 500 }
+    );
+  }
+}
