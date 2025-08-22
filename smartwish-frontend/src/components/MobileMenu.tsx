@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -27,14 +28,43 @@ type Item = {
 const items: Item[] = [
   { href: "/event", label: "Event", icon: CalendarDaysIcon },
   { href: "/marketplace", label: "Market", icon: ShoppingBagIcon },
+  { href: "/templates", label: "Templates", icon: PencilSquareIcon },
   { href: "/my-cards", label: "My cards", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
 ];
 
 export default function MobileMenu() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { data: session, status } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Mobile-optimized sign-out handler similar to dashboard
+  const handleSignOut = async (e?: React.MouseEvent | React.TouchEvent) => {
+    try {
+      if (e) e.preventDefault();
+      console.log('[MobileMenu] signOut triggered');
+      
+      // Guard against multiple taps
+      if (signingOut) {
+        console.log('[MobileMenu] signOut already in progress');
+        return;
+      }
+      
+      setSigningOut(true);
+      setMobileMenuOpen(false); // Close menu first
+      
+      await signOut({ redirect: false });
+    } catch (err) {
+      console.error('[MobileMenu] signOut error', err);
+    } finally {
+      // Navigate to home after sign out
+      router.push('/');
+      setSigningOut(false);
+    }
+  };
 
   useEffect(() => {
     function handleScroll() {
@@ -47,6 +77,11 @@ export default function MobileMenu() {
       return () => window.removeEventListener("scroll", handleScroll);
     }
   }, []);
+
+  // Don't render mobile menu if session is loading
+  if (status === 'loading') {
+    return null;
+  }
 
   return (
     <div className="md:hidden">
@@ -108,25 +143,30 @@ export default function MobileMenu() {
             </div>
 
             {/* Profile Section */}
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                <Image
-                  src="https://i.pravatar.cc/80?img=12"
-                  alt=""
-                  width={48}
-                  height={48}
-                  className="w-12 h-12 rounded-full ring-1 ring-gray-200"
-                />
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">
-                    Abubakar Tariq
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    abubakar72@gmail.com
+            {session && (
+              <div className="p-4 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <Image
+                    src={
+                      (session?.user?.image as string) ??
+                      "https://i.pravatar.cc/80?img=12"
+                    }
+                    alt=""
+                    width={48}
+                    height={48}
+                    className="w-12 h-12 rounded-full ring-1 ring-gray-200"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {session?.user?.name ?? "Guest"}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {session?.user?.email ?? "Not signed in"}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
 
 
 
@@ -184,13 +224,28 @@ export default function MobileMenu() {
                                     Pricing
                                 </Link>
                                 */}
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-red-600 hover:bg-red-50 w-full text-left transition-colors"
-                >
-                  <ArrowRightStartOnRectangleIcon className="w-6 h-6" />
-                  Sign Out
-                </button>
+                {session ? (
+                  <button
+                    onClick={handleSignOut}
+                    onTouchEnd={handleSignOut}
+                    disabled={signingOut}
+                    className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-red-600 hover:bg-red-50 w-full text-left transition-colors disabled:opacity-50"
+                  >
+                    <ArrowRightStartOnRectangleIcon className="w-6 h-6" />
+                    {signingOut ? 'Signing out...' : 'Sign Out'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      router.push(`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`);
+                    }}
+                    className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-indigo-600 hover:bg-indigo-50 w-full text-left transition-colors"
+                  >
+                    <ArrowRightStartOnRectangleIcon className="w-6 h-6" />
+                    Sign In
+                  </button>
+                )}
               </div>
             </div>
           </div>

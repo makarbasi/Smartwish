@@ -14,7 +14,8 @@
     "ask": [],
     "additionalDirectories": [
       "f:\\Frontend_Smartwish\\smartwish-frontend",
-      "f:\\Frontend_Smartwish\\smartwish-backend\\backend"
+      "f:\\Frontend_Smartwish\\smartwish-backend\\backend",
+      "f:\\Frontend_Smartwish"
     ]
   }
 }

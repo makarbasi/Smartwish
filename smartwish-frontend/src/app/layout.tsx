@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppChrome from "@/components/AppChrome";
-import CookieConsent from "@/components/CookieConsent";
 import AuthProvider from "@/components/AuthProvider";
 import RequireAuthModal from "@/components/RequireAuthModal";
 import { AuthModalProvider } from "@/contexts/AuthModalContext";
@@ -40,7 +39,6 @@ export default function RootLayout({
             >
               <AppChrome>{children}</AppChrome>
             </RequireAuthModal>
-            <CookieConsent />
           </AuthModalProvider>
         </AuthProvider>
       </body>

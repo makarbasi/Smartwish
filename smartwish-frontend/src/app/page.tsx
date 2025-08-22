@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { whatYouGet } from '@/resources/what'
 import HeroSearch from '@/components/HeroSearch'
 import GallerySection from '@/components/GallerySection'
@@ -34,6 +37,7 @@ const gallery = [
 ]
 
 export default function Home() {
+  const pathname = usePathname()
   return (
     <main className="font-sans">
       {/* Hero */}
@@ -91,7 +95,7 @@ export default function Home() {
                 Design beautiful, personalized cards in seconds. No design skills required.
               </p>
               <Link
-                href="/sign-in"
+                href={`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`}
                 className="mt-8 inline-flex items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-gray-200 transition-all duration-200 hover:bg-indigo-600 hover:text-white hover:ring-indigo-500 hover:shadow-md active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-indigo-600"
               >
                 Try it Now

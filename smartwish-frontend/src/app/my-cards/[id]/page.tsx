@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, usePathname } from 'next/navigation'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, PencilIcon, CheckIcon, XMarkIcon, ArrowUturnLeftIcon, ArrowPathIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline'
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
@@ -10,6 +10,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import HTMLFlipBook from "react-pageflip"
 import PinturaEditorModal from '@/components/PinturaEditorModal'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import useSWR from 'swr'
 import { saveSavedDesignWithImages } from '@/utils/savedDesignUtils'
 import { useSession } from 'next-auth/react'
@@ -114,6 +115,7 @@ const transformSavedDesignToCard = (savedDesign: SavedDesign): CardData => {
 export default function CustomizeCardPage() {
   const { data: session, status } = useSession()
   const params = useParams()
+  const pathname = usePathname()
   const cardId = params?.id as string
   const [currentPage, setCurrentPage] = useState(0)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -133,6 +135,7 @@ export default function CustomizeCardPage() {
   // Save functionality state
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [showRevertConfirm, setShowRevertConfirm] = useState(false)
   
   // Undo/Revert functionality state
   const [originalImages, setOriginalImages] = useState<string[]>([])
@@ -355,16 +358,19 @@ export default function CustomizeCardPage() {
 
   // Revert function - restore to original state
   const handleRevert = () => {
-    if (window.confirm('Are you sure you want to revert all changes? This will restore the original card state and cannot be undone.')) {
-      setPageImages([...originalImages])
-      if (cardData && originalName) {
-        setEditedName(originalName)
-      }
-      setUndoStack([])
-      setHasUnsavedChanges(false)
-      
-      console.log('🔄 Reverted to original state')
+    setShowRevertConfirm(true)
+  }
+
+  const confirmRevert = () => {
+    setPageImages([...originalImages])
+    if (cardData && originalName) {
+      setEditedName(originalName)
     }
+    setUndoStack([])
+    setHasUnsavedChanges(false)
+    setShowRevertConfirm(false)
+    
+    console.log('🔄 Reverted to original state')
   }
 
   // Save As function - save as new card
@@ -502,7 +508,7 @@ export default function CustomizeCardPage() {
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h1>
           <p className="text-gray-600 mb-6">Please sign in to view your cards.</p>
           <Link 
-            href="/sign-in"
+            href={`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`}
             className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
           >
             Sign In
@@ -1002,7 +1008,7 @@ export default function CustomizeCardPage() {
             <HTMLFlipBook
               ref={flipBookRef}
               width={500}
-              height={700}
+              height={772}
               size="fixed"
               startPage={0}
               minWidth={200}
@@ -1033,7 +1039,7 @@ export default function CustomizeCardPage() {
                     src={pageImages[0] || cardData.pages[0]}
                     alt="Gift Card Cover"
                     width={500}
-                    height={700}
+                    height={772}
                     className="w-full h-full object-cover rounded-lg"
                     priority
                   />
@@ -1089,7 +1095,7 @@ export default function CustomizeCardPage() {
                     src={pageImages[1] || cardData.pages[1]}
                     alt="Gift Card Page 2"
                     width={500}
-                    height={700}
+                    height={772}
                     className="w-full h-full object-cover rounded-lg"
                   />
                   {/* Edit icon blocking zone */}
@@ -1144,7 +1150,7 @@ export default function CustomizeCardPage() {
                     src={pageImages[2] || cardData.pages[2]}
                     alt="Gift Card Page 3"
                     width={500}
-                    height={700}
+                    height={772}
                     className="w-full h-full object-cover rounded-lg"
                   />
                   {/* Edit icon */}
@@ -1186,7 +1192,7 @@ export default function CustomizeCardPage() {
                     src={pageImages[3] || cardData.pages[3]}
                     alt="Gift Card Page 4"
                     width={500}
-                    height={700}
+                    height={772}
                     className="w-full h-full object-cover rounded-lg"
                   />
                   {/* Edit icon */}
@@ -1233,34 +1239,31 @@ export default function CustomizeCardPage() {
           {/* Mobile/Tablet Single Page View */}
           <div className="xl:hidden relative">
             <div 
-              className="w-80 h-96 mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
+              className="w-80 mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              <div className="w-full h-full relative">
+              <div className="w-full aspect-[640/989] relative">
                 <Image
                   src={pageImages[currentPage] || cardData.pages[currentPage]}
                   alt={`Card Page ${currentPage + 1}`}
                   width={320}
-                  height={384}
+                  height={494}
                   className="w-full h-full object-cover"
                 />
-                {/* Edit icon blocking zone */}
+                {/* Edit icon - positioned but doesn't block swipes */}
                 <div 
-                  className="absolute top-0 right-0 w-16 h-16 z-30 flex items-start justify-end pt-3 pr-3"
-                  onMouseDown={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                  }}
+                  className="absolute top-3 right-3 z-30"
                   style={{ pointerEvents: 'auto' }}
                 >
                   <button 
                     onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      handleEditPage(currentPage)
+                    }}
+                    onTouchEnd={(e) => {
                       e.stopPropagation()
                       e.preventDefault()
                       handleEditPage(currentPage)
@@ -1273,10 +1276,24 @@ export default function CustomizeCardPage() {
                   </button>
                 </div>
                 
-                {/* Mobile Page Indicator */}
+                {/* Mobile Page Indicator with Navigation */}
                 <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
-                  <div className="bg-black/60 text-white px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm shadow-lg">
-                    Page {currentPage + 1} of 4
+                  <div className="flex items-center gap-2 bg-black/60 text-white px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm shadow-lg">
+                    <button
+                      onClick={handleFlipPrev}
+                      disabled={currentPage === 0}
+                      className="p-1 rounded-full hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeftIcon className="h-3 w-3" />
+                    </button>
+                    <span>Page {currentPage + 1} of 4</span>
+                    <button
+                      onClick={handleFlipNext}
+                      disabled={currentPage >= 3}
+                      className="p-1 rounded-full hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRightIcon className="h-3 w-3" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1309,6 +1326,17 @@ export default function CustomizeCardPage() {
           onProcess={handleEditorProcess}
         />
       )}
+
+      {/* Revert Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showRevertConfirm}
+        onClose={() => setShowRevertConfirm(false)}
+        onConfirm={confirmRevert}
+        title="Revert All Changes?"
+        message="Are you sure you want to revert all changes? This will restore the original card state and cannot be undone."
+        confirmText="Revert Changes"
+        confirmButtonType="warning"
+      />
 
       <style jsx>{`
         .flipbook-shadow {

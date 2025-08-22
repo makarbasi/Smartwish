@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, Suspense, useMemo } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { ChevronLeftIcon, ChevronRightIcon, ArrowLeftIcon, PencilIcon, CheckIcon, XMarkIcon, ArrowUturnLeftIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
@@ -10,6 +10,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import HTMLFlipBook from "react-pageflip"
 import PinturaEditorModal from '@/components/PinturaEditorModal'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { useSession } from 'next-auth/react'
 import { saveSavedDesignWithImages, ensureSupabaseUrls } from '@/utils/savedDesignUtils'
 import useSWR from 'swr'
@@ -39,6 +40,7 @@ function TemplateEditorContent() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
   const templateId = searchParams?.get('templateId')
   const templateName = searchParams?.get('templateName')
   
@@ -63,6 +65,7 @@ function TemplateEditorContent() {
   // Save functionality state
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [showRevertConfirm, setShowRevertConfirm] = useState(false)
   
   // Undo/Revert functionality state
   const [originalImages, setOriginalImages] = useState<string[]>([])
@@ -155,8 +158,10 @@ function TemplateEditorContent() {
 
   // Define callback functions before early returns
   const handleFlipNext = useCallback(() => {
+    console.log(`Template Editor - handleFlipNext called - current page: ${currentPage}, screen width: ${typeof window !== 'undefined' ? window.innerWidth : 'unknown'}`)
     if (typeof window !== 'undefined' && window.innerWidth < 1280) {
       if (currentPage < 3) {
+        console.log(`Template Editor - Mobile: Moving from page ${currentPage} to ${currentPage + 1}`)
         setCurrentPage(currentPage + 1)
       }
     } else {
@@ -167,8 +172,10 @@ function TemplateEditorContent() {
   }, [currentPage])
 
   const handleFlipPrev = useCallback(() => {
+    console.log(`Template Editor - handleFlipPrev called - current page: ${currentPage}, screen width: ${typeof window !== 'undefined' ? window.innerWidth : 'unknown'}`)
     if (typeof window !== 'undefined' && window.innerWidth < 1280) {
       if (currentPage > 0) {
+        console.log(`Template Editor - Mobile: Moving from page ${currentPage} to ${currentPage - 1}`)
         setCurrentPage(currentPage - 1)
       }
     } else {
@@ -223,6 +230,7 @@ function TemplateEditorContent() {
 
   // Swipe handling functions
   const handleTouchStart = (e: React.TouchEvent) => {
+    console.log('Template Editor - Touch start - mobile swipe')
     setTouchEnd(null)
     setTouchStart(e.targetTouches[0].clientX)
   }
@@ -232,16 +240,24 @@ function TemplateEditorContent() {
   }
 
   const handleTouchEnd = () => {
-    if (!touchStart || !touchEnd) return
+    console.log('Template Editor - Touch end - mobile swipe')
+    if (!touchStart || !touchEnd) {
+      console.log('Template Editor - Missing touch start or end coordinates')
+      return
+    }
     
     const distance = touchStart - touchEnd
     const isLeftSwipe = distance > 50
     const isRightSwipe = distance < -50
 
+    console.log(`Template Editor - Touch distance: ${distance}, left swipe: ${isLeftSwipe}, right swipe: ${isRightSwipe}, current page: ${currentPage}`)
+
     if (isLeftSwipe && currentPage < 3) {
+      console.log('Template Editor - Executing left swipe - next page')
       handleFlipNext()
     }
     if (isRightSwipe && currentPage > 0) {
+      console.log('Template Editor - Executing right swipe - previous page')
       handleFlipPrev()
     }
   }
@@ -262,17 +278,20 @@ function TemplateEditorContent() {
 
   // Revert function - restore to original state
   const handleRevert = () => {
-    if (window.confirm('Are you sure you want to revert all changes? This will restore the original template state and cannot be undone.')) {
-      setPageImages([...originalImages])
-      if (templateData && originalName) {
-        setTemplateData({ ...templateData, name: originalName })
-        setEditedName(originalName)
-      }
-      setUndoStack([])
-      setHasUnsavedChanges(false)
-      
-      console.log('🔄 Reverted to original state')
+    setShowRevertConfirm(true)
+  }
+
+  const confirmRevert = () => {
+    setPageImages([...originalImages])
+    if (templateData && originalName) {
+      setTemplateData({ ...templateData, name: originalName })
+      setEditedName(originalName)
     }
+    setUndoStack([])
+    setHasUnsavedChanges(false)
+    setShowRevertConfirm(false)
+    
+    console.log('🔄 Reverted to original state')
   }
 
   // Save function - copies template to saved_designs
@@ -604,7 +623,7 @@ function TemplateEditorContent() {
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h1>
           <p className="text-gray-600 mb-6">Please sign in to use the template editor.</p>
           <Link 
-            href="/sign-in"
+            href={`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`}
             className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
           >
             Sign In
@@ -922,7 +941,7 @@ function TemplateEditorContent() {
             <HTMLFlipBook
               ref={flipBookRef}
               width={500}
-              height={700}
+              height={772}
               size="fixed"
               startPage={0}
               minWidth={200}
@@ -954,7 +973,7 @@ function TemplateEditorContent() {
                       src={pageImage}
                       alt={`Template Page ${index + 1}`}
                       width={500}
-                      height={700}
+                      height={772}
                       className="w-full h-full object-cover rounded-lg"
                       priority={index === 0}
                     />
@@ -998,27 +1017,31 @@ function TemplateEditorContent() {
           {/* Mobile/Tablet Single Page View */}
           <div className="xl:hidden relative">
             <div 
-              className="w-80 h-96 mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
+              className="w-80 mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              <div className="w-full h-full relative">
+              <div className="w-full aspect-[640/989] relative">
                 <Image
                   src={pageImages[currentPage]}
                   alt={`Template Page ${currentPage + 1}`}
                   width={320}
-                  height={384}
+                  height={494}
                   className="w-full h-full object-cover"
                 />
-                {/* Edit icon */}
+                {/* Edit icon - positioned but doesn't block swipes */}
                 <div 
-                  className="absolute top-0 right-0 w-16 h-16 z-30 flex items-start justify-end pt-3 pr-3"
-                  onTouchStart={(e) => e.stopPropagation()}
+                  className="absolute top-3 right-3 z-30"
                   style={{ pointerEvents: 'auto' }}
                 >
                   <button 
                     onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      handleEditPage(currentPage)
+                    }}
+                    onTouchEnd={(e) => {
                       e.stopPropagation()
                       e.preventDefault()
                       handleEditPage(currentPage)
@@ -1031,10 +1054,24 @@ function TemplateEditorContent() {
                   </button>
                 </div>
                 
-                {/* Mobile Page Indicator */}
+                {/* Mobile Page Indicator with Navigation */}
                 <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
-                  <div className="bg-black/60 text-white px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm shadow-lg">
-                    Page {currentPage + 1} of {pageImages.length}
+                  <div className="flex items-center gap-2 bg-black/60 text-white px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm shadow-lg">
+                    <button
+                      onClick={handleFlipPrev}
+                      disabled={currentPage === 0}
+                      className="p-1 rounded-full hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeftIcon className="h-3 w-3" />
+                    </button>
+                    <span>Page {currentPage + 1} of {pageImages.length}</span>
+                    <button
+                      onClick={handleFlipNext}
+                      disabled={currentPage >= pageImages.length - 1}
+                      className="p-1 rounded-full hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRightIcon className="h-3 w-3" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1061,6 +1098,17 @@ function TemplateEditorContent() {
           onProcess={handleEditorProcess}
         />
       )}
+
+      {/* Revert Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showRevertConfirm}
+        onClose={() => setShowRevertConfirm(false)}
+        onConfirm={confirmRevert}
+        title="Revert All Changes?"
+        message="Are you sure you want to revert all changes? This will restore the original template state and cannot be undone."
+        confirmText="Revert Changes"
+        confirmButtonType="warning"
+      />
 
       <style jsx>{`
         .flipbook-shadow {

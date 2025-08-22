@@ -300,7 +300,10 @@ export default function Sidebar() {
                     if (session) {
                       signOut();
                     } else {
-                      router.push("/sign-in");
+                      // Store current page and redirect to sign-in with callback
+                      const currentPath = pathname;
+                      const callbackUrl = encodeURIComponent(currentPath);
+                      router.push(`/sign-in?callbackUrl=${callbackUrl}`);
                     }
                   }}
                   className={
