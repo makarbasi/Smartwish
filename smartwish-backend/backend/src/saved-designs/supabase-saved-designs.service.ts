@@ -107,6 +107,22 @@ export class SupabaseSavedDesignsService {
       throw new Error('Supabase not configured');
     }
 
+    // Extract page images from designData or use direct image fields
+    let page1Image = null, page2Image = null, page3Image = null, page4Image = null;
+    
+    if (designData.designData?.pages) {
+      page1Image = designData.designData.pages[0]?.image || null;
+      page2Image = designData.designData.pages[1]?.image || null;
+      page3Image = designData.designData.pages[2]?.image || null;
+      page4Image = designData.designData.pages[3]?.image || null;
+    }
+
+    // Use direct image fields if provided (override page images)
+    page1Image = designData.image1 || page1Image;
+    page2Image = designData.image2 || page2Image;
+    page3Image = designData.image3 || page3Image;
+    page4Image = designData.image4 || page4Image;
+
     const { data, error } = await this.supabase
       .from('saved_designs')
       .insert({
@@ -120,9 +136,15 @@ export class SupabaseSavedDesignsService {
         status: designData.status || 'draft',
         popularity: designData.popularity || 0,
         num_downloads: designData.num_downloads || 0,
-        cover_image: designData.thumbnail,
+        cover_image: designData.thumbnail || page1Image, // Use first page as cover if no thumbnail
+        // Store individual page images
+        image_1: page1Image,
+        image_2: page2Image,
+        image_3: page3Image,
+        image_4: page4Image,
         search_keywords: designData.searchKeywords || [],
         tags: designData.tags || [],
+        // Keep minimal metadata for backward compatibility
         metadata: {
           designData: designData.designData,
           imageUrls: designData.imageUrls || [],
@@ -133,10 +155,6 @@ export class SupabaseSavedDesignsService {
           authorId: designData.authorId,
           createdByUserId: designData.createdByUserId || userId,
           coverImage: designData.coverImage,
-          image1: designData.image1,
-          image2: designData.image2,
-          image3: designData.image3,
-          image4: designData.image4,
           isFeatured: designData.isFeatured,
           isUserGenerated: designData.isUserGenerated,
           currentVersion: designData.currentVersion,
@@ -170,6 +188,7 @@ export class SupabaseSavedDesignsService {
       .from('saved_designs')
       .select('*')
       .eq('author_id', userId)
+      .in('status', ['draft', null]) // Only get draft designs (null for backward compatibility)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -271,8 +290,25 @@ export class SupabaseSavedDesignsService {
     if (updates.tags) updateData.tags = updates.tags;
     if (updates.slug) updateData.slug = updates.slug;
     if (updates.isUserGenerated !== undefined) updateData.is_user_generated = updates.isUserGenerated;
-    if (updates.publishedAt) updateData.published_at = updates.publishedAt;
+    if (updates.publishedAt !== undefined) {
+      updateData.published_at = updates.publishedAt ? updates.publishedAt.toISOString() : null;
+    }
+    if (updates.updatedAt) updateData.updated_at = updates.updatedAt.toISOString();
     if (updates.sourceTemplateId) updateData.original_saved_design_id = updates.sourceTemplateId;
+
+    // Extract and update individual page images from designData or direct image fields
+    if (updates.designData?.pages) {
+      if (updates.designData.pages[0]?.image) updateData.image_1 = updates.designData.pages[0].image;
+      if (updates.designData.pages[1]?.image) updateData.image_2 = updates.designData.pages[1].image;
+      if (updates.designData.pages[2]?.image) updateData.image_3 = updates.designData.pages[2].image;
+      if (updates.designData.pages[3]?.image) updateData.image_4 = updates.designData.pages[3].image;
+    }
+
+    // Direct image field updates (override page images if provided)
+    if (updates.image1) updateData.image_1 = updates.image1;
+    if (updates.image2) updateData.image_2 = updates.image2;
+    if (updates.image3) updateData.image_3 = updates.image3;
+    if (updates.image4) updateData.image_4 = updates.image4;
 
     // Update metadata with new values
     const newMetadata = {
@@ -419,6 +455,28 @@ export class SupabaseSavedDesignsService {
       throw new Error('Failed to fetch published designs');
     }
 
+    return data.map((record) => this.mapDatabaseRecordToSavedDesign(record));
+  }
+
+  async getUserPublishedDesigns(userId: string): Promise<SavedDesign[]> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log('Fetching published designs for userId:', userId);
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('author_id', userId)
+      .eq('status', 'published')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching user published designs from Supabase:', error);
+      throw new Error('Failed to fetch user published designs');
+    }
+
     console.log(`Found ${data.length} published designs in Supabase`);
 
     return data.map((record) => this.mapDatabaseRecordToSavedDesign(record));
@@ -428,7 +486,11 @@ export class SupabaseSavedDesignsService {
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    return this.updateDesign(userId, designId, { status: 'published' });
+    return this.updateDesign(userId, designId, { 
+      status: 'published',
+      publishedAt: new Date(),
+      updatedAt: new Date()
+    });
   }
 
   async publishDesignWithMetadata(
@@ -490,12 +552,65 @@ export class SupabaseSavedDesignsService {
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    return this.updateDesign(userId, designId, { status: 'draft' });
+    return this.updateDesign(userId, designId, { 
+      status: 'draft',
+      publishedAt: null as any,
+      updatedAt: new Date()
+    });
   }
 
   private mapDatabaseRecordToSavedDesign(record: any): SavedDesign {
     // Extract data from the new schema
     const metadata = record.metadata || {};
+    
+    // Create pages array from individual image columns
+    const pages = [
+      {
+        header: 'Page 1',
+        image: record.image_1 || '',
+        text: '',
+        footer: ''
+      },
+      {
+        header: 'Page 2', 
+        image: record.image_2 || '',
+        text: '',
+        footer: ''
+      },
+      {
+        header: 'Page 3',
+        image: record.image_3 || '',
+        text: '',
+        footer: ''
+      },
+      {
+        header: 'Page 4',
+        image: record.image_4 || '',
+        text: '',
+        footer: ''
+      }
+    ]; // Keep all 4 pages for proper card display
+
+    // Create design data with pages from individual columns or fallback to metadata
+    const designData = metadata.designData || {
+      templateKey: metadata.templateKey || 'custom',
+      pages: pages,
+      editedPages: {}
+    };
+
+    // If we have individual image columns, prioritize them over metadata
+    if (record.image_1 || record.image_2 || record.image_3 || record.image_4) {
+      designData.pages = pages;
+      console.log('🔄 Using individual image columns for design:', record.id);
+      console.log('📸 Individual images:', {
+        image1: record.image_1 ? 'Present' : 'Empty',
+        image2: record.image_2 ? 'Present' : 'Empty',
+        image3: record.image_3 ? 'Present' : 'Empty',
+        image4: record.image_4 ? 'Present' : 'Empty'
+      });
+    } else {
+      console.log('⚠️ No individual image columns found for design:', record.id, 'using metadata');
+    }
     
     return {
       id: record.id,
@@ -503,14 +618,9 @@ export class SupabaseSavedDesignsService {
       title: record.title,
       description: record.description,
       category: 'General', // Default category since we're using category_id now
-      // Extract design data from metadata
-      designData: metadata.designData || {
-        templateKey: '',
-        pages: [],
-        editedPages: {}
-      },
+      designData: designData,
       thumbnail: record.cover_image,
-      imageUrls: metadata.imageUrls || [],
+      imageUrls: metadata.imageUrls || [record.image_1, record.image_2, record.image_3, record.image_4].filter(Boolean),
       imageTimestamp: metadata.imageTimestamp,
       author: metadata.author || 'User',
       upload_time: record.created_at,
@@ -530,10 +640,11 @@ export class SupabaseSavedDesignsService {
       authorId: record.author_id,
       createdByUserId: metadata.createdByUserId || record.author_id,
       coverImage: metadata.coverImage || record.cover_image,
-      image1: metadata.image1,
-      image2: metadata.image2,
-      image3: metadata.image3,
-      image4: metadata.image4,
+      // Use individual image columns
+      image1: record.image_1,
+      image2: record.image_2,
+      image3: record.image_3,
+      image4: record.image_4,
       isFeatured: metadata.isFeatured || false,
       isUserGenerated: record.is_user_generated || true,
       tags: record.tags || [],

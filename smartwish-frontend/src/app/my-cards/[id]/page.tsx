@@ -25,6 +25,11 @@ type SavedDesign = {
   categoryName?: string
   category_id?: string
   category_name?: string
+  // New individual image fields
+  image1?: string
+  image2?: string
+  image3?: string
+  image4?: string
   designData?: {
     templateKey: string
     pages: Array<{
@@ -71,26 +76,46 @@ const fetcher = (url: string) => fetch(url, {
 
 // Transform saved design to card data
 const transformSavedDesignToCard = (savedDesign: SavedDesign): CardData => {
-  // First priority: Extract images from designData.pages
+  // First priority: Use individual image columns (image1, image2, image3, image4)
   let pages: string[] = []
   
-  if (savedDesign.designData?.pages && savedDesign.designData.pages.length > 0) {
+  console.log('🔄 Transforming saved design:', savedDesign.id);
+  console.log('📸 Individual image fields:', {
+    image1: savedDesign.image1 ? 'Present' : 'Empty',
+    image2: savedDesign.image2 ? 'Present' : 'Empty', 
+    image3: savedDesign.image3 ? 'Present' : 'Empty',
+    image4: savedDesign.image4 ? 'Present' : 'Empty'
+  });
+  
+  if (savedDesign.image1 || savedDesign.image2 || savedDesign.image3 || savedDesign.image4) {
+    pages = [
+      savedDesign.image1 || '',
+      savedDesign.image2 || '',
+      savedDesign.image3 || '',
+      savedDesign.image4 || ''
+    ]
+    console.log('✅ Using individual image columns, pages count:', pages.filter(Boolean).length);
+  }
+  
+  // Second priority: Extract images from designData.pages (for backward compatibility)
+  if (pages.filter(Boolean).length === 0 && savedDesign.designData?.pages && savedDesign.designData.pages.length > 0) {
     // Extract image URLs from each page
-    pages = savedDesign.designData.pages.map(page => page.image).filter(Boolean)
+    pages = savedDesign.designData.pages.map(page => page.image || '')
+    console.log('⚡ Using designData.pages, pages count:', pages.filter(Boolean).length);
   }
   
-  // Second priority: Use imageUrls array if no pages found
-  if (pages.length === 0 && savedDesign.imageUrls && savedDesign.imageUrls.length > 0) {
-    pages = savedDesign.imageUrls
+  // Third priority: Use imageUrls array if no pages found
+  if (pages.filter(Boolean).length === 0 && savedDesign.imageUrls && savedDesign.imageUrls.length > 0) {
+    pages = [...savedDesign.imageUrls]
+    while (pages.length < 4) pages.push('') // Ensure 4 pages
+    console.log('📋 Using imageUrls array, pages count:', pages.filter(Boolean).length);
   }
   
-  // Third priority: Use thumbnail as fallback for all pages
-  if (pages.length === 0 && savedDesign.thumbnail) {
+  // Fourth priority: Use thumbnail as fallback for all pages
+  if (pages.filter(Boolean).length === 0 && savedDesign.thumbnail) {
     pages = [savedDesign.thumbnail, savedDesign.thumbnail, savedDesign.thumbnail, savedDesign.thumbnail]
+    console.log('🖼️ Using thumbnail fallback');
   }
-  
-  // Remove any null/undefined values
-  pages = pages.filter(Boolean)
   
   // Ensure we have at least 4 pages for the card view
   while (pages.length < 4) {

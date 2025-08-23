@@ -385,6 +385,25 @@ export class SavedDesignsController {
     }
   }
 
+  @Get('published/user')
+  async getUserPublishedDesigns(@Req() req: AuthenticatedRequest, @Res() res: Response) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+
+      const publishedDesigns = await this.savedDesignsService.getUserPublishedDesigns(userId);
+      res.json(publishedDesigns);
+    } catch (error) {
+      console.error('Error getting user published designs:', error);
+      res.status(500).json({
+        message: 'Failed to get user published designs',
+        error: error.message,
+      });
+    }
+  }
+
   @Get('published/all')
   @Public()
   async getPublishedDesigns(@Res() res: Response) {

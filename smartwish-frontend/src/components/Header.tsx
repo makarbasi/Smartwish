@@ -1,6 +1,6 @@
  'use client'
 
-import { PlusIcon } from '@heroicons/react/24/outline'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 
@@ -13,11 +13,15 @@ export default function Header() {
     <header className="relative isolate z-10 bg-white">
       <nav aria-label="Global" className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex lg:flex-1">
-          <Link href="/" className="-m-1.5 p-1.5 inline-flex items-center justify-center">
+          <Link href="/" className="-m-1.5 p-1.5 inline-block">
             <span className="sr-only">Smartwish</span>
-            <div className="inline-flex items-center justify-center rounded-full bg-indigo-50 p-1.5">
-              <PlusIcon className="h-6 w-6 text-indigo-600" aria-hidden="true" />
-            </div>
+            <Image
+              alt="Smartwish"
+              src="/resources/logo/logo-full.png"
+              width={96}
+              height={32}
+              className="h-32 w-auto"
+            />
           </Link>
         </div>
   {/* No hamburger menu needed: show primary CTA on all sizes */}

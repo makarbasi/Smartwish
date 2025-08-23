@@ -230,6 +230,13 @@ export class SavedDesignsService {
     return await this.supabaseService.getPublishedDesigns();
   }
 
+  async getUserPublishedDesigns(userId: string): Promise<SavedDesign[]> {
+    console.log('SavedDesignsService: Getting published designs for userId:', userId);
+    const designs = await this.supabaseService.getUserPublishedDesigns(userId);
+    console.log('SavedDesignsService: Found published designs count:', designs.length);
+    return designs;
+  }
+
   async publishDesign(
     userId: string,
     designId: string,

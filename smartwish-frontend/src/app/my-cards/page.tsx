@@ -27,6 +27,11 @@ type SavedDesign = {
   createdAt: string;
   updatedAt: string;
   status?: string;
+  // New individual image fields
+  image1?: string;
+  image2?: string;
+  image3?: string;
+  image4?: string;
 };
 
 type SavedDesignsResponse = {
@@ -41,10 +46,14 @@ const fetcher = (url: string) => fetch(url, {
 // Transform saved design to MyCard format
 const transformSavedDesign = (design: SavedDesign): MyCard => {
   const daysAgo = Math.floor((Date.now() - new Date(design.updatedAt).getTime()) / (1000 * 60 * 60 * 24));
+  
+  // Prioritize individual image columns for thumbnail, fallback to existing thumbnail
+  const thumbnail = design.image1 || design.thumbnail || '/placeholder-card.png';
+  
   return {
     id: design.id,
     name: design.title,
-    thumbnail: design.thumbnail || '/placeholder-card.png',
+    thumbnail: thumbnail,
     lastEdited: `Edited ${daysAgo > 0 ? `${daysAgo}d` : '1d'} ago`,
     category: design.category,
     status: design.status || 'draft',
@@ -103,14 +112,14 @@ function MyCardsContent() {
   console.log('My Cards - Loading state:', savedDesignsLoading);
   console.log('My Cards - Error state:', savedDesignsError);
 
-  // Fetch user's designs published into templates
-  const { data: publishedTemplatesResponse, error: publishedTemplatesError, isLoading: publishedTemplatesLoading, mutate: mutatePublished } = useSWR<SavedDesignsResponse>(
-    '/api/saved-designs/published-to-templates',
+  // Fetch user's published designs
+  const { data: publishedDesignsResponse, error: publishedDesignsError, isLoading: publishedDesignsLoading, mutate: mutatePublished } = useSWR<SavedDesignsResponse>(
+    '/api/saved-designs/published/user',
     fetcher,
     { refreshInterval: 0, revalidateOnFocus: false, revalidateOnReconnect: false }
   );
 
-  const publishedCards: MyCard[] = publishedTemplatesResponse?.data ? publishedTemplatesResponse.data.map(transformSavedDesign) : [];
+  const publishedCards: MyCard[] = publishedDesignsResponse?.data ? publishedDesignsResponse.data.map(transformSavedDesign) : [];
 
   // Show delete confirmation modal
   const showDeleteConfirmation = (designId: string, designName: string) => {
@@ -160,32 +169,56 @@ function MyCardsContent() {
     setDesignToDelete(null);
   };
 
-  // Publish to templates
-  const handlePublishToTemplates = async (designId: string) => {
+  // Publish design
+  const handlePublishDesign = async (designId: string) => {
     try {
-      // Prefer new promote endpoint; fallback to legacy path if needed
-      let response = await fetch(`/api/saved-designs/${designId}/promote-to-template`, {
+      const response = await fetch(`/api/saved-designs/${designId}/publish`, {
         method: 'POST',
         credentials: 'include',
       });
-      if (!response.ok && response.status === 404) {
-        // Try legacy endpoint
-        response = await fetch(`/api/saved-designs/${designId}/publish-to-templates`, {
-          method: 'POST',
-          credentials: 'include',
-        });
-      }
+      
       if (!response.ok) {
-        let errMsg = 'Failed to publish';
-        try { const err = await response.json(); errMsg = err.error || err.message || errMsg; } catch {}
+        let errMsg = 'Failed to publish design';
+        try { 
+          const err = await response.json(); 
+          errMsg = err.error || err.message || errMsg; 
+        } catch {}
         throw new Error(errMsg);
       }
+      
       await response.json();
-      setSuccessMessage('Design published to templates');
+      setSuccessMessage('Design published successfully');
       mutateSavedDesigns();
       mutatePublished();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to publish';
+      const msg = e instanceof Error ? e.message : 'Failed to publish design';
+      alert(msg);
+    }
+  };
+
+  // Unpublish design
+  const handleUnpublishDesign = async (designId: string) => {
+    try {
+      const response = await fetch(`/api/saved-designs/${designId}/unpublish`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        let errMsg = 'Failed to unpublish design';
+        try { 
+          const err = await response.json(); 
+          errMsg = err.error || err.message || errMsg; 
+        } catch {}
+        throw new Error(errMsg);
+      }
+      
+      await response.json();
+      setSuccessMessage('Design unpublished successfully');
+      mutateSavedDesigns();
+      mutatePublished();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to unpublish design';
       alert(msg);
     }
   };
@@ -364,12 +397,21 @@ function MyCardsContent() {
                             </Link>
                           </MenuItem>
                           <MenuItem>
-                            <button
-                              onClick={(e) => { e.preventDefault(); handlePublishToTemplates(c.id); }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
-                            >
-                              Publish to Templates
-                            </button>
+                            {c.status === 'published' ? (
+                              <button
+                                onClick={(e) => { e.preventDefault(); handleUnpublishDesign(c.id); }}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              >
+                                Unpublish
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.preventDefault(); handlePublishDesign(c.id); }}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              >
+                                Publish
+                              </button>
+                            )}
                           </MenuItem>
                           <MenuItem>
                             <button
@@ -431,7 +473,7 @@ function MyCardsContent() {
         {/* Published Cards Section */}
         <div>
           <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
-            {publishedTemplatesLoading ? (
+            {publishedDesignsLoading ? (
               Array(3).fill(0).map((_, index) => (
                 <div key={`published-skeleton-${index}`} className="group rounded-2xl bg-white ring-1 ring-gray-200">
                   <div className="relative overflow-hidden rounded-t-2xl">
@@ -443,7 +485,7 @@ function MyCardsContent() {
                   </div>
                 </div>
               ))
-            ) : publishedTemplatesError ? (
+            ) : publishedDesignsError ? (
               // Show nothing when there's an error
               <div className="col-span-full"></div>
             ) : publishedCards.length === 0 ? (
@@ -457,24 +499,46 @@ function MyCardsContent() {
                 </div>
               </div>
             ) : (
-              publishedCards.map((c) => (
+              publishedCards.map((c, index) => (
                 <div key={c.id} className="group rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm">
                   <div className="relative overflow-hidden rounded-t-2xl">
-                    <Link href={`/my-cards/${c.id}`} className="block overflow-hidden">
+                    <div className="block overflow-hidden cursor-default">
                       <Image
                         alt={c.name}
                         src={c.thumbnail}
                         width={640}
                         height={989}
-                        className="aspect-[640/989] w-full bg-gray-100 object-cover transition-transform duration-300 group-hover:scale-105"
+                        className="aspect-[640/989] w-full bg-gray-100 object-cover"
                       />
-                    </Link>
+                    </div>
+                    <div className="absolute right-3 top-3 flex gap-2">
+                      <Menu as="div" className="relative inline-block text-left">
+                        <MenuButton className="inline-flex items-center justify-center rounded-lg bg-black/80 p-1.5 text-white shadow-sm hover:bg-black">
+                          <EllipsisHorizontalIcon className="h-4 w-4" />
+                        </MenuButton>
+                        <MenuItems
+                          anchor={{
+                            to: (index + 1) % 2 === 0 ? "bottom start" : "bottom end",
+                            gap: 8,
+                            padding: 16
+                          }}
+                          className="z-50 w-48 rounded-md bg-white p-1 text-sm shadow-2xl ring-1 ring-black/5 origin-top-right data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[leave]:duration-75 data-[enter]:ease-out data-[leave]:ease-in"
+                        >
+                          <MenuItem>
+                            <button
+                              onClick={(e) => { e.preventDefault(); handleUnpublishDesign(c.id); }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                            >
+                              Unpublish
+                            </button>
+                          </MenuItem>
+                        </MenuItems>
+                      </Menu>
+                    </div>
                   </div>
                   <div className="px-4 pt-3 pb-4 text-left">
-                    <h3 className="line-clamp-1 text-[15px] font-semibold leading-6">
-                      <Link href={`/my-cards/${c.id}`} className="text-gray-900 hover:text-indigo-600 transition-colors duration-200">
-                        {c.name}
-                      </Link>
+                    <h3 className="line-clamp-1 text-[15px] font-semibold leading-6 text-gray-900">
+                      {c.name}
                     </h3>
                     <div className="mt-1.5 text-[12px] text-gray-600">{c.lastEdited}</div>
                   </div>

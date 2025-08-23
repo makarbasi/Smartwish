@@ -242,8 +242,9 @@ function TemplatesPageContent() {
         console.log("❌ User not authenticated, opening auth modal");
         console.log("🔍 Session:", session);
         console.log("🔍 Status:", status);
-        // When using a template, redirect to my-cards after sign-in instead of back to templates
-        setRedirectUrl("/my-cards");
+        // When using a template, redirect to the template editor after sign-in
+        const editorUrl = `/my-cards/template-editor?templateId=${product.id}&templateName=${encodeURIComponent(product.name)}`;
+        setRedirectUrl(editorUrl);
         openAuthModal();
         return;
       }
