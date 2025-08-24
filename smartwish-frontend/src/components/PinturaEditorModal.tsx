@@ -201,13 +201,17 @@ export default function PinturaEditorModal({
                   .ai-style-container{display:flex;gap:0.5rem;align-items:center;justify-content:center;overflow-x:auto;white-space:nowrap;flex-wrap:nowrap;padding:0 8px 4px}
                   .ai-style-container::-webkit-scrollbar{display:none}
                   /* square buttons with rounded corners */
-                  .ai-style-button{flex:0 0 auto;border:1px solid rgba(0,0,0,0.06);border-radius:12px;padding:8px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:0.35rem;background:#fff;width:96px;height:104px;box-sizing:border-box}
-                  .ai-style-thumb{width:56px;height:56px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px}
+                  .ai-style-button{flex:0 0 auto;border:1px solid rgba(0,0,0,0.06);border-radius:12px;padding:8px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:0.35rem;background:#fff;width:96px;height:104px;box-sizing:border-box;cursor:pointer;transition:all 0.2s ease}
+                  .ai-style-button:hover{border-color:rgba(0,0,0,0.12);background:#f9f9f9}
+                  .ai-style-button.selected{border:2px solid #4f46e5;border-radius:12px;background:#faf5ff;box-shadow:0 0 0 1px #4f46e5}
+                  .ai-style-button.selected .ai-style-thumb{transform:scale(0.95)}
+                  .ai-style-thumb{width:56px;height:56px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;transition:transform 0.2s ease}
                   .ai-style-label{font-size:12px;color:#111;text-align:center;line-height:1;margin-top:6px}
                   @media (max-width:420px){
                     .ai-style-thumb{width:44px;height:44px;font-size:13px}
                     .ai-style-label{font-size:11px}
                     .ai-style-button{width:76px;height:88px;padding:6px}
+                    .ai-style-button.selected{border:2px solid #4f46e5}
                   }
                 </style>
 
@@ -241,7 +245,7 @@ export default function PinturaEditorModal({
                   <input 
                     type="text" 
                     id="ai-prompt-input"
-                    placeholder="Ask AI to enhance your image..."
+                    placeholder="Describe changes (optional - or just select a style)"
                     style="
                       flex: 1;
                       padding: 0.75rem 1rem;
@@ -342,14 +346,17 @@ export default function PinturaEditorModal({
 
         styleButtons.forEach(btn => {
           const activate = () => {
+            console.log('🎨 Style button clicked:', btn.getAttribute('data-style'));
             styleButtons.forEach(b => {
               b.classList.remove('selected');
               b.setAttribute('aria-pressed', 'false');
+              console.log('🔧 Removing selected from:', b.getAttribute('data-style'));
             });
             btn.classList.add('selected');
             btn.setAttribute('aria-pressed', 'true');
             selectedStyle = btn.getAttribute('data-style') || 'natural';
             console.log('🎨 AI style selected:', selectedStyle);
+            console.log('🔧 Button classes after selection:', btn.className);
             // Ensure activated button is visible (center it)
             if (styleContainer) {
               const btnRect = btn.getBoundingClientRect();
@@ -372,8 +379,14 @@ export default function PinturaEditorModal({
 
         sendButton?.addEventListener('click', async () => {
           const prompt = promptInput?.value?.trim();
-          if (!prompt) return;
-          console.log('🤖 AI Prompt:', prompt, 'Style:', selectedStyle);
+          // Allow sending with just theme/style (no text required)
+          if (!prompt && !selectedStyle) {
+            console.warn('⚠️ No prompt or style selected');
+            return;
+          }
+          
+          const finalPrompt = prompt || `Transform this image completely to match the ${selectedStyle} artistic style while preserving the main subject and composition`;
+          console.log('🤖 AI Request - Prompt:', finalPrompt, 'Style:', selectedStyle);
 
           // Visual feedback
           const originalButtonText = sendButton!.innerHTML;
@@ -460,7 +473,7 @@ export default function PinturaEditorModal({
             // Prepare form data and call backend Gemini inpaint route
             const formData = new FormData()
             formData.append('image', file)
-            formData.append('prompt', prompt)
+            formData.append('prompt', finalPrompt)
             formData.append('style', selectedStyle)
 
             // Add the original image as context for Gemini to understand what user is working on

@@ -100,6 +100,7 @@ export class AppController {
       const image = files.image?.[0];
       const extraImage = files.extraImage?.[0];
       const prompt = req.body.prompt;
+      const style = req.body.style || '';
 
       if (!image || !prompt) {
         return res
@@ -108,6 +109,34 @@ export class AppController {
       }
 
       const base64Image = image.buffer.toString('base64');
+      
+      // Enhance the prompt with specific style information
+      let enhancedPrompt = prompt;
+      if (style && style.trim()) {
+        // Map style names to more specific artistic directions for Gemini
+        const styleDescriptions: { [key: string]: string } = {
+          'natural': 'natural, realistic style with organic textures and authentic lighting',
+          'vibrant': 'vibrant, colorful Pixar-style with bold colors and dynamic lighting',
+          'portrait': 'Disney-style artistic portrait with smooth shading and expressive features',
+          'cinematic': 'anime-style with dramatic lighting, bold outlines, and stylized colors',
+          'vintage': 'vintage pencil sketch style with hand-drawn textures and classic artistic techniques',
+          'theme-watercolor': 'watercolor painting style with flowing colors and artistic brushstrokes',
+          'theme-pixar': 'Pixar animation style with vibrant colors and 3D-rendered appearance',
+          'theme-disney': 'Disney animation style with smooth gradients and classic cartoon aesthetics',
+          'theme-anime': 'anime/manga art style with bold lines, dramatic shading, and stylized features',
+          'theme-pencil-sketch': 'pencil sketch style with hand-drawn textures, shading, and artistic strokes'
+        };
+
+        const styleDescription = styleDescriptions[style.toLowerCase()] || `${style} artistic style`;
+        enhancedPrompt = `Apply the following modifications to the image: ${prompt}. Render the result in a ${styleDescription}. Maintain the composition while transforming the visual style to match the ${style} aesthetic perfectly.`;
+        console.log(`[Gemini Inpaint] Using style: "${style}" -> "${styleDescription}"`);
+      } else {
+        console.log('[Gemini Inpaint] No style specified, using default natural style');
+      }
+      
+      console.log(`[Gemini Inpaint] Enhanced prompt: "${enhancedPrompt}"`);
+      console.log(`[Gemini Inpaint] Has extra image context: ${!!extraImage}`);
+      
       const parts: any[] = [
         {
           inline_data: {
@@ -116,7 +145,7 @@ export class AppController {
           },
         },
         {
-          text: prompt,
+          text: enhancedPrompt,
         },
       ];
 
