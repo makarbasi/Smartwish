@@ -609,7 +609,10 @@ export class SupabaseSavedDesignsService {
       try {
         await this.ensureTemplateForSavedDesign(mapped.id, userId);
       } catch (e) {
-        console.error('publishDesignWithMetadata: ensureTemplateForSavedDesign failed', e);
+        console.error(
+          'publishDesignWithMetadata: ensureTemplateForSavedDesign failed',
+          e,
+        );
       }
     }
     return mapped;
@@ -894,7 +897,7 @@ export class SupabaseSavedDesignsService {
         .replace(/^-+|-+$/g, '')
         .slice(0, 60);
 
-    let baseSlug = makeSlug(designRecord.title || 'untitled-design');
+    const baseSlug = makeSlug(designRecord.title || 'untitled-design');
     let finalSlug = baseSlug;
 
     // 3. Ensure slug uniqueness
@@ -906,7 +909,10 @@ export class SupabaseSavedDesignsService {
         .eq('slug', finalSlug)
         .maybeSingle();
       if (slugError) {
-        console.warn('promoteToTemplate: slug check warning', slugError.message);
+        console.warn(
+          'promoteToTemplate: slug check warning',
+          slugError.message,
+        );
         break; // fallback to current slug
       }
       if (!existing) break;
@@ -950,10 +956,30 @@ export class SupabaseSavedDesignsService {
         designData: metadata.designData || {
           templateKey: metadata.templateKey || 'custom',
           pages: [
-            { header: 'Page 1', image: designRecord.image_1 || '', text: '', footer: '' },
-            { header: 'Page 2', image: designRecord.image_2 || '', text: '', footer: '' },
-            { header: 'Page 3', image: designRecord.image_3 || '', text: '', footer: '' },
-            { header: 'Page 4', image: designRecord.image_4 || '', text: '', footer: '' },
+            {
+              header: 'Page 1',
+              image: designRecord.image_1 || '',
+              text: '',
+              footer: '',
+            },
+            {
+              header: 'Page 2',
+              image: designRecord.image_2 || '',
+              text: '',
+              footer: '',
+            },
+            {
+              header: 'Page 3',
+              image: designRecord.image_3 || '',
+              text: '',
+              footer: '',
+            },
+            {
+              header: 'Page 4',
+              image: designRecord.image_4 || '',
+              text: '',
+              footer: '',
+            },
           ],
         },
       },
@@ -991,12 +1017,17 @@ export class SupabaseSavedDesignsService {
       .single();
 
     if (updateError) {
-      console.error('promoteToTemplate: saved_design update error', updateError);
+      console.error(
+        'promoteToTemplate: saved_design update error',
+        updateError,
+      );
     }
 
     return {
       template: templateRow,
-      savedDesign: this.mapDatabaseRecordToSavedDesign(updatedDesign || designRecord),
+      savedDesign: this.mapDatabaseRecordToSavedDesign(
+        updatedDesign || designRecord,
+      ),
     };
   }
 
@@ -1015,7 +1046,10 @@ export class SupabaseSavedDesignsService {
       .eq('original_saved_design_id', designId)
       .maybeSingle();
     if (existingError) {
-      console.warn('ensureTemplateForSavedDesign: existing check error', existingError.message);
+      console.warn(
+        'ensureTemplateForSavedDesign: existing check error',
+        existingError.message,
+      );
     }
     if (existingTemplate) return;
     // Fetch saved design record
@@ -1058,11 +1092,11 @@ export class SupabaseSavedDesignsService {
         sw_categories(name)
       `,
       )
-  .eq('status', 'published')
-  // Order newest (most recently published) first; fall back to created_at for any rows lacking published_at
-  .order('published_at', { ascending: false, nullsFirst: false })
-  .order('created_at', { ascending: false })
-  .range(offset, offset + limit - 1);
+      .eq('status', 'published')
+      // Order newest (most recently published) first; fall back to created_at for any rows lacking published_at
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (category) {
       query = query.eq('category_id', category);

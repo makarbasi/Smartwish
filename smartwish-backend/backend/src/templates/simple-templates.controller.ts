@@ -4,9 +4,7 @@ import { DataSource } from 'typeorm';
 
 @Controller('api/simple-templates')
 export class SimpleTemplatesController {
-  constructor(
-    @InjectDataSource() private dataSource: DataSource
-  ) {}
+  constructor(@InjectDataSource() private dataSource: DataSource) {}
 
   @Get()
   async getAllTemplates() {
@@ -37,9 +35,10 @@ export class SimpleTemplatesController {
           t.updated_at,
           c.name as category_name,
           c.display_name as category_display_name,
-          'SmartWish' as author
+          COALESCE(u.name, 'SmartWish') as author
         FROM sw_templates t
         LEFT JOIN sw_categories c ON t.category_id = c.id
+        LEFT JOIN users u ON t.author_id = u.id
         WHERE t.status = 'published'
         ORDER BY t.created_at DESC
       `);
@@ -59,10 +58,10 @@ export class SimpleTemplatesController {
     }
   }
 
-  @Get('category/:categoryId')
-  async getTemplatesByCategory(@Param('categoryId') categoryId: string) {
+  @Get('no-author')
+  async getTemplatesWithoutAuthor() {
     try {
-      // Use raw SQL to get templates by category
+      // Get templates where author_id is NULL (anonymous templates)
       const templates = await this.dataSource.query(`
         SELECT 
           t.id, 
@@ -91,9 +90,229 @@ export class SimpleTemplatesController {
           'SmartWish' as author
         FROM sw_templates t
         LEFT JOIN sw_categories c ON t.category_id = c.id
+        WHERE t.status = 'published' AND t.author_id IS NULL
+        ORDER BY t.created_at DESC
+      `);
+
+      return {
+        success: true,
+        data: templates,
+        total: templates.length,
+        message: 'Templates without author (anonymous)',
+      };
+    } catch (error) {
+      console.error('Templates without author error:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.stack,
+      };
+    }
+  }
+
+  @Get('no-author/category/:categoryId')
+  async getTemplatesWithoutAuthorByCategory(@Param('categoryId') categoryId: string) {
+    try {
+      // Get templates where author_id is NULL (anonymous templates) filtered by category
+      const templates = await this.dataSource.query(
+        `
+        SELECT 
+          t.id, 
+          t.slug, 
+          t.title, 
+          t.category_id, 
+          t.author_id,
+          t.description, 
+          t.price, 
+          t.language, 
+          t.region, 
+          t.status, 
+          t.popularity, 
+          t.num_downloads, 
+          t.cover_image, 
+          t.image_1,
+          t.image_2,
+          t.image_3,
+          t.image_4,
+          t.current_version, 
+          t.published_at, 
+          t.created_at, 
+          t.updated_at,
+          c.name as category_name,
+          c.display_name as category_display_name,
+          'SmartWish' as author
+        FROM sw_templates t
+        LEFT JOIN sw_categories c ON t.category_id = c.id
+        WHERE t.status = 'published' AND t.author_id IS NULL AND t.category_id = $1
+        ORDER BY t.created_at DESC
+      `,
+        [categoryId],
+      );
+
+      return {
+        success: true,
+        data: templates,
+        total: templates.length,
+        message: `Templates without author (anonymous) in category`,
+      };
+    } catch (error) {
+      console.error('Templates without author by category error:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.stack,
+      };
+    }
+  }
+
+  @Get('with-author')
+  async getTemplatesWithAuthor() {
+    try {
+      // Get templates where author_id is NOT NULL (authored templates)
+      const templates = await this.dataSource.query(`
+        SELECT 
+          t.id, 
+          t.slug, 
+          t.title, 
+          t.category_id, 
+          t.author_id,
+          t.description, 
+          t.price, 
+          t.language, 
+          t.region, 
+          t.status, 
+          t.popularity, 
+          t.num_downloads, 
+          t.cover_image, 
+          t.image_1,
+          t.image_2,
+          t.image_3,
+          t.image_4,
+          t.current_version, 
+          t.published_at, 
+          t.created_at, 
+          t.updated_at,
+          c.name as category_name,
+          c.display_name as category_display_name,
+          COALESCE(u.name, 'Unknown Author') as author
+        FROM sw_templates t
+        LEFT JOIN sw_categories c ON t.category_id = c.id
+        LEFT JOIN users u ON t.author_id = u.id
+        WHERE t.status = 'published' AND t.author_id IS NOT NULL
+        ORDER BY t.created_at DESC
+      `);
+
+      return {
+        success: true,
+        data: templates,
+        total: templates.length,
+        message: 'Templates with author',
+      };
+    } catch (error) {
+      console.error('Templates with author error:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.stack,
+      };
+    }
+  }
+
+  @Get('with-author/category/:categoryId')
+  async getTemplatesWithAuthorByCategory(@Param('categoryId') categoryId: string) {
+    try {
+      // Get templates where author_id is NOT NULL (authored templates) filtered by category
+      const templates = await this.dataSource.query(
+        `
+        SELECT 
+          t.id, 
+          t.slug, 
+          t.title, 
+          t.category_id, 
+          t.author_id,
+          t.description, 
+          t.price, 
+          t.language, 
+          t.region, 
+          t.status, 
+          t.popularity, 
+          t.num_downloads, 
+          t.cover_image, 
+          t.image_1,
+          t.image_2,
+          t.image_3,
+          t.image_4,
+          t.current_version, 
+          t.published_at, 
+          t.created_at, 
+          t.updated_at,
+          c.name as category_name,
+          c.display_name as category_display_name,
+          COALESCE(u.name, 'Unknown Author') as author
+        FROM sw_templates t
+        LEFT JOIN sw_categories c ON t.category_id = c.id
+        LEFT JOIN users u ON t.author_id = u.id
+        WHERE t.status = 'published' AND t.author_id IS NOT NULL AND t.category_id = $1
+        ORDER BY t.created_at DESC
+      `,
+        [categoryId],
+      );
+
+      return {
+        success: true,
+        data: templates,
+        total: templates.length,
+        message: `Templates with author in category`,
+      };
+    } catch (error) {
+      console.error('Templates with author by category error:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.stack,
+      };
+    }
+  }
+
+  @Get('category/:categoryId')
+  async getTemplatesByCategory(@Param('categoryId') categoryId: string) {
+    try {
+      // Use raw SQL to get templates by category
+      const templates = await this.dataSource.query(
+        `
+        SELECT 
+          t.id, 
+          t.slug, 
+          t.title, 
+          t.category_id, 
+          t.author_id,
+          t.description, 
+          t.price, 
+          t.language, 
+          t.region, 
+          t.status, 
+          t.popularity, 
+          t.num_downloads, 
+          t.cover_image, 
+          t.image_1,
+          t.image_2,
+          t.image_3,
+          t.image_4,
+          t.current_version, 
+          t.published_at, 
+          t.created_at, 
+          t.updated_at,
+          c.name as category_name,
+          c.display_name as category_display_name,
+          COALESCE(u.name, 'SmartWish') as author
+        FROM sw_templates t
+        LEFT JOIN sw_categories c ON t.category_id = c.id
+        LEFT JOIN users u ON t.author_id = u.id
         WHERE t.status = 'published' AND t.category_id = $1
         ORDER BY t.created_at DESC
-      `, [categoryId]);
+      `,
+        [categoryId],
+      );
 
       return {
         success: true,
@@ -113,14 +332,15 @@ export class SimpleTemplatesController {
   @Put(':id')
   async updateTemplate(
     @Param('id') templateId: string,
-    @Body() updateData: {
+    @Body()
+    updateData: {
       title?: string;
       image_1?: string;
       image_2?: string;
       image_3?: string;
       image_4?: string;
       description?: string;
-    }
+    },
   ) {
     try {
       console.log('Updating template:', templateId, 'with data:', updateData);
@@ -169,10 +389,11 @@ export class SimpleTemplatesController {
       // Always update the updated_at timestamp
       updateFields.push(`updated_at = NOW()`);
 
-      if (updateFields.length === 1) { // Only updated_at
+      if (updateFields.length === 1) {
+        // Only updated_at
         return {
           success: false,
-          error: 'No fields to update'
+          error: 'No fields to update',
         };
       }
 
@@ -195,14 +416,14 @@ export class SimpleTemplatesController {
       if (result.length === 0) {
         return {
           success: false,
-          error: 'Template not found'
+          error: 'Template not found',
         };
       }
 
       return {
         success: true,
         data: result[0],
-        message: 'Template updated successfully'
+        message: 'Template updated successfully',
       };
     } catch (error) {
       console.error('Update template error:', error);
@@ -217,27 +438,36 @@ export class SimpleTemplatesController {
   @Post('duplicate/:id')
   async duplicateTemplate(
     @Param('id') templateId: string,
-    @Body() duplicateData: {
+    @Body()
+    duplicateData: {
       title: string;
       image_1?: string;
       image_2?: string;
       image_3?: string;
       image_4?: string;
       user_id?: string;
-    }
+    },
   ) {
     try {
-      console.log('Duplicating template:', templateId, 'with data:', duplicateData);
+      console.log(
+        'Duplicating template:',
+        templateId,
+        'with data:',
+        duplicateData,
+      );
 
       // First, get the original template
-      const original = await this.dataSource.query(`
+      const original = await this.dataSource.query(
+        `
         SELECT * FROM sw_templates WHERE id = $1
-      `, [templateId]);
+      `,
+        [templateId],
+      );
 
       if (original.length === 0) {
         return {
           success: false,
-          error: 'Original template not found'
+          error: 'Original template not found',
         };
       }
 
@@ -272,7 +502,7 @@ export class SimpleTemplatesController {
         duplicateData.image_3 || originalTemplate.image_3,
         duplicateData.image_4 || originalTemplate.image_4,
         duplicateData.image_1 || originalTemplate.cover_image, // Use first image as cover
-        '1.0.0' // Reset version
+        '1.0.0', // Reset version
       ];
 
       console.log('Insert query:', insertQuery);
@@ -283,7 +513,7 @@ export class SimpleTemplatesController {
       return {
         success: true,
         data: result[0],
-        message: 'Template duplicated successfully'
+        message: 'Template duplicated successfully',
       };
     } catch (error) {
       console.error('Duplicate template error:', error);

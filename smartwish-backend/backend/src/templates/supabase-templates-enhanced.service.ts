@@ -19,6 +19,7 @@ export interface Template {
   created_at: string;
   updated_at: string;
   published_at?: string;
+  author_name?: { name: string };
 }
 
 export interface Category {
@@ -180,7 +181,10 @@ export class SupabaseTemplatesEnhancedService {
     
     const { data, error } = await this.supabase
       .from('sw_templates')
-      .select('*')
+      .select(`
+        *,
+        author_name:users!author_id(name)
+      `)
       .eq('status', 'published')
       .order('popularity', { ascending: false });
 
@@ -197,7 +201,10 @@ export class SupabaseTemplatesEnhancedService {
     
     const { data, error } = await this.supabase
       .from('sw_templates')
-      .select('*')
+      .select(`
+        *,
+        author_name:users!author_id(name)
+      `)
       .eq('category_id', categoryId)
       .eq('status', 'published')
       .order('popularity', { ascending: false });
@@ -215,7 +222,10 @@ export class SupabaseTemplatesEnhancedService {
     
     const { data, error } = await this.supabase
       .from('sw_templates')
-      .select('*')
+      .select(`
+        *,
+        author_name:users!author_id(name)
+      `)
       .eq('id', id)
       .single();
 
@@ -422,6 +432,7 @@ export class SupabaseTemplatesEnhancedService {
       .from('sw_templates')
       .select(`
         *,
+        author_name:users!author_id(name),
         sw_categories (
           id,
           name,

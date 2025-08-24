@@ -247,7 +247,7 @@ function MyCardsContent() {
       setSuccessMessage(
         "🎉 Your design is now live and published for everyone to see!"
       );
-  mutateSavedDesigns();
+      mutateSavedDesigns();
     } catch (e: unknown) {
       console.error("❌ Error publishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to publish design";
@@ -274,7 +274,7 @@ function MyCardsContent() {
       setSuccessMessage(
         "Your design has been unpublished and moved back to drafts."
       );
-  mutateSavedDesigns();
+      mutateSavedDesigns();
     } catch (e: unknown) {
       console.error("❌ Error unpublishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to unpublish design";

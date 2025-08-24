@@ -1,5 +1,6 @@
 import NextAuth, { User } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import { DynamicRouter } from "@/utils/request_utils";
 
 /* ──────────────────────────────────────────────────────────
@@ -43,6 +44,10 @@ async function refreshAccessToken(refreshToken: string) {
 export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: process.env.AUTH_SECRET,
   providers: [
+    GoogleProvider({
+      clientId: process.env.AUTH_GOOGLE_ID!,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+    }),
     CredentialsProvider({
       name: "credentials",
       credentials: { 
@@ -106,9 +111,40 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   jwt: { maxAge: 60 * 60 * 24 * 30 }, // 30 days
 
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       // Initial sign-in
       if (user) {
+        // Handle Google OAuth sign-in
+        if (account?.provider === "google") {
+          try {
+            // Call backend OAuth callback to create/link user and get JWT
+            const backendUrl = DynamicRouter("auth", "oauth/google-callback", undefined, false);
+            const resp = await fetch(backendUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                picture: user.image,
+                provider: "google"
+              }),
+            });
+
+            if (resp.ok) {
+              const data = await resp.json();
+              token.user = data.user;
+              token.access_token = data.access_token;
+              token.refresh_token = data.refresh_token;
+              token.access_expires = Date.now() + (24 * 60 * 60 * 1000 - 5 * 60 * 1000);
+              return token;
+            }
+          } catch (error) {
+            console.error("Google OAuth backend integration error:", error);
+          }
+        }
+
+        // Handle credentials sign-in
         token.user = {
           id: user.id,
           email: user.email,

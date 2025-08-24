@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     
     const base = process.env.NEXT_PUBLIC_API_BASE ?? 'https://smartwish.onrender.com'
 
-    // If category_id is provided, use the category-specific endpoint
+    // If category_id is provided without other filters, use the simple endpoint
     if (categoryId && !query && !region && !language) {
       // Use category-specific endpoint for pure category filtering
       apiUrl = new URL(`/api/simple-templates/category/${categoryId}`, base)

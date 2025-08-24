@@ -39,19 +39,28 @@ export class TemplatesService {
 
     // Apply category filter
     if (categoryId) {
-      queryBuilder.andWhere('template.category_id = :categoryId', { categoryId });
+      queryBuilder.andWhere('template.category_id = :categoryId', {
+        categoryId,
+      });
     }
 
     // Apply search filter
     if (searchTerm) {
       queryBuilder.andWhere(
         '(template.title ILIKE :searchTerm OR template.description ILIKE :searchTerm)',
-        { searchTerm: `%${searchTerm}%` }
+        { searchTerm: `%${searchTerm}%` },
       );
     }
 
     // Apply sorting
-    const validSortFields = ['title', 'created_at', 'updated_at', 'popularity', 'num_downloads', 'price'];
+    const validSortFields = [
+      'title',
+      'created_at',
+      'updated_at',
+      'popularity',
+      'num_downloads',
+      'price',
+    ];
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
     // Map camelCase to snake_case if needed
     const fieldMap: Record<string, string> = {

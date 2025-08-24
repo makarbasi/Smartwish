@@ -1,7 +1,9 @@
 import {
   Controller,
   Get,
+  Post,
   Query,
+  Body,
   Res,
   Req,
   UnauthorizedException,
@@ -104,6 +106,35 @@ export class OAuthController {
       res.redirect(
         `${errorUrl}/auth/error?message=WhatsApp authentication failed`,
       );
+    }
+  }
+
+  @Post('oauth/google-callback')
+  @Public()
+  async googleOAuthCallback(@Body() profile: {
+    id: string;
+    email: string;
+    name: string;
+    picture?: string;
+    provider: string;
+  }) {
+    try {
+      console.log('Google OAuth NextAuth callback:', profile);
+      const result = await this.oauthService.handleOAuthCallback({
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        picture: profile.picture,
+        provider: 'google' as const,
+      });
+
+      return {
+        success: true,
+        ...result,
+      };
+    } catch (error) {
+      console.error('Google OAuth NextAuth error:', error);
+      throw new UnauthorizedException('Google authentication failed');
     }
   }
 

@@ -452,12 +452,12 @@ export default function PinturaEditorModal({
           );
 
           // Visual feedback
-          const originalIcon = sendButton!.querySelector('.ai-send-icon');
+          const originalIcon = sendButton!.querySelector(".ai-send-icon");
           sendButton!.disabled = true;
           sendButton!.style.opacity = "0.85";
           // replace icon with spinner
           if (originalIcon) {
-            originalIcon.setAttribute('data-original','true');
+            originalIcon.setAttribute("data-original", "true");
             originalIcon.outerHTML = '<div class="ai-spinner" />';
           }
 
@@ -601,9 +601,10 @@ export default function PinturaEditorModal({
             sendButton!.disabled = false;
             sendButton!.style.opacity = "";
             // restore icon if spinner present
-            const spinner = sendButton!.querySelector('.ai-spinner');
+            const spinner = sendButton!.querySelector(".ai-spinner");
             if (spinner) {
-              spinner.outerHTML = '<svg class="ai-send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
+              spinner.outerHTML =
+                '<svg class="ai-send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
             }
           }
         });

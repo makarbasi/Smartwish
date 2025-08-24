@@ -9,7 +9,6 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Category } from './category.entity';
-import { User } from '../user/user.entity';
 
 @Entity('sw_templates')
 export class Template {
@@ -33,10 +32,6 @@ export class Template {
   @Index()
   authorId?: string;
 
-  @Column({ name: 'created_by_user_id', type: 'uuid', nullable: true })
-  @Index()
-  createdByUserId?: string;
-
   @Column({ name: 'cover_image', type: 'varchar', length: 500, nullable: true })
   coverImage?: string;
 
@@ -52,8 +47,8 @@ export class Template {
   @Column({ name: 'image_4', type: 'text', nullable: true })
   image4?: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  designData?: any;
+  // @Column({ type: 'jsonb', nullable: true })
+  // designData?: any;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   price: number;
@@ -67,8 +62,8 @@ export class Template {
   @Column({ name: 'num_downloads', type: 'integer', default: 0 })
   numDownloads: number;
 
-  @Column({ name: 'is_featured', type: 'boolean', default: false })
-  isFeatured: boolean;
+  // @Column({ name: 'is_featured', type: 'boolean', default: false })
+  // isFeatured: boolean;
 
   @Column({ type: 'varchar', default: 'published' })
   status: string;
@@ -82,7 +77,12 @@ export class Template {
   @Column({ type: 'text', array: true, default: [] })
   tags: string[];
 
-  @Column({ name: 'current_version', type: 'varchar', length: 20, default: '1.0.0' })
+  @Column({
+    name: 'current_version',
+    type: 'varchar',
+    length: 20,
+    default: '1.0.0',
+  })
   currentVersion: string;
 
   @Column({ name: 'published_at', type: 'timestamp', nullable: true })
@@ -98,8 +98,4 @@ export class Template {
   @ManyToOne(() => Category, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'category_id' })
   category?: Category;
-
-  @ManyToOne(() => User, { onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'created_by_user_id' })
-  createdByUser?: User;
 }

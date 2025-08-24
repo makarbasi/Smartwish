@@ -20,6 +20,7 @@ type ApiTemplate = {
   category_id: string;
   author_id: string;
   description: string;
+  author_name?: { name: string };
   price: string | number;
   language: string;
   region: string;
@@ -96,7 +97,7 @@ function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
     imageSrc: apiTemplate.image_1,
     imageAlt: `${apiTemplate.title} template`,
     publisher: {
-      name: apiTemplate.author || "SmartWish Studio",
+      name: apiTemplate.author_name?.name || apiTemplate.author || "SmartWish Studio",
       avatar: "https://i.pravatar.cc/80?img=1",
     },
     downloads: apiTemplate.num_downloads,

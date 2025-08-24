@@ -10,6 +10,10 @@
       "Bash(npx tsc:*)",
       "Bash(cmd /c:*)",
       "Read(/c:\\Users\\abuba\\Downloads/**)",
+      "Read(/c:\\Users\\abuba\\Downloads/**)",
+      "Read(/c:\\Users\\abuba\\Downloads/**)",
+      "Read(/c:\\Users\\abuba\\Downloads/**)",
+      "Read(/c:\\Users\\abuba\\AppData\\Roaming\\Code\\User\\workspaceStorage\\vscode-chat-images/**)",
       "Read(/c:\\Users\\abuba\\Downloads/**)"
     ],
     "deny": [],

@@ -46,6 +46,17 @@ function SignInForm() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    try {
+      await signIn("google", {
+        callbackUrl: callbackUrl
+      });
+    } catch (error) {
+      console.error("Google sign in error:", error);
+      setError("Google sign in failed. Please try again.");
+    }
+  };
+
   return (
     <>
       <div className="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -176,10 +187,10 @@ function SignInForm() {
                 <div className="w-full flex-1 border-t border-gray-200" />
               </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-4">
-                <a
-                  href={`${API_BASE}/auth/google${callbackUrl !== "/" ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ""}`}
-                  className="flex w-full items-center justify-center gap-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 focus-visible:inset-ring-transparent"
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={handleGoogleSignIn}
+                  className="flex w-full max-w-sm items-center justify-center gap-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 focus-visible:inset-ring-transparent"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
                     <path
@@ -199,32 +210,8 @@ function SignInForm() {
                       fill="#34A853"
                     />
                   </svg>
-                  <span className="text-sm/6 font-semibold">Google</span>
-                </a>
-
-                <a
-                  href={`${API_BASE}/auth/instagram${callbackUrl !== "/" ? `?callbackUrl=${encodeURIComponent(callbackUrl)}` : ""}`}
-                  className="flex w-full items-center justify-center gap-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 focus-visible:inset-ring-transparent"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
-                    <linearGradient
-                      id="ig-gradient"
-                      x1="0%"
-                      y1="0%"
-                      x2="100%"
-                      y2="100%"
-                    >
-                      <stop offset="0%" stopColor="#F58529" />
-                      <stop offset="50%" stopColor="#DD2A7B" />
-                      <stop offset="100%" stopColor="#8134AF" />
-                    </linearGradient>
-                    <path
-                      fill="url(#ig-gradient)"
-                      d="M7 2C4.238 2 2 4.238 2 7v10c0 2.762 2.238 5 5 5h10c2.762 0 5-2.238 5-5V7c0-2.762-2.238-5-5-5H7zm0 2h10c1.657 0 3 1.343 3 3v10c0 1.657-1.343 3-3 3H7c-1.657 0-3-1.343-3-3V7c0-1.657 1.343-3 3-3zm10 2a1 1 0 110 2 1 1 0 010-2zM12 7a5 5 0 100 10 5 5 0 000-10zm0 2a3 3 0 110 6 3 3 0 010-6z"
-                    />
-                  </svg>
-                  <span className="text-sm/6 font-semibold">Instagram</span>
-                </a>
+                  <span className="text-sm/6 font-semibold">Continue with Google</span>
+                </button>
               </div>
             </div>
           </div>

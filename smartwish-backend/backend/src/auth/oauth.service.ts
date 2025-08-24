@@ -75,20 +75,31 @@ export class OAuthService {
         sub: user.id,
         name: user.name,
         picture: user.profileImage,
-        iat: Math.floor(Date.now() / 1000),
-        iss: process.env.JWT_ISSUER || 'smartwish-app',
-        aud: process.env.JWT_AUDIENCE || 'smartwish-users',
       };
-      const token = this.jwtService.sign(payload);
+      const token = this.jwtService.sign(payload, {
+        issuer: process.env.JWT_ISSUER || 'smartwish-app',
+        audience: process.env.JWT_AUDIENCE || 'smartwish-users',
+        expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+      });
+
+      // Generate refresh token
+      const refreshPayload = { sub: user.id, type: 'refresh' };
+      const refreshToken = this.jwtService.sign(refreshPayload, {
+        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+      });
 
       return {
         access_token: token,
+        refresh_token: refreshToken,
+        token_type: 'Bearer',
+        expires_in: 86400, // 24 hours in seconds
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
           profileImage: user.profileImage,
           oauthProvider: user.oauthProvider,
+          isEmailVerified: user.isEmailVerified || true, // OAuth users are considered verified
         },
       };
     } catch (error) {
