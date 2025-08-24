@@ -8,22 +8,15 @@ export interface SavedDesign {
   description: string;
   designData: {
     templateKey: string;
-    pages: Array<{
-      header: string;
-      image: string;
-      text: string;
-      footer: string;
-    }>;
+    pages: Array<{ header: string; image: string; text: string; footer: string }>;
     editedPages: Record<number, string>;
   };
   thumbnail?: string;
   category: string;
   createdAt: Date;
   updatedAt: Date;
-  // Image fields for generated card images
   imageUrls?: string[];
   imageTimestamp?: number;
-  // Additional metadata fields for consistency with Template
   author?: string;
   upload_time?: string;
   price?: number;
@@ -32,9 +25,7 @@ export interface SavedDesign {
   popularity?: number;
   num_downloads?: number;
   searchKeywords?: string[];
-  // Status field for future use
   status?: 'draft' | 'published' | 'archived' | 'template_candidate' | 'published_to_templates';
-  // New fields for sw_templates compatibility
   templateId?: string;
   slug?: string;
   categoryId?: string;
@@ -58,11 +49,18 @@ export class SavedDesignsService {
   private supabaseService: SupabaseSavedDesignsService;
 
   constructor() {
-    // Initialize Supabase service
     this.supabaseService = new SupabaseSavedDesignsService();
-    
     if (!this.supabaseService.isAvailable()) {
       throw new Error('Supabase is required for saved designs functionality. Please configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+    }
+  }
+
+  private ensurePages(designData: any) {
+    if (!designData.designData) {
+      designData.designData = { templateKey: 'unknown', pages: [], editedPages: {} };
+    } else {
+      if (!Array.isArray(designData.designData.pages)) designData.designData.pages = [];
+      if (!designData.designData.editedPages) designData.designData.editedPages = {};
     }
   }
 
@@ -70,7 +68,8 @@ export class SavedDesignsService {
     userId: string,
     designData: Omit<SavedDesign, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
   ): Promise<SavedDesign> {
-    return await this.supabaseService.saveDesign(userId, designData);
+    this.ensurePages(designData as any);
+    return await this.supabaseService.saveDesign(userId, designData as any);
   }
 
   async getUserDesigns(userId: string): Promise<SavedDesign[]> {
@@ -99,7 +98,8 @@ export class SavedDesignsService {
     designId: string,
     updates: Partial<SavedDesign>,
   ): Promise<SavedDesign | null> {
-    return await this.supabaseService.updateDesign(userId, designId, updates);
+    if (updates.designData) this.ensurePages(updates as any);
+    return await this.supabaseService.updateDesign(userId, designId, updates as any);
   }
 
   async deleteDesign(userId: string, designId: string): Promise<boolean> {
@@ -152,24 +152,28 @@ export class SavedDesignsService {
 
       // Copy images from design data pages
       let copiedDesignData = { ...originalDesign.designData };
-      if (copiedDesignData.pages) {
-        copiedDesignData.pages = await Promise.all(
-          copiedDesignData.pages.map(async (page) => {
-            if (page.image && page.image.includes('supabase')) {
-              const copiedImage = await this.supabaseService.copyImage(page.image, userId);
-              return { ...page, image: copiedImage };
+      if (!Array.isArray(copiedDesignData.pages)) copiedDesignData.pages = [];
+      copiedDesignData.pages = await Promise.all(
+        copiedDesignData.pages.map(async (page: any) => {
+          const img = page.image;
+            if (img && img.includes('supabase')) {
+              try {
+                const copiedImage = await this.supabaseService.copyImage(img, userId);
+                return { ...page, image: copiedImage };
+              } catch {
+                return page;
+              }
             }
             return page;
-          })
-        );
-      }
+        })
+      );
 
       // Create the duplicate with copied images
       const duplicateData = {
         title: duplicateTitle,
         description: originalDesign.description || `Copy of ${originalDesign.title}`,
         category: originalDesign.category,
-        designData: copiedDesignData,
+  designData: copiedDesignData,
         thumbnail: copiedThumbnail,
         imageUrls: copiedImageUrls,
         imageTimestamp: Date.now(),
@@ -200,7 +204,7 @@ export class SavedDesignsService {
         title: duplicateTitle,
         description: originalDesign.description || `Copy of ${originalDesign.title}`,
         category: originalDesign.category,
-        designData: originalDesign.designData,
+  designData: originalDesign.designData,
         thumbnail: originalDesign.thumbnail,
         imageUrls: originalDesign.imageUrls,
         imageTimestamp: originalDesign.imageTimestamp,
@@ -308,6 +312,8 @@ export class SavedDesignsService {
   ): Promise<{ templateId: string; savedDesign: SavedDesign } | null> {
     return await this.supabaseService.publishToTemplates(designId, userId);
   }
+
+  // promoteToTemplate removed: publish handles template creation internally
 
   async getAvailableTemplates(
     userId?: string,

@@ -34,7 +34,12 @@ export interface SavedDesign {
   num_downloads?: number;
   searchKeywords?: string[];
   // Status field for future use
-  status?: 'draft' | 'published' | 'archived' | 'template_candidate' | 'published_to_templates';
+  status?:
+    | 'draft'
+    | 'published'
+    | 'archived'
+    | 'template_candidate'
+    | 'published_to_templates';
   // New fields for sw_templates compatibility
   templateId?: string;
   slug?: string;
@@ -69,7 +74,9 @@ export class SupabaseSavedDesignsService {
     }
 
     if (!serviceRoleKey && !anonKey) {
-      console.warn('Neither SUPABASE_SERVICE_ROLE_KEY nor SUPABASE_ANON_KEY found - Supabase service unavailable');
+      console.warn(
+        'Neither SUPABASE_SERVICE_ROLE_KEY nor SUPABASE_ANON_KEY found - Supabase service unavailable',
+      );
       return;
     }
 
@@ -108,8 +115,11 @@ export class SupabaseSavedDesignsService {
     }
 
     // Extract page images from designData or use direct image fields
-    let page1Image = null, page2Image = null, page3Image = null, page4Image = null;
-    
+    let page1Image = null,
+      page2Image = null,
+      page3Image = null,
+      page4Image = null;
+
     if (designData.designData?.pages) {
       page1Image = designData.designData.pages[0]?.image || null;
       page2Image = designData.designData.pages[1]?.image || null;
@@ -251,8 +261,14 @@ export class SupabaseSavedDesignsService {
     }
 
     console.log('🔄 SupabaseService updateDesign - Design ID:', designId);
-    console.log('🔄 SupabaseService updateDesign - Updates:', JSON.stringify(updates, null, 2));
-    console.log('🔄 SupabaseService updateDesign - CategoryId:', updates.categoryId);
+    console.log(
+      '🔄 SupabaseService updateDesign - Updates:',
+      JSON.stringify(updates, null, 2),
+    );
+    console.log(
+      '🔄 SupabaseService updateDesign - CategoryId:',
+      updates.categoryId,
+    );
 
     // First, get the current record to preserve existing metadata
     const { data: currentRecord, error: fetchError } = await this.supabase
@@ -268,7 +284,7 @@ export class SupabaseSavedDesignsService {
     }
 
     const currentMetadata = currentRecord.metadata || {};
-    
+
     // Build update data for the new schema
     const updateData: any = {};
 
@@ -277,31 +293,46 @@ export class SupabaseSavedDesignsService {
     if (updates.description) updateData.description = updates.description;
     if (updates.categoryId) {
       updateData.category_id = updates.categoryId;
-      console.log('🎯 SupabaseService - Setting category_id in updateData:', updates.categoryId);
+      console.log(
+        '🎯 SupabaseService - Setting category_id in updateData:',
+        updates.categoryId,
+      );
     }
     if (updates.price !== undefined) updateData.price = updates.price;
     if (updates.language) updateData.language = updates.language;
     if (updates.region) updateData.region = updates.region;
-    if (updates.popularity !== undefined) updateData.popularity = updates.popularity;
-    if (updates.num_downloads !== undefined) updateData.num_downloads = updates.num_downloads;
-    if (updates.searchKeywords) updateData.search_keywords = updates.searchKeywords;
+    if (updates.popularity !== undefined)
+      updateData.popularity = updates.popularity;
+    if (updates.num_downloads !== undefined)
+      updateData.num_downloads = updates.num_downloads;
+    if (updates.searchKeywords)
+      updateData.search_keywords = updates.searchKeywords;
     if (updates.status) updateData.status = updates.status;
     if (updates.thumbnail) updateData.cover_image = updates.thumbnail;
     if (updates.tags) updateData.tags = updates.tags;
     if (updates.slug) updateData.slug = updates.slug;
-    if (updates.isUserGenerated !== undefined) updateData.is_user_generated = updates.isUserGenerated;
+    if (updates.isUserGenerated !== undefined)
+      updateData.is_user_generated = updates.isUserGenerated;
     if (updates.publishedAt !== undefined) {
-      updateData.published_at = updates.publishedAt ? updates.publishedAt.toISOString() : null;
+      updateData.published_at = updates.publishedAt
+        ? updates.publishedAt.toISOString()
+        : null;
     }
-    if (updates.updatedAt) updateData.updated_at = updates.updatedAt.toISOString();
-    if (updates.sourceTemplateId) updateData.original_saved_design_id = updates.sourceTemplateId;
+    if (updates.updatedAt)
+      updateData.updated_at = updates.updatedAt.toISOString();
+    if (updates.sourceTemplateId)
+      updateData.original_saved_design_id = updates.sourceTemplateId;
 
     // Extract and update individual page images from designData or direct image fields
     if (updates.designData?.pages) {
-      if (updates.designData.pages[0]?.image) updateData.image_1 = updates.designData.pages[0].image;
-      if (updates.designData.pages[1]?.image) updateData.image_2 = updates.designData.pages[1].image;
-      if (updates.designData.pages[2]?.image) updateData.image_3 = updates.designData.pages[2].image;
-      if (updates.designData.pages[3]?.image) updateData.image_4 = updates.designData.pages[3].image;
+      if (updates.designData.pages[0]?.image)
+        updateData.image_1 = updates.designData.pages[0].image;
+      if (updates.designData.pages[1]?.image)
+        updateData.image_2 = updates.designData.pages[1].image;
+      if (updates.designData.pages[2]?.image)
+        updateData.image_3 = updates.designData.pages[2].image;
+      if (updates.designData.pages[3]?.image)
+        updateData.image_4 = updates.designData.pages[3].image;
     }
 
     // Direct image field updates (override page images if provided)
@@ -317,26 +348,35 @@ export class SupabaseSavedDesignsService {
 
     if (updates.designData) newMetadata.designData = updates.designData;
     if (updates.imageUrls) newMetadata.imageUrls = updates.imageUrls;
-    if (updates.imageTimestamp) newMetadata.imageTimestamp = updates.imageTimestamp;
+    if (updates.imageTimestamp)
+      newMetadata.imageTimestamp = updates.imageTimestamp;
     if (updates.author) newMetadata.author = updates.author;
     if (updates.templateId) newMetadata.templateId = updates.templateId;
     if (updates.authorId) newMetadata.authorId = updates.authorId;
-    if (updates.createdByUserId) newMetadata.createdByUserId = updates.createdByUserId;
+    if (updates.createdByUserId)
+      newMetadata.createdByUserId = updates.createdByUserId;
     if (updates.coverImage) newMetadata.coverImage = updates.coverImage;
     if (updates.image1) newMetadata.image1 = updates.image1;
     if (updates.image2) newMetadata.image2 = updates.image2;
     if (updates.image3) newMetadata.image3 = updates.image3;
     if (updates.image4) newMetadata.image4 = updates.image4;
-    if (updates.isFeatured !== undefined) newMetadata.isFeatured = updates.isFeatured;
-    if (updates.currentVersion) newMetadata.currentVersion = updates.currentVersion;
+    if (updates.isFeatured !== undefined)
+      newMetadata.isFeatured = updates.isFeatured;
+    if (updates.currentVersion)
+      newMetadata.currentVersion = updates.currentVersion;
 
     // Only update metadata if we have changes
-    if (Object.keys(newMetadata).length > Object.keys(currentMetadata).length || 
-        JSON.stringify(newMetadata) !== JSON.stringify(currentMetadata)) {
+    if (
+      Object.keys(newMetadata).length > Object.keys(currentMetadata).length ||
+      JSON.stringify(newMetadata) !== JSON.stringify(currentMetadata)
+    ) {
       updateData.metadata = newMetadata;
     }
 
-    console.log('🎯 SupabaseService - Final updateData before database update:', JSON.stringify(updateData, null, 2));
+    console.log(
+      '🎯 SupabaseService - Final updateData before database update:',
+      JSON.stringify(updateData, null, 2),
+    );
 
     const { data, error } = await this.supabase
       .from('saved_designs')
@@ -351,9 +391,14 @@ export class SupabaseSavedDesignsService {
       return null;
     }
 
-    console.log('✅ SupabaseService - Database update successful, returning mapped design');
+    console.log(
+      '✅ SupabaseService - Database update successful, returning mapped design',
+    );
     const result = this.mapDatabaseRecordToSavedDesign(data);
-    console.log('✅ SupabaseService - Final result categoryId:', result.categoryId);
+    console.log(
+      '✅ SupabaseService - Final result categoryId:',
+      result.categoryId,
+    );
     return result;
   }
 
@@ -398,8 +443,10 @@ export class SupabaseSavedDesignsService {
       const baseName = originalDesign.title || 'Design';
       duplicateTitle = `${baseName} - Copy`;
       let counter = 1;
-      
-      while (existingDesigns.some(design => design.title === duplicateTitle)) {
+
+      while (
+        existingDesigns.some((design) => design.title === duplicateTitle)
+      ) {
         counter++;
         duplicateTitle = `${baseName} - Copy ${counter}`;
       }
@@ -411,7 +458,8 @@ export class SupabaseSavedDesignsService {
       .insert({
         user_id: userId,
         title: duplicateTitle,
-        description: originalDesign.description || `Copy of ${originalDesign.title}`,
+        description:
+          originalDesign.description || `Copy of ${originalDesign.title}`,
         category: originalDesign.category,
         design_data: originalDesign.designData,
         thumbnail: originalDesign.thumbnail,
@@ -473,7 +521,10 @@ export class SupabaseSavedDesignsService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching user published designs from Supabase:', error);
+      console.error(
+        'Error fetching user published designs from Supabase:',
+        error,
+      );
       throw new Error('Failed to fetch user published designs');
     }
 
@@ -486,11 +537,19 @@ export class SupabaseSavedDesignsService {
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    return this.updateDesign(userId, designId, { 
+    const updated = await this.updateDesign(userId, designId, {
       status: 'published',
       publishedAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
+    if (updated) {
+      try {
+        await this.ensureTemplateForSavedDesign(updated.id, userId);
+      } catch (e) {
+        console.error('publishDesign: ensureTemplateForSavedDesign failed', e);
+      }
+    }
+    return updated;
   }
 
   async publishDesignWithMetadata(
@@ -545,57 +604,81 @@ export class SupabaseSavedDesignsService {
     }
 
     console.log('Design published successfully:', data);
-    return data ? this.mapDatabaseRecordToSavedDesign(data) : null;
+    const mapped = data ? this.mapDatabaseRecordToSavedDesign(data) : null;
+    if (mapped) {
+      try {
+        await this.ensureTemplateForSavedDesign(mapped.id, userId);
+      } catch (e) {
+        console.error('publishDesignWithMetadata: ensureTemplateForSavedDesign failed', e);
+      }
+    }
+    return mapped;
   }
 
   async unpublishDesign(
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
-    return this.updateDesign(userId, designId, { 
+    // First revert status
+    const reverted = await this.updateDesign(userId, designId, {
       status: 'draft',
       publishedAt: null as any,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
+    // Remove associated template(s)
+    try {
+      if (this.supabase) {
+        const { error } = await this.supabase
+          .from('sw_templates')
+          .delete()
+          .eq('original_saved_design_id', designId);
+        if (error) {
+          console.error('unpublishDesign: failed to delete template', error);
+        }
+      }
+    } catch (e) {
+      console.error('unpublishDesign: template cleanup error', e);
+    }
+    return reverted;
   }
 
   private mapDatabaseRecordToSavedDesign(record: any): SavedDesign {
     // Extract data from the new schema
     const metadata = record.metadata || {};
-    
+
     // Create pages array from individual image columns
     const pages = [
       {
         header: 'Page 1',
         image: record.image_1 || '',
         text: '',
-        footer: ''
+        footer: '',
       },
       {
-        header: 'Page 2', 
+        header: 'Page 2',
         image: record.image_2 || '',
         text: '',
-        footer: ''
+        footer: '',
       },
       {
         header: 'Page 3',
         image: record.image_3 || '',
         text: '',
-        footer: ''
+        footer: '',
       },
       {
         header: 'Page 4',
         image: record.image_4 || '',
         text: '',
-        footer: ''
-      }
+        footer: '',
+      },
     ]; // Keep all 4 pages for proper card display
 
     // Create design data with pages from individual columns or fallback to metadata
     const designData = metadata.designData || {
       templateKey: metadata.templateKey || 'custom',
       pages: pages,
-      editedPages: {}
+      editedPages: {},
     };
 
     // If we have individual image columns, prioritize them over metadata
@@ -606,12 +689,16 @@ export class SupabaseSavedDesignsService {
         image1: record.image_1 ? 'Present' : 'Empty',
         image2: record.image_2 ? 'Present' : 'Empty',
         image3: record.image_3 ? 'Present' : 'Empty',
-        image4: record.image_4 ? 'Present' : 'Empty'
+        image4: record.image_4 ? 'Present' : 'Empty',
       });
     } else {
-      console.log('⚠️ No individual image columns found for design:', record.id, 'using metadata');
+      console.log(
+        '⚠️ No individual image columns found for design:',
+        record.id,
+        'using metadata',
+      );
     }
-    
+
     return {
       id: record.id,
       userId: record.author_id, // Maps to the user who created this design
@@ -620,7 +707,11 @@ export class SupabaseSavedDesignsService {
       category: 'General', // Default category since we're using category_id now
       designData: designData,
       thumbnail: record.cover_image,
-      imageUrls: metadata.imageUrls || [record.image_1, record.image_2, record.image_3, record.image_4].filter(Boolean),
+      imageUrls:
+        metadata.imageUrls ||
+        [record.image_1, record.image_2, record.image_3, record.image_4].filter(
+          Boolean,
+        ),
       imageTimestamp: metadata.imageTimestamp,
       author: metadata.author || 'User',
       upload_time: record.created_at,
@@ -630,7 +721,13 @@ export class SupabaseSavedDesignsService {
       popularity: record.popularity || 0,
       num_downloads: record.num_downloads || 0,
       searchKeywords: record.search_keywords || [],
-      status: record.status as 'draft' | 'published' | 'archived' | 'template_candidate' | 'published_to_templates' | undefined,
+      status: record.status as
+        | 'draft'
+        | 'published'
+        | 'archived'
+        | 'template_candidate'
+        | 'published_to_templates'
+        | undefined,
       createdAt: new Date(record.created_at),
       updatedAt: new Date(record.updated_at),
       // New fields for sw_templates compatibility
@@ -649,8 +746,11 @@ export class SupabaseSavedDesignsService {
       isUserGenerated: record.is_user_generated || true,
       tags: record.tags || [],
       currentVersion: metadata.currentVersion,
-      publishedAt: record.published_at ? new Date(record.published_at) : undefined,
-      sourceTemplateId: metadata.sourceTemplateId || record.original_saved_design_id,
+      publishedAt: record.published_at
+        ? new Date(record.published_at)
+        : undefined,
+      sourceTemplateId:
+        metadata.sourceTemplateId || record.original_saved_design_id,
     };
   }
 
@@ -671,11 +771,14 @@ export class SupabaseSavedDesignsService {
     console.log(`Copying template ${templateId} for user ${userId}`);
 
     // Use the SQL function to copy template to saved_designs
-    const { data, error } = await this.supabase.rpc('copy_template_to_saved_design', {
-      p_template_id: templateId,
-      p_user_id: userId,
-      p_title: title || null,
-    });
+    const { data, error } = await this.supabase.rpc(
+      'copy_template_to_saved_design',
+      {
+        p_template_id: templateId,
+        p_user_id: userId,
+        p_title: title || null,
+      },
+    );
 
     if (error) {
       console.error('Error copying template:', error);
@@ -698,7 +801,9 @@ export class SupabaseSavedDesignsService {
       throw new Error('Failed to fetch copied design');
     }
 
-    return savedDesign ? this.mapDatabaseRecordToSavedDesign(savedDesign) : null;
+    return savedDesign
+      ? this.mapDatabaseRecordToSavedDesign(savedDesign)
+      : null;
   }
 
   /**
@@ -712,13 +817,18 @@ export class SupabaseSavedDesignsService {
       throw new Error('Supabase not configured');
     }
 
-    console.log(`Publishing design ${designId} to templates for user ${userId}`);
+    console.log(
+      `Publishing design ${designId} to templates for user ${userId}`,
+    );
 
     // Use the SQL function to publish saved_design to templates
-    const { data, error } = await this.supabase.rpc('publish_saved_design_to_templates', {
-      p_design_id: designId,
-      p_user_id: userId,
-    });
+    const { data, error } = await this.supabase.rpc(
+      'publish_saved_design_to_templates',
+      {
+        p_design_id: designId,
+        p_user_id: userId,
+      },
+    );
 
     if (error) {
       console.error('Error publishing to templates:', error);
@@ -752,6 +862,178 @@ export class SupabaseSavedDesignsService {
   }
 
   /**
+   * Promote a saved_design row to sw_templates (direct insert with defaults).
+   * Unlike publishToTemplates (RPC), this performs explicit mapping & default assignment.
+   */
+  async promoteToTemplate(
+    designId: string,
+    userId: string,
+  ): Promise<{ template: any; savedDesign: SavedDesign } | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    // 1. Fetch saved design (ensure ownership)
+    const { data: designRecord, error: designError } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .eq('author_id', userId)
+      .single();
+
+    if (designError) {
+      console.error('promoteToTemplate: design fetch error', designError);
+      return null;
+    }
+
+    // 2. Prepare slug helper
+    const makeSlug = (title: string) =>
+      (title || 'untitled')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60);
+
+    let baseSlug = makeSlug(designRecord.title || 'untitled-design');
+    let finalSlug = baseSlug;
+
+    // 3. Ensure slug uniqueness
+    let slugCounter = 1;
+    while (true) {
+      const { data: existing, error: slugError } = await this.supabase
+        .from('sw_templates')
+        .select('id')
+        .eq('slug', finalSlug)
+        .maybeSingle();
+      if (slugError) {
+        console.warn('promoteToTemplate: slug check warning', slugError.message);
+        break; // fallback to current slug
+      }
+      if (!existing) break;
+      slugCounter++;
+      finalSlug = `${baseSlug}-${slugCounter}`;
+    }
+
+    const metadata = designRecord.metadata || {};
+
+    // 4. Build template insert object with defaults
+    const nowIso = new Date().toISOString();
+    // sw_templates actual columns (from CSV): slug,title,category_id,author_id,description,price,language,region,status,popularity,num_downloads,cover_image,current_version,published_at,is_user_generated,original_saved_design_id,image_1..image_4,search_keywords,tags,metadata
+    const templateInsert: any = {
+      slug: finalSlug,
+      title: designRecord.title || 'Untitled Design',
+      description: designRecord.description || null,
+      category_id: designRecord.category_id || null,
+      author_id: designRecord.author_id || userId,
+      price: designRecord.price ?? 0,
+      language: designRecord.language || 'en',
+      region: designRecord.region || 'US',
+      status: 'published',
+      popularity: designRecord.popularity ?? 0,
+      num_downloads: designRecord.num_downloads ?? 0,
+      cover_image: designRecord.cover_image || designRecord.image_1 || null,
+      current_version: metadata.currentVersion || '1.0.0',
+      published_at: nowIso,
+      is_user_generated: designRecord.is_user_generated ?? true,
+      original_saved_design_id: designRecord.original_saved_design_id || null,
+      image_1: designRecord.image_1 || null,
+      image_2: designRecord.image_2 || null,
+      image_3: designRecord.image_3 || null,
+      image_4: designRecord.image_4 || null,
+      search_keywords: designRecord.search_keywords || [],
+      tags: designRecord.tags || [],
+      metadata: {
+        ...(designRecord.metadata || {}),
+        promotedFromSavedDesignId: designId,
+        promotedAt: nowIso,
+        // Store design pages inside metadata for potential use
+        designData: metadata.designData || {
+          templateKey: metadata.templateKey || 'custom',
+          pages: [
+            { header: 'Page 1', image: designRecord.image_1 || '', text: '', footer: '' },
+            { header: 'Page 2', image: designRecord.image_2 || '', text: '', footer: '' },
+            { header: 'Page 3', image: designRecord.image_3 || '', text: '', footer: '' },
+            { header: 'Page 4', image: designRecord.image_4 || '', text: '', footer: '' },
+          ],
+        },
+      },
+    };
+
+    // 5. Insert into sw_templates
+    const { data: templateRow, error: insertError } = await this.supabase
+      .from('sw_templates')
+      .insert(templateInsert)
+      .select('*')
+      .single();
+
+    if (insertError) {
+      console.error('promoteToTemplate: insert error', insertError);
+      throw new Error('Failed to promote design to template');
+    }
+
+    // 6. Update saved_design metadata & status with templateId reference
+    const newMetadata = {
+      ...metadata,
+      templateId: templateRow.id,
+      currentVersion: templateInsert.current_version,
+    };
+    const { data: updatedDesign, error: updateError } = await this.supabase
+      .from('saved_designs')
+      .update({
+        status: 'published_to_templates',
+        metadata: newMetadata,
+        published_at: nowIso,
+        updated_at: nowIso,
+        slug: templateRow.slug,
+      })
+      .eq('id', designId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('promoteToTemplate: saved_design update error', updateError);
+    }
+
+    return {
+      template: templateRow,
+      savedDesign: this.mapDatabaseRecordToSavedDesign(updatedDesign || designRecord),
+    };
+  }
+
+  /**
+   * Ensure a template exists for a saved design (idempotent). Called during publish.
+   */
+  private async ensureTemplateForSavedDesign(
+    designId: string,
+    userId: string,
+  ): Promise<void> {
+    if (!this.supabase) return;
+    // Already have a template?
+    const { data: existingTemplate, error: existingError } = await this.supabase
+      .from('sw_templates')
+      .select('id')
+      .eq('original_saved_design_id', designId)
+      .maybeSingle();
+    if (existingError) {
+      console.warn('ensureTemplateForSavedDesign: existing check error', existingError.message);
+    }
+    if (existingTemplate) return;
+    // Fetch saved design record
+    const { data: designRecord, error: designError } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .single();
+    if (designError || !designRecord) return;
+    // Reuse logic via promoteToTemplate but without status mutation (avoid recursion)
+    try {
+      await this.promoteToTemplate(designId, userId);
+    } catch (e) {
+      console.error('ensureTemplateForSavedDesign: promote failed', e);
+    }
+  }
+
+  /**
    * Get templates that can be copied (from sw_templates)
    */
   async getAvailableTemplates(
@@ -764,16 +1046,23 @@ export class SupabaseSavedDesignsService {
       throw new Error('Supabase not configured');
     }
 
-    console.log(`Getting available templates for user ${userId}, category: ${category}`);
+    console.log(
+      `Getting available templates for user ${userId}, category: ${category}`,
+    );
 
     let query = this.supabase
       .from('sw_templates')
-      .select(`
+      .select(
+        `
         *,
         sw_categories(name)
-      `)
-      .eq('status', 'published')
-      .range(offset, offset + limit - 1);
+      `,
+      )
+  .eq('status', 'published')
+  // Order newest (most recently published) first; fall back to created_at for any rows lacking published_at
+  .order('published_at', { ascending: false, nullsFirst: false })
+  .order('created_at', { ascending: false })
+  .range(offset, offset + limit - 1);
 
     if (category) {
       query = query.eq('category_id', category);
@@ -811,7 +1100,9 @@ export class SupabaseSavedDesignsService {
       throw new Error('Failed to fetch published to templates');
     }
 
-    return data ? data.map(record => this.mapDatabaseRecordToSavedDesign(record)) : [];
+    return data
+      ? data.map((record) => this.mapDatabaseRecordToSavedDesign(record))
+      : [];
   }
 
   /**
@@ -826,8 +1117,10 @@ export class SupabaseSavedDesignsService {
       // Extract the file path from the URL
       const urlParts = originalImageUrl.split('/');
       const bucketName = 'smartwish-assets'; // Based on your URL structure
-      const originalPath = urlParts.slice(urlParts.indexOf('smartwish-assets') + 1).join('/');
-      
+      const originalPath = urlParts
+        .slice(urlParts.indexOf('smartwish-assets') + 1)
+        .join('/');
+
       // Generate a new path for the copied image
       const timestamp = Date.now();
       const fileName = originalPath.split('/').pop() || 'image.png';
@@ -837,26 +1130,30 @@ export class SupabaseSavedDesignsService {
       const newPath = `users/${userId}/designs/copied_images/${newFileName}`;
 
       // Download the original image
-      const { data: originalData, error: downloadError } = await this.supabase.storage
-        .from(bucketName)
-        .download(originalPath);
+      const { data: originalData, error: downloadError } =
+        await this.supabase.storage.from(bucketName).download(originalPath);
 
       if (downloadError) {
         console.error('Error downloading original image:', downloadError);
-        throw new Error(`Failed to download original image: ${downloadError.message}`);
+        throw new Error(
+          `Failed to download original image: ${downloadError.message}`,
+        );
       }
 
       // Upload the image to the new location
-      const { data: uploadData, error: uploadError } = await this.supabase.storage
-        .from(bucketName)
-        .upload(newPath, originalData, {
-          contentType: originalData.type,
-          upsert: false
-        });
+      const { data: uploadData, error: uploadError } =
+        await this.supabase.storage
+          .from(bucketName)
+          .upload(newPath, originalData, {
+            contentType: originalData.type,
+            upsert: false,
+          });
 
       if (uploadError) {
         console.error('Error uploading copied image:', uploadError);
-        throw new Error(`Failed to upload copied image: ${uploadError.message}`);
+        throw new Error(
+          `Failed to upload copied image: ${uploadError.message}`,
+        );
       }
 
       // Generate the public URL for the new image
@@ -868,9 +1165,10 @@ export class SupabaseSavedDesignsService {
         throw new Error('Failed to generate public URL for copied image');
       }
 
-      console.log(`Image copied successfully: ${originalImageUrl} -> ${publicUrlData.publicUrl}`);
+      console.log(
+        `Image copied successfully: ${originalImageUrl} -> ${publicUrlData.publicUrl}`,
+      );
       return publicUrlData.publicUrl;
-
     } catch (error) {
       console.error('Error copying image:', error);
       // Return the original URL as fallback

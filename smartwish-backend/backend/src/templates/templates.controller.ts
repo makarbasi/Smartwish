@@ -10,6 +10,7 @@ export class TemplatesController {
   @UseGuards(OptionalJwtAuthGuard)
   async getAllTemplates(
     @Query('category') categoryId?: string,
+    @Query('category_id') categoryIdAlt?: string, // allow front-end param variant
     @Query('search') searchTerm?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: 'asc' | 'desc',
@@ -19,11 +20,14 @@ export class TemplatesController {
     const limitNum = limit ? parseInt(limit, 10) : undefined;
     const offsetNum = offset ? parseInt(offset, 10) : undefined;
 
+    const effectiveCategory = categoryIdAlt || categoryId;
+
     const templates = await this.templatesService.findAll({
-      categoryId,
+      categoryId: effectiveCategory,
       searchTerm,
       sortBy,
-      sortOrder: sortOrder || 'asc',
+      // default newest first
+      sortOrder: sortOrder || 'desc',
       limit: limitNum,
       offset: offsetNum,
     });

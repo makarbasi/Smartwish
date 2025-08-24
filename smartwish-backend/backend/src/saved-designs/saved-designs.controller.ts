@@ -16,10 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
 
 interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-  };
+  user?: { id: string; email: string };
 }
 
 @Controller('saved-designs')
@@ -29,34 +26,17 @@ export class SavedDesignsController {
 
   @Post()
   async saveDesign(
-    @Body()
-    designData: Omit<SavedDesign, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
+    @Body() designData: Omit<SavedDesign, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
     try {
-      console.log('saveDesign: Request user object:', req.user);
-
       const userId = req.user?.id?.toString();
-      console.log('saveDesign: Final userId:', userId);
-
-      if (!userId) {
-        console.log('saveDesign: No userId found, returning 401');
-        return res.status(401).json({ message: 'User not authenticated' });
-      }
-
-      console.log('saveDesign: Saving design for userId:', userId);
-      const savedDesign = await this.savedDesignsService.saveDesign(
-        userId,
-        designData,
-      );
-      console.log('saveDesign: Design saved successfully');
+      if (!userId) return res.status(401).json({ message: 'User not authenticated' });
+      const savedDesign = await this.savedDesignsService.saveDesign(userId, designData);
       res.json(savedDesign);
-    } catch (error) {
-      console.error('Error saving design:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to save design', error: error.message });
+    } catch (e) {
+      res.status(500).json({ message: 'Failed to save design', error: (e as any)?.message });
     }
   }
 
@@ -462,100 +442,15 @@ export class SavedDesignsController {
         userId,
         copyData.title,
       );
-
       if (!copiedDesign) {
         return res.status(404).json({ message: 'Template not found' });
       }
-
       res.json(copiedDesign);
     } catch (error) {
       console.error('Error copying from template:', error);
       res.status(500).json({
         message: 'Failed to copy from template',
-        error: error.message,
-      });
-    }
-  }
-
-  @Post(':id/publish-to-templates')
-  async publishToTemplates(
-    @Param('id') designId: string,
-    @Req() req: AuthenticatedRequest,
-    @Res() res: Response,
-  ) {
-    try {
-      const userId = req.user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ message: 'User not authenticated' });
-      }
-
-      const result = await this.savedDesignsService.publishToTemplates(
-        designId,
-        userId,
-      );
-
-      if (!result) {
-        return res.status(404).json({ message: 'Design not found' });
-      }
-
-      res.json(result);
-    } catch (error) {
-      console.error('Error publishing to templates:', error);
-      res.status(500).json({
-        message: 'Failed to publish to templates',
-        error: error.message,
-      });
-    }
-  }
-
-  @Get('available-templates')
-  async getAvailableTemplates(
-    @Req() req: AuthenticatedRequest,
-    @Res() res: Response,
-  ) {
-    try {
-      const userId = req.user?.id?.toString();
-      const category = req.query.category as string;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const offset = parseInt(req.query.offset as string) || 0;
-
-      const templates = await this.savedDesignsService.getAvailableTemplates(
-        userId,
-        category,
-        limit,
-        offset,
-      );
-
-      res.json(templates);
-    } catch (error) {
-      console.error('Error getting available templates:', error);
-      res.status(500).json({
-        message: 'Failed to get available templates',
-        error: error.message,
-      });
-    }
-  }
-
-  @Get('published-to-templates')
-  async getPublishedToTemplates(
-    @Req() req: AuthenticatedRequest,
-    @Res() res: Response,
-  ) {
-    try {
-      const userId = req.user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ message: 'User not authenticated' });
-      }
-
-      const publishedDesigns =
-        await this.savedDesignsService.getPublishedToTemplates(userId);
-
-      res.json(publishedDesigns);
-    } catch (error) {
-      console.error('Error getting published to templates:', error);
-      res.status(500).json({
-        message: 'Failed to get published to templates',
-        error: error.message,
+        error: (error as any)?.message || 'Unknown error',
       });
     }
   }

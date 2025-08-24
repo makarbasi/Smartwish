@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo, KeyboardEvent } from 'react'
 import Image from 'next/image'
 import useSWR from 'swr'
+import { useRouter } from 'next/navigation'
 
 type Template = {
   id: string
@@ -30,26 +31,41 @@ function ImageSkeleton() {
 }
 
 export default function MadeWithSmartWish() {
-  const [randomImages, setRandomImages] = useState<string[]>([])
+  const [randomTemplates, setRandomTemplates] = useState<Template[]>([])
+  const router = useRouter()
   
   // Fetch templates from API - get more than 8 to have variety for randomization
   const { data: apiResponse, error, isLoading } = useSWR<ApiResponse>('/api/templates?limit=20', fetcher)
   
-  const templates = apiResponse?.data || []
+  const templates = useMemo(() => apiResponse?.data || [], [apiResponse])
 
-  // Generate random cover images when templates are loaded
+  // Generate random templates (keep full objects so we have IDs)
   useEffect(() => {
     if (templates.length > 0) {
-      // Collect only cover images (image_1) from templates
-      const coverImages = templates
-        .filter(template => template.image_1)
-        .map(template => template.image_1)
-      
-      // Shuffle and select 8 random cover images
-      const shuffled = coverImages.sort(() => 0.5 - Math.random())
-      setRandomImages(shuffled.slice(0, 8))
+      const shuffled = [...templates].sort(() => 0.5 - Math.random())
+      // Filter out any without a primary image
+      const withImage = shuffled.filter(t => t.image_1)
+      setRandomTemplates(withImage.slice(0, 8))
     }
   }, [templates])
+
+  const openTemplate = useCallback((templateId: string) => {
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('openTemplateId', templateId)
+      }
+      router.push('/templates')
+    } catch (e) {
+      console.error('Failed to navigate to template', e)
+    }
+  }, [router])
+
+  const handleKey = useCallback((e: KeyboardEvent<HTMLDivElement>, id: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      openTemplate(id)
+    }
+  }, [openTemplate])
 
   return (
     <div>
@@ -68,16 +84,27 @@ export default function MadeWithSmartWish() {
             Failed to load card samples
           </div>
         ) : (
-          // Show random template images
-          randomImages.map((src, idx) => (
-            <div key={`${src}-${idx}`} className="overflow-hidden rounded-xl ring-1 ring-gray-200/70 shadow-sm">
+          // Show random template thumbnails clickable
+          randomTemplates.map((t) => (
+            <div
+              key={t.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => openTemplate(t.id)}
+              onKeyDown={(e) => handleKey(e, t.id)}
+              className="group relative overflow-hidden rounded-xl ring-1 ring-gray-200/70 shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
+            >
               <Image
-                alt="Card sample"
-                src={src}
+                alt={t.title || 'Card sample'}
+                src={t.image_1}
                 width={640}
                 height={989}
-                className="aspect-[640/989] w-full object-cover transition-transform duration-300 hover:scale-[1.02]"
+                className="aspect-[640/989] w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
               />
+              <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-opacity" />
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all p-2 text-center text-xs font-medium text-white bg-gradient-to-t from-black/60 via-black/20 to-transparent">
+                {t.title}
+              </div>
             </div>
           ))
         )}

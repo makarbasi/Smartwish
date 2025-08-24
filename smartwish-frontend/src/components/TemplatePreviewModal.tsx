@@ -162,7 +162,7 @@ export default function TemplatePreviewModal({
             console.log("❌ Not closing - clicked on content");
           }
         }}
-        style={{ touchAction: 'manipulation' }}
+        style={{ touchAction: "manipulation" }}
       >
         <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 sm:grid-cols-[2fr_1fr]">
           <DialogPanel className="col-span-1 rounded-2xl bg-transparent">
@@ -330,12 +330,15 @@ export default function TemplatePreviewModal({
             onTouchEnd={() => {
               console.log("👆 Sidebar touch end detected!");
             }}
-            style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
+            style={{ pointerEvents: "auto", touchAction: "manipulation" }}
           >
             <button
               onClick={(e) => {
                 console.log("🚀 Close button clicked!");
-                console.log("📱 Event details:", { type: e.type, target: e.target });
+                console.log("📱 Event details:", {
+                  type: e.type,
+                  target: e.target,
+                });
                 e.stopPropagation();
                 e.preventDefault();
                 console.log("🚀 About to call onClose()");
@@ -354,7 +357,7 @@ export default function TemplatePreviewModal({
                 console.log("✅ onClose() called from touch end");
               }}
               className="absolute right-3 top-3 z-40 rounded-md p-2 text-gray-500 hover:bg-gray-100 touch-auto min-w-[44px] min-h-[44px] flex items-center justify-center"
-              style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
+              style={{ pointerEvents: "auto", touchAction: "manipulation" }}
             >
               <XMarkIcon className="h-5 w-5" />
             </button>
@@ -369,7 +372,10 @@ export default function TemplatePreviewModal({
             <button
               onClick={(e) => {
                 console.log("🚀 Use this template button clicked!");
-                console.log("� Event details:", { type: e.type, target: e.target });
+                console.log("� Event details:", {
+                  type: e.type,
+                  target: e.target,
+                });
                 console.log("�📦 Product data:", product);
                 console.log("🔧 onCustomize function:", typeof onCustomize);
                 e.stopPropagation();
@@ -380,7 +386,11 @@ export default function TemplatePreviewModal({
                   console.log("✅ onCustomize called successfully");
                 } catch (error) {
                   console.error("❌ Error calling onCustomize:", error);
-                  alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  alert(
+                    `Error: ${
+                      error instanceof Error ? error.message : "Unknown error"
+                    }`
+                  );
                 }
               }}
               onTouchStart={() => {
@@ -396,19 +406,26 @@ export default function TemplatePreviewModal({
                   onCustomize(product);
                   console.log("✅ onCustomize called successfully from touch");
                 } catch (error) {
-                  console.error("❌ Error calling onCustomize from touch:", error);
-                  alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  console.error(
+                    "❌ Error calling onCustomize from touch:",
+                    error
+                  );
+                  alert(
+                    `Error: ${
+                      error instanceof Error ? error.message : "Unknown error"
+                    }`
+                  );
                 }
               }}
               className="relative z-30 mt-5 w-full inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-500 touch-auto min-h-[48px]"
-              style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
+              style={{ pointerEvents: "auto", touchAction: "manipulation" }}
             >
               Use this template
             </button>
             <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
               <button
                 className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 hover:bg-gray-200 touch-auto"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: "auto" }}
                 onClick={(e) => {
                   e.stopPropagation();
                   console.log("❤️ Like button clicked!");

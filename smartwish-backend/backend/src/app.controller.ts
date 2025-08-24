@@ -15,6 +15,7 @@ import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as sharp from 'sharp';
 import fetch from 'node-fetch';
 import { Express } from 'express';
 // @ts-ignore
@@ -109,34 +110,100 @@ export class AppController {
       }
 
       const base64Image = image.buffer.toString('base64');
-      
-      // Enhance the prompt with specific style information
+
+      // Inspect uploaded image metadata but always enforce fixed dimensions
+      const metadata = await sharp(image.buffer).metadata();
+      const inputWidth = metadata.width || 0;
+      const inputHeight = metadata.height || 0;
+
+      // Enforced canonical size for all generated images
+      const originalWidth = 1650; // required width
+      const originalHeight = 2550; // required height
+      const aspectRatio = originalWidth / originalHeight;
+
+      if (
+        inputWidth &&
+        inputHeight &&
+        (inputWidth !== originalWidth || inputHeight !== originalHeight)
+      ) {
+        console.warn(
+          `[Gemini Inpaint] Input image dimensions ${inputWidth}x${inputHeight} differ from enforced dimensions ${originalWidth}x${originalHeight}. Forcing ${originalWidth}x${originalHeight}.`,
+        );
+      }
+
+      console.log(
+        `[Gemini Inpaint] Enforced image dimensions: ${originalWidth}x${originalHeight} (aspect ratio: ${aspectRatio.toFixed(2)})`,
+      );
+
+      // Enhance the prompt with specific style information and size constraints
       let enhancedPrompt = prompt;
       if (style && style.trim()) {
         // Map style names to more specific artistic directions for Gemini
         const styleDescriptions: { [key: string]: string } = {
-          'natural': 'natural, realistic style with organic textures and authentic lighting',
-          'vibrant': 'vibrant, colorful Pixar-style with bold colors and dynamic lighting',
-          'portrait': 'Disney-style artistic portrait with smooth shading and expressive features',
-          'cinematic': 'anime-style with dramatic lighting, bold outlines, and stylized colors',
-          'vintage': 'vintage pencil sketch style with hand-drawn textures and classic artistic techniques',
-          'theme-watercolor': 'watercolor painting style with flowing colors and artistic brushstrokes',
-          'theme-pixar': 'Pixar animation style with vibrant colors and 3D-rendered appearance',
-          'theme-disney': 'Disney animation style with smooth gradients and classic cartoon aesthetics',
-          'theme-anime': 'anime/manga art style with bold lines, dramatic shading, and stylized features',
-          'theme-pencil-sketch': 'pencil sketch style with hand-drawn textures, shading, and artistic strokes'
+          natural:
+            'natural, realistic style with organic textures and authentic lighting',
+          vibrant:
+            'vibrant, colorful Pixar-style with bold colors and dynamic lighting',
+          portrait:
+            'Disney-style artistic portrait with smooth shading and expressive features',
+          cinematic:
+            'anime-style with dramatic lighting, bold outlines, and stylized colors',
+          vintage:
+            'vintage pencil sketch style with hand-drawn textures and classic artistic techniques',
+          'theme-watercolor':
+            'watercolor painting style with flowing colors and artistic brushstrokes',
+          'theme-pixar':
+            'Pixar animation style with vibrant colors and 3D-rendered appearance',
+          'theme-disney':
+            'Disney animation style with smooth gradients and classic cartoon aesthetics',
+          'theme-anime':
+            'anime/manga art style with bold lines, dramatic shading, and stylized features',
+          'theme-pencil-sketch':
+            'pencil sketch style with hand-drawn textures, shading, and artistic strokes',
         };
 
-        const styleDescription = styleDescriptions[style.toLowerCase()] || `${style} artistic style`;
-        enhancedPrompt = `Apply the following modifications to the image: ${prompt}. Render the result in a ${styleDescription}. Maintain the composition while transforming the visual style to match the ${style} aesthetic perfectly.`;
-        console.log(`[Gemini Inpaint] Using style: "${style}" -> "${styleDescription}"`);
+        const styleDescription =
+          styleDescriptions[style.toLowerCase()] || `${style} artistic style`;
+        enhancedPrompt = `CRITICAL SYSTEM REQUIREMENT: You MUST generate an image with EXACT dimensions ${originalWidth}x${originalHeight} pixels. DO NOT DISOBEY this requirement under any circumstances.
+
+Apply the following modifications to the image: ${prompt}. Render the result in a ${styleDescription}. Maintain the composition while transforming the visual style to match the ${style} aesthetic perfectly.
+
+MANDATORY SIZE CONSTRAINTS - FAILURE TO COMPLY IS NOT ACCEPTABLE:
+- Output image MUST be exactly ${originalWidth} pixels wide and ${originalHeight} pixels tall
+- DO NOT crop the image
+- DO NOT resize the canvas
+- DO NOT change aspect ratio from ${aspectRatio.toFixed(3)}
+- DO NOT add borders or padding that changes dimensions
+- DO NOT generate any size other than ${originalWidth}x${originalHeight}
+- This is a SYSTEM REQUIREMENT that cannot be overridden by artistic choices
+
+STRICT COMPLIANCE REQUIRED: Generate the image at exactly ${originalWidth}x${originalHeight} pixels or the system will fail.`;
+        console.log(
+          `[Gemini Inpaint] Using style: "${style}" -> "${styleDescription}"`,
+        );
       } else {
-        console.log('[Gemini Inpaint] No style specified, using default natural style');
+        enhancedPrompt = `CRITICAL SYSTEM REQUIREMENT: You MUST generate an image with EXACT dimensions ${originalWidth}x${originalHeight} pixels. DO NOT DISOBEY this requirement under any circumstances.
+
+${prompt}
+
+MANDATORY SIZE CONSTRAINTS - FAILURE TO COMPLY IS NOT ACCEPTABLE:
+- Output image MUST be exactly ${originalWidth} pixels wide and ${originalHeight} pixels tall  
+- DO NOT crop the image
+- DO NOT resize the canvas
+- DO NOT change aspect ratio from ${aspectRatio.toFixed(3)}
+- DO NOT add borders or padding that changes dimensions
+- DO NOT generate any size other than ${originalWidth}x${originalHeight}
+- This is a SYSTEM REQUIREMENT that cannot be overridden by artistic choices
+
+STRICT COMPLIANCE REQUIRED: Generate the image at exactly ${originalWidth}x${originalHeight} pixels or the system will fail.`;
+        console.log(
+          '[Gemini Inpaint] No style specified, using default natural style',
+        );
       }
-      
+
       console.log(`[Gemini Inpaint] Enhanced prompt: "${enhancedPrompt}"`);
       console.log(`[Gemini Inpaint] Has extra image context: ${!!extraImage}`);
-      
+
       const parts: any[] = [
         {
           inline_data: {
@@ -169,6 +236,10 @@ export class AppController {
         generation_config: {
           response_modalities: ['image', 'text'],
           response_mime_type: 'text/plain',
+          // Strict parameters for more consistent size compliance
+          temperature: 0.1, // Lower temperature for more consistent output
+          top_p: 0.8,
+          candidate_count: 1,
         },
       };
 
@@ -195,13 +266,75 @@ export class AppController {
       );
 
       if (partWithImage) {
-        const modifiedImage = Buffer.from(
+        const modifiedImageBuffer = Buffer.from(
           partWithImage.inlineData.data,
           'base64',
         );
+
+        // Validate and enforce the generated image has the exact same dimensions as the original
+        const generatedMetadata = await sharp(modifiedImageBuffer).metadata();
+        const generatedWidth = generatedMetadata.width || 0;
+        const generatedHeight = generatedMetadata.height || 0;
+
+        console.log(
+          `[Gemini Inpaint] Generated image dimensions: ${generatedWidth}x${generatedHeight}`,
+        );
+        console.log(
+          `[Gemini Inpaint] Required dimensions: ${originalWidth}x${originalHeight}`,
+        );
+
+        if (
+          generatedWidth !== originalWidth ||
+          generatedHeight !== originalHeight
+        ) {
+          console.warn(
+            `[Gemini Inpaint] SIZE MISMATCH DETECTED! Generated: ${generatedWidth}x${generatedHeight}, Required: ${originalWidth}x${originalHeight}`,
+          );
+          console.log(
+            '[Gemini Inpaint] FORCE CORRECTING size using Sharp resize...',
+          );
+        }
+
+        // AGGRESSIVE size enforcement - force the exact dimensions no matter what
+        const resizedImageBuffer = await sharp(modifiedImageBuffer)
+          .resize(originalWidth, originalHeight, {
+            fit: 'fill', // Force stretch to exact dimensions
+            withoutEnlargement: false, // Allow enlargement if needed
+            kernel: sharp.kernel.lanczos3, // High-quality resampling
+            fastShrinkOnLoad: false, // Disable fast shrinking for accuracy
+          })
+          .png({
+            compressionLevel: 6,
+            adaptiveFiltering: false,
+            force: true, // Force PNG output
+          })
+          .toBuffer();
+
+        // Double-check the final result
+        const finalMetadata = await sharp(resizedImageBuffer).metadata();
+        const finalWidth = finalMetadata.width || 0;
+        const finalHeight = finalMetadata.height || 0;
+
+        console.log(
+          `[Gemini Inpaint] FINAL image dimensions: ${finalWidth}x${finalHeight}`,
+        );
+
+        if (finalWidth !== originalWidth || finalHeight !== originalHeight) {
+          console.error(
+            `[Gemini Inpaint] CRITICAL ERROR: Could not enforce size! Final: ${finalWidth}x${finalHeight}, Required: ${originalWidth}x${originalHeight}`,
+          );
+          throw new Error(
+            `Size enforcement failed: got ${finalWidth}x${finalHeight}, required ${originalWidth}x${originalHeight}`,
+          );
+        }
+
+        console.log(
+          `[Gemini Inpaint] ✅ SUCCESS: Image dimensions match exactly: ${finalWidth}x${finalHeight}`,
+        );
+
         const filename = `gemini-${Date.now()}.png`;
         const filePath = path.join(downloadsDir, filename);
-        fs.writeFileSync(filePath, modifiedImage);
+        fs.writeFileSync(filePath, resizedImageBuffer);
 
         return res.json({
           imageUrl: `${getBaseUrl()}/downloads/${filename}`,
@@ -601,7 +734,10 @@ export class AppController {
       );
       const templates = getAllTemplates();
 
-      console.log('[search-templates] Loaded templates count:', templates.length);
+      console.log(
+        '[search-templates] Loaded templates count:',
+        templates.length,
+      );
 
       // Convert templates to the format expected by the search algorithm
       const templatesData: Record<string, any> = {};
@@ -618,7 +754,10 @@ export class AppController {
         .map(([key, template]: [string, any]) => `${key}: ${template.text}`)
         .join('\n');
 
-      console.log('[search-templates] Prompt size (chars):', templateDescriptions.length);
+      console.log(
+        '[search-templates] Prompt size (chars):',
+        templateDescriptions.length,
+      );
 
       const prompt = `Given the user's search query: "${query}"
 
@@ -652,7 +791,9 @@ Focus on templates that match the user's intent, occasion, or theme they're look
       };
 
       if (!process.env.GEMINI_API_KEY) {
-        console.warn('[search-templates] GEMINI_API_KEY not set. This endpoint requires Gemini.');
+        console.warn(
+          '[search-templates] GEMINI_API_KEY not set. This endpoint requires Gemini.',
+        );
       }
 
       const startedAt = Date.now();
@@ -665,7 +806,9 @@ Focus on templates that match the user's intent, occasion, or theme they're look
         },
       );
       const durationMs = Date.now() - startedAt;
-      console.log(`[search-templates] Gemini HTTP status: ${response.status} ${response.statusText} in ${durationMs}ms`);
+      console.log(
+        `[search-templates] Gemini HTTP status: ${response.status} ${response.statusText} in ${durationMs}ms`,
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -692,12 +835,21 @@ Focus on templates that match the user's intent, occasion, or theme they're look
         } else {
           relevantTemplates = [];
         }
-        console.log('[search-templates] Parsed template IDs count:', Array.isArray(relevantTemplates) ? relevantTemplates.length : 0);
+        console.log(
+          '[search-templates] Parsed template IDs count:',
+          Array.isArray(relevantTemplates) ? relevantTemplates.length : 0,
+        );
         if (Array.isArray(relevantTemplates)) {
-          console.log('[search-templates] Parsed IDs sample:', relevantTemplates.slice(0, 5));
+          console.log(
+            '[search-templates] Parsed IDs sample:',
+            relevantTemplates.slice(0, 5),
+          );
         }
       } catch (error) {
-        console.error('[search-templates] Error parsing Gemini response:', error);
+        console.error(
+          '[search-templates] Error parsing Gemini response:',
+          error,
+        );
         relevantTemplates = [];
       }
 
@@ -743,16 +895,26 @@ Focus on templates that match the user's intent, occasion, or theme they're look
       const designsService = new SavedDesignsService();
       const designs = await designsService.getPublishedDesigns();
 
-      console.log('[search-designs] Loaded published designs count:', designs?.length || 0);
+      console.log(
+        '[search-designs] Loaded published designs count:',
+        designs?.length || 0,
+      );
 
       if (!designs || designs.length === 0) {
-        return res.json({ query, results: [], totalFound: 0, resultType: 'design' });
+        return res.json({
+          query,
+          results: [],
+          totalFound: 0,
+          resultType: 'design',
+        });
       }
 
       // Build map for AI prompt and quick lookup
       const designsData: Record<string, any> = {};
       designs.forEach((d: any) => {
-        const keywords = Array.isArray(d.searchKeywords) ? d.searchKeywords.join(', ') : '';
+        const keywords = Array.isArray(d.searchKeywords)
+          ? d.searchKeywords.join(', ')
+          : '';
         const author = d.author || '';
         designsData[d.id] = {
           id: d.id,
@@ -775,11 +937,16 @@ Focus on templates that match the user's intent, occasion, or theme they're look
 
       const tryGemini = async (): Promise<string[]> => {
         if (!process.env.GEMINI_API_KEY) {
-          console.warn('[search-designs] GEMINI_API_KEY not set. Skipping Gemini and using fallback.');
+          console.warn(
+            '[search-designs] GEMINI_API_KEY not set. Skipping Gemini and using fallback.',
+          );
           return [];
         }
         console.log('[search-designs] Using Gemini for semantic ranking...');
-        console.log('[search-designs] Prompt size (chars):', allDescriptions.length);
+        console.log(
+          '[search-designs] Prompt size (chars):',
+          allDescriptions.length,
+        );
         const prompt = `Given the user's search query: "${query}"
 
 And these card design descriptions:
@@ -812,7 +979,9 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
           },
         );
         const durationMs = Date.now() - startedAt;
-        console.log(`[search-designs] Gemini HTTP status: ${response.status} ${response.statusText} in ${durationMs}ms`);
+        console.log(
+          `[search-designs] Gemini HTTP status: ${response.status} ${response.statusText} in ${durationMs}ms`,
+        );
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -821,13 +990,17 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
         }
 
         const data = await response.json();
-        const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text as string | undefined;
+        const responseText = data?.candidates?.[0]?.content?.parts?.[0]
+          ?.text as string | undefined;
         if (!responseText) return [];
         try {
           const jsonMatch = responseText.match(/\[.*\]/);
           if (!jsonMatch) return [];
           const arr = JSON.parse(jsonMatch[0]);
-          console.log('[search-designs] Parsed design IDs count:', Array.isArray(arr) ? arr.length : 0);
+          console.log(
+            '[search-designs] Parsed design IDs count:',
+            Array.isArray(arr) ? arr.length : 0,
+          );
           if (Array.isArray(arr)) {
             console.log('[search-designs] Parsed IDs sample:', arr.slice(0, 5));
           }
@@ -839,16 +1012,19 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
       };
 
       const simpleRank = (): string[] => {
-        console.log('[search-designs] Using simple keyword ranking fallback...');
+        console.log(
+          '[search-designs] Using simple keyword ranking fallback...',
+        );
         // Tokenize query
-        const q = (query as string).toLowerCase();
+        const q = query.toLowerCase();
         const tokens = q.split(/[^a-z0-9]+/).filter(Boolean);
         const uniqueTokens = Array.from(new Set(tokens));
         console.log('[search-designs] Query tokens:', uniqueTokens);
 
         const scoreById: Record<string, number> = {};
         Object.entries(designsData).forEach(([id, d]) => {
-          const hay = `${d.title} ${d.description} ${d.category} ${(d.author || '')}`.toLowerCase();
+          const hay =
+            `${d.title} ${d.description} ${d.category} ${d.author || ''}`.toLowerCase();
           let score = 0;
           for (const t of uniqueTokens) {
             if (!t) continue;
@@ -856,15 +1032,26 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
             if (occurrences > 0) score += 2 * occurrences; // title/desc/category matches
 
             // keywords boost
-            const keywords = Array.isArray(designs.find(dd => dd.id === id)?.searchKeywords)
-              ? (designs.find(dd => dd.id === id)!.searchKeywords as string[])
+            const keywords = Array.isArray(
+              designs.find((dd) => dd.id === id)?.searchKeywords,
+            )
+              ? (designs.find((dd) => dd.id === id)!.searchKeywords as string[])
               : [];
-            if (keywords.some(k => (k || '').toLowerCase() === t)) score += 3;
-            if (keywords.some(k => (k || '').toLowerCase().includes(t))) score += 1;
+            if (keywords.some((k) => (k || '').toLowerCase() === t)) score += 3;
+            if (keywords.some((k) => (k || '').toLowerCase().includes(t)))
+              score += 1;
           }
           // Simple occasion heuristics
-          if ((d.category || '').toLowerCase().includes('birthday') && q.includes('birthday')) score += 2;
-          if ((d.category || '').toLowerCase().includes('wedding') && q.includes('wedding')) score += 2;
+          if (
+            (d.category || '').toLowerCase().includes('birthday') &&
+            q.includes('birthday')
+          )
+            score += 2;
+          if (
+            (d.category || '').toLowerCase().includes('wedding') &&
+            q.includes('wedding')
+          )
+            score += 2;
           scoreById[id] = score;
         });
 
@@ -881,7 +1068,10 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
       try {
         geminiIds = await tryGemini();
       } catch {}
-      const usedGemini = Array.isArray(geminiIds) && geminiIds.length > 0 && !!process.env.GEMINI_API_KEY;
+      const usedGemini =
+        Array.isArray(geminiIds) &&
+        geminiIds.length > 0 &&
+        !!process.env.GEMINI_API_KEY;
       rankedIds = usedGemini ? geminiIds : simpleRank();
 
       const results = rankedIds
@@ -890,7 +1080,10 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
           ...designsData[id],
         }));
 
-      console.log('[search-designs] Returning results:', { count: results.length, usedGemini });
+      console.log('[search-designs] Returning results:', {
+        count: results.length,
+        usedGemini,
+      });
 
       return res.json({
         query,
@@ -901,9 +1094,10 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
       });
     } catch (error) {
       console.error('[search-designs] Error:', error);
-      return res
-        .status(500)
-        .json({ message: 'Internal server error', error: (error as any).message });
+      return res.status(500).json({
+        message: 'Internal server error',
+        error: error.message,
+      });
     }
   }
 

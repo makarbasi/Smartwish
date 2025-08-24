@@ -45,23 +45,23 @@ export default function MobileMenu() {
   const handleSignOut = async (e?: React.MouseEvent | React.TouchEvent) => {
     try {
       if (e) e.preventDefault();
-      console.log('[MobileMenu] signOut triggered');
-      
+      console.log("[MobileMenu] signOut triggered");
+
       // Guard against multiple taps
       if (signingOut) {
-        console.log('[MobileMenu] signOut already in progress');
+        console.log("[MobileMenu] signOut already in progress");
         return;
       }
-      
+
       setSigningOut(true);
       setMobileMenuOpen(false); // Close menu first
-      
+
       await signOut({ redirect: false });
     } catch (err) {
-      console.error('[MobileMenu] signOut error', err);
+      console.error("[MobileMenu] signOut error", err);
     } finally {
       // Navigate to home after sign out
-      router.push('/');
+      router.push("/");
       setSigningOut(false);
     }
   };
@@ -79,7 +79,7 @@ export default function MobileMenu() {
   }, []);
 
   // Don't render mobile menu if session is loading
-  if (status === 'loading') {
+  if (status === "loading") {
     return null;
   }
 
@@ -168,8 +168,6 @@ export default function MobileMenu() {
               </div>
             )}
 
-
-
             {/* Navigation Items */}
             <div className="flex-1 overflow-y-auto py-4">
               {items.map((item) => (
@@ -232,13 +230,15 @@ export default function MobileMenu() {
                     className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-red-600 hover:bg-red-50 w-full text-left transition-colors disabled:opacity-50"
                   >
                     <ArrowRightStartOnRectangleIcon className="w-6 h-6" />
-                    {signingOut ? 'Signing out...' : 'Sign Out'}
+                    {signingOut ? "Signing out..." : "Sign Out"}
                   </button>
                 ) : (
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);
-                      router.push(`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`);
+                      router.push(
+                        `/sign-in?callbackUrl=${encodeURIComponent(pathname)}`
+                      );
                     }}
                     className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-indigo-600 hover:bg-indigo-50 w-full text-left transition-colors"
                   >

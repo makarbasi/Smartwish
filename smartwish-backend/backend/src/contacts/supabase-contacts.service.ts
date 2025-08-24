@@ -14,21 +14,24 @@ export class SupabaseContactsService {
       {
         auth: {
           autoRefreshToken: false,
-          persistSession: false
-        }
-      }
+          persistSession: false,
+        },
+      },
     );
   }
 
   // Contact CRUD operations
-  async createContact(userId: string, contactData: Partial<Contact>): Promise<Contact> {
+  async createContact(
+    userId: string,
+    contactData: Partial<Contact>,
+  ): Promise<Contact> {
     console.log('Creating contact for userId:', userId);
-    
+
     const newContact = {
-  // Generate a fresh user_id (UUID) for the contact row while
-  // keeping contact_owner set to the authenticated user for RLS/ownership
-  user_id: uuidv4(),
-  contact_owner: userId,
+      // Generate a fresh user_id (UUID) for the contact row while
+      // keeping contact_owner set to the authenticated user for RLS/ownership
+      user_id: uuidv4(),
+      contact_owner: userId,
       first_name: contactData.firstName || '',
       last_name: contactData.lastName || '',
       email: contactData.email,
@@ -74,15 +77,15 @@ export class SupabaseContactsService {
       contacts.map(async (contact) => {
         const [events, media] = await Promise.all([
           this.getContactEvents(contact.id),
-          this.getContactMedia(contact.id)
+          this.getContactMedia(contact.id),
         ]);
-        
+
         return {
           ...this.mapDatabaseRecordToContact(contact),
           events,
-          media
+          media,
         };
-      })
+      }),
     );
 
     return contactsWithRelations;
@@ -103,13 +106,13 @@ export class SupabaseContactsService {
     // Load events and media
     const [events, media] = await Promise.all([
       this.getContactEvents(contactId),
-      this.getContactMedia(contactId)
+      this.getContactMedia(contactId),
     ]);
 
     return {
       ...this.mapDatabaseRecordToContact(data),
       events,
-      media
+      media,
     };
   }
 
@@ -122,13 +125,19 @@ export class SupabaseContactsService {
       ...(updateData.firstName && { first_name: updateData.firstName }),
       ...(updateData.lastName && { last_name: updateData.lastName }),
       ...(updateData.email !== undefined && { email: updateData.email }),
-      ...(updateData.phoneNumber !== undefined && { phone_number: updateData.phoneNumber }),
+      ...(updateData.phoneNumber !== undefined && {
+        phone_number: updateData.phoneNumber,
+      }),
       ...(updateData.address !== undefined && { address: updateData.address }),
-      ...(updateData.relationship !== undefined && { relationship: updateData.relationship }),
+      ...(updateData.relationship !== undefined && {
+        relationship: updateData.relationship,
+      }),
       ...(updateData.socialMedia && { social_media: updateData.socialMedia }),
       ...(updateData.interests && { interests: updateData.interests }),
       ...(updateData.hobbies && { hobbies: updateData.hobbies }),
-      ...(updateData.occupation !== undefined && { occupation: updateData.occupation }),
+      ...(updateData.occupation !== undefined && {
+        occupation: updateData.occupation,
+      }),
       ...(updateData.company !== undefined && { company: updateData.company }),
       ...(updateData.notes !== undefined && { notes: updateData.notes }),
       updated_at: new Date().toISOString(),
@@ -153,7 +162,7 @@ export class SupabaseContactsService {
     // Delete associated events and media first
     await Promise.all([
       this.supabase.from('contact_events').delete().eq('contact_id', contactId),
-      this.supabase.from('contact_media').delete().eq('contact_id', contactId)
+      this.supabase.from('contact_media').delete().eq('contact_id', contactId),
     ]);
 
     const { error } = await this.supabase
@@ -166,12 +175,17 @@ export class SupabaseContactsService {
   }
 
   // Event operations
-  async addEvent(contactId: string, eventData: Partial<ContactEvent>): Promise<ContactEvent> {
+  async addEvent(
+    contactId: string,
+    eventData: Partial<ContactEvent>,
+  ): Promise<ContactEvent> {
     const newEvent = {
       contact_id: contactId,
       title: eventData.title || '',
       type: eventData.type || 'custom',
-      date: eventData.date ? new Date(eventData.date).toISOString() : new Date().toISOString(),
+      date: eventData.date
+        ? new Date(eventData.date).toISOString()
+        : new Date().toISOString(),
       description: eventData.description,
       is_recurring: eventData.isRecurring || false,
       reminder_days: eventData.reminderDays || 7,
@@ -192,14 +206,23 @@ export class SupabaseContactsService {
     return this.mapDatabaseRecordToEvent(data);
   }
 
-  async updateEvent(eventId: string, updateData: Partial<ContactEvent>): Promise<ContactEvent | null> {
+  async updateEvent(
+    eventId: string,
+    updateData: Partial<ContactEvent>,
+  ): Promise<ContactEvent | null> {
     const updatePayload = {
       ...(updateData.title && { title: updateData.title }),
       ...(updateData.type && { type: updateData.type }),
       ...(updateData.date && { date: new Date(updateData.date).toISOString() }),
-      ...(updateData.description !== undefined && { description: updateData.description }),
-      ...(updateData.isRecurring !== undefined && { is_recurring: updateData.isRecurring }),
-      ...(updateData.reminderDays !== undefined && { reminder_days: updateData.reminderDays }),
+      ...(updateData.description !== undefined && {
+        description: updateData.description,
+      }),
+      ...(updateData.isRecurring !== undefined && {
+        is_recurring: updateData.isRecurring,
+      }),
+      ...(updateData.reminderDays !== undefined && {
+        reminder_days: updateData.reminderDays,
+      }),
       updated_at: new Date().toISOString(),
     };
 
@@ -283,12 +306,16 @@ export class SupabaseContactsService {
 
     // Sort by date
     return upcomingEvents.sort(
-      (a, b) => new Date(a.event.date).getTime() - new Date(b.event.date).getTime()
+      (a, b) =>
+        new Date(a.event.date).getTime() - new Date(b.event.date).getTime(),
     );
   }
 
   // Media operations
-  async addMedia(contactId: string, mediaData: Partial<ContactMedia>): Promise<ContactMedia> {
+  async addMedia(
+    contactId: string,
+    mediaData: Partial<ContactMedia>,
+  ): Promise<ContactMedia> {
     const newMedia = {
       contact_id: contactId,
       type: mediaData.type || 'image',
@@ -359,7 +386,9 @@ export class SupabaseContactsService {
       .from('contacts')
       .select('*')
       .eq('contact_owner', userId)
-      .or(`first_name.ilike.%${lowerQuery}%,last_name.ilike.%${lowerQuery}%,email.ilike.%${lowerQuery}%,phone_number.ilike.%${lowerQuery}%,relationship.ilike.%${lowerQuery}%,occupation.ilike.%${lowerQuery}%,company.ilike.%${lowerQuery}%,notes.ilike.%${lowerQuery}%`);
+      .or(
+        `first_name.ilike.%${lowerQuery}%,last_name.ilike.%${lowerQuery}%,email.ilike.%${lowerQuery}%,phone_number.ilike.%${lowerQuery}%,relationship.ilike.%${lowerQuery}%,occupation.ilike.%${lowerQuery}%,company.ilike.%${lowerQuery}%,notes.ilike.%${lowerQuery}%`,
+      );
 
     if (error || !data) {
       return [];
@@ -370,15 +399,15 @@ export class SupabaseContactsService {
       data.map(async (contact) => {
         const [events, media] = await Promise.all([
           this.getContactEvents(contact.id),
-          this.getContactMedia(contact.id)
+          this.getContactMedia(contact.id),
         ]);
-        
+
         return {
           ...this.mapDatabaseRecordToContact(contact),
           events,
-          media
+          media,
         };
-      })
+      }),
     );
 
     return contactsWithRelations;
@@ -388,8 +417,8 @@ export class SupabaseContactsService {
   private mapDatabaseRecordToContact(record: any): Contact {
     return {
       id: record.id,
-  // Prefer explicit user_id if present, otherwise fall back to contact_owner
-  userId: record.user_id || record.contact_owner,
+      // Prefer explicit user_id if present, otherwise fall back to contact_owner
+      userId: record.user_id || record.contact_owner,
       firstName: record.first_name,
       lastName: record.last_name,
       email: record.email,

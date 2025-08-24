@@ -53,7 +53,20 @@ export class TemplatesService {
     // Apply sorting
     const validSortFields = ['title', 'created_at', 'updated_at', 'popularity', 'num_downloads', 'price'];
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
-    queryBuilder.orderBy(`template.${sortField}`, sortOrder.toUpperCase() as 'ASC' | 'DESC');
+    // Map camelCase to snake_case if needed
+    const fieldMap: Record<string, string> = {
+      created_at: 'created_at',
+      updated_at: 'updated_at',
+      popularity: 'popularity',
+      num_downloads: 'num_downloads',
+      price: 'price',
+      title: 'title',
+    };
+    const dbField = fieldMap[sortField] || 'created_at';
+    queryBuilder.orderBy(
+      `template.${dbField}`,
+      sortOrder.toUpperCase() as 'ASC' | 'DESC',
+    );
 
     // Apply pagination
     if (limit) {
@@ -112,7 +125,11 @@ export class TemplatesService {
     });
 
     // Get templates count by category
-    const templatesByCategory = await this.templateRepository
+    const templatesByCategory: Array<{
+      categoryName: string;
+      categoryId: string;
+      templateCount: string;
+    }> = await this.templateRepository
       .createQueryBuilder('template')
       .select('category.name', 'categoryName')
       .addSelect('category.id', 'categoryId')
@@ -125,7 +142,9 @@ export class TemplatesService {
     return {
       totalTemplates,
       totalCategories,
-      templatesByCategory: templatesByCategory.reduce((acc, item) => {
+      templatesByCategory: templatesByCategory.reduce<
+        Record<string, { name: string; count: number }>
+      >((acc, item) => {
         acc[item.categoryId] = {
           name: item.categoryName,
           count: parseInt(item.templateCount, 10),
