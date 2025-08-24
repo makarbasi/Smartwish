@@ -12,7 +12,6 @@ function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     console.log("SignInForm: handleSubmit called");

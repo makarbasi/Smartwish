@@ -97,8 +97,9 @@ export default function Sidebar() {
   const router = useRouter();
   const popoverRef = useRef<HTMLDivElement>(null);
   
-  // Get profile picture URL - prioritize Supabase profile image, fallback to session image, then default
-  const profileImageUrl = user?.profileImage || (session?.user?.image as string) || "https://i.pravatar.cc/80?img=12";
+  // Get profile picture URL - prioritize Supabase profile image, fallback to session image.
+  // If neither exists, treat as a guest and don't show a profile image (use neutral placeholder).
+  const profileImageUrl = user?.profileImage || (session?.user?.image as string) || null;
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -166,13 +167,28 @@ export default function Sidebar() {
             className="flex w-full items-center justify-between rounded-md px-1.5 py-1.5"
           >
             <span className="sr-only">Open profile</span>
-            <Image
-              src={profileImageUrl}
-              alt=""
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-full ring-1 ring-gray-200"
-            />
+            {profileImageUrl ? (
+              <Image
+                src={profileImageUrl}
+                alt=""
+                width={36}
+                height={36}
+                className="h-9 w-9 rounded-full ring-1 ring-gray-200"
+              />
+            ) : (
+              <div className="h-9 w-9 rounded-full bg-gray-100 ring-1 ring-gray-200 flex items-center justify-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="h-5 w-5 text-gray-500"
+                  aria-hidden="true"
+                >
+                  <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5z" />
+                  <path d="M4 20c0-3.866 3.134-7 7-7s7 3.134 7 7H4z" />
+                </svg>
+              </div>
+            )}
           </button>
 
           {profileOpen && (
@@ -183,13 +199,28 @@ export default function Sidebar() {
                 </div>
                 <div className="mt-2 flex items-center rounded-lg bg-gray-50 p-2 ring-1 ring-gray-200">
                   <div className="flex items-center gap-3">
-                    <Image
-                      src={profileImageUrl}
-                      alt=""
-                      width={36}
-                      height={36}
-                      className="h-9 w-9 rounded-full ring-1 ring-gray-200"
-                    />
+                    {profileImageUrl ? (
+                      <Image
+                        src={profileImageUrl}
+                        alt=""
+                        width={36}
+                        height={36}
+                        className="h-9 w-9 rounded-full ring-1 ring-gray-200"
+                      />
+                    ) : (
+                      <div className="h-9 w-9 rounded-full bg-gray-50 ring-1 ring-gray-200 flex items-center justify-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="h-5 w-5 text-gray-400"
+                          aria-hidden="true"
+                        >
+                          <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5z" />
+                          <path d="M4 20c0-3.866 3.134-7 7-7s7 3.134 7 7H4z" />
+                        </svg>
+                      </div>
+                    )}
                     <div>
                       <div className="text-sm font-semibold text-gray-900">
                         {(user?.name || session?.user?.name) ?? "Guest"}
