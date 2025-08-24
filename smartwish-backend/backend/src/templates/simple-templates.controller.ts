@@ -199,7 +199,7 @@ export class SimpleTemplatesController {
         LEFT JOIN sw_categories c ON t.category_id = c.id
         LEFT JOIN users u ON t.author_id = u.id
         WHERE t.status = 'published' AND t.author_id IS NOT NULL
-        ORDER BY t.created_at DESC
+        ORDER BY t.updated_at DESC, t.created_at DESC
       `);
 
       return {
@@ -253,7 +253,7 @@ export class SimpleTemplatesController {
         LEFT JOIN sw_categories c ON t.category_id = c.id
         LEFT JOIN users u ON t.author_id = u.id
         WHERE t.status = 'published' AND t.author_id IS NOT NULL AND t.category_id = $1
-        ORDER BY t.created_at DESC
+        ORDER BY t.updated_at DESC, t.created_at DESC
       `,
         [categoryId],
       );

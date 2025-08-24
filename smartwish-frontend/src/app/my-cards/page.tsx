@@ -41,9 +41,25 @@ type SavedDesign = {
   image4?: string;
 };
 
+type PublishedTemplate = {
+  id: string;
+  title: string;
+  cover_image?: string;
+  image_1?: string;
+  category_name?: string;
+  author?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type SavedDesignsResponse = {
   success: boolean;
   data: SavedDesign[];
+};
+
+type PublishedTemplatesResponse = {
+  success: boolean;
+  data: PublishedTemplate[];
 };
 
 // Authenticated fetcher using request utils
@@ -105,6 +121,49 @@ const transformSavedDesign = (design: SavedDesign): MyCard => {
   };
 };
 
+// Transform published template to MyCard format
+const transformPublishedTemplate = (template: PublishedTemplate): MyCard => {
+  const daysAgo = Math.floor(
+    (Date.now() - new Date(template.updated_at).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  // Use cover_image or image_1 as thumbnail
+  const thumbnail = template.cover_image || template.image_1 || "/placeholder-card.png";
+
+  return {
+    id: template.id,
+    name: template.title,
+    thumbnail: thumbnail,
+    lastEdited: `Updated ${daysAgo > 0 ? `${daysAgo}d` : "1d"} ago`,
+    category: template.category_name || "General",
+    status: "published",
+  };
+};
+
+// Custom fetcher for user's published templates (filtered by author_id)
+const templatesFetcher = async (url: string, userId?: string) => {
+  if (!url || !userId) {
+    return { success: true, data: [] };
+  }
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch templates');
+  }
+  
+  const result = await response.json();
+  
+  // Filter templates to only show those where author_id matches current user's ID
+  if (result.success && result.data) {
+    const userTemplates = result.data.filter((template: any) => 
+      template.author_id === userId
+    );
+    return { ...result, data: userTemplates };
+  }
+  
+  return result;
+};
+
 // Component that uses useSearchParams - wrapped in Suspense
 function MyCardsContent() {
   const searchParams = useSearchParams();
@@ -140,6 +199,23 @@ function MyCardsContent() {
     }
   );
 
+  // Fetch published templates from public API (filtered by current user's author_id)
+  // Get the URL for user's published templates
+  const templatesUrl = session?.user?.id ? 
+    DynamicRouter("api", "simple-templates/with-author", undefined, false) : 
+    null;
+  const {
+    data: templatesResponse,
+  } = useSWR<PublishedTemplatesResponse>(
+    templatesUrl,
+    (url) => templatesFetcher(url, session?.user?.id?.toString()),
+    {
+      refreshInterval: 30000, // Refresh every 30 seconds
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+    }
+  );
+
   // Check for new design success message and force refresh
   useEffect(() => {
     const newDesignId = searchParams?.get("newDesign");
@@ -168,14 +244,38 @@ function MyCardsContent() {
   const draftCards: MyCard[] = allDesigns
     .filter((d) => !publishedStatuses.has(d.status || ""))
     .map(transformSavedDesign);
-  const publishedCards: MyCard[] = allDesigns
+  
+  // Get user's published designs
+  const userPublishedCards: MyCard[] = allDesigns
     .filter((d) => publishedStatuses.has(d.status || ""))
     .map(transformSavedDesign);
+
+  // Get user's published templates from the templates API (filtered by author_id)
+  const userPublishedTemplates: MyCard[] = (templatesResponse?.data || [])
+    .map(transformPublishedTemplate);
+
+  // Combine user's published designs with user's published templates
+  // Remove duplicates based on ID (in case user's published design is also in templates)
+  const allPublishedCards: MyCard[] = [
+    ...userPublishedCards,
+    ...userPublishedTemplates.filter(template => 
+      !userPublishedCards.some(userCard => userCard.id === template.id)
+    )
+  ].sort((a, b) => {
+    // Sort by last edited/updated date (newest first)
+    const aTime = a.lastEdited.includes('Edited') ? 
+      new Date().getTime() - (parseInt(a.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000) :
+      new Date().getTime() - (parseInt(a.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000);
+    const bTime = b.lastEdited.includes('Edited') ? 
+      new Date().getTime() - (parseInt(b.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000) :
+      new Date().getTime() - (parseInt(b.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000);
+    return bTime - aTime;
+  });
 
   // Debug logging
   console.log("My Cards - Saved designs response:", savedDesignsResponse);
   console.log("My Cards - Draft cards:", draftCards);
-  console.log("My Cards - Published cards:", publishedCards);
+  console.log("My Cards - Published cards:", allPublishedCards);
   console.log("My Cards - Loading state:", savedDesignsLoading);
   console.log("My Cards - Error state:", savedDesignsError);
 
@@ -201,7 +301,7 @@ function MyCardsContent() {
       );
       console.log("🗑️ Deleting design:", designToDelete.id, "URL:", deleteUrl);
 
-      const result = await deleteRequest(deleteUrl, session);
+      const result = await deleteRequest(deleteUrl, session as any);
       console.log("✅ Delete result:", result);
 
       setSuccessMessage("Your design has been successfully deleted!");
@@ -241,7 +341,7 @@ function MyCardsContent() {
       );
       console.log("📤 Publishing design:", designId, "URL:", publishUrl);
 
-      const result = await postRequest(publishUrl, {}, session);
+      const result = await postRequest(publishUrl, {}, session as any);
       console.log("✅ Publish result:", result);
 
       setSuccessMessage(
@@ -268,7 +368,7 @@ function MyCardsContent() {
       );
       console.log("📥 Unpublishing design:", designId, "URL:", unpublishUrl);
 
-      const result = await postRequest(unpublishUrl, {}, session);
+      const result = await postRequest(unpublishUrl, {}, session as any);
       console.log("✅ Unpublish result:", result);
 
       setSuccessMessage(
@@ -298,7 +398,7 @@ function MyCardsContent() {
       );
       console.log("📡 Duplicate URL:", duplicateUrl);
 
-      const result = await postRequest(duplicateUrl, {}, session);
+      const result = await postRequest(duplicateUrl, {}, session as any);
       console.log("✅ Duplicate result:", result);
 
       setSuccessMessage(
@@ -615,7 +715,7 @@ function MyCardsContent() {
                     </div>
                   </div>
                 ))
-            ) : publishedCards.length === 0 ? (
+            ) : allPublishedCards.length === 0 ? (
               <div className="col-span-full">
                 <div className="text-center py-12">
                   <svg
@@ -641,7 +741,7 @@ function MyCardsContent() {
                 </div>
               </div>
             ) : (
-              publishedCards.map((c, index) => (
+              allPublishedCards.map((c: MyCard, index: number) => (
                 <div
                   key={c.id}
                   className="group rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm"

@@ -257,7 +257,7 @@ export default function PinturaEditorModal({
                 <div class="ai-style-scroll-wrapper">
                   <div id="ai-style-container" class="ai-style-container" role="list">
                   <!-- Each button is a vertical pill: thumbnail on top, label below. Using theme image thumbnails from public/resources/themes -->
-                    <button type="button" class="ai-style-button selected" data-style="natural" tabindex="0" role="button" aria-pressed="true">
+                    <button type="button" class="ai-style-button" data-style="natural" tabindex="0" role="button" aria-pressed="false">
                       <div class="ai-style-thumb"><img src="/resources/themes/theme-watercolor.jpg" alt="Watercolor" style="width:56px;height:56px;border-radius:10px;object-fit:cover;display:block"/></div>
                       <span class="ai-style-label">Natural</span>
                     </button>
@@ -285,13 +285,13 @@ export default function PinturaEditorModal({
                     <input 
                       type="text" 
                       id="ai-prompt-input"
-                      placeholder="Describe changes (optional or just pick a style)"
+                      placeholder="Describe changes you want to make"
                       style="flex:1;padding:0.75rem 1rem;border:1px solid rgba(0,0,0,0.15);border-radius:0.75rem;font-size:0.875rem;outline:none;background:white;"
                     />
                     <button 
                       type="button" 
                       id="ai-send-button"
-                      aria-label="Send AI request"
+                      aria-label="Send prompt request"
                       style="position:absolute;right:6px;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border:none;border-radius:50%;background:linear-gradient(45deg,#6366f1,#8b5cf6);color:white;cursor:pointer;box-shadow:0 4px 10px -2px rgba(99,102,241,0.5);transition:transform 0.2s ease, box-shadow 0.2s ease;"
                     >
                       <svg class="ai-send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -323,18 +323,17 @@ export default function PinturaEditorModal({
           if (containerEl) {
             // clear any placeholder content
             containerEl.innerHTML = "";
-            themePaths.forEach((p, idx) => {
+            themePaths.forEach((p) => {
               const btn = document.createElement("button");
               btn.type = "button";
-              btn.className =
-                "ai-style-button" + (idx === 0 ? " selected" : "");
+              btn.className = "ai-style-button"; // Remove default selected state
               btn.setAttribute(
                 "data-style",
                 (p.split("/").pop() || "").replace(/\.[^.]+$/, "").toLowerCase()
               );
               btn.tabIndex = 0;
               btn.setAttribute("role", "button");
-              btn.setAttribute("aria-pressed", idx === 0 ? "true" : "false");
+              btn.setAttribute("aria-pressed", "false"); // All start unselected
 
               const thumb = document.createElement("div");
               thumb.className = "ai-style-thumb";
@@ -387,27 +386,150 @@ export default function PinturaEditorModal({
         ) as HTMLElement | null;
 
         // Keep track of selected style
-        let selectedStyle = "natural";
+        let selectedStyle = "";
+        let isProcessing = false;
+
+        // Helper function to lock/unlock UI
+        const setUILocked = (locked: boolean) => {
+          isProcessing = locked;
+          if (promptInput) {
+            promptInput.disabled = locked;
+            promptInput.style.opacity = locked ? "0.5" : "";
+            promptInput.placeholder = locked ? "Please wait..." : "Describe changes you want to make";
+          }
+          if (sendButton) {
+            sendButton.disabled = locked;
+            sendButton.style.opacity = locked ? "0.5" : "";
+          }
+          styleButtons.forEach(btn => {
+            btn.disabled = locked;
+            btn.style.opacity = locked ? "0.5" : "";
+          });
+        };
+
+        // Helper function to apply theme
+        const applyTheme = async (themeName: string) => {
+          if (isProcessing) return;
+          
+          console.log("🎨 Applying theme:", themeName);
+          setUILocked(true);
+
+          try {
+            // Get current image from editor
+            let imageBlob: Blob | null = null;
+
+            try {
+              type EditorLike = {
+                toBlob?: (cb: (b: Blob) => void) => void;
+                toDataURL?: () => string;
+                getResult?: () => Promise<{ dest?: Blob | File } | null>;
+              };
+
+              const maybe = res as unknown as EditorLike;
+              if (typeof maybe.toBlob === "function") {
+                imageBlob = await new Promise<Blob | null>((resolve) => {
+                  try {
+                    maybe.toBlob!((b: Blob) => resolve(b));
+                  } catch {
+                    resolve(null);
+                  }
+                });
+              } else if (typeof maybe.toDataURL === "function") {
+                const dataUrl = maybe.toDataURL!();
+                const parts = dataUrl.split(",");
+                const meta = parts[0];
+                const base64 = parts[1];
+                const m = /data:([^;]+);base64/.exec(meta);
+                const contentType = m ? m[1] : "image/png";
+                const byteString = atob(base64);
+                const ia = new Uint8Array(byteString.length);
+                for (let i = 0; i < byteString.length; i++)
+                  ia[i] = byteString.charCodeAt(i);
+                imageBlob = new Blob([ia], { type: contentType });
+              }
+            } catch {
+              console.warn("Editor instance extraction failed");
+            }
+
+            if (!imageBlob) {
+              const canvas = document.querySelector("canvas") as HTMLCanvasElement | null;
+              if (canvas) {
+                const dataUrl = canvas.toDataURL("image/png");
+                const parts = dataUrl.split(",");
+                const base64 = parts[1];
+                const byteString = atob(base64);
+                const ia = new Uint8Array(byteString.length);
+                for (let i = 0; i < byteString.length; i++)
+                  ia[i] = byteString.charCodeAt(i);
+                imageBlob = new Blob([ia], { type: "image/png" });
+              }
+            }
+
+            if (!imageBlob && currentImageSrc) {
+              try {
+                const fetched = await fetch(currentImageSrc);
+                if (fetched.ok) imageBlob = await fetched.blob();
+              } catch (e) {
+                console.warn("Failed to fetch current image", e);
+              }
+            }
+
+            if (!imageBlob) throw new Error("Could not obtain image from editor");
+
+            const file = new File([imageBlob], "image.png", {
+              type: imageBlob.type || "image/png",
+            });
+
+            const formData = new FormData();
+            formData.append("image", file);
+            formData.append("prompt", `Transform this image completely to match the ${themeName} artistic style while preserving the main subject and composition`);
+            formData.append("style", themeName);
+
+            const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+            const resp = await fetch(`${backendUrl}/gemini-inpaint`, {
+              method: "POST",
+              body: formData,
+            });
+
+            if (!resp.ok) {
+              const text = await resp.text();
+              throw new Error(text || `HTTP ${resp.status}`);
+            }
+
+            const data = await resp.json();
+            const returned = data?.imageUrl || data?.imageBase64 || data?.image;
+            if (!returned) throw new Error("No image returned from server");
+
+            console.log("🎨 Loading theme result back into editor:", returned);
+            setCurrentImageSrc(returned as string);
+
+          } catch (err) {
+            console.error("Theme application error:", err);
+            alert("Failed to apply theme: " + (err as Error).message);
+          } finally {
+            setUILocked(false);
+          }
+        };
 
         styleButtons.forEach((btn) => {
-          const activate = () => {
-            console.log(
-              "🎨 Style button clicked:",
-              btn.getAttribute("data-style")
-            );
+          const activate = async () => {
+            if (isProcessing) return;
+            
+            const themeName = btn.getAttribute("data-style") || "";
+            console.log("🎨 Theme button clicked:", themeName);
+            
+            // Update selection state
             styleButtons.forEach((b) => {
               b.classList.remove("selected");
               b.setAttribute("aria-pressed", "false");
-              console.log(
-                "🔧 Removing selected from:",
-                b.getAttribute("data-style")
-              );
             });
             btn.classList.add("selected");
             btn.setAttribute("aria-pressed", "true");
-            selectedStyle = btn.getAttribute("data-style") || "natural";
-            console.log("🎨 AI style selected:", selectedStyle);
-            console.log("🔧 Button classes after selection:", btn.className);
+            selectedStyle = themeName;
+            
+            // Apply theme immediately
+            await applyTheme(themeName);
+            
             // Ensure activated button is visible (center it)
             if (styleContainer) {
               const btnRect = btn.getBoundingClientRect();
@@ -434,28 +556,20 @@ export default function PinturaEditorModal({
         // No arrows: container remains horizontally scrollable on small screens
 
         sendButton?.addEventListener("click", async () => {
+          if (isProcessing) return;
+          
           const prompt = promptInput?.value?.trim();
-          // Allow sending with just theme/style (no text required)
-          if (!prompt && !selectedStyle) {
-            console.warn("⚠️ No prompt or style selected");
+          if (!prompt) {
+            console.warn("⚠️ No prompt provided");
+            alert("Please enter a description of the changes you want to make");
             return;
           }
 
-          const finalPrompt =
-            prompt ||
-            `Transform this image completely to match the ${selectedStyle} artistic style while preserving the main subject and composition`;
-          console.log(
-            "🤖 AI Request - Prompt:",
-            finalPrompt,
-            "Style:",
-            selectedStyle
-          );
+          console.log("🤖 AI Prompt Request:", prompt);
+          setUILocked(true);
 
-          // Visual feedback
+          // Visual feedback for send button
           const originalIcon = sendButton!.querySelector(".ai-send-icon");
-          sendButton!.disabled = true;
-          sendButton!.style.opacity = "0.85";
-          // replace icon with spinner
           if (originalIcon) {
             originalIcon.setAttribute("data-original", "true");
             originalIcon.outerHTML = '<div class="ai-spinner" />';
@@ -546,8 +660,8 @@ export default function PinturaEditorModal({
             // Prepare form data and call backend Gemini inpaint route
             const formData = new FormData();
             formData.append("image", file);
-            formData.append("prompt", finalPrompt);
-            formData.append("style", selectedStyle);
+            formData.append("prompt", prompt);
+            formData.append("style", selectedStyle || "natural");
 
             // Add the original image as context for Gemini to understand what user is working on
             try {
@@ -597,9 +711,7 @@ export default function PinturaEditorModal({
             console.error("Gemini inpaint error:", err);
             alert("Failed to process AI request: " + (err as Error).message);
           } finally {
-            // restore button
-            sendButton!.disabled = false;
-            sendButton!.style.opacity = "";
+            setUILocked(false);
             // restore icon if spinner present
             const spinner = sendButton!.querySelector(".ai-spinner");
             if (spinner) {

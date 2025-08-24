@@ -843,7 +843,7 @@ export default function CustomizeCardPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <h1 className="text-xl font-bold text-gray-900 leading-tight">
-                      {cardData.name}
+                      {editedName || cardData.name}
                     </h1>
                     <button
                       onClick={handleStartEditingName}
@@ -979,7 +979,7 @@ export default function CustomizeCardPage() {
                   ) : (
                     <div className="flex items-center gap-3">
                       <h1 className="text-xl font-bold text-gray-900">
-                        {cardData.name}
+                        {editedName || cardData.name}
                       </h1>
                       <button
                         onClick={handleStartEditingName}

@@ -38,25 +38,24 @@ function ImageSkeleton() {
 }
 
 export default function MadeWithSmartWish() {
-  const [randomTemplates, setRandomTemplates] = useState<Template[]>([]);
+  const [latestTemplates, setLatestTemplates] = useState<Template[]>([]);
   const router = useRouter();
 
-  // Fetch templates with author only
+  // Fetch all templates (latest first)
   const {
     data: apiResponse,
     error,
     isLoading,
-  } = useSWR<ApiResponse>(DynamicRouter("api", "simple-templates/with-author", undefined, false), fetcher);
+  } = useSWR<ApiResponse>(DynamicRouter("api", "simple-templates", undefined, false), fetcher);
 
   const templates = useMemo(() => apiResponse?.data || [], [apiResponse]);
 
-  // Generate random templates (keep full objects so we have IDs)
+  // Get latest templates (already sorted by created_at DESC from API)
   useEffect(() => {
     if (templates.length > 0) {
-      const shuffled = [...templates].sort(() => 0.5 - Math.random());
-      // Filter out any without a primary image
-      const withImage = shuffled.filter((t) => t.image_1);
-      setRandomTemplates(withImage.slice(0, 8));
+      // Filter out any without a primary image and take the first 8 (latest)
+      const withImage = templates.filter((t) => t.image_1);
+      setLatestTemplates(withImage.slice(0, 8));
     }
   }, [templates]);
 
@@ -90,7 +89,7 @@ export default function MadeWithSmartWish() {
         Made with SmartWish
       </h2>
       <p className="mx-auto mt-1 max-w-2xl text-center text-sm text-gray-500">
-        Take a look at some of the cards created by our users.
+        Take a look at the latest cards created by our users.
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-4">
@@ -105,8 +104,8 @@ export default function MadeWithSmartWish() {
             Failed to load card samples
           </div>
         ) : (
-          // Show random template thumbnails clickable
-          randomTemplates.map((t) => (
+          // Show latest template thumbnails clickable
+          latestTemplates.map((t: Template) => (
             <div
               key={t.id}
               role="button"
