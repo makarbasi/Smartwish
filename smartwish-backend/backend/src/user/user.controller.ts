@@ -9,25 +9,30 @@ import {
   Request,
   UploadedFile,
   UseInterceptors,
+  BadRequestException,
+  Headers,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import * as path from 'path';
-import * as fs from 'fs';
 import { Public } from '../auth/public.decorator';
+import { SupabaseStorageService } from '../saved-designs/supabase-storage.service';
 
 interface RequestWithUser extends Request {
   user: {
     id: string;
     email: string;
   };
+  ip?: string;
 }
 
 @Controller('user')
 @UseGuards(JwtAuthGuard)
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly supabaseStorageService: SupabaseStorageService,
+  ) {}
 
   @Get('profile')
   async getProfile(@Request() req: RequestWithUser) {
@@ -96,7 +101,6 @@ export class UserController {
   @Post('profile/image')
   @UseInterceptors(
     FileInterceptor('image', {
-      dest: './uploads/profile-images',
       limits: {
         fileSize: 5 * 1024 * 1024, // 5MB limit
       },
@@ -114,55 +118,170 @@ export class UserController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
-      throw new Error('No file uploaded');
+      throw new BadRequestException('No file uploaded');
     }
 
-    console.log('Uploaded file:', file);
+    try {
+      // Convert file buffer to base64
+      const base64Data = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+      
+      // Generate filename
+      const fileExtension = file.originalname.split('.').pop() || 'png';
+      const fileName = `profile_${req.user.id}.${fileExtension}`;
+      
+      // Upload to Supabase Storage
+      const imageUrl = await this.supabaseStorageService.uploadImage(
+        base64Data,
+        fileName,
+        'profile-images',
+      );
 
-    // Generate unique filename
-    const fileExtension = path.extname(file.originalname);
-    const fileName = `profile_${req.user.id}_${Date.now()}${fileExtension}`;
-    const filePath = path.join('./uploads/profile-images', fileName);
+      // Update user profile with image URL
+      const updatedUser = await this.userService.updateProfileImage(
+        req.user.id,
+        imageUrl,
+      );
 
-    console.log('File path:', filePath);
-    console.log('File exists before move:', fs.existsSync(file.path));
-
-    // Move file to final location
-    fs.renameSync(file.path, filePath);
-
-    console.log('File exists after move:', fs.existsSync(filePath));
-    console.log('File size:', fs.statSync(filePath).size);
-
-    // Update user profile with image path
-    const imageUrl = `/uploads/profile-images/${fileName}`;
-    console.log('Image URL to be saved:', imageUrl);
-
-    const updatedUser = await this.userService.updateProfileImage(
-      req.user.id,
-      imageUrl,
-    );
-
-    const { password, ...userWithoutPassword } = updatedUser;
-    return {
-      user: userWithoutPassword,
-      imageUrl,
-    };
+      const { password, ...userWithoutPassword } = updatedUser;
+      return {
+        user: userWithoutPassword,
+        imageUrl,
+      };
+    } catch (error) {
+      console.error('Error uploading profile image:', error);
+      throw new BadRequestException('Failed to upload profile image');
+    }
   }
 
-  @Get('test-static')
-  @Public()
-  async testStaticFiles() {
-    const uploadsDir = path.join(process.cwd(), 'uploads');
-    const profileImagesDir = path.join(uploadsDir, 'profile-images');
+  @Post('change-password')
+  async changePassword(
+    @Request() req: RequestWithUser,
+    @Body() changePasswordDto: {
+      currentPassword: string;
+      newPassword: string;
+    },
+    @Headers('user-agent') userAgent?: string,
+  ) {
+    try {
+      const ipAddress = req.ip || 'unknown';
+      
+      await this.userService.changePassword(
+        req.user.id,
+        changePasswordDto.currentPassword,
+        changePasswordDto.newPassword,
+        ipAddress,
+        userAgent,
+      );
 
+      return { message: 'Password changed successfully' };
+    } catch (error) {
+      console.error('Error changing password:', error);
+      throw error;
+    }
+  }
+
+  @Post('request-password-reset')
+  @Public()
+  async requestPasswordReset(
+    @Body() resetDto: { email: string },
+    @Request() req: any,
+    @Headers('user-agent') userAgent?: string,
+  ) {
+    try {
+      const ipAddress = req.ip || 'unknown';
+      
+      const { token, expiresAt } = await this.userService.initiatePasswordReset(
+        resetDto.email,
+        ipAddress,
+        userAgent,
+      );
+
+      // In production, you would send this token via email
+      // For now, we'll return it in the response (not recommended for production)
+      return {
+        message: 'Password reset email sent',
+        // Remove this in production and send via email instead
+        resetToken: token,
+        expiresAt,
+      };
+    } catch (error) {
+      console.error('Error requesting password reset:', error);
+      throw error;
+    }
+  }
+
+  @Post('reset-password')
+  @Public()
+  async resetPassword(
+    @Body() resetDto: { token: string; newPassword: string },
+    @Request() req: any,
+    @Headers('user-agent') userAgent?: string,
+  ) {
+    try {
+      const ipAddress = req.ip || 'unknown';
+      
+      const success = await this.userService.resetPassword(
+        resetDto.token,
+        resetDto.newPassword,
+        ipAddress,
+        userAgent,
+      );
+
+      if (success) {
+        return { message: 'Password reset successfully' };
+      } else {
+        throw new BadRequestException('Failed to reset password');
+      }
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      throw error;
+    }
+  }
+
+  @Put('phone')
+  async updatePhoneNumber(
+    @Request() req: RequestWithUser,
+    @Body() phoneDto: { phoneNumber: string },
+    @Headers('user-agent') userAgent?: string,
+  ) {
+    try {
+      const ipAddress = req.ip || 'unknown';
+      
+      const updatedUser = await this.userService.updatePhoneNumber(
+        req.user.id,
+        phoneDto.phoneNumber,
+        ipAddress,
+        userAgent,
+      );
+
+      const { password, ...userWithoutPassword } = updatedUser;
+      return userWithoutPassword;
+    } catch (error) {
+      console.error('Error updating phone number:', error);
+      throw error;
+    }
+  }
+
+  @Post('verify-email/:token')
+  @Public()
+  async verifyEmail(@Param('token') token: string) {
+    try {
+      // This endpoint would typically be called from an email link
+      // You would extract the user ID from the token or find the user by token
+      // For now, this is a placeholder implementation
+      return { message: 'Email verification endpoint' };
+    } catch (error) {
+      console.error('Error verifying email:', error);
+      throw error;
+    }
+  }
+
+  @Get('storage-test')
+  @Public()
+  async testSupabaseStorage() {
     return {
-      uploadsDirExists: fs.existsSync(uploadsDir),
-      profileImagesDirExists: fs.existsSync(profileImagesDir),
-      uploadsDirPath: uploadsDir,
-      profileImagesDirPath: profileImagesDir,
-      files: fs.existsSync(profileImagesDir)
-        ? fs.readdirSync(profileImagesDir)
-        : [],
+      supabaseConfigured: this.supabaseStorageService.isConfigured(),
+      message: 'Supabase storage service status',
     };
   }
 }

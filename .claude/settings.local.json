@@ -8,7 +8,9 @@
       "Bash(npm run type-check:*)",
       "Bash(npm run:*)",
       "Bash(npx tsc:*)",
-      "Bash(cmd /c:*)"
+      "Bash(cmd /c:*)",
+      "Read(/c:\\Users\\abuba\\Downloads/**)",
+      "Read(/c:\\Users\\abuba\\Downloads/**)"
     ],
     "deny": [],
     "ask": [],

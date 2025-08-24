@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { PlusIcon } from "@heroicons/react/20/solid";
 import {
   CalendarDaysIcon,
@@ -92,8 +93,12 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [profileOpen, setProfileOpen] = useState(false);
   const { data: session } = useSession();
+  const { user } = useUserProfile();
   const router = useRouter();
   const popoverRef = useRef<HTMLDivElement>(null);
+  
+  // Get profile picture URL - prioritize Supabase profile image, fallback to session image, then default
+  const profileImageUrl = user?.profileImage || (session?.user?.image as string) || "https://i.pravatar.cc/80?img=12";
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -162,10 +167,7 @@ export default function Sidebar() {
           >
             <span className="sr-only">Open profile</span>
             <Image
-              src={
-                (session?.user?.image as string) ??
-                "https://i.pravatar.cc/80?img=12"
-              }
+              src={profileImageUrl}
               alt=""
               width={36}
               height={36}
@@ -182,7 +184,7 @@ export default function Sidebar() {
                 <div className="mt-2 flex items-center rounded-lg bg-gray-50 p-2 ring-1 ring-gray-200">
                   <div className="flex items-center gap-3">
                     <Image
-                      src="https://i.pravatar.cc/80?img=12"
+                      src={profileImageUrl}
                       alt=""
                       width={36}
                       height={36}
@@ -190,10 +192,10 @@ export default function Sidebar() {
                     />
                     <div>
                       <div className="text-sm font-semibold text-gray-900">
-                        {session?.user?.name ?? "Guest"}
+                        {(user?.name || session?.user?.name) ?? "Guest"}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {session?.user?.email ?? "Not signed in"}
+                        {(user?.email || session?.user?.email) ?? "Not signed in"}
                       </div>
                     </div>
                   </div>

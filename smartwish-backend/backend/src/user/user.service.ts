@@ -12,6 +12,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { LoggerService } from '../common/logger/logger.service';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 
 interface ProfileUpdateData {
   email?: string;
@@ -561,7 +562,19 @@ export class UserService {
     userAgent?: string,
   ): Promise<void> {
     try {
-      const user = await this.findById(userId);
+      // Get user with password field for password change
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+        select: [
+          'id',
+          'email',
+          'name',
+          'password',
+          'oauthProvider',
+          'status',
+        ],
+      });
+      
       if (!user) {
         throw new NotFoundException('User not found');
       }
@@ -763,6 +776,228 @@ export class UserService {
         'Failed to retrieve users by role: ' + role,
         error.stack,
         { role },
+      );
+      throw error;
+    }
+  }
+
+  async initiatePasswordReset(
+    email: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<{ token: string; expiresAt: Date }> {
+    try {
+      const user = await this.findByEmail(email);
+      if (!user) {
+        // Don't reveal if user exists or not for security
+        this.logger.warn('Password reset attempted for non-existent email: ' + email, {
+          email,
+          ipAddress,
+        });
+        // Return fake token data to prevent email enumeration
+        return {
+          token: 'fake-token-' + crypto.randomBytes(16).toString('hex'),
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        };
+      }
+
+      if (user.oauthProvider !== OAuthProvider.LOCAL) {
+        throw new BadRequestException(
+          'Password reset not available for OAuth users',
+        );
+      }
+
+      // Generate secure reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      // Save reset token to user
+      await this.userRepository.update(user.id, {
+        passwordResetToken: resetToken,
+        passwordResetExpires: expiresAt,
+        updatedAt: new Date(),
+      });
+
+      this.logger.log('Password reset initiated for user: ' + user.email, {
+        userId: user.id,
+      });
+
+      // Audit log the password reset initiation
+      await this.auditService.log({
+        userId: user.id,
+        action: 'password_reset_initiated',
+        tableName: 'users',
+        recordId: user.id,
+        newValues: { tokenExpires: expiresAt },
+        ipAddress,
+        userAgent,
+      });
+
+      return { token: resetToken, expiresAt };
+    } catch (error) {
+      this.logger.error(
+        'Failed to initiate password reset for email: ' + email,
+        error.stack,
+        { email },
+      );
+      throw error;
+    }
+  }
+
+  async resetPassword(
+    token: string,
+    newPassword: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<boolean> {
+    try {
+      if (newPassword.length < 8) {
+        throw new BadRequestException(
+          'Password must be at least 8 characters long',
+        );
+      }
+
+      // Find user by reset token
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .addSelect('user.passwordResetToken')
+        .addSelect('user.password')
+        .where('user.passwordResetToken = :token', { token })
+        .getOne();
+
+      if (!user) {
+        throw new BadRequestException('Invalid or expired reset token');
+      }
+
+      // Check if token is expired
+      if (
+        !user.passwordResetExpires ||
+        user.passwordResetExpires < new Date()
+      ) {
+        throw new BadRequestException('Reset token has expired');
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      // Update user password and clear reset token
+      await this.userRepository.update(user.id, {
+        password: hashedPassword,
+        passwordResetToken: undefined,
+        passwordResetExpires: undefined,
+        lastPasswordChangeAt: new Date(),
+        updatedAt: new Date(),
+        // Reset login attempts on successful password reset
+        loginAttempts: 0,
+        lockedUntil: undefined,
+      });
+
+      this.logger.log('Password reset completed for user: ' + user.email, {
+        userId: user.id,
+      });
+
+      // Audit log the password reset completion
+      await this.auditService.log({
+        userId: user.id,
+        action: 'password_reset_completed',
+        tableName: 'users',
+        recordId: user.id,
+        newValues: { method: 'password_reset' },
+        ipAddress,
+        userAgent,
+      });
+
+      return true;
+    } catch (error) {
+      this.logger.error(
+        'Failed to reset password with token: ' + token,
+        error.stack,
+        { token: token.substring(0, 8) + '...' },
+      );
+      throw error;
+    }
+  }
+
+  async generateEmailVerificationToken(
+    userId: string,
+  ): Promise<{ token: string; expiresAt: Date }> {
+    try {
+      const user = await this.findById(userId);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (user.isEmailVerified) {
+        throw new BadRequestException('Email is already verified');
+      }
+
+      // Generate secure verification token
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+      // Save verification token to user
+      await this.userRepository.update(userId, {
+        emailVerificationToken: verificationToken,
+        emailVerificationExpires: expiresAt,
+        updatedAt: new Date(),
+      });
+
+      this.logger.log(
+        'Email verification token generated for user: ' + user.email,
+        { userId },
+      );
+
+      return { token: verificationToken, expiresAt };
+    } catch (error) {
+      this.logger.error(
+        'Failed to generate email verification token for user: ' + userId,
+        error.stack,
+        { userId },
+      );
+      throw error;
+    }
+  }
+
+  async updatePhoneNumber(
+    userId: string,
+    phoneNumber: string,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<User> {
+    try {
+      const user = await this.findById(userId);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      const originalUser = { ...user };
+
+      user.phoneNumber = phoneNumber;
+      user.isPhoneVerified = false; // Reset phone verification
+      user.updatedAt = new Date();
+
+      const updatedUser = await this.userRepository.save(user);
+
+      this.logger.log('Phone number updated for user: ' + updatedUser.email, {
+        userId: updatedUser.id,
+      });
+
+      // Audit log the phone number update
+      await this.auditService.logDataOperation(
+        userId,
+        'update',
+        'user_phone',
+        userId,
+        originalUser,
+        { phoneNumber },
+      );
+
+      return updatedUser;
+    } catch (error) {
+      this.logger.error(
+        'Failed to update phone number for user: ' + userId,
+        error.stack,
+        { userId },
       );
       throw error;
     }

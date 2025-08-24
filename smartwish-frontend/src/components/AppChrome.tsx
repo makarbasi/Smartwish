@@ -10,7 +10,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const p = usePathname()
 
   const isAuth = p.includes('/sign-in') || p.includes('/sign-up') || p.includes('/forgot-password')
-  const showSidebar = !isAuth && (p.startsWith('/templates') || p.startsWith('/my-cards') || p.startsWith('/event') || p.startsWith('/marketplace') || p.startsWith('/contacts'))
+  const showSidebar = !isAuth && (p.startsWith('/templates') || p.startsWith('/my-cards') || p.startsWith('/event') || p.startsWith('/marketplace') || p.startsWith('/contacts') || p.startsWith('/settings'))
   const isLanding = p === '/' // header/footer only here
 
   return (

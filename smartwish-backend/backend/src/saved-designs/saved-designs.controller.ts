@@ -151,8 +151,14 @@ export class SavedDesignsController {
       }
 
       console.log('🔄 UpdateDesign - Design ID:', designId);
-      console.log('🔄 UpdateDesign - Updates body:', JSON.stringify(updates, null, 2));
-      console.log('🔄 UpdateDesign - CategoryId in updates:', updates.categoryId);
+      console.log(
+        '🔄 UpdateDesign - Updates body:',
+        JSON.stringify(updates, null, 2),
+      );
+      console.log(
+        '🔄 UpdateDesign - CategoryId in updates:',
+        updates.categoryId,
+      );
 
       const updatedDesign = await this.savedDesignsService.updateDesign(
         userId,
@@ -163,7 +169,10 @@ export class SavedDesignsController {
         return res.status(404).json({ message: 'Design not found' });
       }
 
-      console.log('✅ UpdateDesign - Updated design category:', updatedDesign.categoryId);
+      console.log(
+        '✅ UpdateDesign - Updated design category:',
+        updatedDesign.categoryId,
+      );
       res.json(updatedDesign);
     } catch (error) {
       console.error('Error updating design:', error);
@@ -216,41 +225,50 @@ export class SavedDesignsController {
         return res.status(401).json({ message: 'User not authenticated' });
       }
 
-      console.log(`Duplicate: Starting duplication of design ${designId} for user ${userId}`);
+      console.log(
+        `Duplicate: Starting duplication of design ${designId} for user ${userId}`,
+      );
       console.log('Duplicate: Request body:', body);
-      
+
       const duplicatedDesign = await this.savedDesignsService.duplicateDesign(
         userId,
         designId,
         body.title,
       );
-      
-      console.log('Duplicate: Service returned:', duplicatedDesign ? 'design object' : 'null');
-      
+
+      console.log(
+        'Duplicate: Service returned:',
+        duplicatedDesign ? 'design object' : 'null',
+      );
+
       if (!duplicatedDesign) {
         console.log('Duplicate: Design not found or duplication failed');
         return res.status(404).json({ message: 'Design not found' });
       }
 
-      console.log(`Duplicate: Design duplicated successfully with ID: ${duplicatedDesign.id}`);
-      
+      console.log(
+        `Duplicate: Design duplicated successfully with ID: ${duplicatedDesign.id}`,
+      );
+
       const response = {
         message: `Design duplicated as "${duplicatedDesign.title}"`,
         design: duplicatedDesign,
       };
-      
+
       console.log('Duplicate: Sending response:', response);
       return res.json(response);
-      
     } catch (error) {
       console.error('Duplicate: Error duplicating design:', error);
-      console.error('Duplicate: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-      
+      console.error(
+        'Duplicate: Error stack:',
+        error instanceof Error ? error.stack : 'No stack trace',
+      );
+
       const errorResponse = {
         message: 'Failed to duplicate design',
         error: error instanceof Error ? error.message : 'Unknown error',
       };
-      
+
       console.log('Duplicate: Sending error response:', errorResponse);
       return res.status(500).json(errorResponse);
     }
@@ -386,14 +404,18 @@ export class SavedDesignsController {
   }
 
   @Get('published/user')
-  async getUserPublishedDesigns(@Req() req: AuthenticatedRequest, @Res() res: Response) {
+  async getUserPublishedDesigns(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
     try {
       const userId = req.user?.id?.toString();
       if (!userId) {
         return res.status(401).json({ message: 'User not authenticated' });
       }
 
-      const publishedDesigns = await this.savedDesignsService.getUserPublishedDesigns(userId);
+      const publishedDesigns =
+        await this.savedDesignsService.getUserPublishedDesigns(userId);
       res.json(publishedDesigns);
     } catch (error) {
       console.error('Error getting user published designs:', error);
@@ -525,7 +547,8 @@ export class SavedDesignsController {
         return res.status(401).json({ message: 'User not authenticated' });
       }
 
-      const publishedDesigns = await this.savedDesignsService.getPublishedToTemplates(userId);
+      const publishedDesigns =
+        await this.savedDesignsService.getPublishedToTemplates(userId);
 
       res.json(publishedDesigns);
     } catch (error) {
