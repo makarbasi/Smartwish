@@ -1363,7 +1363,7 @@ export default function CustomizeCardPage() {
         confirmButtonType="warning"
       />
 
-      <style jsx>{`
+      <style jsx global>{`
         .flipbook-shadow {
           filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.3));
           transition: transform 0.3s ease, filter 0.3s ease;
@@ -1372,6 +1372,17 @@ export default function CustomizeCardPage() {
         .flipbook-shadow:hover {
           transform: scale(1.02);
           filter: drop-shadow(0 25px 50px rgba(0, 0, 0, 0.4));
+        }
+        
+        /* Hide flipbook navigation dots */
+        .stf__block .stf__wrapper .stf__navigation {
+          display: none !important;
+        }
+        
+        .stf__navigation,
+        .stf__navigation .stf__navigation__item,
+        .stf__navigation .stf__navigation__button {
+          display: none !important;
         }
         
         .page-hard {

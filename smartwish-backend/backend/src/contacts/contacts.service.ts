@@ -79,12 +79,12 @@ export class ContactsService {
 
   // Contact CRUD operations
   async createContact(
-    userId: number,
+    userId: string,
     contactData: Partial<Contact>,
   ): Promise<Contact> {
     const contacts = this.readContacts();
     const newContact: Contact = {
-      id: Date.now(),
+      id: Date.now().toString(),
       userId,
       firstName: contactData.firstName || '',
       lastName: contactData.lastName || '',
@@ -109,7 +109,7 @@ export class ContactsService {
     return newContact;
   }
 
-  async getContacts(userId: number): Promise<Contact[]> {
+  async getContacts(userId: string): Promise<Contact[]> {
     const contacts = this.readContacts();
     const userContacts = contacts.filter((c) => c.userId === userId);
 
@@ -124,7 +124,7 @@ export class ContactsService {
     }));
   }
 
-  async getContact(userId: number, contactId: number): Promise<Contact | null> {
+  async getContact(userId: string, contactId: string): Promise<Contact | null> {
     const contacts = this.readContacts();
     const contact = contacts.find(
       (c) => c.id === contactId && c.userId === userId,
@@ -143,8 +143,8 @@ export class ContactsService {
   }
 
   async updateContact(
-    userId: number,
-    contactId: number,
+    userId: string,
+    contactId: string,
     updateData: Partial<Contact>,
   ): Promise<Contact | null> {
     const contacts = this.readContacts();
@@ -164,7 +164,7 @@ export class ContactsService {
     return contacts[contactIndex];
   }
 
-  async deleteContact(userId: number, contactId: number): Promise<boolean> {
+  async deleteContact(userId: string, contactId: string): Promise<boolean> {
     const contacts = this.readContacts();
     const contactIndex = contacts.findIndex(
       (c) => c.id === contactId && c.userId === userId,
@@ -189,12 +189,12 @@ export class ContactsService {
 
   // Event operations
   async addEvent(
-    contactId: number,
+    contactId: string,
     eventData: Partial<ContactEvent>,
   ): Promise<ContactEvent> {
     const events = this.readEvents();
     const newEvent: ContactEvent = {
-      id: Date.now(),
+      id: Date.now().toString(),
       contactId,
       title: eventData.title || '',
       type: eventData.type || 'custom',
@@ -212,7 +212,7 @@ export class ContactsService {
   }
 
   async updateEvent(
-    eventId: number,
+    eventId: string,
     updateData: Partial<ContactEvent>,
   ): Promise<ContactEvent | null> {
     const events = this.readEvents();
@@ -230,7 +230,7 @@ export class ContactsService {
     return events[eventIndex];
   }
 
-  async deleteEvent(eventId: number): Promise<boolean> {
+  async deleteEvent(eventId: string): Promise<boolean> {
     const events = this.readEvents();
     const eventIndex = events.findIndex((e) => e.id === eventId);
 
@@ -243,7 +243,7 @@ export class ContactsService {
 
   // Calendar functionality
   async getUpcomingEvents(
-    userId: number,
+    userId: string,
     days: number = 30,
   ): Promise<Array<{ contact: Contact; event: ContactEvent }>> {
     const contacts = await this.getContacts(userId);
@@ -303,12 +303,12 @@ export class ContactsService {
 
   // Media operations
   async addMedia(
-    contactId: number,
+    contactId: string,
     mediaData: Partial<ContactMedia>,
   ): Promise<ContactMedia> {
     const media = this.readMedia();
     const newMedia: ContactMedia = {
-      id: Date.now(),
+      id: Date.now().toString(),
       contactId,
       type: mediaData.type || 'image',
       filename: mediaData.filename || '',
@@ -325,7 +325,7 @@ export class ContactsService {
     return newMedia;
   }
 
-  async deleteMedia(mediaId: number): Promise<boolean> {
+  async deleteMedia(mediaId: string): Promise<boolean> {
     const media = this.readMedia();
     const mediaIndex = media.findIndex((m) => m.id === mediaId);
 
@@ -347,7 +347,7 @@ export class ContactsService {
   }
 
   // Search functionality
-  async searchContacts(userId: number, query: string): Promise<Contact[]> {
+  async searchContacts(userId: string, query: string): Promise<Contact[]> {
     const contacts = await this.getContacts(userId);
     const lowerQuery = query.toLowerCase();
 
@@ -365,7 +365,7 @@ export class ContactsService {
   }
 
   // Get media by ID
-  async getMedia(mediaId: number): Promise<ContactMedia | null> {
+  async getMedia(mediaId: string): Promise<ContactMedia | null> {
     const media = this.readMedia();
     return media.find((m) => m.id === mediaId) || null;
   }

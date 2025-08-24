@@ -84,61 +84,7 @@ function PageNavigator() {
   }, []);
 
   return (
-    <div className="fixed bottom-20 left-0 right-0 z-30 flex items-center justify-center">
-      <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-full px-4 py-2 shadow-lg">
-        <button
-          onClick={handlePrevPage}
-          disabled={currentPage === 0}
-          className="p-1 rounded-full hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg
-            className="w-4 h-4 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-        </button>
-        <div className="flex items-center gap-2">
-          {[0, 1, 2, 3].map((pageIndex) => (
-            <button
-              key={pageIndex}
-              onClick={() => goToPage(pageIndex)}
-              className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                pageIndex === currentPage
-                  ? "bg-purple-600 scale-125"
-                  : "bg-gray-400 hover:bg-gray-500"
-              }`}
-            />
-          ))}
-        </div>
-        <button
-          onClick={handleNextPage}
-          disabled={currentPage >= 3}
-          className="p-1 rounded-full hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg
-            className="w-4 h-4 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </button>
-      </div>
-    </div>
+    <div className="fixed bottom-20 left-0 right-0 z-30 flex items-center justify-center"></div>
   );
 }
 

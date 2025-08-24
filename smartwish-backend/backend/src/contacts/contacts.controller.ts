@@ -11,10 +11,12 @@ import {
   UseInterceptors,
   UploadedFile,
   Res,
+  Request,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { ContactsService } from './contacts.service';
+import { SupabaseContactsService } from './supabase-contacts.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
 import * as multer from 'multer';
@@ -24,46 +26,75 @@ import * as fs from 'fs';
 @Controller('contacts')
 @UseGuards(JwtAuthGuard)
 export class ContactsController {
-  constructor(private readonly contactsService: ContactsService) {}
+  constructor(
+    private readonly contactsService: ContactsService,
+    private readonly supabaseContactsService: SupabaseContactsService,
+  ) {}
 
   // Contact CRUD operations
   @Post()
-  async createContact(
-    @Body() contactData: any,
-    @Body('userId') userId: string,
-  ) {
-    return this.contactsService.createContact(parseInt(userId), contactData);
+  async createContact(@Body() contactData: any, @Request() req: any) {
+    const userId = req.user?.id;
+    console.log('createContact: Request user object:', req.user);
+    console.log('createContact: Final userId:', userId);
+    
+    if (!userId) {
+      throw new Error('User ID not found in JWT token');
+    }
+    return this.supabaseContactsService.createContact(userId, contactData);
   }
 
   @Get()
-  async getContacts(@Query('userId') userId: string) {
-    return this.contactsService.getContacts(parseInt(userId));
+  async getContacts(@Request() req: any) {
+    const userId = req.user?.id;
+    console.log('getContacts: Request user object:', req.user);
+    console.log('getContacts: Final userId:', userId);
+    
+    if (!userId) {
+      throw new Error('User ID not found in JWT token');
+    }
+    return this.supabaseContactsService.getContacts(userId);
   }
 
   @Get(':id')
-  async getContact(@Param('id') id: string, @Query('userId') userId: string) {
-    return this.contactsService.getContact(parseInt(userId), parseInt(id));
+  async getContact(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.id;
+    console.log('getContact: Request user object:', req.user);
+    console.log('getContact: Final userId:', userId);
+    
+    if (!userId) {
+      throw new Error('User ID not found in JWT token');
+    }
+    return this.supabaseContactsService.getContact(userId, id);
   }
 
   @Put(':id')
   async updateContact(
     @Param('id') id: string,
     @Body() updateData: any,
-    @Body('userId') userId: string,
+    @Request() req: any,
   ) {
-    return this.contactsService.updateContact(
-      parseInt(userId),
-      parseInt(id),
-      updateData,
-    );
+    const userId = req.user?.id;
+    console.log('updateContact: Request user object:', req.user);
+    console.log('updateContact: Final userId:', userId);
+    
+    if (!userId) {
+      throw new Error('User ID not found in JWT token');
+    }
+    return this.supabaseContactsService.updateContact(userId, id, updateData);
   }
 
   @Delete(':id')
-  async deleteContact(
-    @Param('id') id: string,
-    @Query('userId') userId: string,
-  ) {
-    return this.contactsService.deleteContact(parseInt(userId), parseInt(id));
+  async deleteContact(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.id;
+    console.log('deleteContact: Request user object:', req.user);
+    console.log('deleteContact: Final userId:', userId);
+    
+    if (!userId) {
+      throw new Error('User ID not found in JWT token');
+    }
+    const result = await this.supabaseContactsService.deleteContact(userId, id);
+    return { success: result, message: result ? 'Contact deleted successfully' : 'Contact not found' };
   }
 
   // Event operations
@@ -72,7 +103,7 @@ export class ContactsController {
     @Param('contactId') contactId: string,
     @Body() eventData: any,
   ) {
-    return this.contactsService.addEvent(parseInt(contactId), eventData);
+    return this.supabaseContactsService.addEvent(contactId, eventData);
   }
 
   @Put('events/:eventId')
@@ -80,24 +111,29 @@ export class ContactsController {
     @Param('eventId') eventId: string,
     @Body() updateData: any,
   ) {
-    return this.contactsService.updateEvent(parseInt(eventId), updateData);
+    return this.supabaseContactsService.updateEvent(eventId, updateData);
   }
 
   @Delete('events/:eventId')
   async deleteEvent(@Param('eventId') eventId: string) {
-    return this.contactsService.deleteEvent(parseInt(eventId));
+    const result = await this.supabaseContactsService.deleteEvent(eventId);
+    return { success: result, message: result ? 'Event deleted successfully' : 'Event not found' };
   }
 
   // Calendar functionality
   @Get('calendar/upcoming')
   async getUpcomingEvents(
-    @Query('userId') userId: string,
     @Query('days') days: string = '30',
+    @Request() req: any,
   ) {
-    return this.contactsService.getUpcomingEvents(
-      parseInt(userId),
-      parseInt(days),
-    );
+    const userId = req.user?.id;
+    console.log('getUpcomingEvents: Request user object:', req.user);
+    console.log('getUpcomingEvents: Final userId:', userId);
+    
+    if (!userId) {
+      throw new Error('User ID not found in JWT token');
+    }
+    return this.supabaseContactsService.getUpcomingEvents(userId, parseInt(days));
   }
 
   // Media operations
@@ -141,13 +177,13 @@ export class ContactsController {
       description: mediaData.description,
     };
 
-    return this.contactsService.addMedia(parseInt(contactId), mediaInfo);
+    return this.supabaseContactsService.addMedia(contactId, mediaInfo);
   }
 
   @Get('media/:mediaId')
   @Public()
   async getMedia(@Param('mediaId') mediaId: string, @Res() res: Response) {
-    const media = await this.contactsService.getMedia(parseInt(mediaId));
+    const media = await this.supabaseContactsService.getMedia(mediaId);
     if (!media) {
       return res.status(404).json({ error: 'Media not found' });
     }
@@ -168,16 +204,21 @@ export class ContactsController {
 
   @Delete('media/:mediaId')
   async deleteMedia(@Param('mediaId') mediaId: string) {
-    return this.contactsService.deleteMedia(parseInt(mediaId));
+    const result = await this.supabaseContactsService.deleteMedia(mediaId);
+    return { success: result, message: result ? 'Media deleted successfully' : 'Media not found' };
   }
 
   // Search functionality
   @Get('search/:query')
-  async searchContacts(
-    @Param('query') query: string,
-    @Query('userId') userId: string,
-  ) {
-    return this.contactsService.searchContacts(parseInt(userId), query);
+  async searchContacts(@Param('query') query: string, @Request() req: any) {
+    const userId = req.user?.id;
+    console.log('searchContacts: Request user object:', req.user);
+    console.log('searchContacts: Final userId:', userId);
+    
+    if (!userId) {
+      throw new Error('User ID not found in JWT token');
+    }
+    return this.supabaseContactsService.searchContacts(userId, query);
   }
 
   // Helper method to determine media type

@@ -10,6 +10,7 @@ import Image from 'next/image'
 import useSWR, { mutate } from 'swr'
 import Sidebar from '@/components/Sidebar'
 import { Contact, ContactFormData, ContactsResponse } from '@/types/contact'
+import { DynamicRouter, authGet, deleteRequest, postRequest, putRequest } from '@/utils/request_utils'
 
 // Helper to get full name
 const getFullName = (contact: Contact) => `${contact.firstName} ${contact.lastName}`.trim()
@@ -32,14 +33,54 @@ const relationshipOptions = [
   'Other'
 ]
 
-// Fetcher function for SWR
-const fetcher = async (url: string) => {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error('Failed to fetch')
-  }
-  return response.json()
-}
+// Authenticated fetcher using request utils
+  const createAuthenticatedFetcher = (session: any) => async (url: string): Promise<ContactsResponse> => {
+    try {
+      console.log('🔍 Fetching contacts from:', url);
+      console.log('🔐 Session exists:', !!session);
+
+      if (!session?.user) {
+        throw new Error('No authenticated session');
+      }
+
+      const response = await authGet<any>(url, session);
+      console.log('✅ Contacts fetched successfully (raw):', response);
+
+      // Normalize several possible API shapes:
+      // 1) Raw array: [{...}, {...}]
+      // 2) Wrapped: { data: [...], success: true }
+      // 3) Single object: { data: {...} }
+      let contacts: Contact[] = [];
+
+      if (Array.isArray(response)) {
+        contacts = response as Contact[];
+      } else if (response && Array.isArray(response.data)) {
+        contacts = response.data as Contact[];
+      } else if (response && response.data) {
+        // single contact -> wrap into array
+        contacts = [response.data] as Contact[];
+      } else {
+        console.log('🔍 Unexpected response structure:', response);
+        contacts = [];
+      }
+
+      console.log('📋 Processed contacts count:', contacts.length);
+
+      return {
+        success: true,
+        data: contacts,
+        pagination: {
+          page: 1,
+          limit: contacts.length,
+          total: contacts.length,
+          totalPages: 1,
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error fetching contacts:', error);
+      throw error;
+    }
+  };
 
 export default function ContactsPage() {
   const { data: session, status } = useSession()
@@ -49,6 +90,8 @@ export default function ContactsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  const [contactToDelete, setContactToDelete] = useState<string | null>(null)
   const contactsPerPage = 10
   
   const [newContact, setNewContact] = useState<ContactFormData>({
@@ -72,34 +115,50 @@ export default function ContactsPage() {
   })
   const [interestInput, setInterestInput] = useState('')
 
-  // Build API URL with search and pagination
-  const apiUrl = useMemo(() => {
-    const params = new URLSearchParams()
-    params.set('page', currentPage.toString())
-    params.set('limit', contactsPerPage.toString())
-    if (searchTerm) {
-      params.set('search', searchTerm)
-    }
-    return `/api/contacts?${params.toString()}`
-  }, [currentPage, contactsPerPage, searchTerm])
+  // Create authenticated fetcher with session
+  const authenticatedFetcher = session ? createAuthenticatedFetcher(session) : null;
 
-  // Fetch contacts using SWR
+  // Build direct backend API URL
+  const apiUrl = useMemo(() => {
+    if (searchTerm) {
+      return DynamicRouter("contacts", `search/${encodeURIComponent(searchTerm)}`, undefined, false);
+    }
+    return DynamicRouter("contacts", "", undefined, false);
+  }, [searchTerm])
+
+  // Fetch contacts using SWR with direct backend calls
   const { 
     data: contactsResponse, 
     error, 
     isLoading,
     mutate: mutateContacts 
   } = useSWR<ContactsResponse>(
-    status === 'authenticated' ? apiUrl : null, 
-    fetcher,
+    session && authenticatedFetcher ? apiUrl : null, 
+    authenticatedFetcher,
     {
       revalidateOnFocus: false,
       dedupingInterval: 30000 // Cache for 30 seconds
     }
   )
 
-  const contacts = contactsResponse?.data || []
-  const pagination = contactsResponse?.pagination
+  // Client-side pagination since backend returns all contacts
+  const allContacts = contactsResponse?.data || []
+  
+  // Apply client-side pagination
+  const totalPages = Math.max(1, Math.ceil(allContacts.length / contactsPerPage))
+  const safePage = Math.min(Math.max(1, currentPage), totalPages)
+  const contacts = useMemo(() => {
+    const start = (safePage - 1) * contactsPerPage;
+    return allContacts.slice(start, start + contactsPerPage);
+  }, [allContacts, safePage, contactsPerPage])
+
+  // Create pagination object for UI
+  const pagination = {
+    page: safePage,
+    limit: contactsPerPage,
+    total: allContacts.length,
+    totalPages: totalPages,
+  }
 
   // Reset to page 1 when search changes
   const handleSearchChange = (value: string) => {
@@ -107,33 +166,34 @@ export default function ContactsPage() {
     setCurrentPage(1)
   }
 
+  // Reset to last valid page if current page exceeds total pages
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
   const handleAddContact = async () => {
-    if (!newContact.firstName || !newContact.email) return
+    if (!newContact.firstName || !newContact.email || !session) return
     
     setIsSubmitting(true)
     try {
-      const contactData = editingContact ? {
-        ...newContact,
-        id: editingContact.id
-      } : newContact
-
-      const url = editingContact 
-        ? `/api/contacts/${editingContact.id}` 
-        : '/api/contacts'
+      console.log('💾 Saving contact:', editingContact ? 'Edit' : 'Create');
       
-      const method = editingContact ? 'PUT' : 'POST'
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(contactData),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to save contact')
+      let result;
+      if (editingContact) {
+        // Update existing contact
+        const updateUrl = DynamicRouter("contacts", editingContact.id, undefined, false);
+        console.log('📝 Update URL:', updateUrl);
+        result = await putRequest(updateUrl, newContact, session);
+      } else {
+        // Create new contact
+        const createUrl = DynamicRouter("contacts", "", undefined, false);
+        console.log('➕ Create URL:', createUrl);
+        result = await postRequest(createUrl, newContact, session);
       }
+      
+      console.log('✅ Contact saved successfully:', result);
 
       // Reset form
       setNewContact({ 
@@ -158,8 +218,9 @@ export default function ContactsPage() {
       mutateContacts()
       
     } catch (error) {
-      console.error('Error saving contact:', error)
-      alert('Failed to save contact. Please try again.')
+      console.error('❌ Error saving contact:', error)
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to save contact: ${msg}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -184,24 +245,34 @@ export default function ContactsPage() {
     setIsAddContactOpen(true)
   }
 
-  const handleDeleteContact = async (contactId: number) => {
-    if (!confirm('Are you sure you want to delete this contact?')) return
-    
-    try {
-      const response = await fetch(`/api/contacts/${contactId}`, {
-        method: 'DELETE',
-      })
+  // open app modal to confirm delete (replaces browser confirm)
+  const handleDeleteContact = (contactId: string) => {
+    setContactToDelete(contactId)
+    setIsDeleteConfirmOpen(true)
+  }
 
-      if (!response.ok) {
-        throw new Error('Failed to delete contact')
-      }
-      
-      // Revalidate the data
+  const confirmDeleteContact = async () => {
+    if (!session || !contactToDelete) {
+      setIsDeleteConfirmOpen(false)
+      setContactToDelete(null)
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const deleteUrl = DynamicRouter('contacts', contactToDelete, undefined, false)
+      console.log('📡 Delete URL:', deleteUrl)
+      const result = await deleteRequest(deleteUrl, session)
+      console.log('✅ Contact deleted successfully:', result)
+      setIsDeleteConfirmOpen(false)
+      setContactToDelete(null)
       mutateContacts()
-      
     } catch (error) {
-      console.error('Error deleting contact:', error)
-      alert('Failed to delete contact. Please try again.')
+      console.error('❌ Error deleting contact:', error)
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to delete contact: ${msg}`)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -819,6 +890,34 @@ export default function ContactsPage() {
               </DialogPanel>
             </div>
           </div>
+        </div>
+      </Dialog>
+      {/* Delete confirmation modal (app-native, not browser confirm) */}
+      <Dialog open={isDeleteConfirmOpen} onClose={() => { setIsDeleteConfirmOpen(false); setContactToDelete(null) }} className="relative z-50">
+        <div className="fixed inset-0 bg-black/40" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="mx-auto max-w-sm rounded-lg bg-white p-6 shadow-lg">
+            <DialogTitle className="text-lg font-medium text-gray-900">Delete contact</DialogTitle>
+            <p className="mt-2 text-sm text-gray-600">Are you sure you want to delete this contact? This action cannot be undone.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setIsDeleteConfirmOpen(false); setContactToDelete(null) }}
+                className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteContact}
+                disabled={isSubmitting}
+                className="inline-flex justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {isSubmitting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </DialogPanel>
         </div>
       </Dialog>
     </section>

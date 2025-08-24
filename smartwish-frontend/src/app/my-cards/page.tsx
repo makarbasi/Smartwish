@@ -7,7 +7,9 @@ import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
 import Link from "next/link";
 import Image from "next/image";
 import useSWR from 'swr';
+import { useSession } from "next-auth/react";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal";
+import { DynamicRouter, authGet, deleteRequest, postRequest } from "@/utils/request_utils";
 
 type MyCard = {
   id: string;
@@ -39,9 +41,42 @@ type SavedDesignsResponse = {
   data: SavedDesign[];
 };
 
-const fetcher = (url: string) => fetch(url, {
-  credentials: 'include', // Include cookies for authentication
-}).then((res) => res.json());
+// Authenticated fetcher using request utils
+const createAuthenticatedFetcher = (session: any) => async (url: string): Promise<SavedDesignsResponse> => {
+  try {
+    console.log('🔍 Fetching data from:', url);
+    console.log('🔐 Session exists:', !!session);
+    
+    if (!session?.user) {
+      throw new Error('No authenticated session');
+    }
+    
+    const response = await authGet<SavedDesign[]>(url, session);
+    console.log('✅ Data fetched successfully:', response);
+    
+    // Check if response.data exists (wrapped response) or if response itself is the array
+    let designs: SavedDesign[] = [];
+    if (Array.isArray(response.data)) {
+      designs = response.data;
+    } else if (Array.isArray(response)) {
+      // Handle case where backend returns array directly
+      designs = response as any;
+    } else {
+      console.log('🔍 Response structure:', response);
+      designs = [];
+    }
+    
+    console.log('📋 Processed designs count:', designs.length);
+    
+    return {
+      success: true,
+      data: designs,
+    };
+  } catch (error) {
+    console.error('❌ Error fetching data:', error);
+    throw error;
+  }
+};
 
 // Transform saved design to MyCard format
 const transformSavedDesign = (design: SavedDesign): MyCard => {
@@ -63,23 +98,32 @@ const transformSavedDesign = (design: SavedDesign): MyCard => {
 // Component that uses useSearchParams - wrapped in Suspense
 function MyCardsContent() {
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [designToDelete, setDesignToDelete] = useState<{id: string, name: string} | null>(null);
 
-  // Fetch saved designs from API first
+  // Create authenticated fetcher with session
+  const authenticatedFetcher = session ? createAuthenticatedFetcher(session) : null;
+
+  // Fetch saved designs from backend using direct API call
+  const savedDesignsUrl = DynamicRouter("saved-designs", "", undefined, false);
   const {
     data: savedDesignsResponse,
     error: savedDesignsError,
     isLoading: savedDesignsLoading,
     mutate: mutateSavedDesigns
-  } = useSWR<SavedDesignsResponse>('/api/saved-designs', fetcher, {
-    refreshInterval: 0, // Don't auto-refresh
-    revalidateOnFocus: false, // Don't revalidate on focus
-    revalidateOnReconnect: false, // Don't revalidate on reconnect
-  });
+  } = useSWR<SavedDesignsResponse>(
+    session && authenticatedFetcher ? savedDesignsUrl : null, 
+    authenticatedFetcher, 
+    {
+      refreshInterval: 0,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+    }
+  );
 
   // Check for new design success message and force refresh
   useEffect(() => {
@@ -112,10 +156,11 @@ function MyCardsContent() {
   console.log('My Cards - Loading state:', savedDesignsLoading);
   console.log('My Cards - Error state:', savedDesignsError);
 
-  // Fetch user's published designs
+  // Fetch user's published designs from backend
+  const publishedDesignsUrl = DynamicRouter("saved-designs", "published/user", undefined, false);
   const { data: publishedDesignsResponse, error: publishedDesignsError, isLoading: publishedDesignsLoading, mutate: mutatePublished } = useSWR<SavedDesignsResponse>(
-    '/api/saved-designs/published/user',
-    fetcher,
+    session && authenticatedFetcher ? publishedDesignsUrl : null,
+    authenticatedFetcher,
     { refreshInterval: 0, revalidateOnFocus: false, revalidateOnReconnect: false }
   );
 
@@ -129,22 +174,17 @@ function MyCardsContent() {
 
   // Handle delete design (called from modal)
   const handleDelete = async () => {
-    if (!designToDelete) return;
+    if (!designToDelete || !session) return;
 
     setDeletingId(designToDelete.id);
     try {
-      const response = await fetch(`/api/saved-designs/${designToDelete.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete design');
-      }
-
-      const result = await response.json();
-      setSuccessMessage(result.message || 'Design deleted successfully');
+      const deleteUrl = DynamicRouter("saved-designs", designToDelete.id, undefined, false);
+      console.log('🗑️ Deleting design:', designToDelete.id, 'URL:', deleteUrl);
+      
+      const result = await deleteRequest(deleteUrl, session);
+      console.log('✅ Delete result:', result);
+      
+      setSuccessMessage('Your design has been successfully deleted!');
       
       // Refresh the designs list
       mutateSavedDesigns();
@@ -154,7 +194,7 @@ function MyCardsContent() {
       setDesignToDelete(null);
       
     } catch (error: unknown) {
-      console.error('Error deleting design:', error);
+      console.error('❌ Error deleting design:', error);
       const msg = error instanceof Error ? error.message : 'Unknown error';
       alert(`Failed to delete design: ${msg}`);
     } finally {
@@ -171,26 +211,20 @@ function MyCardsContent() {
 
   // Publish design
   const handlePublishDesign = async (designId: string) => {
+    if (!session) return;
+    
     try {
-      const response = await fetch(`/api/saved-designs/${designId}/publish`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const publishUrl = DynamicRouter("saved-designs", `${designId}/publish`, undefined, false);
+      console.log('📤 Publishing design:', designId, 'URL:', publishUrl);
       
-      if (!response.ok) {
-        let errMsg = 'Failed to publish design';
-        try { 
-          const err = await response.json(); 
-          errMsg = err.error || err.message || errMsg; 
-        } catch {}
-        throw new Error(errMsg);
-      }
+      const result = await postRequest(publishUrl, {}, session);
+      console.log('✅ Publish result:', result);
       
-      await response.json();
-      setSuccessMessage('Design published successfully');
+      setSuccessMessage('🎉 Your design is now live and published for everyone to see!');
       mutateSavedDesigns();
       mutatePublished();
     } catch (e: unknown) {
+      console.error('❌ Error publishing design:', e);
       const msg = e instanceof Error ? e.message : 'Failed to publish design';
       alert(msg);
     }
@@ -198,26 +232,20 @@ function MyCardsContent() {
 
   // Unpublish design
   const handleUnpublishDesign = async (designId: string) => {
+    if (!session) return;
+    
     try {
-      const response = await fetch(`/api/saved-designs/${designId}/unpublish`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const unpublishUrl = DynamicRouter("saved-designs", `${designId}/unpublish`, undefined, false);
+      console.log('📥 Unpublishing design:', designId, 'URL:', unpublishUrl);
       
-      if (!response.ok) {
-        let errMsg = 'Failed to unpublish design';
-        try { 
-          const err = await response.json(); 
-          errMsg = err.error || err.message || errMsg; 
-        } catch {}
-        throw new Error(errMsg);
-      }
+      const result = await postRequest(unpublishUrl, {}, session);
+      console.log('✅ Unpublish result:', result);
       
-      await response.json();
-      setSuccessMessage('Design unpublished successfully');
+      setSuccessMessage('Your design has been unpublished and moved back to drafts.');
       mutateSavedDesigns();
       mutatePublished();
     } catch (e: unknown) {
+      console.error('❌ Error unpublishing design:', e);
       const msg = e instanceof Error ? e.message : 'Failed to unpublish design';
       alert(msg);
     }
@@ -225,38 +253,19 @@ function MyCardsContent() {
 
   // Handle duplicate design
   const handleDuplicate = async (designId: string) => {
+    if (!session) return;
+    
     setDuplicatingId(designId);
     try {
       console.log('🔄 Starting duplicate process for design:', designId);
       
-      const response = await fetch(`/api/saved-designs/${designId}/duplicate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({}) // Empty body but with proper headers
-      });
-
-      console.log('📡 Duplicate API response status:', response.status);
+      const duplicateUrl = DynamicRouter("saved-designs", `${designId}/duplicate`, undefined, false);
+      console.log('📡 Duplicate URL:', duplicateUrl);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Duplicate API error response:', errorText);
-        
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { error: errorText };
-        }
-        throw new Error(errorData.error || `Failed to duplicate design (${response.status})`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Duplicate API success result:', result);
+      const result = await postRequest(duplicateUrl, {}, session);
+      console.log('✅ Duplicate result:', result);
       
-      setSuccessMessage(result.message || 'Design duplicated successfully');
+      setSuccessMessage('✨ A copy of your design has been created successfully!');
       
       // Refresh the designs list
       mutateSavedDesigns();

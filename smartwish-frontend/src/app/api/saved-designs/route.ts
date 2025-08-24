@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
     const accessToken = (session.user as any).access_token;
 
     console.log('Saved designs API - User ID:', session.user.id);
+    console.log('Saved designs API - Session user object:', JSON.stringify(session.user, null, 2));
     console.log('Saved designs API - Access Token exists:', !!accessToken);
+    console.log('Saved designs API - Access Token (first 20 chars):', accessToken ? accessToken.substring(0, 20) + '...' : 'NO TOKEN');
     console.log('Saved designs API - API_BASE_URL:', API_BASE_URL);
 
     // First try a simple health check

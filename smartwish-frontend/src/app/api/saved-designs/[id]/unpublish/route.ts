@@ -17,6 +17,14 @@ export async function POST(
     const accessToken = (session.user as { access_token?: string }).access_token;
     const { id } = await params;
 
+    console.log('Unpublish API - User ID:', session.user.id);
+    console.log('Unpublish API - Design ID:', id);
+    console.log('Unpublish API - Session user object:', JSON.stringify(session.user, null, 2));
+    console.log('Unpublish API - Access Token exists:', !!accessToken);
+    console.log('Unpublish API - Access Token (first 20 chars):', accessToken ? accessToken.substring(0, 20) + '...' : 'NO TOKEN');
+    console.log('Unpublish API - API_BASE_URL:', API_BASE_URL);
+    console.log('Unpublish API - Full URL:', `${API_BASE_URL}/saved-designs/${id}/unpublish`);
+
     const response = await fetch(`${API_BASE_URL}/saved-designs/${id}/unpublish`, {
       method: 'POST',
       headers: {

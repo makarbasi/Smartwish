@@ -6,7 +6,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 // POST /api/saved-designs/[id]/duplicate - Duplicate a saved design
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -17,13 +17,17 @@ export async function POST(
 
     const accessToken = (session.user as any).access_token;
     const body = await request.json();
+    const { id } = await params;
     
-    console.log('Duplicate API - Design ID:', params.id);
+    console.log('Duplicate API - Design ID:', id);
     console.log('Duplicate API - Body:', body);
+    console.log('Duplicate API - Session user object:', JSON.stringify(session.user, null, 2));
     console.log('Duplicate API - Access Token exists:', !!accessToken);
+    console.log('Duplicate API - Access Token (first 20 chars):', accessToken ? accessToken.substring(0, 20) + '...' : 'NO TOKEN');
+    console.log('Duplicate API - API_BASE_URL:', API_BASE_URL);
 
     // Use the backend duplicate endpoint
-    const response = await fetch(`${API_BASE_URL}/saved-designs/${params.id}/duplicate`, {
+    const response = await fetch(`${API_BASE_URL}/saved-designs/${id}/duplicate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

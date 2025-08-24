@@ -1,6 +1,6 @@
 export class Contact {
-  id: number;
-  userId: number; // Owner of the contact
+  id: string;
+  userId: string; // Owner of the contact
   firstName: string;
   lastName: string;
   email?: string;
@@ -38,8 +38,8 @@ export class Contact {
 }
 
 export class ContactEvent {
-  id: number;
-  contactId: number;
+  id: string;
+  contactId: string;
   title: string;
   type: 'birthday' | 'anniversary' | 'graduation' | 'wedding' | 'custom';
   date: Date;
@@ -51,8 +51,8 @@ export class ContactEvent {
 }
 
 export class ContactMedia {
-  id: number;
-  contactId: number;
+  id: string;
+  contactId: string;
   type: 'image' | 'video' | 'document';
   filename: string;
   originalName: string;

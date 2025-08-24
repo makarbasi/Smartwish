@@ -13,6 +13,13 @@ export async function GET(request: NextRequest) {
 
     const accessToken = (session.user as { access_token?: string }).access_token;
 
+    console.log('Published User API - User ID:', session.user.id);
+    console.log('Published User API - Session user object:', JSON.stringify(session.user, null, 2));
+    console.log('Published User API - Access Token exists:', !!accessToken);
+    console.log('Published User API - Access Token (first 20 chars):', accessToken ? accessToken.substring(0, 20) + '...' : 'NO TOKEN');
+    console.log('Published User API - API_BASE_URL:', API_BASE_URL);
+    console.log('Published User API - Full URL:', `${API_BASE_URL}/saved-designs/published/user`);
+
     const response = await fetch(`${API_BASE_URL}/saved-designs/published/user`, {
       method: 'GET',
       headers: {

@@ -1,8 +1,8 @@
 // Contact types matching backend schema
 
 export interface ContactEvent {
-  id: number;
-  contactId: number;
+  id: string;
+  contactId: string;
   title: string;
   type: 'birthday' | 'anniversary' | 'graduation' | 'wedding' | 'custom';
   date: string | Date;
@@ -14,8 +14,8 @@ export interface ContactEvent {
 }
 
 export interface ContactMedia {
-  id: number;
-  contactId: number;
+  id: string;
+  contactId: string;
   type: 'image' | 'video' | 'document';
   filename: string;
   originalName: string;
@@ -27,8 +27,8 @@ export interface ContactMedia {
 }
 
 export interface Contact {
-  id: number;
-  userId: number;
+  id: string;
+  userId: string;
   firstName: string;
   lastName: string;
   email?: string;
