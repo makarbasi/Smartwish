@@ -457,14 +457,24 @@ export default function PinturaEditorModal({
 
             const file = new File([imageBlob], 'image.png', { type: imageBlob.type || 'image/png' })
 
-            // Prepare form data and call server-side Gemini inpaint route
+            // Prepare form data and call backend Gemini inpaint route
             const formData = new FormData()
             formData.append('image', file)
             formData.append('prompt', prompt)
             formData.append('style', selectedStyle)
 
-            // POST to the local Next API route which calls Gemini securely
-            const resp = await fetch('/api/gemini/inpaint', {
+            // Add the original image as context for Gemini to understand what user is working on
+            try {
+              const originalImageBlob = await fetch(currentImageSrc).then(r => r.blob())
+              const originalImageFile = new File([originalImageBlob], 'original.png', { type: originalImageBlob.type || 'image/png' })
+              formData.append('extraImage', originalImageFile)
+            } catch (e) {
+              console.warn('Could not fetch original image for context:', e)
+            }
+
+            // POST to the backend API instead of Next.js API route
+            const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+            const resp = await fetch(`${backendUrl}/gemini-inpaint`, {
               method: 'POST',
               body: formData,
             })
@@ -476,8 +486,8 @@ export default function PinturaEditorModal({
 
             const data = await resp.json()
 
-            // support both imageBase64 (data:) or imageUrl
-            const returned = data?.imageBase64 || data?.imageUrl || data?.image
+            // Backend returns imageUrl instead of imageBase64
+            const returned = data?.imageUrl || data?.imageBase64 || data?.image
             if (!returned) throw new Error('No image returned from server')
 
             // Try to load the returned image back into the Pintura editor by updating the src prop
