@@ -101,15 +101,15 @@ async function bootstrap() {
   });
 
   // Configure CORS with production security
-  const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
     : ['http://localhost:3000', 'http://localhost:5173']; // Default to localhost for development
 
   // Add production origins only if not in development mode
   if (process.env.NODE_ENV !== 'development') {
-    const productionOrigins = process.env.PRODUCTION_ORIGINS 
+    const productionOrigins = process.env.PRODUCTION_ORIGINS
       ? process.env.PRODUCTION_ORIGINS.split(',')
-      : ['https://smartwish2.onrender.com', 'https://smartwish.onrender.com', 'https://app.smartwish.us'];
+      : ['https://frontend-smartwish.onrender.com/', 'https://smartwish.onrender.com', 'https://app.smartwish.us'];
     allowedOrigins.push(...productionOrigins);
   }
 

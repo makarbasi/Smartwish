@@ -311,10 +311,10 @@ export default function PinturaEditorModal({
         try {
           const themePaths = [
             "/resources/themes/theme-watercolor.jpg",
-            "/resources/themes/theme-pixar.jpg",
             "/resources/themes/theme-disney.jpg",
             "/resources/themes/theme-anime.jpg",
             "/resources/themes/theme-pencil-sketch.jpg",
+            "/resources/themes/theme-oil-painting.jpg"
           ];
 
           const containerEl = aiInterface.querySelector(
@@ -410,7 +410,7 @@ export default function PinturaEditorModal({
         // Helper function to apply theme
         const applyTheme = async (themeName: string) => {
           if (isProcessing) return;
-          
+
           console.log("🎨 Applying theme:", themeName);
           setUILocked(true);
 
@@ -485,6 +485,21 @@ export default function PinturaEditorModal({
             formData.append("prompt", `Transform this image completely to match the ${themeName} artistic style while preserving the main subject and composition`);
             formData.append("style", themeName);
 
+            // Add the original image as context for Gemini to understand what user is working on
+            try {
+              const originalImageBlob = await fetch(currentImageSrc).then((r) =>
+                r.blob()
+              );
+              const originalImageFile = new File(
+                [originalImageBlob],
+                "original.png",
+                { type: originalImageBlob.type || "image/png" }
+              );
+              formData.append("extraImage", originalImageFile);
+            } catch (e) {
+              console.warn("Could not fetch original image for context:", e);
+            }
+
             const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
             const resp = await fetch(`${backendUrl}/gemini-inpaint`, {
               method: "POST",
@@ -514,10 +529,10 @@ export default function PinturaEditorModal({
         styleButtons.forEach((btn) => {
           const activate = async () => {
             if (isProcessing) return;
-            
+
             const themeName = btn.getAttribute("data-style") || "";
             console.log("🎨 Theme button clicked:", themeName);
-            
+
             // Update selection state
             styleButtons.forEach((b) => {
               b.classList.remove("selected");
@@ -526,10 +541,10 @@ export default function PinturaEditorModal({
             btn.classList.add("selected");
             btn.setAttribute("aria-pressed", "true");
             selectedStyle = themeName;
-            
+
             // Apply theme immediately
             await applyTheme(themeName);
-            
+
             // Ensure activated button is visible (center it)
             if (styleContainer) {
               const btnRect = btn.getBoundingClientRect();
@@ -557,7 +572,7 @@ export default function PinturaEditorModal({
 
         sendButton?.addEventListener("click", async () => {
           if (isProcessing) return;
-          
+
           const prompt = promptInput?.value?.trim();
           if (!prompt) {
             console.warn("⚠️ No prompt provided");

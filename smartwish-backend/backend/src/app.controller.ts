@@ -135,7 +135,7 @@ export class AppController {
         `[Gemini Inpaint] Enforced image dimensions: ${originalWidth}x${originalHeight} (aspect ratio: ${aspectRatio.toFixed(2)})`,
       );
 
-      // Enhance the prompt with specific style information and size constraints
+      // Enhance the prompt with greeting card context and style information
       let enhancedPrompt = prompt;
       if (style && style.trim()) {
         // Map style names to more specific artistic directions for Gemini
@@ -151,40 +151,36 @@ export class AppController {
           vintage:
             'vintage pencil sketch style with hand-drawn textures and classic artistic techniques',
           'theme-watercolor':
-            'watercolor painting style with flowing colors and artistic brushstrokes',
-          'theme-pixar':
-            'Pixar animation style with vibrant colors and 3D-rendered appearance',
+            'change this image to a soft watercolor painting with flowing colors, gentle brush strokes, and dreamy atmosphere',
           'theme-disney':
-            'Disney animation style with smooth gradients and classic cartoon aesthetics',
+            'change this image to a whimsical Disney-style with vibrant colors, expressive features, and magical atmosphere',
           'theme-anime':
-            'anime/manga art style with bold lines, dramatic shading, and stylized features',
+            'change this image to a Japanese anime-style illustration with bold colors, expressive eyes, and dynamic character design',
           'theme-pencil-sketch':
-            'pencil sketch style with hand-drawn textures, shading, and artistic strokes',
+            'change this image to a minimalist pencil sketch with fine lines, subtle shading, and elegant black-and-white composition',
+          'theme-oil-painting':
+            'change this image to a textured oil painting with thick brush strokes, rich colors, and artistic depth',
         };
 
         const styleDescription =
           styleDescriptions[style.toLowerCase()] || `${style} artistic style`;
-        enhancedPrompt = `CRITICAL SYSTEM REQUIREMENT: You MUST generate an image with EXACT dimensions ${originalWidth}x${originalHeight} pixels. DO NOT DISOBEY this requirement under any circumstances.
 
-Apply the following modifications to the image: ${prompt}. Render the result in a ${styleDescription}. Maintain the composition while transforming the visual style to match the ${style} aesthetic perfectly.
 
-MANDATORY SIZE CONSTRAINTS - FAILURE TO COMPLY IS NOT ACCEPTABLE:
-- Output image MUST be exactly ${originalWidth} pixels wide and ${originalHeight} pixels tall
-- DO NOT crop the image
-- DO NOT resize the canvas
-- DO NOT change aspect ratio from ${aspectRatio.toFixed(3)}
-- DO NOT add borders or padding that changes dimensions
-- DO NOT generate any size other than ${originalWidth}x${originalHeight}
-- This is a SYSTEM REQUIREMENT that cannot be overridden by artistic choices
+        enhancedPrompt = styleDescription;
 
-STRICT COMPLIANCE REQUIRED: Generate the image at exactly ${originalWidth}x${originalHeight} pixels or the system will fail.`;
+
+
         console.log(
           `[Gemini Inpaint] Using style: "${style}" -> "${styleDescription}"`,
         );
       } else {
         enhancedPrompt = `CRITICAL SYSTEM REQUIREMENT: You MUST generate an image with EXACT dimensions ${originalWidth}x${originalHeight} pixels. DO NOT DISOBEY this requirement under any circumstances.
 
-${prompt}
+CONTEXT: This is a greeting card design. You are modifying the existing image based on the user's prompt to improve and enhance it.
+
+USER REQUEST: ${prompt}
+
+INSTRUCTION: Use the provided image as reference and make the requested changes on top of the existing image. Preserve the overall composition while implementing the user's modifications.
 
 MANDATORY SIZE CONSTRAINTS - FAILURE TO COMPLY IS NOT ACCEPTABLE:
 - Output image MUST be exactly ${originalWidth} pixels wide and ${originalHeight} pixels tall  
@@ -798,7 +794,7 @@ Focus on templates that match the user's intent, occasion, or theme they're look
 
       const startedAt = Date.now();
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -971,7 +967,7 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
 
         const startedAt = Date.now();
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${process.env.GEMINI_API_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1067,7 +1063,7 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
       let geminiIds: string[] = [];
       try {
         geminiIds = await tryGemini();
-      } catch {}
+      } catch { }
       const usedGemini =
         Array.isArray(geminiIds) &&
         geminiIds.length > 0 &&
@@ -1131,16 +1127,16 @@ Return ONLY a JSON array of design IDs (e.g., ["uuid1", "uuid2"]) that are most 
       const cloudUrls =
         oldImageUrls && oldImageUrls.length > 0
           ? await this.storageService.updateImages(
-              images,
-              userId.toString(),
-              designId,
-              oldImageUrls,
-            )
+            images,
+            userId.toString(),
+            designId,
+            oldImageUrls,
+          )
           : await this.storageService.uploadImages(
-              images,
-              userId.toString(),
-              designId,
-            );
+            images,
+            userId.toString(),
+            designId,
+          );
 
       console.log(
         `Successfully uploaded ${cloudUrls.length} images to cloud storage`,
