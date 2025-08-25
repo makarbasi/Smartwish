@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
+import QRCode from 'qrcode'
 
 // Types
 type Product = {
@@ -77,7 +78,7 @@ function MarketplaceContent() {
   const [giftCardAmount, setGiftCardAmount] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedLink, setGeneratedLink] = useState<string | null>(null)
-  const [qrCodeElement, setQrCodeElement] = useState<string>('')
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successData, setSuccessData] = useState<any>(null)
 
@@ -252,8 +253,8 @@ function MarketplaceContent() {
                 type="button"
                 onClick={startVoiceSearch}
                 className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs transition-all ${isVoiceRecording
-                    ? 'bg-red-600 text-white hover:bg-red-500'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-red-600 text-white hover:bg-red-500'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 aria-label="Voice search"
               >
@@ -341,6 +342,8 @@ function MarketplaceContent() {
         setSuccessData={setSuccessData}
         errorMessage={errorMessage}
         setErrorMessage={setErrorMessage}
+        qrCodeDataUrl={qrCodeDataUrl}
+        setQrCodeDataUrl={setQrCodeDataUrl}
       />
     </main>
   )
@@ -374,7 +377,9 @@ function CheckoutModal({
   successData,
   setSuccessData,
   errorMessage,
-  setErrorMessage
+  setErrorMessage,
+  qrCodeDataUrl,
+  setQrCodeDataUrl
 }: any) {
   const [currentSelectedProduct, setCurrentSelectedProduct] = useState<Product | null>(null)
 
@@ -393,6 +398,26 @@ function CheckoutModal({
       window.removeEventListener('generateAmountOptions', handleGenerateAmount)
     }
   }, [setShowCheckoutModal])
+
+  // Generate QR code from redemption link
+  const generateQRCodeFromLink = async (link: string) => {
+    try {
+      const qrCodeUrl = await QRCode.toDataURL(link, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#2d3748',
+          light: '#ffffff'
+        },
+        errorCorrectionLevel: 'H'
+      })
+      setQrCodeDataUrl(qrCodeUrl)
+    } catch (error) {
+      console.error('Error generating QR code:', error)
+      // Fallback: just set empty string so we show the link instead
+      setQrCodeDataUrl('')
+    }
+  }
 
   const generateGiftCard = async () => {
     if (!currentSelectedProduct || !giftCardAmount) {
@@ -426,6 +451,8 @@ function CheckoutModal({
 
       if (response.ok && data.success) {
         setSuccessData(data)
+        // Generate QR code from the redemption link
+        await generateQRCodeFromLink(data.redemptionLink)
         setGiftCardAmount('')
       } else {
         setErrorMessage('Failed to generate gift card: ' + (data.error || 'Unknown error'))
@@ -444,6 +471,7 @@ function CheckoutModal({
     setErrorMessage(null)
     setGiftCardAmount('')
     setCurrentSelectedProduct(null)
+    setQrCodeDataUrl('')
   }
 
   const copyToClipboard = async (text: string) => {
@@ -456,6 +484,8 @@ function CheckoutModal({
     }
   }
 
+
+
   if (!showCheckoutModal) return null
 
   return (
@@ -465,113 +495,138 @@ function CheckoutModal({
         <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
           <div className="border-b border-gray-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Generate Gift Card Link</h2>
-            <p className="text-sm text-gray-500 mt-1">Create a redeemable link with QR code</p>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {!successData ? 'Generate Gift Card Link' : 'Gift Card Generated!'}
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {!successData ? 'Create a redeemable link with QR code' : 'Your gift card is ready to share'}
+            </p>
           </div>
 
           {/* Content */}
           <div className="flex-1 p-6">
-            {/* Selected Product Info */}
-            {currentSelectedProduct && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={currentSelectedProduct.image || 'https://via.placeholder.com/60x60?text=🎁'}
-                    alt={currentSelectedProduct.name}
-                    className="w-12 h-12 object-contain rounded-lg bg-gray-100"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      target.src = 'https://via.placeholder.com/60x60?text=🎁'
-                    }}
+            {!successData ? (
+              <>
+                {/* Selected Product Info */}
+                {currentSelectedProduct && (
+                  <div className="mb-6 p-4 bg-gray-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={currentSelectedProduct.image || 'https://via.placeholder.com/60x60?text=🎁'}
+                        alt={currentSelectedProduct.name}
+                        className="w-12 h-12 object-contain rounded-lg bg-gray-100"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = 'https://via.placeholder.com/60x60?text=🎁'
+                        }}
+                      />
+                      <div>
+                        <div className="font-semibold text-gray-900">{currentSelectedProduct.name}</div>
+                        <div className="text-sm text-gray-500">{currentSelectedProduct.category.replace('_', ' ')}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Amount Input */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Gift Card Amount ($)</label>
+                  <input
+                    type="number"
+                    value={giftCardAmount}
+                    onChange={(e) => setGiftCardAmount(e.target.value)}
+                    placeholder="Enter amount (e.g., 25.50)"
+                    min={currentSelectedProduct?.minAmount || 1}
+                    max={currentSelectedProduct?.maxAmount || 1000}
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
-                  <div>
-                    <div className="font-semibold text-gray-900">{currentSelectedProduct.name}</div>
-                    <div className="text-sm text-gray-500">{currentSelectedProduct.category.replace('_', ' ')}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Amount Input */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Gift Card Amount ($)</label>
-              <input
-                type="number"
-                value={giftCardAmount}
-                onChange={(e) => setGiftCardAmount(e.target.value)}
-                placeholder="Enter amount (e.g., 25.50)"
-                min={currentSelectedProduct?.minAmount || 1}
-                max={currentSelectedProduct?.maxAmount || 1000}
-                step="0.01"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Available range: ${currentSelectedProduct?.minAmount || 1} - ${currentSelectedProduct?.maxAmount || 1000}
-              </p>
-            </div>
-
-            {/* Generate Button */}
-            <button
-              onClick={generateGiftCard}
-              disabled={isGenerating || !giftCardAmount || !currentSelectedProduct}
-              className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-            >
-              {isGenerating ? (
-                <>
-                  <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <svg className="inline-block w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
-                  Generate Gift Card Link
-                </>
-              )}
-            </button>
-
-            {/* Success Message */}
-            {successData && (
-              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center mb-3">
-                  <svg className="h-5 w-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <h3 className="font-medium text-green-800">Gift Card Link Generated!</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Available range: ${currentSelectedProduct?.minAmount || 1} - ${currentSelectedProduct?.maxAmount || 1000}
+                  </p>
                 </div>
 
-                <div className="space-y-4">
-                  {/* Redemption Link */}
-                  <div>
-                    <div className="text-sm font-medium text-gray-700 mb-2">🔗 Redemption Link</div>
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm font-mono text-blue-800 break-all">
-                      {successData.redemptionLink}
-                    </div>
-                    <button
-                      onClick={() => copyToClipboard(successData.redemptionLink)}
-                      className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-500 transition-colors"
-                    >
-                      <svg className="inline-block w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                {/* Generate Button */}
+                <button
+                  onClick={generateGiftCard}
+                  disabled={isGenerating || !giftCardAmount || !currentSelectedProduct}
+                  className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="inline-block w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                       </svg>
-                      Copy Link
-                    </button>
+                      Generate Gift Card Link
+                    </>
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Success Message */}
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center mb-3">
+                    <svg className="h-5 w-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <h3 className="font-medium text-green-800">Gift Card Generated!</h3>
                   </div>
 
-                  {/* Details */}
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-4">
+                    {/* QR Code */}
                     <div>
-                      <div className="text-gray-500">Amount</div>
-                      <div className="font-medium text-gray-900">${successData.amount} USD</div>
+                      <div className="text-sm font-medium text-gray-700 mb-2">📱 QR Code</div>
+                      <div className="text-center p-4 bg-white border border-gray-200 rounded-lg">
+                        {qrCodeDataUrl ? (
+                          <img
+                            src={qrCodeDataUrl}
+                            alt="Gift Card QR Code"
+                            className="mx-auto"
+                            style={{ width: '200px', height: '200px' }}
+                          />
+                        ) : (
+                          <div className="p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                            <div className="text-lg font-semibold text-gray-700 mb-2">📱 Mobile-Friendly Link</div>
+                            <div className="font-mono text-sm text-gray-600 break-all bg-white p-2 rounded border border-gray-200">
+                              {successData.redemptionLink}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">Copy this link and share it with recipients</p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-center mt-3">
+                        <button
+                          onClick={() => copyToClipboard(successData.redemptionLink)}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 transition-colors"
+                        >
+                          <svg className="inline-block w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          Copy Link
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-gray-500">Product</div>
-                      <div className="font-medium text-gray-900">{successData.productName}</div>
+
+                    {/* Details */}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-gray-500">Amount</div>
+                        <div className="font-medium text-gray-900">${successData.amount} USD</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">Product</div>
+                        <div className="font-medium text-gray-900">{successData.productName}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </>
             )}
 
             {/* Error Message */}

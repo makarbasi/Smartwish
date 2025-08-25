@@ -50,7 +50,8 @@ The marketplace has been completely replaced with a new implementation based on 
 ### New Marketplace Features
 - Real gift card products from Tremendous API
 - Live gift card generation with redeemable links
-- QR code generation for mobile sharing
+- **QR code generation and display**: When a gift card is purchased, a QR code is prominently displayed instead of just a link
+- QR code download functionality for easy sharing
 - Voice search functionality
 - Category filtering (Gift Cards, Charity, Prepaid Cards)
 - Responsive design matching the tremendous-demo
