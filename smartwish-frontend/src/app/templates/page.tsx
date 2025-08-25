@@ -117,6 +117,7 @@ function TemplatesPageContent() {
   const q = sp?.get("q") ?? "";
   const region = sp?.get("region") ?? "";
   const language = sp?.get("language") ?? "";
+  const author = sp?.get("author") ?? "";
   const category = sp?.get("category") ?? "";
   const pageFromQuery = sp?.get("page") ?? "1";
   const initialPage = Math.max(1, parseInt(pageFromQuery || "1", 10) || 1);
@@ -162,10 +163,11 @@ function TemplatesPageContent() {
     if (region && region !== "Any region") params.set("region", region);
     if (language && language !== "Any language")
       params.set("language", language);
+    if (author && author !== "Any author") params.set("author", author);
     if (selectedCategory) params.set("category_id", selectedCategory);
     const queryString = params.toString();
     return `/api/templates${queryString ? `?${queryString}` : ""}`;
-  }, [q, region, language, selectedCategory]);
+  }, [q, region, language, author, selectedCategory]);
 
   // Fetch data using SWR
   const {
@@ -199,7 +201,7 @@ function TemplatesPageContent() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [q, region, language, selectedCategory]);
+  }, [q, region, language, author, selectedCategory]);
 
   // Check for template to auto-open from landing page
   useEffect(() => {
@@ -234,10 +236,10 @@ function TemplatesPageContent() {
       console.log("🎭 Product:", product);
       console.log("🔒 Session:", session);
       console.log("📊 Status:", status);
-      
+
       // Always close preview modal first
       setPreviewOpen(false);
-      
+
       // Check authentication
       if (!session || status !== "authenticated") {
         console.log("❌ User not authenticated, opening auth modal");
@@ -251,23 +253,23 @@ function TemplatesPageContent() {
       }
 
       console.log("✅ User is authenticated, redirecting to editor mode");
-      
+
       try {
         console.log("🎨 Opening template in editor mode");
         console.log("🔍 Template product data:", product);
         console.log("🔍 Template ID:", product.id);
-        
+
         // Store template data temporarily for editor access
         sessionStorage.setItem('templateForEditor', JSON.stringify({
           id: product.id,
           name: product.name,
           pages: product.pages || [product.imageSrc]
         }));
-        
+
         // Redirect directly to editor mode without copying to saved_designs yet
         // The editor will handle copying to saved_designs only when user saves
         router.push(`/my-cards/template-editor?templateId=${product.id}&templateName=${encodeURIComponent(product.name)}`);
-        
+
       } catch (error) {
         console.error("❌ Error opening template editor:", error);
         alert(`Failed to open template editor: ${error.message}`);
@@ -301,7 +303,7 @@ function TemplatesPageContent() {
   const handlePreviewTemplate = (template: TemplateCard) => {
     console.log("🎬 handlePreviewTemplate called with:", template.name);
     setPreviewProduct(template);
-    
+
     // Small delay to prevent immediate outside click detection
     setTimeout(() => {
       setPreviewOpen(true);
@@ -378,11 +380,10 @@ function TemplatesPageContent() {
                         <button
                           key={p}
                           onClick={() => goToPage(p)}
-                          className={`flex size-9 items-center justify-center rounded-full text-sm ring-1 ring-transparent ${
-                            p === safePage
+                          className={`flex size-9 items-center justify-center rounded-full text-sm ring-1 ring-transparent ${p === safePage
                               ? "bg-indigo-600 text-white ring-indigo-600"
                               : "text-gray-700 hover:bg-gray-50"
-                          }`}
+                            }`}
                         >
                           {p}
                         </button>

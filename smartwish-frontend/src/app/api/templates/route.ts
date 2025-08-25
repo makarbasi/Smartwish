@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const region = searchParams.get('region')
     const language = searchParams.get('language')
     const categoryId = searchParams.get('category_id')
+    const author = searchParams.get('author')
     const limit = searchParams.get('limit')
 
     let apiUrl: URL
@@ -74,6 +75,21 @@ export async function GET(request: NextRequest) {
         filteredData = filteredData.filter((template: any) =>
           template.category_id === categoryId
         )
+      }
+
+      // Filter by author if specified
+      if (author) {
+        if (author === 'SmartWish Studio') {
+          // SmartWish Studio templates: author_id is null and is_user_generated is false
+          filteredData = filteredData.filter((template: any) =>
+            template.author_id === null && template.is_user_generated === false
+          )
+        } else if (author === 'Community') {
+          // Community templates: author_id is not null and is_user_generated is true
+          filteredData = filteredData.filter((template: any) =>
+            template.author_id !== null && template.is_user_generated === true
+          )
+        }
       }
 
       // Update the data object with filtered results

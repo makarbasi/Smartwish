@@ -37,14 +37,16 @@ export default function HeroSearch(props: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [region, setRegion] = useState('Any region')
   const [language, setLanguage] = useState('Any language')
+  const [author, setAuthor] = useState('Any author')
   const [category, setCategory] = useState(props.selectedCategory ?? '')
 
   // Fetcher function for SWR
   const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-  // Fetch available regions and languages from the backend
+  // Fetch available regions, languages, and authors from the backend
   const { data: regionsData } = useSWR<{ regions: string[] }>('/api/templates/regions', fetcher)
   const { data: languagesData } = useSWR<{ languages: string[] }>('/api/templates/languages', fetcher)
+  const { data: authorsData } = useSWR<{ authors: string[] }>('/api/templates/authors', fetcher)
 
   // Debug: Log available options when they load
   useEffect(() => {
@@ -59,8 +61,15 @@ export default function HeroSearch(props: Props) {
     }
   }, [languagesData])
 
+  useEffect(() => {
+    if (authorsData) {
+      console.log('👥 Available authors:', authorsData.authors)
+    }
+  }, [authorsData])
+
   const availableRegions = regionsData?.regions || ['Any region']
   const availableLanguages = languagesData?.languages || ['Any language']
+  const availableAuthors = authorsData?.authors || ['Any author']
 
   // Reset region/language if current value is not available
   useEffect(() => {
@@ -75,16 +84,24 @@ export default function HeroSearch(props: Props) {
     }
   }, [languagesData, language])
 
+  useEffect(() => {
+    if (authorsData?.authors && !authorsData.authors.includes(author)) {
+      setAuthor('Any author')
+    }
+  }, [authorsData, author])
+
   // Initialize filters from URL parameters
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search)
       const urlRegion = urlParams.get('region')
       const urlLanguage = urlParams.get('language')
+      const urlAuthor = urlParams.get('author')
       const urlCategory = urlParams.get('category')
 
       if (urlRegion) setRegion(urlRegion)
       if (urlLanguage) setLanguage(urlLanguage)
+      if (urlAuthor) setAuthor(urlAuthor)
       if (urlCategory) setCategory(urlCategory)
     }
   }, [pathname])
@@ -94,11 +111,13 @@ export default function HeroSearch(props: Props) {
     query?: string;
     region?: string;
     language?: string;
+    author?: string;
     category?: string
   } = {}) => {
     const query = (overrides.query !== undefined ? overrides.query : q).trim()
     const currentRegion = overrides.region !== undefined ? overrides.region : region
     const currentLanguage = overrides.language !== undefined ? overrides.language : language
+    const currentAuthor = overrides.author !== undefined ? overrides.author : author
     const currentCategory = overrides.category !== undefined ? overrides.category : category
 
     const params = new URLSearchParams()
@@ -111,9 +130,10 @@ export default function HeroSearch(props: Props) {
         searchRoute = '/marketplace'
       } else {
         searchRoute = '/templates'
-        // Only add region/language/category filters for templates
+        // Only add region/language/author/category filters for templates
         if (currentRegion && currentRegion !== 'Any region') params.set('region', currentRegion)
         if (currentLanguage && currentLanguage !== 'Any language') params.set('language', currentLanguage)
+        if (currentAuthor && currentAuthor !== 'Any author') params.set('author', currentAuthor)
         if (currentCategory) params.set('category', currentCategory)
       }
     }
@@ -333,6 +353,23 @@ export default function HeroSearch(props: Props) {
                   {availableLanguages.map((l) => (
                     <option key={l} value={l}>
                       {l}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Author"
+                  value={author}
+                  onChange={(e) => {
+                    const newAuthor = e.target.value
+                    setAuthor(newAuthor)
+                    // Immediately navigate with the new filter
+                    navigateWithCurrentState({ author: newAuthor })
+                  }}
+                  className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
+                >
+                  {availableAuthors.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
                     </option>
                   ))}
                 </select>
