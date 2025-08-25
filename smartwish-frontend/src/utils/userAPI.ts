@@ -135,7 +135,7 @@ export class UserAPI {
    */
   async requestPasswordReset(email: string): Promise<{ message: string; resetToken?: string; expiresAt?: string }> {
     const response = await postRequest<{ message: string; resetToken?: string; expiresAt?: string }>(
-      `${this.baseURL}/user/request-password-reset`,
+      `${this.baseURL}/api/v1/user/request-password-reset`,
       { email }
     );
     return response.data || response as any;
@@ -146,7 +146,7 @@ export class UserAPI {
    */
   async resetPassword(resetData: ResetPasswordData): Promise<{ message: string }> {
     const response = await postRequest<{ message: string }>(
-      `${this.baseURL}/user/reset-password`,
+      `${this.baseURL}/api/v1/user/reset-password`,
       resetData
     );
     return response.data || response as any;
@@ -169,7 +169,7 @@ export class UserAPI {
    */
   async forgotPassword(email: string): Promise<{ message: string; resetToken?: string; expiresAt?: string }> {
     const response = await postRequest<{ message: string; resetToken?: string; expiresAt?: string }>(
-      `${this.baseURL}/auth/forgot-password`,
+      `${this.baseURL}/api/v1/auth/forgot-password`,
       { email }
     );
     return response.data || response as any;

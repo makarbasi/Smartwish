@@ -461,6 +461,11 @@ function MyCardsContent() {
 
       console.log("✅ E-Card sent successfully:", response);
 
+      // Check if the response contains success: false in the data
+      if (response.data && response.data.success === false) {
+        throw new Error(response.data.error || "E-Card sending failed");
+      }
+
       setSuccessMessage(
         `🎉 E-Card "${cardToSend.name}" has been sent to ${email}!`
       );
@@ -470,8 +475,22 @@ function MyCardsContent() {
       setCardToSend(null);
     } catch (error: unknown) {
       console.error("❌ Error sending E-Card:", error);
-      const msg = error instanceof Error ? error.message : "Failed to send E-Card";
-      alert(`Failed to send E-Card: ${msg}`);
+      let errorMessage = "Failed to send E-Card";
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+
+        // Parse additional error information from API responses
+        if (error.message.includes("Card not found")) {
+          errorMessage = "This card could not be found. Please try refreshing the page and selecting the card again.";
+        } else if (error.message.includes("permission")) {
+          errorMessage = "You don't have permission to share this card.";
+        } else if (error.message.includes("Authentication")) {
+          errorMessage = "Please log in again to send E-Cards.";
+        }
+      }
+
+      alert(`Failed to send E-Card: ${errorMessage}`);
     } finally {
       setSendingECard(false);
     }
@@ -536,22 +555,13 @@ function MyCardsContent() {
         {/* Header */}
         <div className="mb-12">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-            My Cards
+            My designs
           </h1>
-          <p className="mt-2 text-lg text-gray-600">
-            Manage your saved and published greeting cards
-          </p>
         </div>
 
         {/* Saved Cards Section */}
         <div className="mb-16">
           <div className="mb-6">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              Saved Designs
-            </h2>
-            <p className="text-sm text-gray-600">
-              Cards you&apos;ve created but haven&apos;t published yet
-            </p>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
             {savedDesignsLoading ? (
@@ -678,11 +688,13 @@ function MyCardsContent() {
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  handleUnpublishDesign(c.id);
+                                  // handleUnpublishDesign(c.id); // Temporarily disabled
                                 }}
-                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                                disabled={true}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
+                                title="Unpublish is temporarily disabled"
                               >
-                                Unpublish
+                                Unpublish (Disabled)
                               </button>
                             ) : (
                               <button
@@ -714,11 +726,13 @@ function MyCardsContent() {
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
-                                handleSendECard(c);
+                                // handleSendECard(c); // Temporarily disabled
                               }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              disabled={true}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
+                              title="E-Card sending is temporarily disabled"
                             >
-                              Send E-Card
+                              Send E-Card (Disabled)
                             </button>
                           </MenuItem>
                           {/* Promote removed */}
@@ -856,22 +870,26 @@ function MyCardsContent() {
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
-                                handleSendECard(c);
+                                // handleSendECard(c); // Temporarily disabled
                               }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              disabled={true}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
+                              title="E-Card sending is temporarily disabled"
                             >
-                              Send E-Card
+                              Send E-Card (Disabled)
                             </button>
                           </MenuItem>
                           <MenuItem>
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
-                                handleUnpublishDesign(c.id);
+                                // handleUnpublishDesign(c.id); // Temporarily disabled
                               }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              disabled={true}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
+                              title="Unpublish is temporarily disabled"
                             >
-                              Unpublish
+                              Unpublish (Disabled)
                             </button>
                           </MenuItem>
                         </MenuItems>
@@ -928,11 +946,8 @@ export default function MyCardsPage() {
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
               <div className="mb-12">
                 <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-                  My Cards
+                  My designs
                 </h1>
-                <p className="mt-2 text-lg text-gray-600">
-                  Manage your saved and published greeting cards
-                </p>
               </div>
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>

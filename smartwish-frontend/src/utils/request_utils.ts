@@ -16,7 +16,13 @@ export function DynamicRouter(
   params?: Record<string, any>,
   trailingSlash = true
 ) {
-  const base = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+  // Use frontend API URL for e-card endpoints to go through frontend API routes
+  const isECardEndpoint = service === 'api' && endpoint === 'ecard/send';
+  const baseUrl = isECardEndpoint 
+    ? process.env.NEXT_PUBLIC_FRONTEND_API_URL 
+    : process.env.NEXT_PUBLIC_API_URL;
+  
+  const base = normalizeBaseUrl(baseUrl);
   let url = `${base}/${service}/${endpoint}`;
   if (trailingSlash) url += "/";
   if (params) {
