@@ -27,7 +27,7 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json())
 let allProducts: Product[] = []
 let filteredProducts: Product[] = []
 let selectedProduct: Product | null = null
-let selectedAmount: number | null = null
+const selectedAmount: number | null = null
 
 function ProductCard({ p }: { p: Product }) {
   const selectProduct = (productId: string) => {

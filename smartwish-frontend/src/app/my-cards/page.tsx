@@ -9,6 +9,7 @@ import Image from "next/image";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal";
+import SendECardModal from "@/components/SendECardModal";
 import {
   DynamicRouter,
   authGet,
@@ -65,41 +66,41 @@ type PublishedTemplatesResponse = {
 // Authenticated fetcher using request utils
 const createAuthenticatedFetcher =
   (session: any) =>
-  async (url: string): Promise<SavedDesignsResponse> => {
-    try {
-      console.log("🔍 Fetching data from:", url);
-      console.log("🔐 Session exists:", !!session);
+    async (url: string): Promise<SavedDesignsResponse> => {
+      try {
+        console.log("🔍 Fetching data from:", url);
+        console.log("🔐 Session exists:", !!session);
 
-      if (!session?.user) {
-        throw new Error("No authenticated session");
+        if (!session?.user) {
+          throw new Error("No authenticated session");
+        }
+
+        const response = await authGet<SavedDesign[]>(url, session);
+        console.log("✅ Data fetched successfully:", response);
+
+        // Check if response.data exists (wrapped response) or if response itself is the array
+        let designs: SavedDesign[] = [];
+        if (Array.isArray(response.data)) {
+          designs = response.data;
+        } else if (Array.isArray(response)) {
+          // Handle case where backend returns array directly
+          designs = response as any;
+        } else {
+          console.log("🔍 Response structure:", response);
+          designs = [];
+        }
+
+        console.log("📋 Processed designs count:", designs.length);
+
+        return {
+          success: true,
+          data: designs,
+        };
+      } catch (error) {
+        console.error("❌ Error fetching data:", error);
+        throw error;
       }
-
-      const response = await authGet<SavedDesign[]>(url, session);
-      console.log("✅ Data fetched successfully:", response);
-
-      // Check if response.data exists (wrapped response) or if response itself is the array
-      let designs: SavedDesign[] = [];
-      if (Array.isArray(response.data)) {
-        designs = response.data;
-      } else if (Array.isArray(response)) {
-        // Handle case where backend returns array directly
-        designs = response as any;
-      } else {
-        console.log("🔍 Response structure:", response);
-        designs = [];
-      }
-
-      console.log("📋 Processed designs count:", designs.length);
-
-      return {
-        success: true,
-        data: designs,
-      };
-    } catch (error) {
-      console.error("❌ Error fetching data:", error);
-      throw error;
-    }
-  };
+    };
 
 // Transform saved design to MyCard format
 const transformSavedDesign = (design: SavedDesign): MyCard => {
@@ -109,7 +110,7 @@ const transformSavedDesign = (design: SavedDesign): MyCard => {
 
   // Prioritize individual image columns for thumbnail, fallback to existing thumbnail
   const thumbnail =
-    design.image1 || design.thumbnail || "/placeholder-card.png";
+    design.image1 || design.thumbnail || "/placeholder-image.jpg";
 
   return {
     id: design.id,
@@ -128,7 +129,7 @@ const transformPublishedTemplate = (template: PublishedTemplate): MyCard => {
   );
 
   // Use cover_image or image_1 as thumbnail
-  const thumbnail = template.cover_image || template.image_1 || "/placeholder-card.png";
+  const thumbnail = template.cover_image || template.image_1 || "/placeholder-image.jpg";
 
   return {
     id: template.id,
@@ -145,22 +146,22 @@ const templatesFetcher = async (url: string, userId?: string) => {
   if (!url || !userId) {
     return { success: true, data: [] };
   }
-  
+
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch templates');
   }
-  
+
   const result = await response.json();
-  
+
   // Filter templates to only show those where author_id matches current user's ID
   if (result.success && result.data) {
-    const userTemplates = result.data.filter((template: any) => 
+    const userTemplates = result.data.filter((template: any) =>
       template.author_id === userId
     );
     return { ...result, data: userTemplates };
   }
-  
+
   return result;
 };
 
@@ -176,6 +177,13 @@ function MyCardsContent() {
     id: string;
     name: string;
   } | null>(null);
+  const [eCardModalOpen, setECardModalOpen] = useState(false);
+  const [cardToSend, setCardToSend] = useState<{
+    id: string;
+    name: string;
+    thumbnail: string;
+  } | null>(null);
+  const [sendingECard, setSendingECard] = useState(false);
 
   // Create authenticated fetcher with session
   const authenticatedFetcher = session
@@ -201,8 +209,8 @@ function MyCardsContent() {
 
   // Fetch published templates from public API (filtered by current user's author_id)
   // Get the URL for user's published templates
-  const templatesUrl = session?.user?.id ? 
-    DynamicRouter("api", "simple-templates/with-author", undefined, false) : 
+  const templatesUrl = session?.user?.id ?
+    DynamicRouter("api", "simple-templates/with-author", undefined, false) :
     null;
   const {
     data: templatesResponse,
@@ -244,7 +252,7 @@ function MyCardsContent() {
   const draftCards: MyCard[] = allDesigns
     .filter((d) => !publishedStatuses.has(d.status || ""))
     .map(transformSavedDesign);
-  
+
   // Get user's published designs
   const userPublishedCards: MyCard[] = allDesigns
     .filter((d) => publishedStatuses.has(d.status || ""))
@@ -258,15 +266,15 @@ function MyCardsContent() {
   // Remove duplicates based on ID (in case user's published design is also in templates)
   const allPublishedCards: MyCard[] = [
     ...userPublishedCards,
-    ...userPublishedTemplates.filter(template => 
+    ...userPublishedTemplates.filter(template =>
       !userPublishedCards.some(userCard => userCard.id === template.id)
     )
   ].sort((a, b) => {
     // Sort by last edited/updated date (newest first)
-    const aTime = a.lastEdited.includes('Edited') ? 
+    const aTime = a.lastEdited.includes('Edited') ?
       new Date().getTime() - (parseInt(a.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000) :
       new Date().getTime() - (parseInt(a.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000);
-    const bTime = b.lastEdited.includes('Edited') ? 
+    const bTime = b.lastEdited.includes('Edited') ?
       new Date().getTime() - (parseInt(b.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000) :
       new Date().getTime() - (parseInt(b.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000);
     return bTime - aTime;
@@ -417,6 +425,64 @@ function MyCardsContent() {
   };
 
   // Promote removed: publishing now also creates template; use Unpublish to revert.
+
+  // Handle sending E-Card
+  const handleSendECard = (card: MyCard) => {
+    setCardToSend({
+      id: card.id,
+      name: card.name,
+      thumbnail: card.thumbnail,
+    });
+    setECardModalOpen(true);
+  };
+
+  const handleECardSend = async (email: string, message: string) => {
+    if (!session || !cardToSend) return;
+
+    setSendingECard(true);
+    try {
+      console.log("📧 Sending E-Card:", {
+        cardId: cardToSend.id,
+        email,
+        message: message || undefined,
+      });
+
+      const sendECardUrl = DynamicRouter("api", "ecard/send", undefined, false);
+
+      const response = await postRequest(
+        sendECardUrl,
+        {
+          cardId: cardToSend.id,
+          recipientEmail: email,
+          message: message || "",
+        },
+        session as any
+      );
+
+      console.log("✅ E-Card sent successfully:", response);
+
+      setSuccessMessage(
+        `🎉 E-Card "${cardToSend.name}" has been sent to ${email}!`
+      );
+
+      // Close modal and reset state
+      setECardModalOpen(false);
+      setCardToSend(null);
+    } catch (error: unknown) {
+      console.error("❌ Error sending E-Card:", error);
+      const msg = error instanceof Error ? error.message : "Failed to send E-Card";
+      alert(`Failed to send E-Card: ${msg}`);
+    } finally {
+      setSendingECard(false);
+    }
+  };
+
+  const handleECardModalClose = () => {
+    if (!sendingECard) {
+      setECardModalOpen(false);
+      setCardToSend(null);
+    }
+  };
 
   return (
     <main className="pb-24">
@@ -644,6 +710,17 @@ function MyCardsContent() {
                                 : "Duplicate"}
                             </button>
                           </MenuItem>
+                          <MenuItem>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleSendECard(c);
+                              }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                            >
+                              Send E-Card
+                            </button>
+                          </MenuItem>
                           {/* Promote removed */}
                           <MenuItem>
                             <button
@@ -779,6 +856,17 @@ function MyCardsContent() {
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
+                                handleSendECard(c);
+                              }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                            >
+                              Send E-Card
+                            </button>
+                          </MenuItem>
+                          <MenuItem>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
                                 handleUnpublishDesign(c.id);
                               }}
                               className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
@@ -813,6 +901,16 @@ function MyCardsContent() {
           itemName={designToDelete?.name || ""}
           itemType="design"
           isDeleting={!!deletingId}
+        />
+
+        {/* Send E-Card Modal */}
+        <SendECardModal
+          isOpen={eCardModalOpen}
+          onClose={handleECardModalClose}
+          onSend={handleECardSend}
+          cardName={cardToSend?.name || ""}
+          cardThumbnail={cardToSend?.thumbnail && cardToSend.thumbnail.trim() !== "" ? cardToSend.thumbnail : ""}
+          isLoading={sendingECard}
         />
       </div>
     </main>
