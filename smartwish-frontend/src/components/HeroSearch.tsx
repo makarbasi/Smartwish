@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, FormEvent } from 'react'
+import useSWR from 'swr'
 
 const quickActions = [
   'Design for me',
@@ -20,9 +21,9 @@ type Category = {
   updated_at: string
 }
 
-type Props = { 
-  chips?: string[]; 
-  initialQuery?: string; 
+type Props = {
+  chips?: string[];
+  initialQuery?: string;
   searchRoute?: string;
   categories?: Category[];
   selectedCategory?: string;
@@ -38,12 +39,71 @@ export default function HeroSearch(props: Props) {
   const [language, setLanguage] = useState('Any language')
   const [category, setCategory] = useState(props.selectedCategory ?? '')
 
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    const query = q.trim()
+  // Fetcher function for SWR
+  const fetcher = (url: string) => fetch(url).then((res) => res.json())
+
+  // Fetch available regions and languages from the backend
+  const { data: regionsData } = useSWR<{ regions: string[] }>('/api/templates/regions', fetcher)
+  const { data: languagesData } = useSWR<{ languages: string[] }>('/api/templates/languages', fetcher)
+
+  // Debug: Log available options when they load
+  useEffect(() => {
+    if (regionsData) {
+      console.log('🌍 Available regions:', regionsData.regions)
+    }
+  }, [regionsData])
+
+  useEffect(() => {
+    if (languagesData) {
+      console.log('🌐 Available languages:', languagesData.languages)
+    }
+  }, [languagesData])
+
+  const availableRegions = regionsData?.regions || ['Any region']
+  const availableLanguages = languagesData?.languages || ['Any language']
+
+  // Reset region/language if current value is not available
+  useEffect(() => {
+    if (regionsData?.regions && !regionsData.regions.includes(region)) {
+      setRegion('Any region')
+    }
+  }, [regionsData, region])
+
+  useEffect(() => {
+    if (languagesData?.languages && !languagesData.languages.includes(language)) {
+      setLanguage('Any language')
+    }
+  }, [languagesData, language])
+
+  // Initialize filters from URL parameters
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const urlRegion = urlParams.get('region')
+      const urlLanguage = urlParams.get('language')
+      const urlCategory = urlParams.get('category')
+
+      if (urlRegion) setRegion(urlRegion)
+      if (urlLanguage) setLanguage(urlLanguage)
+      if (urlCategory) setCategory(urlCategory)
+    }
+  }, [pathname])
+
+  // Function to handle navigation with current state
+  const navigateWithCurrentState = (overrides: {
+    query?: string;
+    region?: string;
+    language?: string;
+    category?: string
+  } = {}) => {
+    const query = (overrides.query !== undefined ? overrides.query : q).trim()
+    const currentRegion = overrides.region !== undefined ? overrides.region : region
+    const currentLanguage = overrides.language !== undefined ? overrides.language : language
+    const currentCategory = overrides.category !== undefined ? overrides.category : category
+
     const params = new URLSearchParams()
     if (query.length > 0) params.set('q', query)
-    
+
     // Determine the search route based on props or current pathname
     let searchRoute = props.searchRoute
     if (!searchRoute) {
@@ -52,14 +112,19 @@ export default function HeroSearch(props: Props) {
       } else {
         searchRoute = '/templates'
         // Only add region/language/category filters for templates
-        if (region && region !== 'Any region') params.set('region', region)
-        if (language && language !== 'Any language') params.set('language', language)
-        if (category) params.set('category', category)
+        if (currentRegion && currentRegion !== 'Any region') params.set('region', currentRegion)
+        if (currentLanguage && currentLanguage !== 'Any language') params.set('language', currentLanguage)
+        if (currentCategory) params.set('category', currentCategory)
       }
     }
-    
+
     const search = params.toString()
     router.push(`${searchRoute}${search ? `?${search}` : ''}`)
+  }
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    navigateWithCurrentState()
     setOpen(false)
   }
 
@@ -95,9 +160,9 @@ export default function HeroSearch(props: Props) {
 
   const startVoice = () => {
     if (typeof window === 'undefined') return
-    
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    
+
     if (!SpeechRecognition) {
       alert('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.')
       return
@@ -118,7 +183,7 @@ export default function HeroSearch(props: Props) {
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript
       console.log('🗣️ Voice input:', transcript)
-      
+
       // Add the transcript to the search query
       setQ((prev) => {
         const newQuery = prev ? `${prev} ${transcript}` : transcript
@@ -129,7 +194,7 @@ export default function HeroSearch(props: Props) {
     recognition.onerror = (event: any) => {
       console.error('❌ Speech recognition error:', event.error)
       setRecording(false)
-      
+
       // Show user-friendly error messages
       switch (event.error) {
         case 'no-speech':
@@ -161,9 +226,8 @@ export default function HeroSearch(props: Props) {
     <div ref={ref} className="relative mx-auto max-w-3xl">
       <form
         onSubmit={onSubmit}
-        className={`flex items-center gap-1 sm:gap-2 rounded-2xl bg-white/95 p-1.5 sm:p-2 shadow-sm ring-1 ring-gray-300 backdrop-blur transition focus-within:ring-indigo-400 ${
-          open ? 'ring-indigo-400 shadow-md' : ''
-        }`}
+        className={`flex items-center gap-1 sm:gap-2 rounded-2xl bg-white/95 p-1.5 sm:p-2 shadow-sm ring-1 ring-gray-300 backdrop-blur transition focus-within:ring-indigo-400 ${open ? 'ring-indigo-400 shadow-md' : ''
+          }`}
       >
         <input
           value={q}
@@ -181,11 +245,10 @@ export default function HeroSearch(props: Props) {
           onClick={startVoice}
           disabled={recording}
           aria-label={recording ? "Recording..." : "Voice search"}
-          className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${
-            recording 
-              ? 'bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600' 
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 focus-visible:outline-gray-600'
-          }`}
+          className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${recording
+            ? 'bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 focus-visible:outline-gray-600'
+            }`}
         >
           {recording ? (
             <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden>
@@ -213,7 +276,7 @@ export default function HeroSearch(props: Props) {
         </button>
       </form>
 
-      {open && !pathname?.startsWith('/marketplace') && props.categories && props.categories.length > 0 && (
+      {open && props.categories && props.categories.length > 0 && (
         <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-gray-200">
           {/* lightweight filters - only show for templates */}
           <div className="flex flex-wrap items-center gap-3">
@@ -221,7 +284,12 @@ export default function HeroSearch(props: Props) {
             <select
               aria-label="Category"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                const newCategory = e.target.value
+                setCategory(newCategory)
+                // Immediately navigate with the new filter
+                navigateWithCurrentState({ category: newCategory })
+              }}
               className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
             >
               <option value="">All Categories</option>
@@ -231,32 +299,52 @@ export default function HeroSearch(props: Props) {
                 </option>
               ))}
             </select>
-            <select
-              aria-label="Region"
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
-            >
-              {['Any region', 'Global', 'United States', 'United Kingdom', 'Europe', 'India', 'Japan'].map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Language"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
-            >
-              {['Any language', 'English', 'Spanish', 'French', 'German', 'Hindi', 'Chinese'].map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
+            {/* Only show region/language filters for templates, not marketplace */}
+            {!pathname?.startsWith('/marketplace') && (
+              <>
+                <select
+                  aria-label="Region"
+                  value={region}
+                  onChange={(e) => {
+                    const newRegion = e.target.value
+                    setRegion(newRegion)
+                    // Immediately navigate with the new filter
+                    navigateWithCurrentState({ region: newRegion })
+                  }}
+                  className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
+                >
+                  {availableRegions.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Language"
+                  value={language}
+                  onChange={(e) => {
+                    const newLanguage = e.target.value
+                    setLanguage(newLanguage)
+                    // Immediately navigate with the new filter
+                    navigateWithCurrentState({ language: newLanguage })
+                  }}
+                  className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
+                >
+                  {availableLanguages.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
-          <div className="mt-3 text-center text-xs text-gray-500">Press Enter to search. Filters are optional.</div>
+          <div className="mt-3 text-center text-xs text-gray-500">
+            {pathname?.startsWith('/marketplace')
+              ? 'Select category to filter gift cards. Press Enter to search with text.'
+              : 'Filters apply immediately. Press Enter to search with text.'
+            }
+          </div>
         </div>
       )}
     </div>

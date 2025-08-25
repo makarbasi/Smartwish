@@ -8,9 +8,9 @@ export async function GET(request: NextRequest) {
     const language = searchParams.get('language')
     const categoryId = searchParams.get('category_id')
     const limit = searchParams.get('limit')
-    
+
     let apiUrl: URL
-    
+
     const base = process.env.NEXT_PUBLIC_API_BASE ?? 'https://smartwish.onrender.com'
 
     // If category_id is provided without other filters, use the simple endpoint
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     } else {
       // Use general search endpoint for other queries
       apiUrl = new URL('/templates-enhanced/templates', base)
-      
+
       if (query) {
         apiUrl.searchParams.set('q', query)
       }
@@ -34,12 +34,12 @@ export async function GET(request: NextRequest) {
         apiUrl.searchParams.set('category_id', categoryId)
       }
     }
-    
+
     if (limit) {
       apiUrl.searchParams.set('limit', limit)
     }
 
-  const response = await fetch(apiUrl.toString(), {
+    const response = await fetch(apiUrl.toString(), {
       headers: {
         'Content-Type': 'application/json',
       },
@@ -50,7 +50,37 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json()
-    
+
+    // Apply client-side filtering since backend doesn't filter properly
+    if (data.data && Array.isArray(data.data)) {
+      let filteredData = data.data
+
+      // Filter by region if specified
+      if (region && region !== 'Any region') {
+        filteredData = filteredData.filter((template: any) =>
+          template.region && template.region.toLowerCase() === region.toLowerCase()
+        )
+      }
+
+      // Filter by language if specified  
+      if (language && language !== 'Any language') {
+        filteredData = filteredData.filter((template: any) =>
+          template.language && template.language.toLowerCase() === language.toLowerCase()
+        )
+      }
+
+      // Filter by category if specified
+      if (categoryId) {
+        filteredData = filteredData.filter((template: any) =>
+          template.category_id === categoryId
+        )
+      }
+
+      // Update the data object with filtered results
+      data.data = filteredData
+      data.count = filteredData.length
+    }
+
     return NextResponse.json(data)
   } catch (error) {
     console.error('Error fetching templates data:', error)
