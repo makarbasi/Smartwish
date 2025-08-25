@@ -137,16 +137,18 @@ function WhatYouGetGrid() {
           </div>
           
           {/* Desktop: side-by-side layout */}
-          <div className="hidden md:block relative min-h-[200px] lg:min-h-[220px] p-8">
-            <div className="pr-56">
+          <div className="hidden md:flex items-center min-h-[200px] lg:min-h-[220px] p-8 gap-6">
+            <div className="flex-1">
               <h3 className="text-xl font-semibold tracking-tight text-gray-900 leading-6">{it.title}</h3>
               <p className="mt-2 text-[0.925rem] leading-6 text-gray-500 group-hover:text-gray-600">{it.description}</p>
             </div>
-            <img
-              alt=""
-              src={it.image}
-              className="pointer-events-none absolute -bottom-6 right-0 h-40 w-52 rounded-tl-lg object-cover object-top"
-            />
+            <div className="flex-shrink-0 w-40 h-40">
+              <img
+                alt=""
+                src={it.image}
+                className="pointer-events-none w-full h-full rounded-lg object-cover object-center"
+              />
+            </div>
           </div>
         </div>
       ))}
