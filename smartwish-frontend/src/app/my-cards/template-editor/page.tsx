@@ -837,7 +837,7 @@ function TemplateEditorContent() {
             </div>
 
             {/* Category Row - Mobile */}
-            <div className="pb-4">
+            <div className="pb-4 hidden">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Category
               </label>
@@ -1047,7 +1047,7 @@ function TemplateEditorContent() {
       {/* Main Content */}
       <div className="flex relative">
         {/* Floating Toolbar */}
-        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-20 flex items-center gap-1 sm:gap-2 bg-white rounded-full shadow-lg px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-200 backdrop-blur-sm bg-white/95">
+        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-20 flex items-center gap-1 sm:gap-2 bg-white rounded-full shadow-lg px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-200 backdrop-blur-sm bg-white/95">
           {/* Save Button */}
           <button
             onClick={handleSave}
