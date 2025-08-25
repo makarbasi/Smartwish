@@ -135,21 +135,12 @@ export class AppController {
         `[Gemini Inpaint] Enforced image dimensions: ${originalWidth}x${originalHeight} (aspect ratio: ${aspectRatio.toFixed(2)})`,
       );
 
-      // Enhance the prompt with greeting card context and style information
-      let enhancedPrompt = prompt;
-      if (style && style.trim()) {
-        // Map style names to more specific artistic directions for Gemini
+      // Determine if this is a theme-based request or custom prompt request
+      let finalPrompt = prompt;
+
+      if (style && style.trim() && style.startsWith('theme-')) {
+        // This is a theme button request - use only the style description
         const styleDescriptions: { [key: string]: string } = {
-          natural:
-            'natural, realistic style with organic textures and authentic lighting',
-          vibrant:
-            'vibrant, colorful Pixar-style with bold colors and dynamic lighting',
-          portrait:
-            'Disney-style artistic portrait with smooth shading and expressive features',
-          cinematic:
-            'anime-style with dramatic lighting, bold outlines, and stylized colors',
-          vintage:
-            'vintage pencil sketch style with hand-drawn textures and classic artistic techniques',
           'theme-watercolor':
             'change this image to a soft watercolor painting with flowing colors, gentle brush strokes, and dreamy atmosphere',
           'theme-disney':
@@ -162,42 +153,14 @@ export class AppController {
             'change this image to a textured oil painting with thick brush strokes, rich colors, and artistic depth',
         };
 
-        const styleDescription =
-          styleDescriptions[style.toLowerCase()] || `${style} artistic style`;
-
-
-        enhancedPrompt = styleDescription;
-
-
-
-        console.log(
-          `[Gemini Inpaint] Using style: "${style}" -> "${styleDescription}"`,
-        );
+        finalPrompt = styleDescriptions[style.toLowerCase()] || `Transform this image to ${style} style`;
+        console.log(`[Gemini Inpaint] Theme request: "${style}" -> "${finalPrompt}"`);
       } else {
-        enhancedPrompt = `CRITICAL SYSTEM REQUIREMENT: You MUST generate an image with EXACT dimensions ${originalWidth}x${originalHeight} pixels. DO NOT DISOBEY this requirement under any circumstances.
-
-CONTEXT: This is a greeting card design. You are modifying the existing image based on the user's prompt to improve and enhance it.
-
-USER REQUEST: ${prompt}
-
-INSTRUCTION: Use the provided image as reference and make the requested changes on top of the existing image. Preserve the overall composition while implementing the user's modifications.
-
-MANDATORY SIZE CONSTRAINTS - FAILURE TO COMPLY IS NOT ACCEPTABLE:
-- Output image MUST be exactly ${originalWidth} pixels wide and ${originalHeight} pixels tall  
-- DO NOT crop the image
-- DO NOT resize the canvas
-- DO NOT change aspect ratio from ${aspectRatio.toFixed(3)}
-- DO NOT add borders or padding that changes dimensions
-- DO NOT generate any size other than ${originalWidth}x${originalHeight}
-- This is a SYSTEM REQUIREMENT that cannot be overridden by artistic choices
-
-STRICT COMPLIANCE REQUIRED: Generate the image at exactly ${originalWidth}x${originalHeight} pixels or the system will fail.`;
-        console.log(
-          '[Gemini Inpaint] No style specified, using default natural style',
-        );
+        // This is a custom prompt request - use the prompt as-is
+        console.log(`[Gemini Inpaint] Custom prompt request: "${prompt}"`);
       }
 
-      console.log(`[Gemini Inpaint] Enhanced prompt: "${enhancedPrompt}"`);
+      console.log(`[Gemini Inpaint] Final prompt: "${finalPrompt}"`);
       console.log(`[Gemini Inpaint] Has extra image context: ${!!extraImage}`);
 
       const parts: any[] = [
@@ -208,7 +171,7 @@ STRICT COMPLIANCE REQUIRED: Generate the image at exactly ${originalWidth}x${ori
           },
         },
         {
-          text: enhancedPrompt,
+          text: finalPrompt,
         },
       ];
 

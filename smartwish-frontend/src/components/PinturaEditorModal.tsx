@@ -256,27 +256,7 @@ export default function PinturaEditorModal({
 
                 <div class="ai-style-scroll-wrapper">
                   <div id="ai-style-container" class="ai-style-container" role="list">
-                  <!-- Each button is a vertical pill: thumbnail on top, label below. Using theme image thumbnails from public/resources/themes -->
-                    <button type="button" class="ai-style-button" data-style="natural" tabindex="0" role="button" aria-pressed="false">
-                      <div class="ai-style-thumb"><img src="/resources/themes/theme-watercolor.jpg" alt="Watercolor" style="width:56px;height:56px;border-radius:10px;object-fit:cover;display:block"/></div>
-                      <span class="ai-style-label">Natural</span>
-                    </button>
-                    <button type="button" class="ai-style-button" data-style="vibrant" tabindex="0" role="button" aria-pressed="false">
-                      <div class="ai-style-thumb"><img src="/resources/themes/theme-pixar.jpg" alt="Pixar" style="width:56px;height:56px;border-radius:10px;object-fit:cover;display:block"/></div>
-                      <span class="ai-style-label">Vibrant</span>
-                    </button>
-                    <button type="button" class="ai-style-button" data-style="portrait" tabindex="0" role="button" aria-pressed="false">
-                      <div class="ai-style-thumb"><img src="/resources/themes/theme-disney.jpg" alt="Disney" style="width:56px;height:56px;border-radius:10px;object-fit:cover;display:block"/></div>
-                      <span class="ai-style-label">Portrait</span>
-                    </button>
-                    <button type="button" class="ai-style-button" data-style="cinematic" tabindex="0" role="button" aria-pressed="false">
-                      <div class="ai-style-thumb"><img src="/resources/themes/theme-anime.jpg" alt="Anime" style="width:56px;height:56px;border-radius:10px;object-fit:cover;display:block"/></div>
-                      <span class="ai-style-label">Cinematic</span>
-                    </button>
-                    <button type="button" class="ai-style-button" data-style="vintage" tabindex="0" role="button" aria-pressed="false">
-                      <div class="ai-style-thumb"><img src="/resources/themes/theme-pencil-sketch.jpg" alt="Pencil Sketch" style="width:56px;height:56px;border-radius:10px;object-fit:cover;display:block"/></div>
-                      <span class="ai-style-label">Vintage</span>
-                    </button>
+                    <!-- Style buttons will be populated dynamically from theme images -->
                   </div>
                 </div>
 
@@ -676,7 +656,7 @@ export default function PinturaEditorModal({
             const formData = new FormData();
             formData.append("image", file);
             formData.append("prompt", prompt);
-            formData.append("style", selectedStyle || "natural");
+            formData.append("style", selectedStyle || "");
 
             // Add the original image as context for Gemini to understand what user is working on
             try {
