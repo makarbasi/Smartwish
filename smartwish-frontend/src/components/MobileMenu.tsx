@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -29,7 +30,7 @@ const items: Item[] = [
   { href: "/event", label: "Event", icon: CalendarDaysIcon },
   { href: "/marketplace", label: "Market", icon: ShoppingBagIcon },
   { href: "/templates", label: "Templates", icon: PencilSquareIcon },
-  { href: "/my-cards", label: "My cards", icon: PencilSquareIcon },
+  { href: "/my-cards", label: "My designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
 ];
 
@@ -37,9 +38,13 @@ export default function MobileMenu() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session, status } = useSession();
+  const { user } = useUserProfile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  
+  // Get profile picture URL - prioritize user profile image, fallback to session image
+  const profileImageUrl = user?.profileImage || (session?.user?.image as string) || "https://i.pravatar.cc/80?img=12";
 
   // Mobile-optimized sign-out handler similar to dashboard
   const handleSignOut = async (e?: React.MouseEvent | React.TouchEvent) => {
@@ -147,10 +152,7 @@ export default function MobileMenu() {
               <div className="p-4 border-b border-gray-200">
                 <div className="flex items-center gap-3">
                   <Image
-                    src={
-                      (session?.user?.image as string) ??
-                      "https://i.pravatar.cc/80?img=12"
-                    }
+                    src={profileImageUrl}
                     alt=""
                     width={48}
                     height={48}

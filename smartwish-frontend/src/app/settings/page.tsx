@@ -76,7 +76,7 @@ function SnapchatIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 export default function SettingsPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const { user, loading, error, updateProfile, changePassword, uploadProfilePicture, clearError } = useUserProfile();
   
   // Form states
@@ -304,6 +304,8 @@ export default function SettingsPage() {
     try {
       const imageUrl = await uploadProfilePicture(file);
       if (imageUrl) {
+        // Update the NextAuth session to reflect the new profile image
+        await update();
         setSuccessMessage('Profile picture updated successfully!');
         setTimeout(() => setSuccessMessage(''), 5000);
       }
