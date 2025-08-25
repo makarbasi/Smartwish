@@ -81,6 +81,7 @@ function MarketplaceContent() {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successData, setSuccessData] = useState<any>(null)
+  const [activeFilter, setActiveFilter] = useState<string>('all')
 
   // Fetch data from API
   const { data: productsData, error, isLoading } = useSWR<ProductsResponse>(
@@ -93,30 +94,43 @@ function MarketplaceContent() {
     if (productsData?.products) {
       allProducts = productsData.products
       filteredProducts = [...allProducts]
+
+      // Debug: Log available categories
+      const categories = [...new Set(productsData.products.map(p => p.category))]
+      console.log('Available categories:', categories)
+      console.log('Sample products:', productsData.products.slice(0, 3))
     }
   }, [productsData])
 
-  // Filter products based on search
+  // Filter products based on search and category filter
   const displayProducts = useMemo(() => {
     if (!productsData?.products) return []
 
-    if (searchTerm === '') {
-      return productsData.products
-    } else {
-      return productsData.products.filter(product =>
+    let filtered = productsData.products
+
+    // Apply category filter first
+    if (activeFilter !== 'all') {
+      filtered = filtered.filter(product => product.category === activeFilter)
+      console.log(`Filtered by category "${activeFilter}":`, filtered.length, 'products')
+    }
+
+    // Then apply search filter
+    if (searchTerm !== '') {
+      filtered = filtered.filter(product =>
         product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.category.toLowerCase().includes(searchTerm.toLowerCase())
       )
+      console.log(`Filtered by search "${searchTerm}":`, filtered.length, 'products')
     }
-  }, [productsData, searchTerm])
+
+    console.log('Final display products:', filtered.length)
+    return filtered
+  }, [productsData, searchTerm, activeFilter])
 
   // Filter products by category
   const filterProducts = (category: string) => {
-    if (category === 'all') {
-      filteredProducts = [...allProducts]
-    } else {
-      filteredProducts = allProducts.filter(product => product.category === category)
-    }
+    console.log('Filtering by category:', category)
+    setActiveFilter(category)
     setSearchTerm('') // Clear search when filtering
   }
 
@@ -286,25 +300,37 @@ function MarketplaceContent() {
       <div className="mb-6 flex justify-center">
         <div className="flex gap-2">
           <button
-            className="filter-btn active px-4 py-2 text-sm font-medium rounded-full bg-indigo-600 text-white border border-indigo-600"
+            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'all'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
             onClick={() => filterProducts('all')}
           >
             All
           </button>
           <button
-            className="filter-btn px-4 py-2 text-sm font-medium rounded-full bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'merchant_card'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
             onClick={() => filterProducts('merchant_card')}
           >
             Gift Cards
           </button>
           <button
-            className="filter-btn px-4 py-2 text-sm font-medium rounded-full bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'charity'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
             onClick={() => filterProducts('charity')}
           >
             Charity
           </button>
           <button
-            className="filter-btn px-4 py-2 text-sm font-medium rounded-full bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'prepaid_card'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
             onClick={() => filterProducts('prepaid_card')}
           >
             Prepaid Cards
