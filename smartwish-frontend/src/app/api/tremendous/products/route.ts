@@ -1,31 +1,40 @@
-import { NextResponse } from 'next/server'
-import axios from 'axios'
-
-const API_KEY = process.env.TREMENDOUS_API_KEY
-const BASE_URL = 'https://testflight.tremendous.com/api/v2'
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET() {
   try {
+    // Tremendous API configuration
+    const API_KEY = process.env.TREMENDOUS_API_KEY
+    const BASE_URL = "https://testflight.tremendous.com/api/v2"
+
     if (!API_KEY) {
+      console.error("❌ TREMENDOUS_API_KEY not found in environment variables")
       return NextResponse.json(
-        { error: 'TREMENDOUS_API_KEY not configured' },
+        { error: 'API configuration missing' },
         { status: 500 }
       )
     }
 
-    const response = await axios.get(`${BASE_URL}/products`, {
+    console.log("🔑 API Key loaded:", API_KEY.substring(0, 10) + "...")
+
+    const response = await fetch(`${BASE_URL}/products`, {
       headers: {
         Authorization: `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     })
 
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+
     // Filter and format products for the UI
-    const products = response.data.products
-      .filter((product: any) => 
-        product.currency_codes && 
+    const products = data.products
+      .filter((product: any) =>
+        product.currency_codes &&
         product.currency_codes.includes('USD') &&
-        product.skus && 
+        product.skus &&
         product.skus.length > 0
       )
       .map((product: any) => ({
@@ -40,7 +49,7 @@ export async function GET() {
       .slice(0, 50) // Limit to first 50 products for better performance
 
     return NextResponse.json({ products })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching products:', error)
     return NextResponse.json(
       { error: 'Failed to fetch products' },
