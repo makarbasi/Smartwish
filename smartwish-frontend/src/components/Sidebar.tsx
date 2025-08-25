@@ -29,7 +29,7 @@ type Item = {
 const items: Item[] = [
   { href: "/event", label: "Event", icon: CalendarDaysIcon },
   { href: "/marketplace", label: "Market", icon: ShoppingBagIcon },
-  { href: "/my-cards", label: "My cards", icon: PencilSquareIcon },
+  { href: "/my-cards", label: "My designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
 ];
 
@@ -337,7 +337,7 @@ export default function Sidebar() {
               className="flex flex-col items-center py-2 px-1"
             >
               <PencilSquareIcon className="w-6 h-6 text-gray-600" />
-              <span className="text-xs text-gray-600 mt-1">My Cards</span>
+              <span className="text-xs text-gray-600 mt-1">My designs</span>
             </Link>
             <Link
               href="/contacts"
