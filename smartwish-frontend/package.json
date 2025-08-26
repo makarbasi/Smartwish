@@ -2,11 +2,15 @@
   "name": "smartwish",
   "version": "0.1.0",
   "private": true,
+  "publishConfig": {
+    "registry": "https://npm.pqina.nl/"
+  },
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "preinstall": "echo '//npm.pqina.nl/:_authToken=${PINTURA_TOKEN}' >> .npmrc || true"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.10",
