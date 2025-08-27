@@ -24,9 +24,9 @@ export const whatYouGet: WhatItem[] = [
     span: 5,
   },
   {
-    title: 'Print Instantly at SmartWish Kiosks',
+    title: 'Print instantly at home',
     description:
-      'Find SmartWish kiosks everywhere and print your personalized cards instantly. No waiting, no hassle - just walk up and get your beautiful cards printed on the spot.',
+      'Print your personalized cards instantly from the comfort of your home. No waiting, no hassle - just send to your printer and get your beautiful cards printed on the spot.',
     image: WHAT_BASE + 'what-to-get-3.jpg',
     span: 5,
   },
