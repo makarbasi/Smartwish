@@ -174,10 +174,15 @@ export async function authGet<T>(
   console.log("[authGet] →", input);
   let res = await doFetch();
   if (res.status === 401) {
+    console.log("[authGet] Got 401, attempting token refresh");
     const invalid = await isTokenInvalid(res);
     const refreshed = await tryRefresh(session);
-    if (refreshed) res = await doFetch();
-    if (!refreshed || res.status === 401 || (invalid && !(await tryRefresh(session)))) {
+    if (refreshed) {
+      console.log("[authGet] Token refreshed, retrying request");
+      res = await doFetch();
+    }
+    if (!refreshed || res.status === 401) {
+      console.log("[authGet] Token refresh failed or still got 401, redirecting to login");
       redirectToLogin();
     }
   }
@@ -216,10 +221,14 @@ export async function authDownload(
   console.log("[authDownload] →", input);
   let res = await doFetch();
   if (res.status === 401) {
-    const invalid = await isTokenInvalid(res);
+    console.log("[authDownload] Got 401, attempting token refresh");
     const refreshed = await tryRefresh(session);
-    if (refreshed) res = await doFetch();
-    if (!refreshed || res.status === 401 || (invalid && !(await tryRefresh(session)))) {
+    if (refreshed) {
+      console.log("[authDownload] Token refreshed, retrying request");
+      res = await doFetch();
+    }
+    if (!refreshed || res.status === 401) {
+      console.log("[authDownload] Token refresh failed or still got 401, redirecting to login");
       redirectToLogin();
     }
   }
@@ -268,13 +277,15 @@ async function _request<T>(
 
   let res = await doFetch();
   if (res.status === 401 && session) {
-    const invalid = await isTokenInvalid(res);
+    console.log(`[${method}] Got 401, attempting token refresh`);
     const refreshed = await tryRefresh(session);
     if (refreshed) {
+      console.log(`[${method}] Token refreshed, retrying request`);
       headers.Authorization = `Bearer ${session.user.access_token}`;
       res = await doFetch();
     }
-    if (!refreshed || res.status === 401 || (invalid && !(await tryRefresh(session)))) {
+    if (!refreshed || res.status === 401) {
+      console.log(`[${method}] Token refresh failed or still got 401, redirecting to login`);
       redirectToLogin();
     }
   }

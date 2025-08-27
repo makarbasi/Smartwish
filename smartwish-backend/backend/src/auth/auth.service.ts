@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { UserService } from '../user/user.service';
 import { AuditService } from '../common/audit/audit.service';
 import { LoggerService } from '../common/logger/logger.service';
@@ -16,7 +17,30 @@ export class AuthService {
     private jwtService: JwtService,
     private auditService: AuditService,
     private logger: LoggerService,
+    private configService: ConfigService,
   ) {}
+
+  /**
+   * Convert JWT duration string (like '24h', '7d') to seconds
+   */
+  private parseJwtDurationToSeconds(duration: string): number {
+    const match = duration.match(/^(\d+)([smhd])$/);
+    if (!match) {
+      // Default to 24 hours if parsing fails
+      return 24 * 60 * 60;
+    }
+
+    const [, value, unit] = match;
+    const num = parseInt(value, 10);
+
+    switch (unit) {
+      case 's': return num;
+      case 'm': return num * 60;
+      case 'h': return num * 60 * 60;
+      case 'd': return num * 24 * 60 * 60;
+      default: return 24 * 60 * 60; // default 24h
+    }
+  }
 
   async validateUser(
     email: string,
@@ -134,7 +158,7 @@ export class AuthService {
 
       const accessToken = this.jwtService.sign(payload);
       const refreshToken = this.jwtService.sign(refreshPayload, {
-        expiresIn: '7d', // Refresh token expires in 7 days
+        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
       });
       
       console.log(
@@ -150,7 +174,7 @@ export class AuthService {
         access_token: accessToken,
         refresh_token: refreshToken,
         token_type: 'Bearer',
-        expires_in: parseInt(process.env.JWT_EXPIRES_IN || '86400') || 86400, // 24 hours in seconds
+        expires_in: this.parseJwtDurationToSeconds(this.configService.get<string>('JWT_EXPIRES_IN', '24h')),
         user: {
           id: user.id,
           email: user.email,
@@ -201,7 +225,7 @@ export class AuthService {
 
       const accessToken = this.jwtService.sign(payload);
       const newRefreshToken = this.jwtService.sign(refreshPayload, {
-        expiresIn: '7d', // Refresh token expires in 7 days
+        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
       });
 
       // Log token refresh
@@ -218,7 +242,7 @@ export class AuthService {
         access_token: accessToken,
         refresh_token: newRefreshToken,
         token_type: 'Bearer',
-        expires_in: parseInt(process.env.JWT_EXPIRES_IN || '86400') || 86400,
+        expires_in: this.parseJwtDurationToSeconds(this.configService.get<string>('JWT_EXPIRES_IN', '24h')),
         user: {
           id: user.id,
           email: user.email,
@@ -268,7 +292,7 @@ export class AuthService {
       return {
         access_token: token,
         token_type: 'Bearer',
-        expires_in: parseInt(process.env.JWT_EXPIRES_IN || '86400') || 86400,
+        expires_in: this.parseJwtDurationToSeconds(this.configService.get<string>('JWT_EXPIRES_IN', '24h')),
         user: {
           id: user.id,
           email: user.email,
