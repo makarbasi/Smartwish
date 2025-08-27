@@ -621,7 +621,20 @@ export default function CustomizeCardPage() {
     );
   }
 
-  if (error || !cardData) {
+  // Show loading state if we don't have card data yet (even if API call completed)
+  if (!cardData && !error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading card...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Only show error state if we have an error OR if we've finished loading but have no data
+  if (error || (!isLoading && !cardData)) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

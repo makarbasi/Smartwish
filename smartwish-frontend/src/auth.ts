@@ -19,9 +19,24 @@ async function refreshAccessToken(refreshToken: string) {
       })
     });
 
-    if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
+    if (!res.ok) {
+      console.error(`[NextAuth] Refresh token request failed: ${res.status} - ${res.statusText}`);
+      
+      // If 401 or 403, the refresh token is likely expired or invalid
+      if (res.status === 401 || res.status === 403) {
+        console.error("[NextAuth] Refresh token appears to be expired or invalid");
+      }
+      
+      return null;
+    }
 
     const json = await res.json();
+    
+    if (!json.access_token) {
+      console.error("[NextAuth] No access token in refresh response:", json);
+      return null;
+    }
+
     // Backend returns: { access_token, refresh_token, token_type, expires_in, user }
     const accessMs = (json.expires_in || 86400) * 1000; // Convert seconds to ms
     const safetyMs = 5 * 60 * 1000; // 5m margin
@@ -33,7 +48,7 @@ async function refreshAccessToken(refreshToken: string) {
       user: json.user
     };
   } catch (err) {
-    console.error("[NextAuth] token refresh error", err);
+    console.error("[NextAuth] Token refresh network error:", err);
     return null;
   }
 }
@@ -170,9 +185,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       console.log("[NextAuth] Token expired or expiring, attempting refresh");
       const refreshed = await refreshAccessToken(token.refresh_token as string);
       if (!refreshed) {
-        console.error("[NextAuth] Failed to refresh token");
-        token.error = "RefreshAccessTokenError";
-        return token;
+        console.error("[NextAuth] Failed to refresh token - refresh token may be expired");
+        // Return an empty object to trigger sign-out
+        return {};
       }
 
       console.log("[NextAuth] Token refreshed successfully");
@@ -182,6 +197,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     async session({ session, token }) {
+      // If token is empty (refresh failed), return null to sign out
+      if (!token.user || !token.access_token) {
+        console.log("[NextAuth] No valid token data, signing out user");
+        return null;
+      }
+
       // Make user data and tokens available to the client
       session.user = token.user as any;
       (session.user as any).access_token = token.access_token;

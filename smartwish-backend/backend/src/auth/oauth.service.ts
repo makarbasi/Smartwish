@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { UserService } from '../user/user.service';
 import { OAuthProvider } from '../user/user.entity';
 import * as crypto from 'crypto';
@@ -17,7 +18,30 @@ export class OAuthService {
   constructor(
     private userService: UserService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
+
+  /**
+   * Convert JWT duration string (like '24h', '7d') to seconds
+   */
+  private parseJwtDurationToSeconds(duration: string): number {
+    const match = duration.match(/^(\d+)([smhd])$/);
+    if (!match) {
+      // Default to 24 hours if parsing fails
+      return 24 * 60 * 60;
+    }
+
+    const [, value, unit] = match;
+    const num = parseInt(value, 10);
+
+    switch (unit) {
+      case 's': return num;
+      case 'm': return num * 60;
+      case 'h': return num * 60 * 60;
+      case 'd': return num * 24 * 60 * 60;
+      default: return 24 * 60 * 60; // default 24h
+    }
+  }
 
   private mapProviderToEnum(provider: string): OAuthProvider {
     switch (provider) {
@@ -77,22 +101,22 @@ export class OAuthService {
         picture: user.profileImage,
       };
       const token = this.jwtService.sign(payload, {
-        issuer: process.env.JWT_ISSUER || 'smartwish-app',
-        audience: process.env.JWT_AUDIENCE || 'smartwish-users',
-        expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+        issuer: this.configService.get<string>('JWT_ISSUER', 'smartwish-app'),
+        audience: this.configService.get<string>('JWT_AUDIENCE', 'smartwish-users'),
+        expiresIn: this.configService.get<string>('JWT_EXPIRES_IN', '24h'),
       });
 
       // Generate refresh token
       const refreshPayload = { sub: user.id, type: 'refresh' };
       const refreshToken = this.jwtService.sign(refreshPayload, {
-        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
       });
 
       return {
         access_token: token,
         refresh_token: refreshToken,
         token_type: 'Bearer',
-        expires_in: 86400, // 24 hours in seconds
+        expires_in: this.parseJwtDurationToSeconds(this.configService.get<string>('JWT_EXPIRES_IN', '24h')),
         user: {
           id: user.id,
           email: user.email,

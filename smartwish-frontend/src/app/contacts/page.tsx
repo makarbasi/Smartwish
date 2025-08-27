@@ -430,36 +430,9 @@ export default function ContactsPage() {
     );
   }
 
-  // Show error state
-  if (error) {
-    return (
-      <section className="w-full md:pl-16 lg:pl-20">
-        <Sidebar />
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <main className="py-10 sm:py-12">
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-                Contacts
-              </h1>
-              <p className="mt-2 text-lg text-gray-600">
-                Manage your wishcard contacts
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
-              Failed to load contacts. Please try again later.
-              <button
-                onClick={() => mutateContacts()}
-                className="ml-4 inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500"
-              >
-                Retry
-              </button>
-            </div>
-          </main>
-        </div>
-      </section>
-    );
-  }
+  // If there's an error, treat it as empty state instead of showing error
+  // This provides a better user experience when API fails
+  const hasError = !!error;
 
   return (
     <section className="w-full md:pl-16 lg:pl-20">
@@ -530,24 +503,36 @@ export default function ContactsPage() {
               <div className="text-center py-12">
                 <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-4 text-sm font-medium text-gray-900">
-                  {searchTerm ? "No contacts found" : "No contacts yet"}
+                  {hasError 
+                    ? "Unable to load contacts"
+                    : searchTerm 
+                      ? "No contacts found" 
+                      : "No contacts yet"}
                 </h3>
                 <p className="mt-2 text-sm text-gray-500">
-                  {searchTerm
-                    ? "Try adjusting your search terms."
-                    : "Get started by adding your first contact."}
+                  {hasError
+                    ? "Don't worry, you can still add new contacts below."
+                    : searchTerm
+                      ? "Try adjusting your search terms."
+                      : "Get started by adding your first contact."}
                 </p>
-                {!searchTerm && (
-                  <div className="mt-6">
+                <div className="mt-6 flex justify-center gap-3">
+                  <button
+                    onClick={() => setIsAddContactOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    Add Contact
+                  </button>
+                  {hasError && (
                     <button
-                      onClick={() => setIsAddContactOpen(true)}
-                      className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+                      onClick={() => mutateContacts()}
+                      className="inline-flex items-center gap-2 rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500"
                     >
-                      <PlusIcon className="h-4 w-4" />
-                      Add Contact
+                      Try Again
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ) : (
               <>
