@@ -8,7 +8,7 @@ import {
   Suspense,
   useMemo,
 } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -18,6 +18,7 @@ import {
   XMarkIcon,
   ArrowUturnLeftIcon,
   ArrowPathIcon,
+  DocumentDuplicateIcon,
 } from "@heroicons/react/24/outline";
 import { ArchiveBoxIcon } from "@heroicons/react/24/solid";
 import {
@@ -64,9 +65,14 @@ function TemplateEditorContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const pathname = usePathname();
   const templateId = searchParams?.get("templateId");
   const templateName = searchParams?.get("templateName");
+
+  // Utility function to handle authentication redirects
+  const handleAuthError = (fallbackPath: string = '/my-cards') => {
+    console.log("🚪 Authentication error detected, redirecting to sign-in");
+    window.location.href = `/sign-in?callbackUrl=${encodeURIComponent(fallbackPath)}`;
+  };
 
   const [currentPage, setCurrentPage] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,7 +109,21 @@ function TemplateEditorContent() {
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   // Fetch categories
-  const fetcher = (url: string) => fetch(url).then((res) => res.json());
+  const fetcher = async (url: string) => {
+    const res = await fetch(url);
+    
+    // Check for authentication errors
+    if (res.status === 401 || res.status === 403) {
+      handleAuthError('/my-cards');
+      throw new Error('Authentication required');
+    }
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    
+    return res.json();
+  };
   const { data: categoriesResponse } = useSWR<CategoriesResponse>(
     "/api/categories",
     fetcher
@@ -176,11 +196,27 @@ function TemplateEditorContent() {
               throw new Error("Invalid template data received");
             }
           } else {
+            // Check if it's an authentication error
+            if (response.status === 401 || response.status === 403) {
+              handleAuthError('/templates');
+              return;
+            }
+            
             console.error("Failed to fetch template, status:", response.status);
             throw new Error(`Failed to fetch template: ${response.status}`);
           }
         } catch (error) {
           console.error("Error fetching template:", error);
+          
+          // Check if it's an authentication error
+          if (error instanceof Error && 
+              (error.message.includes("Unauthorized") || 
+               error.message.includes("401") || 
+               error.message.includes("403"))) {
+            handleAuthError('/templates');
+            return;
+          }
+          
           alert(
             "Failed to load template data. Please try again or select a different template."
           );
@@ -501,6 +537,12 @@ function TemplateEditorContent() {
       });
 
       if (!response.ok) {
+        // Check if it's an authentication error
+        if (response.status === 401 || response.status === 403) {
+          handleAuthError('/my-cards');
+          return;
+        }
+        
         const errorText = await response.text();
         let errorData;
         try {
@@ -535,6 +577,16 @@ function TemplateEditorContent() {
             "Failed to update with edited images, but copy was successful:",
             updateError
           );
+          
+          // Check if it's an authentication error during image update
+          if (updateError instanceof Error && 
+              (updateError.message.includes("Unauthorized") || 
+               updateError.message.includes("401") || 
+               updateError.message.includes("403"))) {
+            handleAuthError('/my-cards');
+            return;
+          }
+          
           // Continue anyway since the basic copy worked
         }
       }
@@ -552,6 +604,16 @@ function TemplateEditorContent() {
       }, 1500);
     } catch (error) {
       console.error("❌ Save failed:", error);
+      
+      // Check if it's an authentication error
+      if (error instanceof Error && 
+          (error.message.includes("Unauthorized") || 
+           error.message.includes("401") || 
+           error.message.includes("403"))) {
+        handleAuthError('/my-cards');
+        return;
+      }
+      
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
       setSaveMessage(`Failed to save template: ${errorMessage}`);
@@ -598,6 +660,12 @@ function TemplateEditorContent() {
 
       const response = await fetch(imageUrl);
       if (!response.ok) {
+        // Check if it's an authentication error
+        if (response.status === 401 || response.status === 403) {
+          handleAuthError('/my-cards');
+          throw new Error('Authentication required');
+        }
+        
         throw new Error(
           `Failed to fetch image: ${response.status} ${response.statusText}`
         );
@@ -739,21 +807,13 @@ function TemplateEditorContent() {
   }
 
   if (status === "unauthenticated") {
+    // Redirect to /my-cards instead of staying on template editor page
+    router.push("/my-cards");
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            Authentication Required
-          </h1>
-          <p className="text-gray-600 mb-6">
-            Please sign in to use the template editor.
-          </p>
-          <Link
-            href={`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`}
-            className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-          >
-            Sign In
-          </Link>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Redirecting...</p>
         </div>
       </div>
     );
@@ -1064,6 +1124,15 @@ function TemplateEditorContent() {
             ) : (
               <ArchiveBoxIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             )}
+          </button>
+
+          {/* Save As Button - Always Disabled */}
+          <button
+            disabled={true}
+            className="p-1.5 sm:p-2 rounded-full text-gray-400 bg-gray-50 cursor-not-allowed opacity-50 touch-manipulation"
+            title="Save As (not available in template editor)"
+          >
+            <DocumentDuplicateIcon className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
           {/* Undo Button */}
