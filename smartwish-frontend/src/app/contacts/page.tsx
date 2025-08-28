@@ -23,7 +23,6 @@ import {
 } from "@headlessui/react";
 import { EllipsisVerticalIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
-import useSWR, { mutate } from "swr";
 import Sidebar from "@/components/Sidebar";
 import { Contact, ContactFormData, ContactsResponse } from "@/types/contact";
 import {
@@ -105,6 +104,14 @@ const createAuthenticatedFetcher =
       };
     } catch (error) {
       console.error("❌ Error fetching contacts:", error);
+      
+      // Check if it's an authentication error
+      if (error instanceof Error && error.message.includes('401')) {
+        // Token expired, redirect to login with callback to contacts
+        window.location.href = `/sign-in?callbackUrl=${encodeURIComponent('/contacts')}`;
+        return;
+      }
+      
       throw error;
     }
   };
@@ -142,10 +149,10 @@ export default function ContactsPage() {
   });
   const [interestInput, setInterestInput] = useState("");
 
-  // Create authenticated fetcher with session
-  const authenticatedFetcher = session
-    ? createAuthenticatedFetcher(session)
-    : null;
+  // Manual state management for contacts data
+  const [contactsResponse, setContactsResponse] = useState<ContactsResponse | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Build direct backend API URL
   const apiUrl = useMemo(() => {
@@ -160,20 +167,34 @@ export default function ContactsPage() {
     return DynamicRouter("contacts", "", undefined, false);
   }, [searchTerm]);
 
-  // Fetch contacts using SWR with direct backend calls
-  const {
-    data: contactsResponse,
-    error,
-    isLoading,
-    mutate: mutateContacts,
-  } = useSWR<ContactsResponse>(
-    session && authenticatedFetcher ? apiUrl : null,
-    authenticatedFetcher,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 30000, // Cache for 30 seconds
+  // Manual fetch function for contacts
+  const fetchContacts = async () => {
+    if (!session?.user) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const authenticatedFetcher = createAuthenticatedFetcher(session);
+      const response = await authenticatedFetcher(apiUrl);
+      setContactsResponse(response);
+    } catch (err) {
+      setError(err as Error);
+      console.error("Error fetching contacts:", err);
+    } finally {
+      setIsLoading(false);
     }
-  );
+  };
+
+  // Replace mutateContacts with manual refetch
+  const mutateContacts = fetchContacts;
+
+  // Load data when page opens and session is available
+  useEffect(() => {
+    if (session?.user) {
+      fetchContacts();
+    }
+  }, [session?.user, apiUrl]);
 
   // Client-side pagination since backend returns all contacts
   const allContacts = contactsResponse?.data || [];
@@ -262,10 +283,18 @@ export default function ContactsPage() {
       setEditingContact(null);
       setIsAddContactOpen(false);
 
-      // Revalidate the data
-      mutateContacts();
+      // Refresh the contacts data
+      fetchContacts();
     } catch (error) {
       console.error("❌ Error saving contact:", error);
+      
+      // Check if it's an authentication error
+      if (error instanceof Error && error.message.includes('401')) {
+        // Token expired, redirect to login with callback to contacts
+        window.location.href = `/sign-in?callbackUrl=${encodeURIComponent('/contacts')}`;
+        return;
+      }
+      
       const msg = error instanceof Error ? error.message : "Unknown error";
       alert(`Failed to save contact: ${msg}`);
     } finally {
@@ -332,9 +361,17 @@ export default function ContactsPage() {
       console.log("✅ Contact deleted successfully:", result);
       setIsDeleteConfirmOpen(false);
       setContactToDelete(null);
-      mutateContacts();
+      fetchContacts();
     } catch (error) {
       console.error("❌ Error deleting contact:", error);
+      
+      // Check if it's an authentication error
+      if (error instanceof Error && error.message.includes('401')) {
+        // Token expired, redirect to login with callback to contacts
+        window.location.href = `/sign-in?callbackUrl=${encodeURIComponent('/contacts')}`;
+        return;
+      }
+      
       const msg = error instanceof Error ? error.message : "Unknown error";
       alert(`Failed to delete contact: ${msg}`);
     } finally {
@@ -526,7 +563,7 @@ export default function ContactsPage() {
                   </button>
                   {hasError && (
                     <button
-                      onClick={() => mutateContacts()}
+                      onClick={fetchContacts}
                       className="inline-flex items-center gap-2 rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500"
                     >
                       Try Again

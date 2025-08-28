@@ -8,6 +8,15 @@ import { DynamicRouter } from "@/utils/request_utils";
 ─────────────────────────────────────────────────────────── */
 async function refreshAccessToken(refreshToken: string) {
   try {
+    if (!refreshToken) {
+      console.error("[TOKEN_REFRESH] ❌ No refresh token provided");
+      return null;
+    }
+    
+    const shortRefreshToken = refreshToken.substring(0, 20) + "...";
+    console.log(`[TOKEN_REFRESH] 🔄 Starting refresh with token: ${shortRefreshToken}`);
+    console.log(`[TOKEN_REFRESH] ⏰ Current time: ${new Date().toISOString()}`);
+    
     const url = DynamicRouter("auth", "refresh", undefined, false);
     const res = await fetch(url, {
       method: "POST",
@@ -20,11 +29,16 @@ async function refreshAccessToken(refreshToken: string) {
     });
 
     if (!res.ok) {
-      console.error(`[NextAuth] Refresh token request failed: ${res.status} - ${res.statusText}`);
+      console.error(`[TOKEN_REFRESH] ❌ Refresh failed: ${res.status} - ${res.statusText}`);
       
-      // If 401 or 403, the refresh token is likely expired or invalid
+      // Handle different error types
       if (res.status === 401 || res.status === 403) {
-        console.error("[NextAuth] Refresh token appears to be expired or invalid");
+        console.error("[TOKEN_REFRESH] 💀 Refresh token appears to be expired or invalid");
+      } else if (res.status === 429) {
+        console.error("[TOKEN_REFRESH] 🚫 Rate limited - too many refresh requests");
+        // For rate limiting, we might want to retry after a delay, but for now just fail
+      } else if (res.status >= 500) {
+        console.error("[TOKEN_REFRESH] 🔥 Server error during token refresh");
       }
       
       return null;
@@ -33,22 +47,38 @@ async function refreshAccessToken(refreshToken: string) {
     const json = await res.json();
     
     if (!json.access_token) {
-      console.error("[NextAuth] No access token in refresh response:", json);
+      console.error("[TOKEN_REFRESH] ❌ No access token in refresh response:", json);
       return null;
     }
 
     // Backend returns: { access_token, refresh_token, token_type, expires_in, user }
-    const accessMs = (json.expires_in || 86400) * 1000; // Convert seconds to ms
-    const safetyMs = 5 * 60 * 1000; // 5m margin
+    const accessMs = (json.expires_in || 60) * 1000; // Convert seconds to ms (default 1 minute)
+    const safetyMs = 5 * 1000; // 5s margin for short tokens
+    const expirationTime = Date.now() + (accessMs - safetyMs);
     
-    return {
+    console.log(`[TOKEN_REFRESH] ✅ Refresh successful!`);
+    console.log(`[TOKEN_REFRESH] 📊 Token details:`);
+    console.log(`  - New Access Token: ${json.access_token.substring(0, 20)}...`);
+    console.log(`  - New Refresh Token: ${json.refresh_token ? json.refresh_token.substring(0, 20) + '...' : 'Same as before'}`);
+    console.log(`  - Expires in: ${json.expires_in} seconds`);
+    console.log(`  - Expiration time: ${new Date(expirationTime).toISOString()}`);
+    console.log(`  - User: ${json.user?.email || 'Unknown'}`);
+    
+    const result: any = {
       access_token: json.access_token,
-      refresh_token: json.refresh_token, // Backend returns new refresh token
-      access_expires: Date.now() + (accessMs - safetyMs),
+      access_expires: expirationTime,
       user: json.user
     };
+    
+    // Only include refresh_token if backend provides a new one
+    // Otherwise, keep using the original refresh token
+    if (json.refresh_token) {
+      result.refresh_token = json.refresh_token;
+    }
+    
+    return result;
   } catch (err) {
-    console.error("[NextAuth] Token refresh network error:", err);
+    console.error("[TOKEN_REFRESH] 🌐 Network error:", err);
     return null;
   }
 }
@@ -151,7 +181,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               token.user = data.user;
               token.access_token = data.access_token;
               token.refresh_token = data.refresh_token;
-              token.access_expires = Date.now() + (24 * 60 * 60 * 1000 - 5 * 60 * 1000);
+              token.access_expires = Date.now() + (60 * 1000 - 5 * 1000);
               return token;
             }
           } catch (error) {
@@ -169,17 +199,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         };
         token.access_token = (user as any).access_token;
         token.refresh_token = (user as any).refresh_token;
-        // Set expiration (backend default is 24 hours)
-        token.access_expires = Date.now() + (24 * 60 * 60 * 1000 - 5 * 60 * 1000);
+        // Set expiration (backend default is 1 minute for testing)
+        token.access_expires = Date.now() + (60 * 1000 - 5 * 1000);
         return token;
       }
 
-      // Check if access token is still valid (with 5 minute buffer)
+      // Check if access token is still valid (with 5 second buffer for short tokens)
       const exp = token.access_expires as number | undefined;
-      const fiveMinutesFromNow = Date.now() + (5 * 60 * 1000);
-      if (exp && exp > fiveMinutesFromNow) {
+      const fiveSecondsFromNow = Date.now() + (5 * 1000);
+      
+      console.log(`[JWT_CALLBACK] 🔍 Token validation:`);
+      console.log(`  - Current time: ${new Date().toISOString()}`);
+      console.log(`  - Token expires at: ${exp ? new Date(exp).toISOString() : 'Unknown'}`);
+      console.log(`  - Time until expiry: ${exp ? Math.round((exp - Date.now()) / 1000) : 'Unknown'} seconds`);
+      console.log(`  - Buffer check time: ${new Date(fiveSecondsFromNow).toISOString()}`);
+      
+      if (exp && exp > fiveSecondsFromNow) {
+        console.log(`[JWT_CALLBACK] ✅ Token is still valid, no refresh needed`);
         return token;
       }
+      
+      console.log(`[JWT_CALLBACK] ⚠️ Token is expired/expiring soon, needs refresh`);
+      const refreshTokenShort = (token.refresh_token as string)?.substring(0, 20) + "...";
+      console.log(`[JWT_CALLBACK] 🔑 Using refresh token: ${refreshTokenShort}`);
 
       // Token expired or expiring soon, try to refresh
       console.log("[NextAuth] Token expired or expiring, attempting refresh");
@@ -191,8 +233,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       console.log("[NextAuth] Token refreshed successfully");
-      // Update token with refreshed data
+      // Update token with refreshed data, but preserve original refresh token if not provided
+      const originalRefreshToken = token.refresh_token;
       Object.assign(token, refreshed);
+      
+      // If backend didn't provide a new refresh token, keep the original
+      if (!refreshed.refresh_token && originalRefreshToken) {
+        token.refresh_token = originalRefreshToken;
+        console.log("[NextAuth] ♻️ Keeping original refresh token for absolute expiration");
+      }
+      
       return token;
     },
 

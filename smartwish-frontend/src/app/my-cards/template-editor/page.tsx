@@ -19,7 +19,7 @@ import {
   ArrowUturnLeftIcon,
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
-import { BookmarkIcon as BookmarkSolidIcon } from "@heroicons/react/24/solid";
+import { ArchiveBoxIcon } from "@heroicons/react/24/solid";
 import {
   Listbox,
   ListboxButton,
@@ -1062,7 +1062,7 @@ function TemplateEditorContent() {
             {isSaving ? (
               <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 border-t-current rounded-full animate-spin" />
             ) : (
-              <BookmarkSolidIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+              <ArchiveBoxIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             )}
           </button>
 

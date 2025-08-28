@@ -294,7 +294,7 @@ export default function PinturaEditorModal({
             "/resources/themes/theme-disney.jpg",
             "/resources/themes/theme-anime.jpg",
             "/resources/themes/theme-pencil-sketch.jpg",
-            "/resources/themes/theme-oil-painting.jpg"
+            "/resources/themes/theme-oil-painting.jpg",
           ];
 
           const containerEl = aiInterface.querySelector(
@@ -375,13 +375,15 @@ export default function PinturaEditorModal({
           if (promptInput) {
             promptInput.disabled = locked;
             promptInput.style.opacity = locked ? "0.5" : "";
-            promptInput.placeholder = locked ? "Please wait..." : "Describe changes you want to make";
+            promptInput.placeholder = locked
+              ? "Please wait..."
+              : "Describe changes you want to make";
           }
           if (sendButton) {
             sendButton.disabled = locked;
             sendButton.style.opacity = locked ? "0.5" : "";
           }
-          styleButtons.forEach(btn => {
+          styleButtons.forEach((btn) => {
             btn.disabled = locked;
             btn.style.opacity = locked ? "0.5" : "";
           });
@@ -432,7 +434,9 @@ export default function PinturaEditorModal({
             }
 
             if (!imageBlob) {
-              const canvas = document.querySelector("canvas") as HTMLCanvasElement | null;
+              const canvas = document.querySelector(
+                "canvas"
+              ) as HTMLCanvasElement | null;
               if (canvas) {
                 const dataUrl = canvas.toDataURL("image/png");
                 const parts = dataUrl.split(",");
@@ -454,7 +458,8 @@ export default function PinturaEditorModal({
               }
             }
 
-            if (!imageBlob) throw new Error("Could not obtain image from editor");
+            if (!imageBlob)
+              throw new Error("Could not obtain image from editor");
 
             const file = new File([imageBlob], "image.png", {
               type: imageBlob.type || "image/png",
@@ -462,7 +467,10 @@ export default function PinturaEditorModal({
 
             const formData = new FormData();
             formData.append("image", file);
-            formData.append("prompt", `Transform this image completely to match the ${themeName} artistic style while preserving the main subject and composition`);
+            formData.append(
+              "prompt",
+              `Transform this image completely to match the ${themeName} artistic style while preserving the main subject and composition`
+            );
             formData.append("style", themeName);
 
             // Add the original image as context for Gemini to understand what user is working on
@@ -480,7 +488,8 @@ export default function PinturaEditorModal({
               console.warn("Could not fetch original image for context:", e);
             }
 
-            const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+            const backendUrl =
+              process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
             const resp = await fetch(`${backendUrl}/gemini-inpaint`, {
               method: "POST",
               body: formData,
@@ -497,7 +506,6 @@ export default function PinturaEditorModal({
 
             console.log("🎨 Loading theme result back into editor:", returned);
             setCurrentImageSrc(returned as string);
-
           } catch (err) {
             console.error("Theme application error:", err);
             alert("Failed to apply theme: " + (err as Error).message);

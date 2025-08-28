@@ -69,10 +69,15 @@ export default function GallerySection({ chips }: GallerySectionProps) {
 
   // Fetch templates without author (anonymous templates only) - max 4
   // Use category filtering if a category is selected
-  const templatesUrl = selectedCategoryId 
-    ? DynamicRouter("api", `simple-templates/no-author/category/${selectedCategoryId}`, undefined, false)
+  const templatesUrl = selectedCategoryId
+    ? DynamicRouter(
+        "api",
+        `simple-templates/no-author/category/${selectedCategoryId}`,
+        undefined,
+        false
+      )
     : DynamicRouter("api", "simple-templates/no-author", undefined, false);
-  
+
   const {
     data: apiResponse,
     error,

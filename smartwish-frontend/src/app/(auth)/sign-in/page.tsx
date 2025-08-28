@@ -48,7 +48,7 @@ function SignInForm() {
   const handleGoogleSignIn = async () => {
     try {
       await signIn("google", {
-        callbackUrl: callbackUrl
+        callbackUrl: callbackUrl,
       });
     } catch (error) {
       console.error("Google sign in error:", error);
@@ -60,7 +60,6 @@ function SignInForm() {
     <>
       <div className="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
-
           <h2 className="mt-6 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
             Sign in to your account
           </h2>
@@ -209,7 +208,9 @@ function SignInForm() {
                       fill="#34A853"
                     />
                   </svg>
-                  <span className="text-sm/6 font-semibold">Continue with Google</span>
+                  <span className="text-sm/6 font-semibold">
+                    Continue with Google
+                  </span>
                 </button>
               </div>
             </div>

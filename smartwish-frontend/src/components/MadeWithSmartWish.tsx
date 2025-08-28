@@ -46,7 +46,10 @@ export default function MadeWithSmartWish() {
     data: apiResponse,
     error,
     isLoading,
-  } = useSWR<ApiResponse>(DynamicRouter("api", "simple-templates", undefined, false), fetcher);
+  } = useSWR<ApiResponse>(
+    DynamicRouter("api", "simple-templates", undefined, false),
+    fetcher
+  );
 
   const templates = useMemo(() => apiResponse?.data || [], [apiResponse]);
 

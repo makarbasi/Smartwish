@@ -20,7 +20,7 @@ function SessionHandler({ children }: { children: React.ReactNode }) {
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider refetchInterval={5 * 60} refetchOnWindowFocus={true}>
+    <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
       <SessionHandler>{children}</SessionHandler>
     </SessionProvider>
   )

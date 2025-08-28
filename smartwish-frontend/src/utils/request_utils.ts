@@ -74,51 +74,87 @@ interface AuthSession {
 }
 
 /* ──────────────────────────────────────────────────────────────
+   Token refresh deduplication - prevent multiple concurrent requests
+──────────────────────────────────────────────────────────────── */
+let activeRefreshPromise: Promise<boolean> | null = null;
+
+/* ──────────────────────────────────────────────────────────────
    GET helper with Bearer token
 ──────────────────────────────────────────────────────────────── */
 async function tryRefresh(session: AuthSession): Promise<boolean> {
   if (!session?.user?.refresh_token) return false;
-  try {
-    console.log("[tryRefresh] Attempting to refresh token");
-    const url = DynamicRouter("auth", "refresh", undefined, false);
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        refresh_token: session.user.refresh_token
-      })
-    });
-    if (!res.ok) {
-      console.log("[tryRefresh] Failed with status:", res.status);
-      return false;
-    }
-    const json = await res.json();
-    console.log("[tryRefresh] Successfully refreshed token");
-    // Mutate session in-place so callers reuse the new token without a reload
-    session.user.access_token = json.access_token;
-    if (json.refresh_token) {
-      session.user.refresh_token = json.refresh_token;
-    }
-    // Update the expiration time
-    if (json.expires_in) {
-      const accessMs = json.expires_in * 1000; // Convert seconds to ms
-      const safetyMs = 5 * 60 * 1000; // 5m margin
-      session.user.access_expires = Date.now() + (accessMs - safetyMs);
-    }
-    return true;
-  } catch (error) {
-    console.log("[tryRefresh] Error:", error);
-    return false;
+  
+  // If there's already an active refresh request, wait for it instead of making a new one
+  if (activeRefreshPromise) {
+    console.log("[tryRefresh] ⏳ Deduplicating: waiting for existing refresh request");
+    return await activeRefreshPromise;
   }
+  
+  // Create a new refresh promise and store it globally
+  activeRefreshPromise = (async () => {
+    try {
+      console.log("[tryRefresh] 🔄 Starting new refresh request");
+      const url = DynamicRouter("auth", "refresh", undefined, false);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          refresh_token: session.user.refresh_token
+        })
+      });
+      if (!res.ok) {
+        console.log(`[tryRefresh] ❌ Failed with status: ${res.status}`);
+        if (res.status === 429) {
+          console.log("[tryRefresh] 🚫 Rate limited - too many refresh requests");
+        }
+        return false;
+      }
+      const json = await res.json();
+      console.log("[tryRefresh] ✅ Successfully refreshed token");
+      // Mutate session in-place so callers reuse the new token without a reload
+      session.user.access_token = json.access_token;
+      if (json.refresh_token) {
+        session.user.refresh_token = json.refresh_token;
+      }
+      // Update the expiration time
+      if (json.expires_in) {
+        const accessMs = json.expires_in * 1000; // Convert seconds to ms
+        const safetyMs = 5 * 1000; // 5s margin for short tokens
+        session.user.access_expires = Date.now() + (accessMs - safetyMs);
+        
+        console.log(`[REQUEST_UTILS] 🔄 Token refreshed successfully:`);
+        console.log(`  - New expiration: ${new Date(session.user.access_expires).toISOString()}`);
+        console.log(`  - Valid for: ${json.expires_in} seconds`);
+      }
+      return true;
+    } catch (error) {
+      console.log("[tryRefresh] 🌐 Network error:", error);
+      return false;
+    } finally {
+      // Clear the active promise so new requests can be made
+      activeRefreshPromise = null;
+    }
+  })();
+  
+  return await activeRefreshPromise;
 }
 
-// Check if token is expired or will expire soon (within 5 minutes)
+// Check if token is expired or will expire soon (within 5 seconds for short tokens)
 function isTokenExpiredSoon(session: AuthSession): boolean {
   if (!session?.user?.access_expires) return false;
-  const fiveMinutesFromNow = Date.now() + (5 * 60 * 1000);
-  return session.user.access_expires < fiveMinutesFromNow;
+  const fiveSecondsFromNow = Date.now() + (5 * 1000);
+  const isExpiring = session.user.access_expires < fiveSecondsFromNow;
+  
+  if (isExpiring) {
+    console.log(`[REQUEST_UTILS] ⚠️ Token expiring soon:`);
+    console.log(`  - Current time: ${new Date().toISOString()}`);
+    console.log(`  - Token expires: ${new Date(session.user.access_expires).toISOString()}`);
+    console.log(`  - Time left: ${Math.round((session.user.access_expires - Date.now()) / 1000)} seconds`);
+  }
+  
+  return isExpiring;
 }
 
 // Proactively refresh token if it's expiring soon

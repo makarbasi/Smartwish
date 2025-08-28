@@ -13,7 +13,7 @@ import {
   ArrowPathIcon,
   DocumentDuplicateIcon,
 } from "@heroicons/react/24/outline";
-import { BookmarkIcon as BookmarkSolidIcon } from "@heroicons/react/24/solid";
+import { ArchiveBoxIcon } from "@heroicons/react/24/solid";
 import {
   Listbox,
   ListboxButton,
@@ -409,6 +409,42 @@ export default function CustomizeCardPage() {
     console.log("🔄 Selected category changed:", selectedCategory);
   }, [selectedCategory]);
 
+  // Auto-detect changes by comparing current state with original state
+  useEffect(() => {
+    if (!cardData || !originalImages.length) return;
+
+    // Check if images have changed
+    const imagesChanged = pageImages.some(
+      (img, index) => img !== originalImages[index]
+    );
+
+    // Check if name has changed
+    const nameChanged = editedName !== originalName;
+
+    // Check if category has changed
+    const categoryChanged = selectedCategory?.id !== cardData.categoryId;
+
+    const hasChanges = imagesChanged || nameChanged || categoryChanged;
+
+    if (hasChanges !== hasUnsavedChanges) {
+      setHasUnsavedChanges(hasChanges);
+      console.log("🔄 Auto-detected changes:", {
+        imagesChanged,
+        nameChanged,
+        categoryChanged,
+        hasChanges,
+      });
+    }
+  }, [
+    pageImages,
+    editedName,
+    selectedCategory,
+    originalImages,
+    originalName,
+    cardData,
+    hasUnsavedChanges,
+  ]);
+
   // Swipe handling functions
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchEnd(null);
@@ -507,6 +543,16 @@ export default function CustomizeCardPage() {
       }
     } catch (error) {
       console.error("Error saving as new card:", error);
+
+      // Check if it's an authentication error
+      if (error instanceof Error && error.message.includes("401")) {
+        // Token expired, redirect to login with callback to my-cards
+        window.location.href = `/sign-in?callbackUrl=${encodeURIComponent(
+          "/my-cards"
+        )}`;
+        return;
+      }
+
       setSaveMessage(`❌ Failed to save as new card`);
       setTimeout(() => setSaveMessage(""), 3000);
     } finally {
@@ -567,6 +613,16 @@ export default function CustomizeCardPage() {
       setTimeout(() => setSaveMessage(""), 3000);
     } catch (error) {
       console.error("❌ Save failed:", error);
+
+      // Check if it's an authentication error
+      if (error instanceof Error && error.message.includes("401")) {
+        // Token expired, redirect to login with callback to my-cards
+        window.location.href = `/sign-in?callbackUrl=${encodeURIComponent(
+          "/my-cards"
+        )}`;
+        return;
+      }
+
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
       setSaveMessage(`Failed to save card: ${errorMessage}`);
@@ -600,7 +656,7 @@ export default function CustomizeCardPage() {
             Please sign in to view your cards.
           </p>
           <Link
-            href={`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`}
+            href={`/sign-in?callbackUrl=${encodeURIComponent("/my-cards")}`}
             className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
           >
             Sign In
@@ -756,9 +812,7 @@ export default function CustomizeCardPage() {
   };
 
   const handleSaveName = () => {
-    if (cardData && editedName.trim() && editedName.trim() !== cardData.name) {
-      setHasUnsavedChanges(true);
-    }
+    // Auto-detection will handle the unsaved changes flag
     setIsEditingName(false);
   };
 
@@ -778,7 +832,7 @@ export default function CustomizeCardPage() {
   // Handle category selection
   const handleCategoryChange = (category: Category) => {
     setSelectedCategory(category);
-    setHasUnsavedChanges(true);
+    // Auto-detection will handle the unsaved changes flag
   };
 
   // Handle editor close
@@ -1111,18 +1165,18 @@ export default function CustomizeCardPage() {
           {/* Save Button */}
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || !hasUnsavedChanges}
             className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${
               hasUnsavedChanges
                 ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
-            title="Save Changes"
+            title={hasUnsavedChanges ? "Save Changes" : "No changes to save"}
           >
             {isSaving ? (
               <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 border-t-current rounded-full animate-spin" />
             ) : (
-              <BookmarkSolidIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+              <ArchiveBoxIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             )}
           </button>
 

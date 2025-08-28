@@ -111,7 +111,9 @@ export class SimpleTemplatesController {
   }
 
   @Get('no-author/category/:categoryId')
-  async getTemplatesWithoutAuthorByCategory(@Param('categoryId') categoryId: string) {
+  async getTemplatesWithoutAuthorByCategory(
+    @Param('categoryId') categoryId: string,
+  ) {
     try {
       // Get templates where author_id is NULL (anonymous templates) filtered by category
       const templates = await this.dataSource.query(
@@ -219,7 +221,9 @@ export class SimpleTemplatesController {
   }
 
   @Get('with-author/category/:categoryId')
-  async getTemplatesWithAuthorByCategory(@Param('categoryId') categoryId: string) {
+  async getTemplatesWithAuthorByCategory(
+    @Param('categoryId') categoryId: string,
+  ) {
     try {
       // Get templates where author_id is NOT NULL (authored templates) filtered by category
       const templates = await this.dataSource.query(
