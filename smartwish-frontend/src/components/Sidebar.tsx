@@ -96,10 +96,11 @@ export default function Sidebar() {
   const { user } = useUserProfile();
   const router = useRouter();
   const popoverRef = useRef<HTMLDivElement>(null);
-  
+
   // Get profile picture URL - prioritize Supabase profile image, fallback to session image.
   // If neither exists, treat as a guest and don't show a profile image (use neutral placeholder).
-  const profileImageUrl = user?.profileImage || (session?.user?.image as string) || null;
+  const profileImageUrl =
+    user?.profileImage || (session?.user?.image as string) || null;
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -226,7 +227,8 @@ export default function Sidebar() {
                         {(user?.name || session?.user?.name) ?? "Guest"}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {(user?.email || session?.user?.email) ?? "Not signed in"}
+                        {(user?.email || session?.user?.email) ??
+                          "Not signed in"}
                       </div>
                     </div>
                   </div>

@@ -156,10 +156,19 @@ export class AuthService {
       console.log('AuthService: Creating JWT payload:', payload);
       console.log('AuthService: User object:', user);
 
-      const accessToken = this.jwtService.sign(payload);
-      const refreshToken = this.jwtService.sign(refreshPayload, {
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
+      const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
+      const accessExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN', '24h');
+      
+      const accessToken = this.jwtService.sign(payload, {
+        expiresIn: accessExpiresIn,
       });
+      const refreshToken = this.jwtService.sign(refreshPayload, {
+        expiresIn: refreshExpiresIn,
+      });
+      
+      console.log(`[AUTH_SERVICE] 🎫 Login - Token expiration settings:`);
+      console.log(`  - Access token expires in: ${accessExpiresIn}`);
+      console.log(`  - Refresh token expires in: ${refreshExpiresIn}`);
       
       console.log(
         'AuthService: Generated tokens:',
@@ -194,17 +203,45 @@ export class AuthService {
 
   async refreshTokenWithRefreshToken(refreshToken: string, ipAddress?: string, userAgent?: string) {
     try {
-      // Verify the refresh token
-      const decoded = this.jwtService.verify(refreshToken);
+      const shortRefreshToken = refreshToken.substring(0, 20) + '...';
+      console.log(`[AUTH_SERVICE] 🔄 Token refresh requested:`);
+      console.log(`  - Refresh token: ${shortRefreshToken}`);
+      console.log(`  - IP Address: ${ipAddress || 'Unknown'}`);
+      console.log(`  - User Agent: ${userAgent || 'Unknown'}`);
+      console.log(`  - Time: ${new Date().toISOString()}`);
+      
+      // Verify the refresh token with explicit options
+      const decoded = this.jwtService.verify(refreshToken, {
+        ignoreExpiration: false, // Ensure expiration is checked
+      });
       
       if (!decoded.sub || decoded.type !== 'refresh') {
+        console.error(`[AUTH_SERVICE] ❌ Invalid refresh token format`);
         throw new UnauthorizedException('Invalid refresh token');
       }
+      
+      // Additional expiration check
+      const currentTime = Math.floor(Date.now() / 1000);
+      console.log(`[AUTH_SERVICE] ⏰ Token timing check:`);
+      console.log(`  - Current time: ${currentTime} (${new Date(currentTime * 1000).toISOString()})`);
+      console.log(`  - Token exp time: ${decoded.exp} (${decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'N/A'})`);
+      console.log(`  - Token issued time: ${decoded.iat} (${decoded.iat ? new Date(decoded.iat * 1000).toISOString() : 'N/A'})`);
+      
+      if (decoded.exp && decoded.exp < currentTime) {
+        const expiredSince = currentTime - decoded.exp;
+        console.error(`[AUTH_SERVICE] ❌ Refresh token has expired ${expiredSince} seconds ago`);
+        throw new UnauthorizedException('Refresh token has expired');
+      }
+
+      console.log(`[AUTH_SERVICE] ✅ Refresh token verified for user: ${decoded.sub}`);
 
       const user = await this.userService.findById(decoded.sub);
       if (!user) {
+        console.error(`[AUTH_SERVICE] ❌ User not found: ${decoded.sub}`);
         throw new UnauthorizedException('User not found');
       }
+
+      console.log(`[AUTH_SERVICE] 👤 User found: ${user.email}`);
 
       // Check if user can still login
       if (!user.canLogin()) {
@@ -223,10 +260,25 @@ export class AuthService {
         iat: Math.floor(Date.now() / 1000),
       };
 
-      const accessToken = this.jwtService.sign(payload);
-      const newRefreshToken = this.jwtService.sign(refreshPayload, {
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
+      const refreshExpiresIn = this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
+      const accessExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN', '24h');
+      
+      const accessToken = this.jwtService.sign(payload, {
+        expiresIn: accessExpiresIn,
       });
+      
+      // DO NOT create a new refresh token - reuse the original one for absolute expiration
+      // This prevents sliding expiration and enforces absolute 2-minute limit
+      console.log(`[AUTH_SERVICE] ♻️ Reusing original refresh token instead of creating new one`);
+      const newRefreshToken = refreshToken; // Reuse the original refresh token
+
+      const accessExpiresInSeconds = this.parseJwtDurationToSeconds(accessExpiresIn);
+      
+      console.log(`[AUTH_SERVICE] 🎫 Generating new tokens:`);
+      console.log(`  - Access token expires in: ${accessExpiresIn} (${accessExpiresInSeconds} seconds)`);
+      console.log(`  - Refresh token expires in: ${refreshExpiresIn}`);
+      console.log(`  - New access token: ${accessToken.substring(0, 20)}...`);
+      console.log(`  - New refresh token: ${newRefreshToken.substring(0, 20)}...`);
 
       // Log token refresh
       await this.auditService.log({
@@ -238,11 +290,13 @@ export class AuthService {
         userAgent,
       });
 
+      console.log(`[AUTH_SERVICE] ✅ Token refresh completed successfully for ${user.email}`);
+
       return {
         access_token: accessToken,
-        refresh_token: newRefreshToken,
+        // DO NOT return refresh_token - force frontend to keep using the original one
         token_type: 'Bearer',
-        expires_in: this.parseJwtDurationToSeconds(this.configService.get<string>('JWT_EXPIRES_IN', '24h')),
+        expires_in: accessExpiresInSeconds,
         user: {
           id: user.id,
           email: user.email,
@@ -277,7 +331,10 @@ export class AuthService {
         iat: Math.floor(Date.now() / 1000),
       };
 
-      const token = this.jwtService.sign(payload);
+      const accessExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN', '24h');
+      const token = this.jwtService.sign(payload, {
+        expiresIn: accessExpiresIn,
+      });
 
       // Log token refresh
       await this.auditService.log({

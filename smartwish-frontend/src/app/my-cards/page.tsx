@@ -6,7 +6,6 @@ import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
 import Link from "next/link";
 import Image from "next/image";
-import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal";
 import SendECardModal from "@/components/SendECardModal";
@@ -66,41 +65,41 @@ type PublishedTemplatesResponse = {
 // Authenticated fetcher using request utils
 const createAuthenticatedFetcher =
   (session: any) =>
-    async (url: string): Promise<SavedDesignsResponse> => {
-      try {
-        console.log("🔍 Fetching data from:", url);
-        console.log("🔐 Session exists:", !!session);
+  async (url: string): Promise<SavedDesignsResponse> => {
+    try {
+      console.log("🔍 Fetching data from:", url);
+      console.log("🔐 Session exists:", !!session);
 
-        if (!session?.user) {
-          throw new Error("No authenticated session");
-        }
-
-        const response = await authGet<SavedDesign[]>(url, session);
-        console.log("✅ Data fetched successfully:", response);
-
-        // Check if response.data exists (wrapped response) or if response itself is the array
-        let designs: SavedDesign[] = [];
-        if (Array.isArray(response.data)) {
-          designs = response.data;
-        } else if (Array.isArray(response)) {
-          // Handle case where backend returns array directly
-          designs = response as any;
-        } else {
-          console.log("🔍 Response structure:", response);
-          designs = [];
-        }
-
-        console.log("📋 Processed designs count:", designs.length);
-
-        return {
-          success: true,
-          data: designs,
-        };
-      } catch (error) {
-        console.error("❌ Error fetching data:", error);
-        throw error;
+      if (!session?.user) {
+        throw new Error("No authenticated session");
       }
-    };
+
+      const response = await authGet<SavedDesign[]>(url, session);
+      console.log("✅ Data fetched successfully:", response);
+
+      // Check if response.data exists (wrapped response) or if response itself is the array
+      let designs: SavedDesign[] = [];
+      if (Array.isArray(response.data)) {
+        designs = response.data;
+      } else if (Array.isArray(response)) {
+        // Handle case where backend returns array directly
+        designs = response as any;
+      } else {
+        console.log("🔍 Response structure:", response);
+        designs = [];
+      }
+
+      console.log("📋 Processed designs count:", designs.length);
+
+      return {
+        success: true,
+        data: designs,
+      };
+    } catch (error) {
+      console.error("❌ Error fetching data:", error);
+      throw error;
+    }
+  };
 
 // Transform saved design to MyCard format
 const transformSavedDesign = (design: SavedDesign): MyCard => {
@@ -125,11 +124,13 @@ const transformSavedDesign = (design: SavedDesign): MyCard => {
 // Transform published template to MyCard format
 const transformPublishedTemplate = (template: PublishedTemplate): MyCard => {
   const daysAgo = Math.floor(
-    (Date.now() - new Date(template.updated_at).getTime()) / (1000 * 60 * 60 * 24)
+    (Date.now() - new Date(template.updated_at).getTime()) /
+      (1000 * 60 * 60 * 24)
   );
 
   // Use cover_image or image_1 as thumbnail
-  const thumbnail = template.cover_image || template.image_1 || "/placeholder-image.jpg";
+  const thumbnail =
+    template.cover_image || template.image_1 || "/placeholder-image.jpg";
 
   return {
     id: template.id,
@@ -149,15 +150,15 @@ const templatesFetcher = async (url: string, userId?: string) => {
 
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error('Failed to fetch templates');
+    throw new Error("Failed to fetch templates");
   }
 
   const result = await response.json();
 
   // Filter templates to only show those where author_id matches current user's ID
   if (result.success && result.data) {
-    const userTemplates = result.data.filter((template: any) =>
-      template.author_id === userId
+    const userTemplates = result.data.filter(
+      (template: any) => template.author_id === userId
     );
     return { ...result, data: userTemplates };
   }
@@ -185,55 +186,80 @@ function MyCardsContent() {
   } | null>(null);
   const [sendingECard, setSendingECard] = useState(false);
 
-  // Create authenticated fetcher with session
-  const authenticatedFetcher = session
-    ? createAuthenticatedFetcher(session)
-    : null;
-
-  // Fetch saved designs from backend using direct API call
-  const savedDesignsUrl = DynamicRouter("saved-designs", "", undefined, false);
-  const {
-    data: savedDesignsResponse,
-    error: savedDesignsError,
-    isLoading: savedDesignsLoading,
-    mutate: mutateSavedDesigns,
-  } = useSWR<SavedDesignsResponse>(
-    session && authenticatedFetcher ? savedDesignsUrl : null,
-    authenticatedFetcher,
-    {
-      refreshInterval: 0,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-    }
+  // Manual state management for data
+  const [savedDesignsResponse, setSavedDesignsResponse] =
+    useState<SavedDesignsResponse | null>(null);
+  const [templatesResponse, setTemplatesResponse] =
+    useState<PublishedTemplatesResponse | null>(null);
+  const [savedDesignsError, setSavedDesignsError] = useState<Error | null>(
+    null
   );
+  const [savedDesignsLoading, setSavedDesignsLoading] = useState(false);
 
-  // Fetch published templates from public API (filtered by current user's author_id)
-  // Get the URL for user's published templates
-  const templatesUrl = session?.user?.id ?
-    DynamicRouter("api", "simple-templates/with-author", undefined, false) :
-    null;
-  const {
-    data: templatesResponse,
-  } = useSWR<PublishedTemplatesResponse>(
-    templatesUrl,
-    (url) => templatesFetcher(url, session?.user?.id?.toString()),
-    {
-      refreshInterval: 30000, // Refresh every 30 seconds
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
+  // Manual fetch function for saved designs
+  const fetchSavedDesigns = async () => {
+    if (!session?.user) return;
+
+    setSavedDesignsLoading(true);
+    setSavedDesignsError(null);
+
+    try {
+      const savedDesignsUrl = DynamicRouter(
+        "saved-designs",
+        "",
+        undefined,
+        false
+      );
+      const authenticatedFetcher = createAuthenticatedFetcher(session);
+      const response = await authenticatedFetcher(savedDesignsUrl);
+      setSavedDesignsResponse(response);
+    } catch (error) {
+      setSavedDesignsError(error as Error);
+      console.error("Error fetching saved designs:", error);
+    } finally {
+      setSavedDesignsLoading(false);
     }
-  );
+  };
 
-  // Check for new design success message and force refresh
+  // Manual fetch function for published templates
+  const fetchPublishedTemplates = async () => {
+    if (!session?.user?.id) return;
+
+    try {
+      const templatesUrl = DynamicRouter(
+        "api",
+        "simple-templates/with-author",
+        undefined,
+        false
+      );
+      const response = await templatesFetcher(
+        templatesUrl,
+        session.user.id.toString()
+      );
+      setTemplatesResponse(response);
+    } catch (error) {
+      console.error("Error fetching published templates:", error);
+    }
+  };
+
+  // Replace mutateSavedDesigns with manual refetch
+  const mutateSavedDesigns = fetchSavedDesigns;
+
+  // Load data when page opens and session is available
+  useEffect(() => {
+    if (session?.user) {
+      fetchSavedDesigns();
+      fetchPublishedTemplates();
+    }
+  }, [session?.user]);
+
+  // Check for new design success message
   useEffect(() => {
     const newDesignId = searchParams?.get("newDesign");
     const message = searchParams?.get("message");
 
     if (newDesignId && message) {
       setSuccessMessage(decodeURIComponent(message));
-
-      // Force a refresh of the saved designs data
-      mutateSavedDesigns();
 
       // Clear the message after 5 seconds
       const timer = setTimeout(() => {
@@ -244,7 +270,7 @@ function MyCardsContent() {
 
       return () => clearTimeout(timer);
     }
-  }, [searchParams, mutateSavedDesigns]);
+  }, [searchParams]);
 
   // Transform saved designs to cards format
   const allDesigns = savedDesignsResponse?.data || [];
@@ -259,24 +285,30 @@ function MyCardsContent() {
     .map(transformSavedDesign);
 
   // Get user's published templates from the templates API (filtered by author_id)
-  const userPublishedTemplates: MyCard[] = (templatesResponse?.data || [])
-    .map(transformPublishedTemplate);
+  const userPublishedTemplates: MyCard[] = (templatesResponse?.data || []).map(
+    transformPublishedTemplate
+  );
 
   // Combine user's published designs with user's published templates
   // Remove duplicates based on ID (in case user's published design is also in templates)
   const allPublishedCards: MyCard[] = [
     ...userPublishedCards,
-    ...userPublishedTemplates.filter(template =>
-      !userPublishedCards.some(userCard => userCard.id === template.id)
-    )
+    ...userPublishedTemplates.filter(
+      (template) =>
+        !userPublishedCards.some((userCard) => userCard.id === template.id)
+    ),
   ].sort((a, b) => {
     // Sort by last edited/updated date (newest first)
-    const aTime = a.lastEdited.includes('Edited') ?
-      new Date().getTime() - (parseInt(a.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000) :
-      new Date().getTime() - (parseInt(a.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000);
-    const bTime = b.lastEdited.includes('Edited') ?
-      new Date().getTime() - (parseInt(b.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000) :
-      new Date().getTime() - (parseInt(b.lastEdited.match(/\d+/)?.[0] || '0') * 24 * 60 * 60 * 1000);
+    const aTime = a.lastEdited.includes("Edited")
+      ? new Date().getTime() -
+        parseInt(a.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000
+      : new Date().getTime() -
+        parseInt(a.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000;
+    const bTime = b.lastEdited.includes("Edited")
+      ? new Date().getTime() -
+        parseInt(b.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000
+      : new Date().getTime() -
+        parseInt(b.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000;
     return bTime - aTime;
   });
 
@@ -315,7 +347,7 @@ function MyCardsContent() {
       setSuccessMessage("Your design has been successfully deleted!");
 
       // Refresh the designs list
-      mutateSavedDesigns();
+      fetchSavedDesigns();
 
       // Close modal
       setDeleteModalOpen(false);
@@ -355,7 +387,7 @@ function MyCardsContent() {
       setSuccessMessage(
         "🎉 Your design is now live and published for everyone to see!"
       );
-      mutateSavedDesigns();
+      fetchSavedDesigns();
     } catch (e: unknown) {
       console.error("❌ Error publishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to publish design";
@@ -382,7 +414,7 @@ function MyCardsContent() {
       setSuccessMessage(
         "Your design has been unpublished and moved back to drafts."
       );
-      mutateSavedDesigns();
+      fetchSavedDesigns();
     } catch (e: unknown) {
       console.error("❌ Error unpublishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to unpublish design";
@@ -414,7 +446,7 @@ function MyCardsContent() {
       );
 
       // Refresh the designs list
-      mutateSavedDesigns();
+      fetchSavedDesigns();
     } catch (error: unknown) {
       console.error("❌ Error duplicating design:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
@@ -482,7 +514,8 @@ function MyCardsContent() {
 
         // Parse additional error information from API responses
         if (error.message.includes("Card not found")) {
-          errorMessage = "This card could not be found. Please try refreshing the page and selecting the card again.";
+          errorMessage =
+            "This card could not be found. Please try refreshing the page and selecting the card again.";
         } else if (error.message.includes("permission")) {
           errorMessage = "You don't have permission to share this card.";
         } else if (error.message.includes("Authentication")) {
@@ -561,8 +594,7 @@ function MyCardsContent() {
 
         {/* Saved Cards Section */}
         <div className="mb-16">
-          <div className="mb-6">
-          </div>
+          <div className="mb-6"></div>
           <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3">
             {savedDesignsLoading ? (
               // Skeleton loading for saved cards
@@ -589,7 +621,7 @@ function MyCardsContent() {
               <div className="col-span-full text-center text-red-600 py-8">
                 Failed to load saved cards.{" "}
                 <button
-                  onClick={() => mutateSavedDesigns()}
+                  onClick={fetchSavedDesigns}
                   className="text-indigo-600 hover:text-indigo-500 underline ml-1"
                 >
                   Try again
@@ -927,7 +959,11 @@ function MyCardsContent() {
           onClose={handleECardModalClose}
           onSend={handleECardSend}
           cardName={cardToSend?.name || ""}
-          cardThumbnail={cardToSend?.thumbnail && cardToSend.thumbnail.trim() !== "" ? cardToSend.thumbnail : ""}
+          cardThumbnail={
+            cardToSend?.thumbnail && cardToSend.thumbnail.trim() !== ""
+              ? cardToSend.thumbnail
+              : ""
+          }
           isLoading={sendingECard}
         />
       </div>
