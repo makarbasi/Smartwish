@@ -165,7 +165,7 @@ export default function PinturaEditorModal({
           e.preventDefault();
           e.stopPropagation();
           console.log("🎯 Custom tab clicked, redirecting to custom page");
-          window.location.href = "http://localhost:3000/my-cards/custom";
+          window.location.href = "/my-cards/custom";
         });
 
         frameTab.setAttribute("data-renamed-to-custom", "true");
