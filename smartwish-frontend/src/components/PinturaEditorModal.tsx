@@ -9,6 +9,7 @@ import {
   plugin_annotate,
   plugin_sticker,
   plugin_retouch,
+  plugin_frame,
   plugin_finetune_defaults,
   plugin_filter_defaults,
   plugin_frame_defaults,
@@ -19,6 +20,7 @@ import {
   plugin_annotate_locale_en_gb,
   plugin_sticker_locale_en_gb,
   plugin_retouch_locale_en_gb,
+  plugin_frame_locale_en_gb,
   markup_editor_locale_en_gb,
   createDefaultImageReader,
   createDefaultImageWriter,
@@ -26,18 +28,19 @@ import {
   createMarkupEditorShapeStyleControls,
 } from "@pqina/pintura";
 
-// Set up the plugins WITHOUT crop but WITH retouch
+// Set up the plugins WITHOUT crop but WITH retouch and frame
 setPlugins(
   plugin_finetune,
   plugin_filter,
   plugin_annotate,
   plugin_sticker,
-  plugin_retouch
+  plugin_retouch,
+  plugin_frame
 );
 
 // Create custom editor defaults WITHOUT crop
 const editorDefaults = {
-  utils: ["finetune", "filter", "annotate", "sticker", "retouch"], // explicitly exclude 'crop'
+  utils: ["finetune", "filter", "annotate", "sticker", "retouch", "frame"], // explicitly exclude 'crop'
   imageReader: createDefaultImageReader(),
   imageWriter: createDefaultImageWriter(),
   shapePreprocessor: createDefaultShapePreprocessor(),
@@ -63,6 +66,8 @@ const editorDefaults = {
   // Add retouch tools configuration
   retouchTools: [],
   retouchShapeControls: createMarkupEditorShapeStyleControls(),
+  // Add empty frame options (will show empty frame panel)
+  frameOptions: [],
   locale: {
     ...locale_en_gb,
     ...plugin_finetune_locale_en_gb,
@@ -70,6 +75,7 @@ const editorDefaults = {
     ...plugin_annotate_locale_en_gb,
     ...plugin_sticker_locale_en_gb,
     ...plugin_retouch_locale_en_gb,
+    ...plugin_frame_locale_en_gb,
     ...markup_editor_locale_en_gb,
   },
 };
@@ -124,6 +130,48 @@ export default function PinturaEditorModal({
 
   const handleLoad = (res: unknown) => {
     console.log("📷 Load editor image:", res);
+
+    // Replace Frame with Custom using DOM manipulation
+    const replaceFrameWithCustom = () => {
+      const frameTab = Array.from(
+        document.querySelectorAll('button[role="tab"]')
+      ).find((btn) => btn.textContent?.includes("Frame"));
+
+      if (frameTab && !frameTab.hasAttribute("data-renamed-to-custom")) {
+        // Update the title attribute
+        frameTab.setAttribute("title", "Custom");
+        
+        // Find text nodes and replace only the "Frame" text, keeping icons
+        const walker = document.createTreeWalker(
+          frameTab,
+          NodeFilter.SHOW_TEXT
+        );
+
+        let textNode;
+        while ((textNode = walker.nextNode())) {
+          if (
+            textNode.textContent &&
+            textNode.textContent.includes("Frame")
+          ) {
+            textNode.textContent = textNode.textContent.replace(
+              "Frame",
+              "Custom"
+            );
+          }
+        }
+
+        // Add click event listener to redirect to custom page
+        frameTab.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log("🎯 Custom tab clicked, redirecting to custom page");
+          window.location.href = "http://localhost:3000/my-cards/custom";
+        });
+
+        frameTab.setAttribute("data-renamed-to-custom", "true");
+        console.log("✅ Renamed Frame tab to Custom and added click handler");
+      }
+    };
 
     // Rename Retouch tab to AI
     const renameRetouchToAI = () => {
@@ -796,6 +844,7 @@ export default function PinturaEditorModal({
           console.log(
             `🔄 Attempt ${index + 1} to set up AI interface (delay: ${delay}ms)`
           );
+          replaceFrameWithCustom(); // Replace Frame with Custom first
           renameRetouchToAI(); // Rename the tab first
           addRetouchTabListener();
           modifyRetouchTab(); // Also try immediate modification if AI is already active
@@ -804,6 +853,7 @@ export default function PinturaEditorModal({
 
       // Use MutationObserver to catch dynamic changes
       const observer = new MutationObserver(() => {
+        replaceFrameWithCustom(); // Keep replacing Frame with Custom
         renameRetouchToAI(); // Keep renaming any new Retouch tabs
         addRetouchTabListener();
         // Check if AI tab is currently active and modify if needed
