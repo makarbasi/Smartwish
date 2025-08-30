@@ -13,6 +13,7 @@
     "preinstall": "echo '//npm.pqina.nl/:_authToken=${PINTURA_TOKEN}' >> .npmrc || true"
   },
   "dependencies": {
+    "@google/genai": "^1.16.0",
     "@headlessui/react": "^2.1.10",
     "@heroicons/react": "^2.1.5",
     "@pqina/pintura": "^8.92.19",
