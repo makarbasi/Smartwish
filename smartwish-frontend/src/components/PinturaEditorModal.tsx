@@ -160,12 +160,12 @@ export default function PinturaEditorModal({
           }
         }
 
-        // Add click event listener to redirect to custom page
+        // Add click event listener to redirect to Pixshop page
         frameTab.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          console.log("🎯 Custom tab clicked, redirecting to custom page");
-          window.location.href = "/my-cards/custom";
+          console.log("🎯 Custom tab clicked, redirecting to Pixshop page");
+          window.location.href = "/new-ai";
         });
 
         frameTab.setAttribute("data-renamed-to-custom", "true");
