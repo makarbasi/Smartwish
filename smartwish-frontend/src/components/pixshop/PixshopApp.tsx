@@ -385,89 +385,69 @@ const PixshopApp: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 relative overflow-hidden">
+    <div className="min-h-screen bg-[#fafafa] relative overflow-hidden">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-gradient-radial from-blue-100/20 via-transparent to-purple-100/20 pointer-events-none"></div>
       <div className="absolute top-0 left-0 w-96 h-96 bg-blue-200/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-purple-200/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2 pointer-events-none"></div>
 
-      <div className="relative z-10 container mx-auto px-4 py-8">
+      <main className={`flex-grow w-full max-w-[1600px] mx-auto p-4 md:p-8 flex justify-center ${
+        currentImage ? 'items-start' : 'items-center'
+      }`}>
         {renderContent()}
-      </div>
+      </main>
 
-      {/* Fixed Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 z-20">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-center gap-1 py-3">
+      {/* Bottom Tab Navigation - Fixed at bottom of viewport */}
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
+        {/* Background div to prevent items behind from showing through */}
+        <div className="absolute inset-0 bg-[#fafafa] px-4 py-2 -m-4 w-screen left-1/2 transform -translate-x-1/2"></div>
+        <div className="relative flex items-center gap-2">
+          {([
+            { key: 'retouch', icon: RetouchIcon, label: 'Retouch' },
+            { key: 'adjust', icon: SlidersIcon, label: 'Adjust' },
+            { key: 'filters', icon: FilterIcon, label: 'Filters' }
+          ] as const).map(({ key, icon: Icon, label }) => (
             <button
-              onClick={() => setActiveTab('retouch')}
-              className={`flex flex-col items-center gap-1 px-6 py-2 rounded-lg transition-all duration-200 ease-in-out ${
-                activeTab === 'retouch'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all duration-300 ease-in-out ${
+                activeTab === key
+                  ? 'bg-gray-200/80 text-gray-800 border-gray-400 scale-110'
+                  : 'text-gray-600 hover:text-gray-800 hover:scale-105 border-gray-300/50 hover:border-gray-400/70'
               }`}
+              aria-label={label}
             >
-              <RetouchIcon className="w-5 h-5" />
-              <span className="text-xs font-medium">Retouch</span>
+              <Icon className="w-6 h-6" />
             </button>
-            <button
-              onClick={() => setActiveTab('adjust')}
-              className={`flex flex-col items-center gap-1 px-6 py-2 rounded-lg transition-all duration-200 ease-in-out ${
-                activeTab === 'adjust'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-            >
-              <SlidersIcon className="w-5 h-5" />
-              <span className="text-xs font-medium">Adjust</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('filters')}
-              className={`flex flex-col items-center gap-1 px-6 py-2 rounded-lg transition-all duration-200 ease-in-out ${
-                activeTab === 'filters'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-            >
-              <FilterIcon className="w-5 h-5" />
-              <span className="text-xs font-medium">Filters</span>
-            </button>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* Fixed Text Input for Retouch Tab */}
+      {/* Text Input and Generate Button - Fixed at bottom of viewport */}
       {activeTab === 'retouch' && (
-        <div className="fixed bottom-20 left-0 right-0 z-20">
-          <div className="container mx-auto px-4">
-            <div className="flex justify-center">
-              <div className="flex items-center gap-2 bg-white/95 backdrop-blur-md border border-gray-200 rounded-full p-2 shadow-lg max-w-md w-full">
-                <input
-                  type="text"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={editHotspot ? "Describe your edit..." : "Click on the image first, then describe your edit"}
-                  className="bg-transparent border-none text-gray-800 rounded-full px-4 py-2 text-base focus:outline-none flex-1 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isLoading || !editHotspot}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleGenerate();
-                    }
-                  }}
-                />
-                {prompt.trim() && editHotspot && (
-                  <button
-                    onClick={handleGenerate}
-                    className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold p-2 rounded-full transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none animate-slide-in-right"
-                    disabled={isLoading || !prompt.trim() || !editHotspot}
-                    title="Generate Edit"
-                  >
-                    <CheckIcon className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg p-2 shadow-lg">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder={editHotspot ? "e.g., 'change my shirt color to blue'" : "Click an area on the image first"}
+              className={`bg-transparent border-none text-gray-800 rounded-md p-2 text-base focus:outline-none transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 ${
+                prompt.trim() ? 'w-64' : 'w-80'
+              }`}
+              disabled={isLoading || !editHotspot}
+            />
+
+            {prompt.trim() && (
+              <button
+                onClick={handleGenerate}
+                className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold p-2 rounded-md transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none animate-slide-in-right"
+                disabled={isLoading || !prompt.trim() || !editHotspot}
+                title="Generate"
+              >
+                <CheckIcon className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       )}
