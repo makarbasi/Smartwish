@@ -130,16 +130,15 @@ const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ onApplyAdjustment, is
             disabled={isLoading}
           />
 
-          {activePrompt && (
-            <button
-              onClick={handleApply}
-              className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold p-2 rounded-md transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none animate-slide-in-right"
-              disabled={isLoading || !activePrompt.trim()}
-              title="Apply Adjustment"
-            >
-              <CheckIcon className="w-4 h-4" />
-            </button>
-          )}
+          <button
+            onClick={handleApply}
+            className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold p-3 rounded-md transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner disabled:from-gray-400 disabled:to-gray-500 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none min-w-[80px] min-h-[44px] flex items-center justify-center gap-2"
+            disabled={isLoading || !activePrompt?.trim()}
+            title="Apply Adjustment"
+          >
+            <CheckIcon className="w-5 h-5" />
+            <span className="text-sm">Apply</span>
+          </button>
         </div>
       </div>
     </div>
