@@ -18,7 +18,6 @@ import {
   ArrowRightStartOnRectangleIcon,
   // UserIcon removed (unused)
   UserGroupIcon,
-  SparklesIcon,
 } from "@heroicons/react/24/outline";
 
 type Item = {
@@ -32,7 +31,6 @@ const items: Item[] = [
   { href: "/marketplace", label: "Market", icon: ShoppingBagIcon },
   { href: "/my-cards", label: "My designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
-  { href: "/new-ai", label: "New AI", icon: SparklesIcon },
 ];
 
 // Page Navigator Component for card detail pages
@@ -350,13 +348,7 @@ export default function Sidebar() {
               <UserGroupIcon className="w-6 h-6 text-gray-600" />
               <span className="text-xs text-gray-600 mt-1">Contacts</span>
             </Link>
-            <Link
-              href="/new-ai"
-              className="flex flex-col items-center py-2 px-1"
-            >
-              <SparklesIcon className="w-6 h-6 text-gray-600" />
-              <span className="text-xs text-gray-600 mt-1">New AI</span>
-            </Link>
+
           </div>
         </div>
       </div>
