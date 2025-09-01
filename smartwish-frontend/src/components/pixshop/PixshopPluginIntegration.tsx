@@ -22,65 +22,15 @@ export class PixshopPluginIntegration {
 
   initialize(editorInstance: any) {
     console.log('🎯 Initializing Pixshop Plugin Integration');
-    
-    // Replace Frame tab with Custom (redirect to /new-ai)
-    this.replaceFrameWithCustom();
-    
+
     // Replace Retouch tab with Pixshop functionality
     this.replaceRetouchWithPixshop(editorInstance);
-    
+
     // Set up mutation observer to handle dynamic changes
     this.setupMutationObserver(editorInstance);
   }
 
-  private replaceFrameWithCustom() {
-    const replaceFrame = () => {
-      const frameTab = Array.from(
-        document.querySelectorAll('button[role="tab"]')
-      ).find((btn) => btn.textContent?.includes('Frame'));
 
-      if (frameTab && !frameTab.hasAttribute('data-renamed-to-custom')) {
-        // Update the title attribute
-        frameTab.setAttribute('title', 'Custom');
-        
-        // Find text nodes and replace only the "Frame" text, keeping icons
-        const walker = document.createTreeWalker(
-          frameTab,
-          NodeFilter.SHOW_TEXT
-        );
-
-        let textNode;
-        while ((textNode = walker.nextNode())) {
-          if (
-            textNode.textContent &&
-            textNode.textContent.includes('Frame')
-          ) {
-            textNode.textContent = textNode.textContent.replace(
-              'Frame',
-              'Custom'
-            );
-          }
-        }
-
-        // Add click event listener to redirect to Pixshop page
-        frameTab.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log('🎯 Custom tab clicked, redirecting to Pixshop page');
-          window.location.href = '/new-ai';
-        });
-
-        frameTab.setAttribute('data-renamed-to-custom', 'true');
-        console.log('✅ Renamed Frame tab to Custom and added click handler');
-      }
-    };
-
-    // Try multiple times with delays
-    const attempts = [100, 300, 500, 1000];
-    attempts.forEach((delay) => {
-      setTimeout(replaceFrame, delay);
-    });
-  }
 
   private replaceRetouchWithPixshop(editorInstance: any) {
     const setupPixshopTab = () => {
@@ -152,7 +102,7 @@ export class PixshopPluginIntegration {
 
   private injectPixshopInterface(editorInstance: any) {
     console.log('🔍 Attempting to inject Pixshop interface...');
-    
+
     // Find the retouch panel with more detailed logging
     const retouchPanel =
       document.querySelector('.PinturaUtilPanel[data-util="retouch"]') ||
@@ -164,14 +114,14 @@ export class PixshopPluginIntegration {
 
     if (!retouchPanel) {
       console.log('❌ Pixshop panel not found - trying alternative selectors');
-      
+
       // Try alternative selectors
       const alternativePanel = document.querySelector('.PinturaUtil') ||
-                              document.querySelector('[class*="retouch"]') ||
-                              document.querySelector('[class*="Retouch"]');
-      
+        document.querySelector('[class*="retouch"]') ||
+        document.querySelector('[class*="Retouch"]');
+
       console.log('🔍 Alternative panel found:', alternativePanel);
-      
+
       if (!alternativePanel) {
         return false;
       }
@@ -179,14 +129,14 @@ export class PixshopPluginIntegration {
 
     // Use the found panel (either retouchPanel or alternativePanel)
     const targetPanel = retouchPanel || document.querySelector('.PinturaUtil') ||
-                       document.querySelector('[class*="retouch"]') ||
-                       document.querySelector('[class*="Retouch"]');
-    
+      document.querySelector('[class*="retouch"]') ||
+      document.querySelector('[class*="Retouch"]');
+
     if (!targetPanel) {
       console.log('❌ No suitable panel found for injection');
       return false;
     }
-    
+
     console.log('🎯 Using target panel:', targetPanel);
 
     // Find the footer area
@@ -270,7 +220,6 @@ export class PixshopPluginIntegration {
   private setupMutationObserver(editorInstance: any) {
     // Use MutationObserver to catch dynamic changes
     this.observer = new MutationObserver(() => {
-      this.replaceFrameWithCustom();
       this.replaceRetouchWithPixshop(editorInstance);
     });
 

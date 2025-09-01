@@ -10,10 +10,8 @@ import {
   plugin_annotate,
   plugin_sticker,
   plugin_retouch,
-  plugin_frame,
   plugin_finetune_defaults,
   plugin_filter_defaults,
-  plugin_frame_defaults,
   markup_editor_defaults,
   locale_en_gb,
   plugin_finetune_locale_en_gb,
@@ -21,7 +19,6 @@ import {
   plugin_annotate_locale_en_gb,
   plugin_sticker_locale_en_gb,
   plugin_retouch_locale_en_gb,
-  plugin_frame_locale_en_gb,
   markup_editor_locale_en_gb,
   createDefaultImageReader,
   createDefaultImageWriter,
@@ -29,25 +26,23 @@ import {
   createMarkupEditorShapeStyleControls,
 } from "@pqina/pintura";
 
-// Set up the plugins WITHOUT crop but WITH retouch and frame
+// Set up the plugins WITHOUT crop and WITHOUT frame
 setPlugins(
   plugin_finetune,
   plugin_filter,
   plugin_annotate,
   plugin_sticker,
-  plugin_retouch,
-  plugin_frame
+  plugin_retouch
 );
 
-// Create custom editor defaults WITHOUT crop
+// Create custom editor defaults WITHOUT crop and WITHOUT frame
 const editorDefaults = {
-  utils: ["finetune", "filter", "annotate", "sticker", "retouch", "frame"], // explicitly exclude 'crop'
+  utils: ["finetune", "filter", "annotate", "sticker", "retouch"], // explicitly exclude 'crop' and 'frame'
   imageReader: createDefaultImageReader(),
   imageWriter: createDefaultImageWriter(),
   shapePreprocessor: createDefaultShapePreprocessor(),
   ...plugin_finetune_defaults,
   ...plugin_filter_defaults,
-  ...plugin_frame_defaults,
   ...markup_editor_defaults,
   // Add default stickers
   stickers: [
@@ -67,8 +62,7 @@ const editorDefaults = {
   // Add retouch tools configuration
   retouchTools: [],
   retouchShapeControls: createMarkupEditorShapeStyleControls(),
-  // Add empty frame options (will show empty frame panel)
-  frameOptions: [],
+
   locale: {
     ...locale_en_gb,
     ...plugin_finetune_locale_en_gb,
@@ -76,7 +70,6 @@ const editorDefaults = {
     ...plugin_annotate_locale_en_gb,
     ...plugin_sticker_locale_en_gb,
     ...plugin_retouch_locale_en_gb,
-    ...plugin_frame_locale_en_gb,
     ...markup_editor_locale_en_gb,
   },
 };
