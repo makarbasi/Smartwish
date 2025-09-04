@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import WarningDialog from "./pixshop/WarningDialog";
 import {
   setPlugins,
@@ -102,6 +102,7 @@ export default function PinturaEditorModal({
   // State for warning dialog
   const [isWarningDialogOpen, setIsWarningDialogOpen] = useState(false);
   const router = useRouter();
+  const params = useParams();
 
   // Update currentImageSrc when imageSrc prop changes
   useEffect(() => {
@@ -159,7 +160,14 @@ export default function PinturaEditorModal({
       overlay.remove();
     }
     setIsWarningDialogOpen(false);
-    router.push('/pixshop');
+    
+    // Get current card ID from URL params and redirect to card's pixshop page
+    const cardId = params.id;
+    if (cardId) {
+      router.push(`/my-cards/${cardId}/pixshop`);
+    } else {
+      router.push('/pixshop');
+    }
   };
 
   const handleCancelPixshop = () => {

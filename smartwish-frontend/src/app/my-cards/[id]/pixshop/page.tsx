@@ -1,1170 +1,771 @@
-'use client'
+'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { useParams, useRouter, usePathname } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react';
-import { useUserProfile } from '@/hooks/useUserProfile';
-import { PlusIcon } from '@heroicons/react/20/solid';
-import {
-  CalendarDaysIcon,
-  PencilSquareIcon,
-  Cog6ToothIcon,
-  QuestionMarkCircleIcon,
-  MegaphoneIcon,
-  ShoppingBagIcon,
-  ArrowRightStartOnRectangleIcon,
-  UserGroupIcon,
-  PhotoIcon,
-  Bars3Icon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 
+// Types for API responses
+type SavedDesign = {
+  id: string;
+  title?: string;
+  imageUrls?: string[];
+  thumbnail?: string;
+  image1?: string;
+  image2?: string;
+  image3?: string;
+  image4?: string;
+  designData?: { pages?: Array<{ image?: string; header?: string }> } | null;
+};
 
+type ApiResponse = {
+  success: boolean;
+  data: SavedDesign[];
+  count?: number;
+};
 
-// Main App Desktop Sidebar Component
-function AppSidebar() {
-  const pathname = usePathname();
-  const [profileOpen, setProfileOpen] = useState(false);
-  const { data: session } = useSession();
-  const { user } = useUserProfile();
-  const router = useRouter();
-  const popoverRef = useRef<HTMLDivElement>(null);
+const fetcher = (url: string) =>
+  fetch(url, { credentials: 'include' }).then((res) => {
+    if (!res.ok) throw new Error(`Fetch error ${res.status}`);
+    return res.json();
+  });
 
-  const profileImageUrl = user?.profileImage || (session?.user?.image as string) || null;
+// Use the centralized Gemini-based image generation service
+import { generateEditedImage, generateFilteredImage, generateAdjustedImage } from '../../../services/geminiService';
 
-  useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (!popoverRef.current) return;
-      if (!popoverRef.current.contains(e.target as Node)) setProfileOpen(false);
-    }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, []);
+// Spinner Component
+const Spinner = () => (
+  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+)
 
-  return (
-    <nav
-      aria-label="Primary"
-      className="fixed inset-y-0 left-0 z-50 hidden w-14 flex-col items-center border-r border-gray-200 bg-white py-6 md:flex lg:w-16"
-    >
-      {/* Logo */}
-      <div className="mb-4 flex items-center justify-center">
-        <Link href="/" title="Home" className="inline-block">
-          <Image
-            src="/resources/logo/logo.png"
-            alt="Smartwish"
-            width={36}
-            height={36}
-            className="h-9 w-9 object-contain"
-          />
-        </Link>
-      </div>
+// External panels (from src/components/pixshop)
+import FilterPanel from '../../../../components/pixshop/FilterPanel';
+import AdjustmentPanel from '../../../../components/pixshop/AdjustmentPanel';
 
-      {/* Templates Button */}
-      <Link
-        href="/templates"
-        title="Templates"
-        className="mb-6 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white shadow hover:bg-indigo-500"
-      >
-        <PlusIcon className="h-5 w-5" />
-      </Link>
+// Icons
+const UndoIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+  </svg>
+)
 
-      {/* Navigation Items */}
-      <ul className="flex w-full flex-1 flex-col items-stretch gap-3 px-1">
-        {sidebarItems.map((item) => {
-          const Icon = item.icon;
-          const active = item.href === '/pixshop'; // Always keep Pixshop active
-          return (
-            <li key={item.href} className="flex justify-center">
-              <Link
-                href={item.href}
-                title={item.label}
-                className={`inline-flex h-10 w-10 items-center justify-center rounded-md ring-1 transition-colors ${
-                  active
-                    ? 'bg-gray-100 text-gray-900 ring-gray-200'
-                    : 'text-gray-600 ring-transparent hover:bg-gray-50 hover:text-gray-900 hover:ring-gray-200'
-                }`}
-              >
-                <Icon className="h-5 w-5" />
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+const RedoIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3" />
+  </svg>
+)
 
-      {/* Profile Section */}
-      <div className="mt-auto w-full px-1 pb-1" ref={popoverRef}>
-        <button
-          onClick={() => setProfileOpen((v) => !v)}
-          className="flex w-full items-center justify-between rounded-md px-1.5 py-1.5"
-        >
-          <span className="sr-only">Open profile</span>
-          {profileImageUrl ? (
-            <Image
-              src={profileImageUrl}
-              alt=""
-              width={36}
-              height={36}
-              className="h-9 w-9 rounded-full ring-1 ring-gray-200"
-            />
-          ) : (
-            <div className="h-9 w-9 rounded-full bg-gray-100 ring-1 ring-gray-200 flex items-center justify-center">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="h-5 w-5 text-gray-500"
-                aria-hidden="true"
-              >
-                <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5z" />
-                <path d="M4 20c0-3.866 3.134-7 7-7s7 3.134 7 7H4z" />
-              </svg>
-            </div>
-          )}
-        </button>
+const EyeIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+  </svg>
+)
 
-        {profileOpen && (
-          <div className="absolute bottom-12 left-12 z-60 w-72 rounded-xl border border-gray-200 bg-white text-sm shadow-xl">
-            <div className="p-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                Accounts
-              </div>
-              <div className="mt-2 flex items-center rounded-lg bg-gray-50 p-2 ring-1 ring-gray-200">
-                <div className="flex items-center gap-3">
-                  {profileImageUrl ? (
-                    <Image
-                      src={profileImageUrl}
-                      alt=""
-                      width={36}
-                      height={36}
-                      className="h-9 w-9 rounded-full ring-1 ring-gray-200"
-                    />
-                  ) : (
-                    <div className="h-9 w-9 rounded-full bg-gray-50 ring-1 ring-gray-200 flex items-center justify-center">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        className="h-5 w-5 text-gray-400"
-                        aria-hidden="true"
-                      >
-                        <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5z" />
-                        <path d="M4 20c0-3.866 3.134-7 7-7s7 3.134 7 7H4z" />
-                      </svg>
-                    </div>
-                  )}
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {(user?.name || session?.user?.name) ?? 'Guest'}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {(user?.email || session?.user?.email) ?? 'Not signed in'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="border-t border-gray-200 p-1">
-              <Link
-                href="/settings"
-                onClick={() => setProfileOpen(false)}
-                className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-gray-700 hover:bg-gray-50"
-              >
-                <Cog6ToothIcon className="h-5 w-5 text-gray-400" /> Settings
-              </Link>
-              <a
-                href="#"
-                className="flex items-center gap-3 rounded-md px-2 py-2 text-gray-700 hover:bg-gray-50"
-              >
-                <QuestionMarkCircleIcon className="h-5 w-5 text-gray-400" /> Help and resources
-              </a>
-              <a
-                href="#"
-                className="flex items-center gap-3 rounded-md px-2 py-2 text-gray-700 hover:bg-gray-50"
-              >
-                <MegaphoneIcon className="h-5 w-5 text-gray-400" /> Whats new
-              </a>
-              <a
-                href="#"
-                className="flex items-center gap-3 rounded-md px-2 py-2 text-gray-700 hover:bg-gray-50"
-              >
-                <ShoppingBagIcon className="h-5 w-5 text-gray-400" /> Purchase history
-              </a>
-            </div>
-            <div className="border-t border-gray-200 p-2">
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setProfileOpen(false);
-                  if (session) {
-                    signOut();
-                  } else {
-                    router.push('/sign-in?callbackUrl=/pixshop');
-                  }
-                }}
-                className={
-                  session
-                    ? 'flex items-center gap-3 rounded-md bg-red-50 px-2 py-2 font-medium text-red-600 hover:bg-red-100'
-                    : 'flex items-center gap-3 rounded-md bg-indigo-50 px-2 py-2 font-medium text-indigo-700 hover:bg-indigo-100'
-                }
-              >
-                <ArrowRightStartOnRectangleIcon className="h-5 w-5" />
-                {session ? 'Log out' : 'Sign in'}
-              </a>
-            </div>
-          </div>
-        )}
-      </div>
-    </nav>
-  );
+const CheckIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+  </svg>
+)
+
+const RetouchIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+  </svg>
+)
+
+const SlidersIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+  </svg>
+)
+
+const FilterIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+  </svg>
+)
+
+// Helper to convert a data URL string to a File object
+const dataURLtoFile = (dataurl: string, filename: string): File => {
+  const arr = dataurl.split(',');
+  if (arr.length < 2) throw new Error("Invalid data URL");
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  if (!mimeMatch || !mimeMatch[1]) throw new Error("Could not parse MIME type from data URL");
+
+  const mime = mimeMatch[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, { type: mime });
 }
 
-// Main App Mobile Menu Component
-function AppMobileMenu() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const { data: session, status } = useSession();
-  const { user } = useUserProfile();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+// Helper to extract the best image URL from a savedDesign object
+const getFirstImageFromSavedDesign = (savedDesign: any): string | null => {
+  if (!savedDesign) return null;
+  // Prefer explicit image columns
+  if (savedDesign.image1) return savedDesign.image1;
+  if (savedDesign.image2) return savedDesign.image2;
+  if (savedDesign.image3) return savedDesign.image3;
+  if (savedDesign.image4) return savedDesign.image4;
 
-  const profileImageUrl = user?.profileImage || (session?.user?.image as string) || 'https://i.pravatar.cc/80?img=12';
-
-  const handleSignOut = async (e?: React.MouseEvent | React.TouchEvent) => {
-    try {
-      if (e) e.preventDefault();
-      if (signingOut) return;
-
-      setSigningOut(true);
-      setMobileMenuOpen(false);
-      await signOut({ redirect: false });
-    } catch (err) {
-      console.error('signOut error', err);
-    } finally {
-      router.push('/');
-      setSigningOut(false);
-    }
-  };
-
-  useEffect(() => {
-    function handleScroll() {
-      setIsScrolled(window.scrollY > 20);
-    }
-
-    if (typeof window !== 'undefined') {
-      handleScroll();
-      window.addEventListener('scroll', handleScroll);
-      return () => window.removeEventListener('scroll', handleScroll);
-    }
-  }, []);
-
-  if (status === 'loading') {
-    return null;
+  // designData.pages fallback
+  if (savedDesign.designData && Array.isArray(savedDesign.designData.pages) && savedDesign.designData.pages.length > 0) {
+    const first = savedDesign.designData.pages.find((p: any) => p && (p.image || p.header));
+    if (first && first.image) return first.image;
   }
 
-  return (
-    <div className="md:hidden">
-      <div className="h-16"></div>
+  // imageUrls array
+  if (Array.isArray(savedDesign.imageUrls) && savedDesign.imageUrls.length > 0) return savedDesign.imageUrls[0];
 
-      <div
-        className={`fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm transition-all duration-300 ease-in-out ${
-          isScrolled ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
-        }`}
-      >
-        <div className="h-16"></div>
-      </div>
+  // thumbnail fallback
+  if (savedDesign.thumbnail) return savedDesign.thumbnail;
 
-      <div className="fixed top-4 left-4 z-50">
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-3 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors duration-200"
-        >
-          <Bars3Icon className="w-6 h-6" />
-        </button>
-      </div>
-
-      <div
-        className={`fixed inset-0 z-50 transition-all duration-300 ease-in-out ${
-          mobileMenuOpen ? 'bg-black bg-opacity-30 pointer-events-auto' : 'bg-transparent pointer-events-none'
-        }`}
-      >
-        <div
-          className={`w-80 bg-white h-full shadow-xl transform transition-all duration-300 ease-out ${
-            mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-        >
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <div className="flex items-center">
-                <Image
-                  src="/resources/logo/logo-full.png"
-                  alt="Smartwish"
-                  width={140}
-                  height={32}
-                  className="h-32 w-auto object-contain"
-                />
-              </div>
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                className="p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                <Image
-                  src={profileImageUrl}
-                  alt=""
-                  width={48}
-                  height={48}
-                  className="w-12 h-12 rounded-full ring-1 ring-gray-200"
-                />
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">
-                    {(user?.name || session?.user?.name) ?? 'Guest'}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {(user?.email || session?.user?.email) ?? 'Not signed in'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto py-4">
-              {sidebarItems.map((item) => {
-                const Icon = item.icon;
-                const active = item.href === '/pixshop'; // Always keep Pixshop active
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors ${
-                      active
-                        ? 'text-indigo-600 bg-indigo-50'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Icon className="w-6 h-6" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-
-              <div className="border-t border-gray-200 mt-4 pt-4">
-                <Link
-                  href="/settings"
-                  className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <Cog6ToothIcon className="w-6 h-6" />
-                  Settings
-                </Link>
-                <a
-                  href="#"
-                  className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <QuestionMarkCircleIcon className="w-6 h-6" />
-                  Help & Support
-                </a>
-                <button
-                  onClick={handleSignOut}
-                  disabled={signingOut}
-                  className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-red-600 hover:bg-red-50 w-full text-left transition-colors disabled:opacity-50"
-                >
-                  <ArrowRightStartOnRectangleIcon className="w-6 h-6" />
-                  Sign Out
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="absolute inset-0 -z-10"></div>
-
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200">
-        <div className="grid grid-cols-6 py-2">
-          {sidebarItems.slice(0, 5).map((item) => {
-            const Icon = item.icon;
-            const active = item.href === '/pixshop'; // Always keep Pixshop active
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex flex-col items-center py-2 px-1"
-              >
-                <Icon className={`w-6 h-6 ${active ? 'text-indigo-600' : 'text-gray-600'}`} />
-                <span className={`text-xs mt-1 ${active ? 'text-indigo-600' : 'text-gray-600'}`}>
-                  {item.label}
-                </span>
-              </Link>
-            );
-          })}
-          
-          <Link href="/templates" className="flex flex-col items-center py-2 px-1">
-            <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-              <PlusIcon className="w-5 h-5 text-white" />
-            </div>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 }
 
-// Exact Pintura Editor Interface Recreation
-function PinturaEditorInterface({ cardId }: { cardId: string }) {
-  const [activeTab, setActiveTab] = useState('finetune');
-  const [activeFinetuneControl, setActiveFinetuneControl] = useState('brightness');
-  const [zoom, setZoom] = useState(22);
+type Tab = 'retouch' | 'adjust' | 'filters';
 
-  return (
-    <>
-      <style jsx global>{`
-        .pintura-editor {
-          --color-primary: #ffd843;
-          --color-primary-dark: #ffc343;
-          --color-primary-text: #000;
-          --color-foreground: 0,0,0;
-          --color-background: 255,255,255;
-          --font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
-          --border-radius-round: 9999em;
-          --border-radius: 0.625em;
-          --transition-duration-10: 0.1s;
-          --color-foreground-100: rgba(var(--color-foreground),1);
-          --color-foreground-90: rgba(var(--color-foreground),0.9);
-          --color-foreground-80: rgba(var(--color-foreground),0.8);
-          --color-foreground-70: rgba(var(--color-foreground),0.7);
-          --color-foreground-60: rgba(var(--color-foreground),0.6);
-          --color-foreground-50: rgba(var(--color-foreground),0.5);
-          --color-foreground-40: rgba(var(--color-foreground),0.4);
-          --color-foreground-30: rgba(var(--color-foreground),0.3);
-          --color-foreground-20: rgba(var(--color-foreground),0.25);
-          --color-foreground-15: rgba(var(--color-foreground),0.2);
-          --color-foreground-10: rgba(var(--color-foreground),0.15);
-          --color-foreground-5: rgba(var(--color-foreground),0.075);
-          --color-foreground-3: rgba(var(--color-foreground),0.05);
-          --backdrop-filter-dark: brightness(90%) saturate(180%) blur(10px);
-          font-family: var(--font-family);
-          font-size: 16px;
-          user-select: none;
-          line-height: normal;
+const PixshopPage: React.FC = () => {
+  const params = useParams();
+  const cardId = params?.id as string;
+  const router = useRouter();
+  
+  const [history, setHistory] = useState<File[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [prompt, setPrompt] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editHotspot, setEditHotspot] = useState<{ x: number, y: number } | null>(null);
+  const [displayHotspot, setDisplayHotspot] = useState<{ x: number, y: number } | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('retouch');
+
+  const [isComparing, setIsComparing] = useState<boolean>(false);
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
+  const [hasStarted, setHasStarted] = useState<boolean>(true);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const currentImage = history[historyIndex] ?? null;
+  const originalImage = history[0] ?? null;
+
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
+
+  // Fetch saved designs to get the image for this card
+  const {
+    data: apiResponse,
+    error: fetchError,
+    isLoading: isFetching,
+    mutate: refetchData,
+  } = useSWR<ApiResponse>("/api/saved-designs", fetcher, {
+    revalidateOnFocus: true,
+    revalidateOnMount: true,
+    dedupingInterval: 2000, // Prevent too frequent requests
+  });
+
+  // Load image from saved design when data is available
+  useEffect(() => {
+    if (apiResponse?.data && cardId && history.length === 0) {
+      console.log('🔍 Looking for card with ID:', cardId);
+      console.log('📋 Available cards:', apiResponse.data.map(d => ({ id: d.id, title: d.title })));
+      
+      const savedDesign = apiResponse.data.find((d) => d.id === cardId);
+      if (savedDesign) {
+        console.log('✅ Found card:', savedDesign.title || 'Untitled');
+        const imageUrl = getFirstImageFromSavedDesign(savedDesign);
+        if (imageUrl) {
+          console.log('🖼️ Loading image from:', imageUrl);
+          // Convert URL to File object
+          fetch(imageUrl)
+            .then(res => res.blob())
+            .then(blob => {
+              const file = new File([blob], `card-${cardId}.jpg`, { type: 'image/jpeg' });
+              setHistory([file]);
+              setHistoryIndex(0);
+              setIsInitialLoad(false);
+              console.log('✅ Image loaded successfully');
+            })
+            .catch(err => {
+              console.error('❌ Error loading image:', err);
+              setError('Failed to load image from saved design');
+            });
+        } else {
+          console.log('❌ No image URL found for card');
+          setError('No image found for this card');
         }
-
-        .pintura-nav-tools {
-          position: fixed;
-          top: 0;
-          left: 64px;
-          right: 0;
-          height: 64px;
-          z-index: 40;
-          background: white;
-          border-bottom: 1px solid rgba(var(--color-foreground), 0.075);
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 1rem;
-        }
-
-        .pintura-nav-group {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .pintura-nav-group-float {
-          position: absolute;
-          left: 50%;
-          transform: translateX(-50%);
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .pintura-nav-set {
-          display: flex;
-          align-items: center;
-          gap: 0.25rem;
-        }
-
-        .pintura-button {
-          margin: 0;
-          padding: 0;
-          border: none;
-          background: transparent;
-          font: inherit;
-          color: inherit;
-          cursor: pointer;
-          outline: transparent;
-          transition: background-color var(--transition-duration-10) ease-out, color var(--transition-duration-10) ease-out, box-shadow var(--transition-duration-10) ease-out;
-          box-shadow: inset 0 0 0 1px var(--color-foreground-5);
-          border-radius: var(--border-radius-round);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 2.5rem;
-          min-height: 2.5rem;
-          backdrop-filter: var(--backdrop-filter-dark);
-          background-color: var(--color-foreground-10);
-        }
-
-        .pintura-button:hover {
-          background-color: var(--color-foreground-20);
-        }
-
-        .pintura-button:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
-          filter: grayscale(95%);
-        }
-
-        .pintura-button-export {
-          background-color: var(--color-primary);
-          color: var(--color-primary-text);
-          padding: 0 0.75rem;
-          border-radius: var(--border-radius-round);
-          font-weight: 500;
-          min-height: 2.5rem;
-        }
-
-        .pintura-button-export:hover {
-          background-color: var(--color-primary-dark);
-        }
-
-        .pintura-nav-main {
-          position: fixed;
-          left: 64px;
-          top: 64px;
-          bottom: 0;
-          width: 80px;
-          z-index: 40;
-          background: white;
-          border-right: 1px solid rgba(var(--color-foreground), 0.075);
-          overflow-y: auto;
-        }
-
-        .pintura-tab-list {
-          display: flex;
-          flex-direction: column;
-          padding: 1rem 0.5rem;
-          gap: 0.5rem;
-        }
-
-        .pintura-tab-button {
-          margin: 0;
-          padding: 0;
-          border: none;
-          background: transparent;
-          font: inherit;
-          color: inherit;
-          cursor: pointer;
-          outline: transparent;
-          transition: background-color var(--transition-duration-10) ease-out, color var(--transition-duration-10) ease-out, box-shadow var(--transition-duration-10) ease-out;
-          backdrop-filter: var(--backdrop-filter-dark);
-          background-color: var(--color-foreground-10);
-          flex: 1;
-          min-width: 4rem;
-          min-height: 4rem;
-          border-radius: var(--border-radius);
-          justify-content: center;
-          display: flex;
-          align-items: center;
-          flex-direction: column;
-          box-shadow: inset 0 0 0 1px var(--color-foreground-5);
-          gap: 0.25rem;
-        }
-
-        .pintura-tab-button:hover {
-          background-color: var(--color-foreground-15);
-        }
-
-        .pintura-tab-button[aria-selected="true"] {
-          background-color: var(--color-primary);
-          color: var(--color-primary-text);
-        }
-
-        .pintura-tab-button.pixshop-active {
-          background-color: var(--color-primary);
-          color: var(--color-primary-text);
-          position: relative;
-        }
-
-        .pintura-tab-button.pixshop-active::after {
-          content: "✨";
-          position: absolute;
-          top: -2px;
-          right: -2px;
-          font-size: 12px;
-        }
-
-        .pintura-tab-button svg {
-          width: 24px;
-          height: 24px;
-          stroke-width: 0.125em;
-          stroke: currentColor;
-          fill: none;
-        }
-
-        .pintura-tab-button span {
-          font-size: 0.75rem;
-          font-weight: 450;
-        }
-
-        .pintura-util-footer {
-          position: fixed;
-          left: 144px;
-          right: 0;
-          bottom: 0;
-          height: 120px;
-          z-index: 40;
-          background: white;
-          border-top: 1px solid rgba(var(--color-foreground), 0.075);
-          padding: 1rem;
-        }
-
-        .pintura-control-list-scroller {
-          margin-bottom: 1rem;
-        }
-
-        .pintura-control-list {
-          display: flex;
-          gap: 0.5rem;
-          overflow-x: auto;
-          padding-bottom: 0.5rem;
-        }
-
-        .pintura-control-button {
-          margin: 0;
-          padding: 0.5rem 1rem;
-          border: none;
-          background: transparent;
-          font: inherit;
-          color: inherit;
-          cursor: pointer;
-          outline: transparent;
-          transition: background-color var(--transition-duration-10) ease-out, color var(--transition-duration-10) ease-out, box-shadow var(--transition-duration-10) ease-out;
-          backdrop-filter: var(--backdrop-filter-dark);
-          background-color: var(--color-foreground-10);
-          border-radius: var(--border-radius);
-          box-shadow: inset 0 0 0 1px var(--color-foreground-5);
-          white-space: nowrap;
-          font-size: 0.875rem;
-        }
-
-        .pintura-control-button:hover {
-          background-color: var(--color-foreground-15);
-        }
-
-        .pintura-control-button[aria-selected="true"] {
-          background-color: var(--color-primary);
-          color: var(--color-primary-text);
-        }
-
-        .pintura-range-input {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0.5rem 0;
-        }
-
-        .pintura-range-value {
-          font-weight: 500;
-          min-width: 2rem;
-          text-align: center;
-        }
-
-        .pintura-range-reset {
-          margin: 0;
-          padding: 0.25rem 0.75rem;
-          border: none;
-          background: transparent;
-          font: inherit;
-          color: inherit;
-          cursor: pointer;
-          outline: transparent;
-          transition: background-color var(--transition-duration-10) ease-out;
-          border-radius: var(--border-radius);
-          font-size: 0.75rem;
-          opacity: 0.7;
-        }
-
-        .pintura-range-reset:hover {
-          background-color: var(--color-foreground-10);
-        }
-
-        .pintura-range-reset:disabled {
-          opacity: 0.3;
-          cursor: not-allowed;
-        }
-
-        .pintura-range-meter {
-          flex: 1;
-          height: 2rem;
-          background: var(--color-foreground-5);
-          border-radius: var(--border-radius);
-          position: relative;
-          cursor: pointer;
-        }
-
-        .pintura-range-handle {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 1rem;
-          height: 1rem;
-          background: var(--color-primary);
-          border-radius: 50%;
-          box-shadow: 0 0 0 2px white, 0 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .pintura-main-content {
-          position: fixed;
-          left: 144px;
-          top: 64px;
-          right: 0;
-          bottom: 120px;
-          z-index: 30;
-          background: #f5f5f5;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        @media (max-width: 768px) {
-          .pintura-nav-tools {
-            left: 0;
-          }
-          .pintura-nav-main {
-            left: 0;
-          }
-          .pintura-util-footer {
-            left: 80px;
-          }
-          .pintura-main-content {
-            left: 80px;
-          }
-        }
-      `}</style>
-
-      <div className="pintura-editor">
-        {/* Top Toolbar */}
-        <div className="pintura-nav-tools">
-          <div className="pintura-nav-group">
-            <div className="pintura-nav-set">
-              <button type="button" className="pintura-button" title="Close">
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="0.125em" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                </svg>
-              </button>
-              <button type="button" className="pintura-button" title="Revert" disabled>
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M7.388 18.538a8 8 0 10-2.992-9.03" stroke="currentColor" strokeWidth="0.125em" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                  <path d="M2.794 11.696L2.37 6.714l5.088 3.18z" fill="currentColor"/>
-                  <path d="M12 8v4M12 12l4 2" stroke="currentColor" strokeWidth="0.125em" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div className="pintura-nav-group-float">
-            <div className="pintura-nav-set">
-              <button type="button" className="pintura-button" title="Undo" disabled>
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 8h4c2.485 0 5 2 5 5s-2.515 5-5 5h-4" stroke="currentColor" strokeWidth="0.125em" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                  <path d="M5 8l4-3v6z" fill="currentColor"/>
-                </svg>
-              </button>
-              <button type="button" className="pintura-button" title="Redo" disabled>
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M14 8h-4c-2.485 0-5 2-5 5s2.515 5 5 5h4" stroke="currentColor" strokeWidth="0.125em" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                  <path d="M19 8l-4-3v6z" fill="currentColor"/>
-                </svg>
-              </button>
-            </div>
-            <div className="pintura-nav-set">
-              <button type="button" className="pintura-button" title="Zoom out" onClick={() => setZoom(Math.max(10, zoom - 5))}>
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M9 12 h6" stroke="currentColor" strokeWidth="0.125em"/>
-                </svg>
-              </button>
-              <button type="button" className="pintura-button" title="Zoom" style={{ minWidth: '3rem' }}>
-                <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>{zoom}%</span>
-              </button>
-              <button type="button" className="pintura-button" title="Zoom in" onClick={() => setZoom(Math.min(200, zoom + 5))}>
-                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M8 12 h8 M12 8 v8" stroke="currentColor" strokeWidth="0.125em"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div className="pintura-nav-group">
-            <button type="button" className="pintura-button-export" title="Done">
-              <span>Done</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Left Sidebar with Tabs */}
-        <div className="pintura-nav-main">
-          <div className="pintura-tab-list" role="tablist">
-            <button 
-              role="tab" 
-              className={`pintura-tab-button ${activeTab === 'finetune' ? 'active' : ''}`}
-              aria-selected={activeTab === 'finetune'}
-              onClick={() => setActiveTab('finetune')}
-              title="Finetune"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4 1v5.5m0 3.503V23M12 1v10.5m0 3.5v8M20 1v15.5m0 3.5v3M2 7h4M10 12h4M18 17h4" stroke="currentColor" strokeWidth="0.125em" fill="none"/>
-              </svg>
-              <span>Finetune</span>
-            </button>
-
-            <button 
-              role="tab" 
-              className={`pintura-tab-button ${activeTab === 'filter' ? 'active' : ''}`}
-              aria-selected={activeTab === 'filter'}
-              onClick={() => setActiveTab('filter')}
-              title="Filter"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M18.347 9.907a6.5 6.5 0 1 0-1.872 3.306M3.26 11.574a6.5 6.5 0 1 0 2.815-1.417 M10.15 17.897A6.503 6.503 0 0 0 16.5 23a6.5 6.5 0 1 0-6.183-8.51" stroke="currentColor" strokeWidth="0.125em" fill="none"/>
-              </svg>
-              <span>Filter</span>
-            </button>
-
-            <button 
-              role="tab" 
-              className={`pintura-tab-button ${activeTab === 'annotate' ? 'active' : ''}`}
-              aria-selected={activeTab === 'annotate'}
-              onClick={() => setActiveTab('annotate')}
-              title="Annotate"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M17.086 2.914a2.828 2.828 0 1 1 4 4l-14.5 14.5-5.5 1.5 1.5-5.5 14.5-14.5z" stroke="currentColor" strokeWidth="0.125em" fill="none"/>
-              </svg>
-              <span>Annotate</span>
-            </button>
-
-            <button 
-              role="tab" 
-              className={`pintura-tab-button ${activeTab === 'sticker' ? 'active' : ''}`}
-              aria-selected={activeTab === 'sticker'}
-              onClick={() => setActiveTab('sticker')}
-              title="Sticker"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 22c2.773 0 1.189-5.177 3-7 1.796-1.808 7-.25 7-3 0-5.523-4.477-10-10-10S2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="0.125em" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                <path d="M20 17c-3 3-5 5-8 5" stroke="currentColor" strokeWidth="0.125em" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-              </svg>
-              <span>Sticker</span>
-            </button>
-
-            <button 
-              role="tab" 
-              className="pintura-tab-button pixshop-active"
-              aria-selected={true}
-              title="Pixshop"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path fill="currentColor" d="m17 6-2-1-2 1 1-2-1-2 2 1 2-1-1 2zM5.5 5.5 3 4 .5 5.5 2 3 .5.5 3 2 5.5.5 4 3zM9 21l-3-1.5L3 21l1.5-3L3 15l3 1.5L9 15l-1.5 3z"/>
-                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m9.266 6.705 13.529 13.529c-.071.78-.34 1.371-.765 1.796-.425.425-1.015.694-1.796.765h0L6.705 9.266c.071-.78.34-1.371.765-1.796.425-.425 1.015-.694 1.796-.765h0Z" fill="none"/>
-                <path stroke="currentColor" strokeWidth="1.5" d="M12 9.5c-.657.323-1.157.657-1.5 1-.343.343-.677.843-1 1.5" fill="none"/>
-              </svg>
-              <span>Pixshop</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="pintura-main-content">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Pixshop Editor</h1>
-            <p className="text-gray-600 mb-6">Your image editing interface will appear here</p>
-            <p className="text-sm text-gray-500">Card ID: {cardId}</p>
-            <div className="mt-8 text-xs text-gray-400 space-y-1">
-              <p>🎨 This is the EXACT Pintura editor UI with proper styling</p>
-              <p>✨ Pixshop tab is highlighted with sparkle effect</p>
-              <p>⚡ All buttons and controls match the original design</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Controls Panel */}
-        <div className="pintura-util-footer">
-          <div className="pintura-control-list-scroller">
-            <div className="pintura-control-list" role="tablist">
-              {['Brightness', 'Contrast', 'Saturation', 'Exposure', 'Temperature', 'Gamma', 'Clarity', 'Vignette'].map((control) => (
-                <button
-                  key={control}
-                  role="tab"
-                  className="pintura-control-button"
-                  aria-selected={activeFinetuneControl === control.toLowerCase()}
-                  onClick={() => setActiveFinetuneControl(control.toLowerCase())}
-                >
-                  {control}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="pintura-range-input">
-            <span className="pintura-range-value">0</span>
-            <button className="pintura-range-reset" disabled>Reset</button>
-            <div className="pintura-range-meter">
-              <div className="pintura-range-handle"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-
-function PinturaNav() {
-  const [activeTab, setActiveTab] = useState('finetune');
-  const [zoom, setZoom] = useState(31);
-
-  const mainTabs = [
-    { 
-      id: 'finetune', 
-      label: 'Finetune', 
-      icon: 'M4 1v5.5m0 3.503V23M12 1v10.5m0 3.5v8M20 1v15.5m0 3.5v3M2 7h4M10 12h4M18 17h4' 
-    },
-    { 
-      id: 'filter', 
-      label: 'Filter', 
-      icon: 'M18.347 9.907a6.5 6.5 0 1 0-1.872 3.306M3.26 11.574a6.5 6.5 0 1 0 2.815-1.417 M10.15 17.897A6.503 6.503 0 0 0 16.5 23a6.5 6.5 0 1 0-6.183-8.51' 
-    },
-    { 
-      id: 'annotate', 
-      label: 'Annotate', 
-      icon: 'M17.086 2.914a2.828 2.828 0 1 1 4 4l-14.5 14.5-5.5 1.5 1.5-5.5 14.5-14.5z' 
-    },
-    { 
-      id: 'sticker', 
-      label: 'Sticker', 
-      icon: 'M12 22c2.773 0 1.189-5.177 3-7 1.796-1.808 7-.25 7-3 0-5.523-4.477-10-10-10S2 6.477 2 12s4.477 10 10 10z M20 17c-3 3-5 5-8 5' 
-    },
-    { 
-      id: 'pixshop', 
-      label: 'Pixshop', 
-      icon: 'M17 6l-2-1-2 1 1-2-1-2 2 1 2-1-1 2zM5.5 5.5 3 4 .5 5.5 2 3 .5.5 3 2 5.5.5 4 3zM9 21l-3-1.5L3 21l1.5-3L3 15l3 1.5L9 15l-1.5 3z',
-      sparkles: true,
-      active: true
+      } else {
+        console.log('❌ Card not found in fetched data');
+        setError(`Card with ID ${cardId} not found. Please check the URL or try refreshing the page.`);
+      }
     }
-  ];
+  }, [apiResponse, cardId, history.length]);
 
-  const finetuneControls = [
-    'Brightness', 'Contrast', 'Saturation', 'Exposure', 'Temperature', 'Gamma', 'Clarity', 'Vignette'
-  ];
+  // Effect to create and revoke object URLs safely for the current image
+  useEffect(() => {
+    if (currentImage) {
+      const url = URL.createObjectURL(currentImage);
+      setCurrentImageUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setCurrentImageUrl(null);
+    }
+  }, [currentImage]);
 
-  return (
-    <>
-      {/* Top Toolbar */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200">
-        <div className="flex items-center justify-between px-4 py-2">
-          {/* Left buttons */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-              title="Close"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-              title="Revert"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7.388 18.538a8 8 0 10-2.992-9.03" />
-                <path fill="currentColor" d="M2.794 11.696L2.37 6.714l5.088 3.18z" />
-                <path d="M12 8v4M12 12l4 2" />
-              </svg>
-            </button>
-          </div>
+  // Effect to create and revoke object URLs safely for the original image
+  useEffect(() => {
+    if (originalImage) {
+      const url = URL.createObjectURL(originalImage);
+      setOriginalImageUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setOriginalImageUrl(null);
+    }
+  }, [originalImage]);
 
-          {/* Center controls */}
-          <div className="flex items-center gap-4">
-            {/* Undo/Redo */}
-            <div className="flex items-center gap-1">
-              <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors" title="Undo">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10 8h4c2.485 0 5 2 5 5s-2.515 5-5 5h-4" />
-                  <path fill="currentColor" d="M5 8l4-3v6z" />
-                </svg>
-              </button>
-              <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors" title="Redo">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 8h-4c-2.485 0-5 2-5 5s2.515 5 5 5h4" />
-                  <path fill="currentColor" d="M19 8l-4-3v6z" />
-                </svg>
-              </button>
-            </div>
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
 
-            {/* Zoom controls */}
-            <div className="flex items-center gap-2">
-              <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 12h6" />
-                </svg>
-              </button>
-              <button 
-                className="px-3 py-1 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                title="Reset zoom"
-              >
-                {zoom}%
-              </button>
-              <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M8 12h8M12 8v8" />
-                </svg>
-              </button>
-            </div>
-          </div>
+  const addImageToHistory = useCallback((newImageFile: File) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(newImageFile);
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  }, [history, historyIndex]);
 
-          {/* Right Done button */}
-          <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors">
-            <span>Done</span>
+  const handleImageUpload = useCallback((file: File) => {
+    setError(null);
+    setHistory([file]);
+    setHistoryIndex(0);
+    setEditHotspot(null);
+    setDisplayHotspot(null);
+    setActiveTab('retouch');
+    setIsInitialLoad(false);
+  }, []);
+
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      handleImageUpload(file);
+      // Reset the input value so the same file can be selected again
+      if (event.target) {
+        event.target.value = '';
+      }
+    } else {
+      setError('Please select a valid image file.');
+    }
+  }, [handleImageUpload]);
+
+  const handleGenerate = useCallback(async () => {
+    if (!currentImage) {
+      setError('No image loaded to edit.');
+      return;
+    }
+
+    if (!prompt.trim()) {
+      setError('Please enter a description for your edit.');
+      return;
+    }
+
+    if (!editHotspot) {
+      setError('Please click on the image to select an area to edit.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const editedImageUrl = await generateEditedImage(currentImage, prompt, editHotspot);
+      const newImageFile = dataURLtoFile(editedImageUrl, `edited-${Date.now()}.png`);
+      addImageToHistory(newImageFile);
+      setEditHotspot(null);
+      setDisplayHotspot(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(`Failed to generate the image. ${errorMessage}`);
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentImage, prompt, editHotspot, addImageToHistory]);
+
+  const handleApplyFilter = useCallback(async (filterPrompt: string) => {
+    if (!currentImage) {
+      setError('No image loaded to apply a filter to.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const filteredImageUrl = await generateFilteredImage(currentImage, filterPrompt);
+      const newImageFile = dataURLtoFile(filteredImageUrl, `filtered-${Date.now()}.png`);
+      addImageToHistory(newImageFile);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(`Failed to apply the filter. ${errorMessage}`);
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentImage, addImageToHistory]);
+
+  const handleApplyAdjustment = useCallback(async (adjustmentPrompt: string) => {
+    if (!currentImage) {
+      setError('No image loaded to apply an adjustment to.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const adjustedImageUrl = await generateAdjustedImage(currentImage, adjustmentPrompt);
+      const newImageFile = dataURLtoFile(adjustedImageUrl, `adjusted-${Date.now()}.png`);
+      addImageToHistory(newImageFile);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(`Failed to apply the adjustment. ${errorMessage}`);
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentImage, addImageToHistory]);
+
+  const handleUndo = useCallback(() => {
+    if (canUndo) {
+      setHistoryIndex(historyIndex - 1);
+      setEditHotspot(null);
+      setDisplayHotspot(null);
+    }
+  }, [canUndo, historyIndex]);
+
+  const handleRedo = useCallback(() => {
+    if (canRedo) {
+      setHistoryIndex(historyIndex + 1);
+      setEditHotspot(null);
+      setDisplayHotspot(null);
+    }
+  }, [canRedo, historyIndex]);
+
+  const handleReset = useCallback(() => {
+    if (history.length > 0) {
+      setHistoryIndex(0);
+      setError(null);
+      setEditHotspot(null);
+      setDisplayHotspot(null);
+    }
+  }, [history]);
+
+  const handleUploadNew = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  }, []);
+
+  // Convert a File to data URL (base64)
+  const fileToDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSave = useCallback(async () => {
+    if (!currentImage) {
+      setError('No image to save');
+      return;
+    }
+
+    // Ensure we have the card data loaded
+    if (!apiResponse?.data || !cardId) {
+      setError('Card data not loaded. Please wait and try again.');
+      return;
+    }
+
+    // Find the saved design data we originally loaded (from SWR response)
+    const savedDesign = apiResponse.data.find(d => d.id === cardId);
+    if (!savedDesign) {
+      console.log('❌ Card not found in local data, available cards:', apiResponse.data.map(d => d.id));
+      setError('Card not found in loaded data. Please refresh the page and try again.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      console.log('💾 Saving card with ID:', cardId);
+      console.log('📄 Found saved design:', savedDesign.title || 'Untitled');
+
+      const newImageDataUrl = await fileToDataURL(currentImage);
+
+      // Build pages array preserving existing other images if available
+      const existingImages: string[] = [];
+      if (savedDesign) {
+        // Prefer individual image fields
+        const possible = [savedDesign.image1, savedDesign.image2, savedDesign.image3, savedDesign.image4];
+        if (possible.some(Boolean)) {
+          existingImages.push(...possible.map(i => i || ''));
+        } else if (savedDesign.designData?.pages?.length) {
+          existingImages.push(...savedDesign.designData.pages.map(p => p.image || ''));
+        } else if (savedDesign.imageUrls?.length) {
+          existingImages.push(...savedDesign.imageUrls);
+        } else if (savedDesign.thumbnail) {
+          existingImages.push(savedDesign.thumbnail);
+        }
+      }
+      while (existingImages.length < 4) existingImages.push('');
+
+      // Replace first slot with new edited image (future: track which slot was edited)
+      existingImages[0] = newImageDataUrl;
+
+      // Prepare designData pages if original had designData
+      let updatedDesignData = undefined as any;
+      if (savedDesign?.designData?.pages?.length) {
+        updatedDesignData = {
+          ...savedDesign.designData,
+          pages: savedDesign.designData.pages.map((p, idx) => idx === 0 ? { ...p, image: newImageDataUrl } : p)
+        };
+      }
+
+      const body: any = {
+        title: savedDesign?.title || 'Edited Design',
+        image1: existingImages[0] || null,
+        image2: existingImages[1] || null,
+        image3: existingImages[2] || null,
+        image4: existingImages[3] || null,
+        thumbnail: existingImages[0] || null,
+        imageUrls: existingImages.filter(Boolean),
+      };
+      if (updatedDesignData) body.designData = updatedDesignData;
+
+      console.log('📡 Sending PUT request to:', `/api/saved-designs/${cardId}`);
+      console.log('📦 Request body keys:', Object.keys(body));
+      
+      const resp = await fetch(`/api/saved-designs/${cardId}` , {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      
+      console.log('📨 Response status:', resp.status, resp.statusText);
+      
+      if (!resp.ok) {
+        const responseText = await resp.text();
+        console.log('❌ Response text:', responseText);
+        
+        let errorMessage = `Save failed: ${resp.status}`;
+        
+        try {
+          const errorData = JSON.parse(responseText);
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // Use the raw response text if JSON parsing fails
+          errorMessage = responseText || errorMessage;
+        }
+        
+        if (resp.status === 404) {
+          // If it's a 404, let's try to refetch the data and retry once
+          console.log('🔄 Card not found, trying to refetch data...');
+          throw new Error(`Card not found on server. This might be a temporary issue. Please try again or refresh the page. (${errorMessage})`);
+        } else {
+          throw new Error(`${errorMessage}. Please try again.`);
+        }
+      }
+      
+      console.log('✅ Save successful!');
+
+      // Navigate back directly into Pintura editor for this design
+      router.push(`/my-cards/${cardId}?openPintura=1&updated=1`);
+    } catch (err) {
+      console.error('Save failed', err);
+      setError(err instanceof Error ? err.message : 'Failed to save image');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentImage, apiResponse, cardId, router]);
+
+  const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (activeTab !== 'retouch') return;
+
+    const img = e.currentTarget;
+    const rect = img.getBoundingClientRect();
+
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    setDisplayHotspot({ x: offsetX, y: offsetY });
+
+    const { naturalWidth, naturalHeight, clientWidth, clientHeight } = img;
+    const scaleX = naturalWidth / clientWidth;
+    const scaleY = naturalHeight / clientHeight;
+
+    const originalX = Math.round(offsetX * scaleX);
+    const originalY = Math.round(offsetY * scaleY);
+
+    setEditHotspot({ x: originalX, y: originalY });
+  };
+
+  const renderContent = () => {
+    if (error) {
+      return (
+        <div className="text-center animate-fade-in bg-red-500/10 border border-red-500/20 p-8 rounded-lg max-w-2xl mx-auto flex flex-col items-center gap-4">
+          <h2 className="text-2xl font-bold text-red-300">An Error Occurred</h2>
+          <p className="text-md text-red-400">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg text-md transition-colors"
+          >
+            Try Again
           </button>
         </div>
-      </div>
+      );
+    }
 
-      {/* Left Sidebar Navigation */}
-      <div className="fixed left-0 top-12 bottom-12 z-40 w-20 bg-white border-r border-gray-200">
-        <div className="flex flex-col h-full py-4">
-          <div className="flex flex-col space-y-2 px-2">
-            {mainTabs.map((tab) => (
+    if (isFetching || !apiResponse) {
+      return (
+        <div className="text-center animate-fade-in flex flex-col items-center gap-4">
+          <Spinner />
+          <p className="text-gray-600">Loading your card...</p>
+        </div>
+      );
+    }
+
+    if (hasStarted && !currentImageUrl && !isFetching) {
+      return (
+        <div className="text-center animate-fade-in flex flex-col items-center gap-4">
+          <div
+            onClick={handleUploadNew}
+            className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          >
+            <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Upload an Image</h3>
+            <p className="text-gray-600 mb-4">
+              Drag and drop your image here, or click to select
+            </p>
+            <p className="text-sm text-gray-500">
+              Supports JPG, PNG, WebP up to 10MB
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    const imageDisplay = (
+      <div className="relative">
+        {/* Base image is the original, always at the bottom */}
+        {originalImageUrl && (
+          <img
+            key={originalImageUrl}
+            src={originalImageUrl || undefined}
+            alt="Original"
+            className={`h-auto object-contain ${imageMaxHeightClass} max-w-full rounded-xl pointer-events-none`}
+          />
+        )}
+        {/* The current image is an overlay that fades in/out for comparison */}
+        <img
+          ref={imgRef}
+          key={currentImageUrl}
+          src={currentImageUrl || undefined}
+          alt="Current"
+          onClick={handleImageClick}
+          className={`absolute top-0 left-0 h-auto object-contain ${imageMaxHeightClass} max-w-full rounded-xl transition-opacity duration-200 ease-in-out ${isComparing ? 'opacity-0' : 'opacity-100'} ${activeTab === 'retouch' ? 'cursor-crosshair' : ''}`}
+        />
+      </div>
+    );
+
+    return (
+  <div className="w-full mx-auto flex flex-col items-center gap-5 animate-fade-in pb-20">
+        {/* Top Action Buttons */}
+        <div className="flex items-center justify-between gap-2 mb-3 w-full">
+          <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push(`/my-cards/${cardId}?openPintura=1`)}
+            className="flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 px-3 py-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
+            aria-label="Back to Pintura Editor"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            <span className="text-sm font-medium">Back to Editor</span>
+          </button>
+
+          <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
+
+          <button
+            onClick={handleUndo}
+            disabled={!canUndo}
+            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
+            aria-label="Undo last action"
+          >
+            <UndoIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={!canRedo}
+            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
+            aria-label="Redo last action"
+          >
+            <RedoIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+
+          <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
+
+          {canUndo && (
+            <button
+              onMouseDown={() => setIsComparing(true)}
+              onMouseUp={() => setIsComparing(false)}
+              onMouseLeave={() => setIsComparing(false)}
+              onTouchStart={() => setIsComparing(true)}
+              onTouchEnd={() => setIsComparing(false)}
+              className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
+              aria-label="Press and hold to see original image"
+            >
+              <EyeIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+          )}
+
+          <button
+            onClick={handleReset}
+            disabled={!canUndo}
+            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
+            aria-label="Reset to original image"
+          >
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              disabled={!currentImage || isLoading || !apiResponse?.data || isInitialLoad}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg px-3 py-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="Save edited image and return"
+            >
+              {isLoading ? 'Saving...' : !apiResponse?.data ? 'Loading...' : 'Save & Return'}
+            </button>
+          </div>
+        </div>
+
+  {/* Upload button removed as per request */}
+
+        <div className="flex justify-center w-full">
+          <div className="relative inline-block shadow-lg rounded-xl overflow-hidden bg-white p-2">
+          {isLoading && (
+            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 animate-fade-in rounded-xl">
+              <Spinner />
+              <p className="text-gray-700">AI is working its magic...</p>
+            </div>
+          )}
+
+          {imageDisplay}
+
+          {displayHotspot && !isLoading && activeTab === 'retouch' && (
+            <div
+              className="absolute rounded-full w-6 h-6 bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2 z-10"
+              style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px` }}
+            >
+              <div className="absolute inset-0 rounded-full w-6 h-6 animate-ping bg-blue-400"></div>
+            </div>
+          )}
+          </div>
+        </div>
+
+      </div>
+    );
+  };
+
+  // Dynamic layout sizing for image area (subtract estimated bottom bar heights per tab)
+  const bottomPaddingClass = activeTab === 'retouch' ? 'pb-[170px]' : 'pb-[360px]';
+  const imageMaxHeightClass = activeTab === 'retouch' ? 'max-h-[calc(100vh-240px)]' : 'max-h-[calc(100vh-430px)]';
+
+  return (
+    <div className="min-h-screen h-screen text-gray-800 bg-[#fafafa] flex flex-col">
+      <main className={`flex-grow w-full max-w-[1600px] mx-auto p-4 md:p-8 flex justify-center ${currentImage ? 'items-start' : 'items-center'} ${bottomPaddingClass}`}>
+        {/* Inject dynamic max-height class into image elements by replacing their max-h utility */}
+        <style>{`
+          /* Override existing 60vh cap with dynamic calculation */
+          .pixshop-dynamic-image > img, .pixshop-dynamic-image > .relative > img { ${''} }
+        `}</style>
+        {renderContent()}
+      </main>
+
+      {/* Fixed bottom tools bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
+        <div className="max-w-[1600px] mx-auto px-4 pt-3 pb-4 flex flex-col items-center gap-5">
+          {/* Active panel / input ABOVE tool icons */}
+          {activeTab === 'retouch' && (
+            <div className="flex items-center gap-3 bg-white/95 border border-gray-200 rounded-xl px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition w-full max-w-[28rem] mx-auto">
+              <input
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={editHotspot ? 'Describe your edit (e.g., change shirt to blue)' : 'Click an area first'}
+                aria-label="Retouch prompt"
+                className="w-64 md:w-80 bg-transparent placeholder-gray-400 text-gray-800 text-sm md:text-base focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoading || !editHotspot}
+              />
               <button
-                key={tab.id}
-                className={`relative flex flex-col items-center justify-center p-3 rounded-lg transition-colors ${
-                  activeTab === tab.id || tab.active
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-                onClick={() => setActiveTab(tab.id)}
-                title={tab.label}
+                onClick={handleGenerate}
+                className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed min-w-[84px] justify-center"
+                disabled={isLoading || !prompt.trim() || !editHotspot}
+                title="Generate edit"
               >
-                <div className="relative">
-                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d={tab.icon} />
-                  </svg>
-                  {tab.sparkles && (
-                    <div className="absolute -top-1 -right-1 flex">
-                      <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-                    </div>
-                  )}
-                </div>
-                <span className="text-xs font-medium mt-1">
-                  {tab.label}
-                </span>
+                <CheckIcon className="w-4 h-4" />
+                <span className="hidden sm:inline text-sm">Apply</span>
+              </button>
+            </div>
+          )}
+          {activeTab === 'adjust' && (
+            <div className="w-full max-w-5xl overflow-y-auto max-h-[320px] pr-1 mx-auto">
+              <AdjustmentPanel onApplyAdjustment={handleApplyAdjustment} isLoading={isLoading} />
+            </div>
+          )}
+          {activeTab === 'filters' && (
+            <div className="w-full max-w-5xl overflow-y-auto max-h-[320px] pr-1 mx-auto">
+              <FilterPanel onApplyFilter={handleApplyFilter} isLoading={isLoading} />
+            </div>
+          )}
+
+          {/* Tab buttons BELOW panel */}
+          <div className="flex items-center justify-center gap-3">
+            {([
+              { key: 'retouch', icon: RetouchIcon, label: 'Retouch' },
+              { key: 'adjust', icon: SlidersIcon, label: 'Adjust' },
+              { key: 'filters', icon: FilterIcon, label: 'Filters' }
+            ] as const).map(({ key, icon: Icon, label }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all duration-300 ease-in-out ${activeTab === key
+                  ? 'bg-gray-200/80 text-gray-800 border-gray-400 scale-110'
+                  : 'text-gray-600 hover:text-gray-800 hover:scale-105 border-gray-300/50 hover:border-gray-400/70'
+                  }`}
+                aria-label={label}
+              >
+                <Icon className="w-6 h-6" />
               </button>
             ))}
           </div>
         </div>
       </div>
-
-      {/* Bottom Controls Panel */}
-      {activeTab === 'finetune' && (
-        <div className="fixed bottom-0 left-20 right-0 z-40 bg-white border-t border-gray-200">
-          <div className="flex items-center justify-between px-6 py-4">
-            {/* Control tabs */}
-            <div className="flex space-x-1">
-              {finetuneControls.map((control) => (
-                <button
-                  key={control}
-                  className="px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                >
-                  {control}
-                </button>
-              ))}
-            </div>
-
-            {/* Range Control */}
-            <div className="flex items-center space-x-4">
-              <span className="text-sm font-medium min-w-[60px] text-center">0</span>
-              <button 
-                className="px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled
-              >
-                Reset
-              </button>
-              <div className="relative w-64 h-2">
-                <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-gray-300 rounded transform -translate-y-1/2"></div>
-                <div className="absolute top-1/2 left-1/2 w-4 h-4 bg-white border-2 border-blue-600 rounded-full transform -translate-x-1/2 -translate-y-1/2 cursor-grab"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-export default function PixshopPage() {
-  const params = useParams();
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Main App Navigation */}
-      <AppSidebar />
-      <AppMobileMenu />
-
-      {/* Main Content with Pintura Interface */}
-      <div className="lg:ml-20">
-        <PixshopEditor cardId={params?.id as string} />
-      </div>
     </div>
   );
-}
+};
 
-// Pixshop Editor Component with Pintura Navigation
-function PixshopEditor({ cardId }: { cardId: string }) {
-  if (!cardId) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Invalid Card ID</h1>
-          <p className="text-gray-600">Please check the URL and try again.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative min-h-screen">
-      {/* Pintura Navigation */}
-      <PinturaNav />
-
-      {/* Main Content Area */}
-      <div className="pt-12 pb-20 pl-20">
-        <div className="flex min-h-screen items-center justify-center p-8">
-          <div className="text-center max-w-2xl">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Pixshop Editor</h1>
-            <p className="text-gray-600 mb-6">Your image editing interface will appear here</p>
-            <p className="text-sm text-gray-500">Card ID: {cardId}</p>
-            <div className="mt-8 space-y-2 text-sm text-green-600">
-              <p>✅ Top toolbar with Close, Revert, Undo, Redo, Zoom controls, and Done button</p>
-              <p>✅ Left sidebar with Finetune, Filter, Annotate, Sticker, and Pixshop tabs</p>
-              <p>✅ Bottom controls panel with Brightness, Contrast, etc. and range slider</p>
-              <p>✅ Pixshop tab is highlighted and marked as active with sparkle effect</p>
-              <p>⭐ This matches the exact Pintura editor layout from your HTML</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+export default PixshopPage;

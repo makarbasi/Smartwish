@@ -120,24 +120,24 @@ const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ onApplyAdjustment, is
 
       {/* Text Input and Apply Button */}
       <div className="flex justify-center">
-        <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg p-2 shadow-lg">
+        <div className="flex items-center gap-3 bg-white/95 border border-gray-200 rounded-xl px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition">
           <input
             type="text"
             value={customPrompt}
             onChange={handleCustomChange}
-            placeholder="Or describe an adjustment (e.g., 'change background to a forest')"
-            className={`bg-transparent border-none text-gray-800 rounded-md p-2 text-base focus:outline-none transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 ${activePrompt ? 'w-64' : 'w-80'}`}
+            placeholder="Describe or tweak an adjustment"
+            aria-label="Adjustment prompt"
+            className="w-64 md:w-80 bg-transparent placeholder-gray-400 text-gray-800 text-sm md:text-base focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
           />
-
           <button
             onClick={handleApply}
-            className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold p-3 rounded-md transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner disabled:from-gray-400 disabled:to-gray-500 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none min-w-[80px] min-h-[44px] flex items-center justify-center gap-2"
+            className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed min-w-[84px]"
             disabled={isLoading || !activePrompt?.trim()}
             title="Apply Adjustment"
           >
-            <CheckIcon className="w-5 h-5" />
-            <span className="text-sm">Apply</span>
+            <CheckIcon className="w-4 h-4" />
+            <span className="hidden sm:inline text-sm">Apply</span>
           </button>
         </div>
       </div>
