@@ -14,7 +14,16 @@
       "Read(/c:\\Users\\abuba\\Downloads/**)",
       "Read(/c:\\Users\\abuba\\Downloads/**)",
       "Read(/c:\\Users\\abuba\\AppData\\Roaming\\Code\\User\\workspaceStorage\\vscode-chat-images/**)",
-      "Read(/c:\\Users\\abuba\\Downloads/**)"
+      "Read(/c:\\Users\\abuba\\Downloads/**)",
+      "Read(/f:\\Smartwish\\smartwish-frontend\\src\\components/**)",
+      "Read(/c:\\Users\\abuba\\Downloads\\pixshop\\pixshop/**)",
+      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\components\\pixshop/**)",
+      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\components\\pixshop/**)",
+      "Read(/F:\\Smartwish/**)",
+      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\components/**)",
+      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\components\\pixshop/**)",
+      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\components/**)",
+      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\components/**)"
     ],
     "deny": [],
     "ask": [],
