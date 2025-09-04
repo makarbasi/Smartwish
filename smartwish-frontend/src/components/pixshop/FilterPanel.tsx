@@ -41,7 +41,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) =
   };
 
   return (
-    <div className="w-full flex flex-col gap-6 animate-fade-in">
+  <div className="w-full flex flex-col gap-6 animate-fade-in">
       {/* Filter Tiles */}
       <div className="flex justify-center">
         <div className="grid grid-cols-4 gap-8">
@@ -70,26 +70,25 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) =
 
       {/* Text Input and Apply Button */}
       <div className="flex justify-center">
-        <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg p-2 shadow-lg">
+        <div className="flex items-center gap-3 bg-white/95 border border-gray-200 rounded-xl px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition">
           <input
             type="text"
             value={customPrompt}
             onChange={handleCustomChange}
-            placeholder="Or describe a custom filter (e.g., '80s synthwave glow')"
-            className={`bg-transparent border-none text-gray-800 rounded-md p-2 text-base focus:outline-none transition-all duration-300 ease-in-out disabled:cursor-not-allowed disabled:opacity-60 ${activePrompt ? 'w-64' : 'w-80'}`}
+            placeholder="Describe or tweak a filter prompt"
+            aria-label="Filter prompt"
+            className="w-64 md:w-80 bg-transparent placeholder-gray-400 text-gray-800 text-sm md:text-base focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
           />
-
-          {activePrompt && (
-            <button
-              onClick={handleApply}
-              className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold p-2 rounded-md transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none animate-slide-in-right"
-              disabled={isLoading || !activePrompt.trim()}
-              title="Apply Filter"
-            >
-              <CheckIcon className="w-4 h-4" />
-            </button>
-          )}
+          <button
+            onClick={handleApply}
+            className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isLoading || !activePrompt?.trim()}
+            title="Apply Filter"
+          >
+            <CheckIcon className="w-4 h-4" />
+            <span className="hidden sm:inline text-sm">Apply</span>
+          </button>
         </div>
       </div>
     </div>

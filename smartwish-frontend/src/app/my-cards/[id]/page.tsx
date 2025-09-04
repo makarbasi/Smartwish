@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -189,6 +189,7 @@ export default function CustomizeCardPage() {
   const { data: session, status } = useSession();
   const params = useParams();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const cardId = params?.id as string;
   const [currentPage, setCurrentPage] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -408,6 +409,27 @@ export default function CustomizeCardPage() {
   useEffect(() => {
     console.log("🔄 Selected category changed:", selectedCategory);
   }, [selectedCategory]);
+
+  // Handle openPintura URL parameter to automatically open editor after pixshop save
+  useEffect(() => {
+    const openPintura = searchParams.get('openPintura');
+    const updated = searchParams.get('updated');
+    
+    if (openPintura === '1' && updated === '1' && cardData && pageImages.length > 0) {
+      console.log("🎨 Auto-opening Pintura editor after pixshop save");
+      // Open editor for the first page (which was edited in pixshop)
+      setTimeout(() => {
+        setEditingPageIndex(0);
+        setEditorVisible(true);
+      }, 500); // Small delay to ensure everything is loaded
+      
+      // Clean up URL parameters
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('openPintura');
+      newUrl.searchParams.delete('updated');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [searchParams, cardData, pageImages]);
 
   // Auto-detect changes by comparing current state with original state
   useEffect(() => {
@@ -741,7 +763,7 @@ export default function CustomizeCardPage() {
     }
   };
 
-  // Convert external image URL to blob URL for Pintura
+  // Convert external image URL for Pintura
   const convertImageToBlob = async (imageUrl: string): Promise<string> => {
     try {
       console.log(
