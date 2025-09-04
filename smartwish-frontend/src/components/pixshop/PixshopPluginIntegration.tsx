@@ -9,6 +9,7 @@ interface PixshopPluginIntegrationProps {
   setCurrentImageSrc: (src: string) => void;
   onProcess: (result: any) => void;
   onHide: () => void;
+  onOpenPixshop: () => void;
 }
 
 export class PixshopPluginIntegration {
@@ -67,8 +68,9 @@ export class PixshopPluginIntegration {
       if (retouchTab && !retouchTab.hasAttribute('data-pixshop-listener-added')) {
         retouchTab.setAttribute('data-pixshop-listener-added', 'true');
         retouchTab.addEventListener('click', () => {
-          console.log('🎯 Pixshop tab clicked, injecting Pixshop interface');
-          setTimeout(() => this.injectPixshopInterface(editorInstance), 200);
+          console.log('🎯 Pixshop tab clicked, opening Pixshop modal');
+          // Instead of DOM injection, trigger the modal
+          setTimeout(() => this.props.onOpenPixshop(), 200);
         });
       }
 
@@ -89,7 +91,8 @@ export class PixshopPluginIntegration {
 
       // Check if Retouch/Pixshop tab is currently active
       if (retouchTab && retouchTab.getAttribute('aria-selected') === 'true') {
-        setTimeout(() => this.injectPixshopInterface(editorInstance), 100);
+        // Don't auto-open Pixshop modal when tab is initially active
+        console.log('🎯 Pixshop tab is initially active, but not auto-opening modal');
       }
     };
 

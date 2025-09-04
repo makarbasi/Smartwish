@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { PixshopPluginIntegration } from "./pixshop/PixshopPluginIntegration";
+import { useRouter } from "next/navigation";
+import WarningDialog from "./pixshop/WarningDialog";
 import {
   setPlugins,
   plugin_finetune,
@@ -36,7 +37,7 @@ setPlugins(
 );
 
 // Create custom editor defaults WITHOUT crop and WITHOUT frame
-const editorDefaults = {
+const createEditorDefaults = (handleOpenPixshop: () => void) => ({
   utils: ["finetune", "filter", "annotate", "sticker", "retouch"], // explicitly exclude 'crop' and 'frame'
   imageReader: createDefaultImageReader(),
   imageWriter: createDefaultImageWriter(),
@@ -72,7 +73,7 @@ const editorDefaults = {
     ...plugin_retouch_locale_en_gb,
     ...markup_editor_locale_en_gb,
   },
-};
+});
 
 // Dynamic import for the editor modal
 const PinturaEditorModalComponent = dynamic(
@@ -97,6 +98,10 @@ export default function PinturaEditorModal({
 }: PinturaEditorModalProps) {
   // Use state to manage the current image source so we can update it dynamically
   const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
+  
+  // State for warning dialog
+  const [isWarningDialogOpen, setIsWarningDialogOpen] = useState(false);
+  const router = useRouter();
 
   // Update currentImageSrc when imageSrc prop changes
   useEffect(() => {
@@ -122,20 +127,114 @@ export default function PinturaEditorModal({
     onHide();
   };
 
+  // Handle opening Pixshop with warning
+  const handleOpenPixshop = () => {
+    setIsWarningDialogOpen(true);
+    
+    // Add translucent overlay to Pintura editor via DOM
+    setTimeout(() => {
+      const pinturaEditor = document.querySelector('.pintura-editor, .PinturaModal, .PinturaRoot');
+      if (pinturaEditor) {
+        const overlay = document.createElement('div');
+        overlay.id = 'pixshop-warning-overlay';
+        overlay.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: rgba(0, 0, 0, 0.4);
+          z-index: 999999;
+          pointer-events: none;
+        `;
+        pinturaEditor.appendChild(overlay);
+      }
+    }, 10);
+  };
+
+  const handleConfirmPixshop = () => {
+    // Remove overlay before redirecting
+    const overlay = document.getElementById('pixshop-warning-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
+    setIsWarningDialogOpen(false);
+    router.push('/pixshop');
+  };
+
+  const handleCancelPixshop = () => {
+    // Remove overlay when canceled
+    const overlay = document.getElementById('pixshop-warning-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
+    setIsWarningDialogOpen(false);
+  };
+
+  // Setup retouch button interception with MutationObserver
+  useEffect(() => {
+    if (!isVisible) return;
+
+    let observer: MutationObserver | null = null;
+
+    const setupRetouchInterception = () => {
+      const retouchButton = document.querySelector('[title="Retouch"]');
+      if (retouchButton && !retouchButton.getAttribute('data-pixshop-intercepted')) {
+        retouchButton.setAttribute('data-pixshop-intercepted', 'true');
+        retouchButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          console.log('🎨 Retouch button clicked - opening Pixshop warning');
+          handleOpenPixshop();
+        }, { capture: true });
+        console.log('🎨 Retouch button interception setup complete');
+        return true;
+      }
+      return false;
+    };
+
+    // Initial setup attempts
+    setTimeout(setupRetouchInterception, 100);
+    setTimeout(setupRetouchInterception, 500);
+    
+    // Use MutationObserver to watch for dynamically created buttons
+    const observerTimeout = setTimeout(() => {
+      if (!setupRetouchInterception()) {
+        observer = new MutationObserver(() => {
+          if (setupRetouchInterception() && observer) {
+            observer.disconnect();
+            observer = null;
+          }
+        });
+        
+        const pinturaRoot = document.querySelector('.PinturaRoot');
+        if (pinturaRoot) {
+          observer.observe(pinturaRoot, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['title']
+          });
+        }
+      }
+    }, 1000);
+
+    return () => {
+      if (observer) {
+        observer.disconnect();
+      }
+      clearTimeout(observerTimeout);
+      // Remove intercepted attribute from buttons
+      const interceptedButtons = document.querySelectorAll('[data-pixshop-intercepted="true"]');
+      interceptedButtons.forEach(button => {
+        button.removeAttribute('data-pixshop-intercepted');
+      });
+    };
+  }, [isVisible, handleOpenPixshop]);
+
   const handleLoad = (res: unknown) => {
     console.log("📷 Load editor image:", res);
-
-    // Initialize PixshopPlugin Integration
-    const pixshopPlugin = new PixshopPluginIntegration({
-      currentImageSrc,
-      setCurrentImageSrc,
-      onProcess: handleProcess,
-      onHide: handleHide,
-    });
-
-    // Initialize the plugin
-    pixshopPlugin.initialize(res);
-
   };
 
   if (!isVisible) {
@@ -145,13 +244,24 @@ export default function PinturaEditorModal({
 
   console.log("🎨 Editor IS visible, rendering PinturaEditorModal");
 
+  const editorDefaults = createEditorDefaults(handleOpenPixshop);
+
   return (
-    <PinturaEditorModalComponent
-      {...editorDefaults}
-      src={currentImageSrc}
-      onLoad={handleLoad}
-      onHide={handleHide}
-      onProcess={handleProcess}
-    />
+    <>
+      <PinturaEditorModalComponent
+        {...editorDefaults}
+        src={currentImageSrc}
+        onLoad={handleLoad}
+        onHide={handleHide}
+        onProcess={handleProcess}
+      />
+      
+      {/* Warning Dialog */}
+      <WarningDialog
+        isOpen={isWarningDialogOpen}
+        onContinue={handleConfirmPixshop}
+        onCancel={handleCancelPixshop}
+      />
+    </>
   );
 }
