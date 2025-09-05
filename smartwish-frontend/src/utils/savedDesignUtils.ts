@@ -20,20 +20,23 @@ export interface UploadImagesResponse {
 }
 
 /**
- * Validate that no blob URLs are present in image array
+ * Validate that no blob URLs or data URLs are present in image array
  */
 export function validateNoBlobUrls(images: string[]): void {
   const blobUrls = images.filter((url) => url && url.startsWith("blob:"));
-  if (blobUrls.length > 0) {
-    console.error("❌ CRITICAL: Blob URLs detected in images:", blobUrls);
+  const dataUrls = images.filter((url) => url && url.startsWith("data:"));
+  const problematicUrls = [...blobUrls, ...dataUrls];
+  
+  if (problematicUrls.length > 0) {
+    console.error("❌ CRITICAL: Blob/Data URLs detected in images:", problematicUrls);
     throw new Error(
-      `Cannot save images with blob URLs. Found ${blobUrls.length} blob URLs that must be uploaded to Supabase first.`
+      `Cannot save images with blob/data URLs. Found ${problematicUrls.length} URLs that must be uploaded to Supabase first.`
     );
   }
 }
 
 /**
- * Ensure all blob URLs are converted to Supabase URLs before saving
+ * Ensure all blob URLs and data URLs are converted to Supabase URLs before saving
  */
 export async function ensureSupabaseUrls(
   images: string[],
@@ -41,17 +44,19 @@ export async function ensureSupabaseUrls(
   designId?: string
 ): Promise<string[]> {
   const blobUrls = images.filter((url) => url && url.startsWith("blob:"));
+  const dataUrls = images.filter((url) => url && url.startsWith("data:"));
+  const urlsToUpload = [...blobUrls, ...dataUrls];
 
-  if (blobUrls.length === 0) {
-    console.log("✅ No blob URLs found, all images are already uploaded");
+  if (urlsToUpload.length === 0) {
+    console.log("✅ No blob URLs or data URLs found, all images are already uploaded");
     return images;
   }
 
-  console.log("🔄 Found blob URLs, uploading to Supabase:", blobUrls.length);
+  console.log("🔄 Found URLs to upload:", urlsToUpload.length, "(blob:", blobUrls.length, ", data:", dataUrls.length, ")");
 
   try {
-    // Convert blob URLs to base64
-    const base64Images = await convertBlobUrlsToBase64(blobUrls);
+    // Convert blob URLs and data URLs to base64
+    const base64Images = await convertBlobUrlsToBase64(urlsToUpload);
 
     // Upload to Supabase
     const uploadResult = await uploadImages(base64Images, userId, designId);
@@ -65,19 +70,19 @@ export async function ensureSupabaseUrls(
       uploadResult.cloudUrls.length
     );
 
-    // Replace blob URLs with Supabase URLs
+    // Replace blob URLs and data URLs with Supabase URLs
     const finalImages = images.map((url) => {
-      if (url && url.startsWith("blob:")) {
-        const blobIndex = blobUrls.indexOf(url);
-        return uploadResult.cloudUrls[blobIndex] || url;
+      if (url && (url.startsWith("blob:") || url.startsWith("data:"))) {
+        const urlIndex = urlsToUpload.indexOf(url);
+        return uploadResult.cloudUrls[urlIndex] || url;
       }
       return url;
     });
 
-    console.log("🔄 Replaced blob URLs with Supabase URLs");
+    console.log("🔄 Replaced blob URLs and data URLs with Supabase URLs");
     return finalImages;
   } catch (error) {
-    console.error("❌ Failed to upload blob images:", error);
+    console.error("❌ Failed to upload images:", error);
     throw new Error(
       `Failed to upload images to Supabase: ${
         error instanceof Error ? error.message : "Unknown error"

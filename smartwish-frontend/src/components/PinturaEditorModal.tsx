@@ -109,8 +109,37 @@ export default function PinturaEditorModal({
 
   // Update currentImageSrc when imageSrc prop changes
   useEffect(() => {
+    console.log('🖼️ PinturaEditorModal imageSrc changed:', {
+      oldSrc: currentImageSrc?.substring(0, 50),
+      newSrc: imageSrc?.substring(0, 50),
+      editingPageIndex,
+      isDataUrl: imageSrc?.startsWith('data:'),
+      imageSize: imageSrc?.length || 0
+    });
+    
+    // If this is a data URL (blob data), log more details
+    if (imageSrc?.startsWith('data:')) {
+      console.log('📊 Data URL image details:', {
+        type: imageSrc.split(';')[0]?.replace('data:', '') || 'unknown',
+        encoding: imageSrc.split(';')[1]?.split(',')[0] || 'unknown',
+        dataSize: imageSrc.split(',')[1]?.length || 0,
+        totalSize: imageSrc.length
+      });
+      
+      console.log('✅ Using data URL directly with Pintura - this should work!');
+      
+      // Log a few chunks of the base64 data for verification
+      const base64Data = imageSrc.split(',')[1] || '';
+      if (base64Data) {
+        console.log('🔢 Base64 data verification:');
+        for (let i = 0; i < Math.min(200, base64Data.length); i += 50) {
+          console.log(`   Base64 chunk ${Math.floor(i/50)+1}:`, base64Data.substring(i, i + 50));
+        }
+      }
+    }
+    
     setCurrentImageSrc(imageSrc);
-  }, [imageSrc]);
+  }, [imageSrc, currentImageSrc, editingPageIndex]);
 
   console.log("🎨 PinturaEditorModal rendered:", {
     imageSrc,
@@ -156,7 +185,7 @@ export default function PinturaEditorModal({
     }, 10);
   };
 
-  const handleConfirmPixshop = () => {
+  const handleConfirmPixshop = async () => {
     // Remove overlay before redirecting
     const overlay = document.getElementById('pixshop-warning-overlay');
     if (overlay) {
@@ -168,6 +197,67 @@ export default function PinturaEditorModal({
     const templateId = searchParams?.get('templateId');
     const templateName = searchParams?.get('templateName');
 
+    // Capture current Pintura state before navigating to Pixshop
+    console.log('🎯 Capturing current Pintura state for Pixshop...');
+    try {
+      // Try to get the Pintura editor instance
+      const pinturaEditor = document.querySelector('.PinturaEditor') as any;
+      if (pinturaEditor?.editor) {
+        console.log('📸 Found Pintura editor instance, extracting current state...');
+        
+        // Get the current edited image from Pintura
+        const editedImageBlob = await pinturaEditor.editor.imageWriter();
+        console.log('✅ Captured edited image blob:', editedImageBlob);
+        
+        // Convert blob to data URL for storage
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(editedImageBlob);
+        });
+        
+        console.log('🔄 Converted blob to data URL (size:', dataUrl.length, 'chars)');
+        
+        // Store the current Pintura state for Pixshop to pick up
+        const pinturaState = {
+          originalImage: currentImageSrc,
+          editedImage: dataUrl,
+          editedBlob: URL.createObjectURL(editedImageBlob),
+          pageIndex: editingPageIndex,
+          templateId,
+          templateName,
+          fromPintura: true,
+          timestamp: Date.now()
+        };
+        
+        sessionStorage.setItem('pinturaToPixshop', JSON.stringify(pinturaState));
+        console.log('💾 Stored Pintura state for Pixshop:', {
+          hasOriginal: !!pinturaState.originalImage,
+          hasEdited: !!pinturaState.editedImage,
+          editedSize: pinturaState.editedImage.length,
+          blobUrl: pinturaState.editedBlob
+        });
+      } else {
+        console.warn('⚠️ Could not find Pintura editor instance, using current image source');
+        // Fallback: use current image source
+        const fallbackState = {
+          originalImage: currentImageSrc,
+          editedImage: currentImageSrc,
+          pageIndex: editingPageIndex,
+          templateId,
+          templateName,
+          fromPintura: true,
+          fallback: true,
+          timestamp: Date.now()
+        };
+        sessionStorage.setItem('pinturaToPixshop', JSON.stringify(fallbackState));
+      }
+    } catch (error) {
+      console.error('❌ Failed to capture Pintura state:', error);
+      // Continue with navigation even if capture fails
+    }
+
+    // Navigate to Pixshop with the captured state
     // If template context
     if (!cardId && templateId) {
       try {
@@ -181,19 +271,24 @@ export default function PinturaEditorModal({
             pages: parsed?.pages || [],
             timestamp: Date.now()
           };
-            sessionStorage.setItem('templateEditorForPixshop', JSON.stringify(ctx));
+          sessionStorage.setItem('templateEditorForPixshop', JSON.stringify(ctx));
         }
       } catch {}
       const q = new URLSearchParams();
       q.set('templateId', templateId);
       if (templateName) q.set('templateName', templateName);
       q.set('pageIndex', String(editingPageIndex));
+      q.set('returnToPintura', '1'); // Flag to indicate return to Pintura
+      q.set('fromPintura', '1'); // Flag to indicate we're coming from Pintura with state
       router.push(`/my-cards/template-editor/pixshop?${q.toString()}`);
       return;
     }
 
     if (cardId) {
-      router.push(`/my-cards/${cardId}/pixshop?pageIndex=${editingPageIndex}`);
+      const q = new URLSearchParams();
+      q.set('pageIndex', String(editingPageIndex));
+      q.set('fromPintura', '1'); // Flag to indicate we're coming from Pintura with state
+      router.push(`/my-cards/${cardId}/pixshop?${q.toString()}`);
     } else {
       router.push('/pixshop');
     }

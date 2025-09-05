@@ -239,6 +239,105 @@ function TemplateEditorContent() {
   // Consume Pixshop return payload (single page edit) if present
   useEffect(() => {
     if (!templateData) return;
+    
+    // Check if returning from pixshop to reopen Pintura
+    const returnToPintura = searchParams?.get('returnToPintura') === '1';
+    const pageIndexFromUrl = searchParams?.get('pageIndex');
+    
+    if (returnToPintura && pageIndexFromUrl !== null) {
+      try {
+        const pinturaPayload = sessionStorage.getItem('pixshopToPintura');
+        if (pinturaPayload) {
+          const payload = JSON.parse(pinturaPayload);
+          console.log('📥 Received pixshop return payload:', {
+            hasEditedImage: !!payload.editedImage,
+            dataSize: payload.editedImage?.length || 0,
+            pageIndex: payload.pageIndex,
+            templateId: payload.templateId,
+            fileSize: payload.fileSize,
+            fileType: payload.fileType,
+            dataPrefix: payload.editedImage?.substring(0, 50) || 'none'
+          });
+          
+          // Log binary data chunks for verification
+          if (payload.editedImage) {
+            const chunkSize = 100;
+            console.log('🔢 Received binary data verification:');
+            for (let i = 0; i < Math.min(300, payload.editedImage.length); i += chunkSize) {
+              console.log(`   Chunk ${Math.floor(i/chunkSize)+1}:`, payload.editedImage.substring(i, i + chunkSize));
+            }
+          }
+          
+          if (payload && payload.editedImage && payload.templateId === templateData.id) {
+            const idx = Number(payload.pageIndex) || 0;
+            if (idx >= 0 && idx < pageImages.length) {
+              console.log('🔄 Reopening Pintura with edited image from pixshop');
+              console.log('🖼️ Original image URL (first 50 chars):', pageImages[idx]?.substring(0, 50));
+              console.log('🖼️ Edited image URL (first 50 chars):', payload.editedImage?.substring(0, 50));
+              
+              // Update the page images with the edited image
+              const updated = [...pageImages];
+              updated[idx] = payload.editedImage;
+              console.log('🔄 Updated pageImages state, preparing to reopen Pintura...');
+              console.log('🎯 Updated image at index', idx, ':', payload.editedImage.substring(0, 50));
+              
+              // Update state immediately
+              setPageImages(updated);
+              setHasUnsavedChanges(true);
+              
+              // Verify the blob data can be used to create an image
+              if (typeof window !== 'undefined') {
+                const testImage = document.createElement('img');
+                testImage.onload = () => {
+                  console.log('✅ Blob data successfully loaded as image:', {
+                    width: testImage.width,
+                    height: testImage.height,
+                    naturalWidth: testImage.naturalWidth,
+                    naturalHeight: testImage.naturalHeight
+                  });
+                };
+                testImage.onerror = (error: any) => {
+                  console.error('❌ Failed to load blob data as image:', error);
+                };
+                testImage.src = payload.editedImage;
+              }
+              
+              // Use setTimeout to ensure state updates are processed before opening Pintura
+              setTimeout(() => {
+                console.log('⏰ Timeout executed, now opening Pintura with updated image');
+                // Force update the pageImages state again to ensure it's current
+                setPageImages(prev => {
+                  const currentUpdated = [...prev];
+                  currentUpdated[idx] = payload.editedImage;
+                  console.log('🖼️ Final image being passed to Pintura (first 50 chars):', currentUpdated[idx]?.substring(0, 50) || 'undefined');
+                  return currentUpdated;
+                });
+                
+                // Use data URL directly with Pintura (it supports data URLs)
+                console.log('🎨 Using data URL directly with Pintura');
+                setEditingPageIndex(idx);
+                setEditorVisible(true);
+              }, 200); // Increased delay to be more certain
+              
+              // Clean up
+              sessionStorage.removeItem('pixshopToPintura');
+              
+              // Remove the returnToPintura param from URL
+              const newUrl = new URL(window.location.href);
+              newUrl.searchParams.delete('returnToPintura');
+              newUrl.searchParams.delete('pageIndex');
+              window.history.replaceState({}, '', newUrl.toString());
+              
+              return; // Don't process regular pixshop payload
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to process Pintura return payload', e);
+      }
+    }
+    
+    // Regular pixshop return payload processing
     try {
       const payloadRaw = sessionStorage.getItem('pixshopTemplateEdit');
       if (!payloadRaw) return;
@@ -257,7 +356,7 @@ function TemplateEditorContent() {
     } catch (e) {
       console.error('Failed to consume pixshopTemplateEdit payload', e);
     }
-  }, [templateData, pageImages.length]);
+  }, [templateData, pageImages.length, searchParams]);
 
   // Define callback functions before early returns
   const handleFlipNext = useCallback(() => {
@@ -499,8 +598,14 @@ function TemplateEditorContent() {
         return;
       }
 
-      // CRITICAL: Ensure all blob URLs are converted to Supabase URLs before copying
+      // CRITICAL: Ensure all blob URLs and data URLs are converted to Supabase URLs before copying
       console.log("🔄 Ensuring all images are uploaded to Supabase...");
+      console.log("📊 Current pageImages types:", pageImages.map((img, i) => ({
+        index: i,
+        type: img?.startsWith('data:') ? 'data URL' : img?.startsWith('blob:') ? 'blob URL' : 'regular URL',
+        prefix: img?.substring(0, 50) || 'undefined'
+      })));
+      
       const hasImageChanges = pageImages.some(
         (img, index) => img !== templateData.pages[index]
       );
@@ -508,7 +613,7 @@ function TemplateEditorContent() {
 
       if (hasImageChanges) {
         try {
-          // Convert any blob URLs to Supabase URLs
+          // Convert any blob URLs or data URLs to Supabase URLs
           finalImages = await ensureSupabaseUrls(
             pageImages,
             userId,
@@ -666,6 +771,7 @@ function TemplateEditorContent() {
         setPageImages(updatedImages);
       }
 
+      console.log(`📍 Setting editing page index to: ${pageIndex}`);
       setEditingPageIndex(pageIndex);
       setEditorVisible(true);
     } catch (error) {
@@ -1368,10 +1474,21 @@ function TemplateEditorContent() {
       {/* Pintura Editor Modal */}
       {editingPageIndex !== null && (
         <PinturaEditorModal
-          imageSrc={pageImages[editingPageIndex]}
+          key={`pintura-${editingPageIndex}-${Date.now()}-${pageImages[editingPageIndex]?.substring(0, 20)}`}
+          imageSrc={(() => {
+            const imgSrc = pageImages[editingPageIndex];
+            console.log('🎨 Passing image to Pintura:', {
+              pageIndex: editingPageIndex,
+              isDataUrl: imgSrc?.startsWith('data:'),
+              imageSize: imgSrc?.length || 0,
+              imagePrefix: imgSrc?.substring(0, 50) || 'undefined'
+            });
+            return imgSrc;
+          })()}
           isVisible={editorVisible}
           onHide={handleEditorClose}
           onProcess={handleEditorProcess}
+          editingPageIndex={editingPageIndex}
         />
       )}
 

@@ -165,6 +165,8 @@ const PixshopPage: React.FC = () => {
   const rawPageIndex = searchParams?.get('pageIndex');
   const templateIdParam = searchParams?.get('templateId') || undefined;
   const templateNameParam = searchParams?.get('templateName') || undefined;
+  const returnToPintura = searchParams?.get('returnToPintura') === '1';
+  const fromPintura = searchParams?.get('fromPintura') === '1';
   const isTemplateContext = cardParam === 'template-editor' || !!templateIdParam;
   // Effective design id we use to look up saved design
   const effectiveDesignId = isTemplateContext ? (templateIdParam || '') : (cardParam || '');
@@ -197,6 +199,55 @@ const PixshopPage: React.FC = () => {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
 
+  // Check for incoming Pintura state when coming from Pintura editor
+  useEffect(() => {
+    if (fromPintura && typeof window !== 'undefined') {
+      console.log('🎯 Pixshop: Checking for incoming Pintura state...');
+      
+      try {
+        const pinturaStateStr = sessionStorage.getItem('pinturaToPixshop');
+        if (pinturaStateStr) {
+          const pinturaState = JSON.parse(pinturaStateStr);
+          console.log('📥 Found Pintura state for Pixshop:', {
+            hasOriginal: !!pinturaState.originalImage,
+            hasEdited: !!pinturaState.editedImage,
+            editedSize: pinturaState.editedImage?.length,
+            pageIndex: pinturaState.pageIndex,
+            templateId: pinturaState.templateId,
+            fromPintura: pinturaState.fromPintura,
+            fallback: pinturaState.fallback
+          });
+
+          // Use the edited image from Pintura as the starting point
+          const imageToUse = pinturaState.editedImage || pinturaState.originalImage;
+          if (imageToUse && imageToUse.startsWith('data:')) {
+            // Convert data URL to File
+            const file = dataURLtoFile(imageToUse, `pintura-edited-${Date.now()}.jpg`);
+            console.log('✅ Converted Pintura image to File object:', {
+              name: file.name,
+              size: file.size,
+              type: file.type
+            });
+            
+            // Set this as the initial image in history
+            setHistory([file]);
+            setHistoryIndex(0);
+            setIsInitialLoad(false);
+            
+            console.log('🎨 Pixshop initialized with Pintura edited image');
+            
+            // Clear the sessionStorage to prevent reuse
+            sessionStorage.removeItem('pinturaToPixshop');
+            return; // Skip normal image loading
+          }
+        }
+      } catch (error) {
+        console.error('❌ Failed to load Pintura state:', error);
+        // Continue with normal loading if Pintura state fails
+      }
+    }
+  }, [fromPintura]);
+
   // Fetch saved designs to get the image for this card
   const {
     data: apiResponse,
@@ -211,7 +262,10 @@ const PixshopPage: React.FC = () => {
 
   // Load image from saved design when data is available and page index changes (initial only)
   useEffect(() => {
-    if (apiResponse?.data && effectiveDesignId && history.length === 0) {
+    // Skip if we've already loaded from Pintura state or if we already have history
+    if (history.length > 0) return;
+    
+    if (apiResponse?.data && effectiveDesignId) {
       const savedDesign = apiResponse.data.find((d) => d.id === effectiveDesignId);
       if (!savedDesign) {
         // If we're in template context, attempt to load template directly
@@ -337,6 +391,20 @@ const PixshopPage: React.FC = () => {
       setOriginalImageUrl(null);
     }
   }, [originalImage]);
+
+  // Handle browser navigation (back button) as cancellation
+  useEffect(() => {
+    const handlePopState = () => {
+      console.log('🚫 Browser back button detected - cleaning up sessionStorage');
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pixshopToPintura');
+        sessionStorage.removeItem('pixshopTemplateEdit');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
@@ -490,6 +558,33 @@ const PixshopPage: React.FC = () => {
     });
   };
 
+  const handleCancel = useCallback(() => {
+    console.log('🚫 User canceled pixshop editing - returning without saving');
+    
+    // Clean up any potential sessionStorage data to prevent stale data issues
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('pixshopToPintura');
+      sessionStorage.removeItem('pixshopTemplateEdit');
+      console.log('🧹 Cleaned up sessionStorage on cancel');
+    }
+    
+    // Navigate back without saving any changes
+    if (isTemplateContext) {
+      // Template context: return to template editor
+      const q = new URLSearchParams();
+      if (templateIdParam) q.set('templateId', templateIdParam);
+      if (templateNameParam) q.set('templateName', templateNameParam || '');
+      q.set('pageIndex', String(pageIndex));
+      // Note: We don't set returnToPintura flag because we're canceling
+      console.log('🔄 Canceling - redirecting back to template editor without changes');
+      router.push(`/my-cards/template-editor?${q.toString()}`);
+    } else {
+      // Regular card context: return to card editor
+      console.log('🔄 Canceling - redirecting back to card editor without changes');
+      router.push(`/my-cards/${effectiveDesignId}`);
+    }
+  }, [isTemplateContext, templateIdParam, templateNameParam, pageIndex, router, effectiveDesignId]);
+
   const handleSave = useCallback(async () => {
     if (!currentImage) {
       setError('No image to save');
@@ -503,6 +598,115 @@ const PixshopPage: React.FC = () => {
 
     // Template context: just return to template editor (future: persist changes upstream)
     if (isTemplateContext) {
+      console.log('📝 Template context detected - skipping database save');
+      console.log('🔍 Template context details:', { cardParam, templateIdParam, isTemplateContext });
+      
+      // Check if we came from Pintura (has returnToPintura param or referrer indicates Pintura)
+      const returnToPintura = searchParams?.get('returnToPintura') === '1' || 
+                             document.referrer.includes('template-editor') && 
+                             !document.referrer.includes('pixshop');
+      
+      if (returnToPintura) {
+        console.log('🔄 Returning edited image to Pintura editor');
+        try {
+          setIsLoading(true);
+          
+          // Store the edited image for Pintura to consume
+          const dataUrl = await fileToDataURL(currentImage);
+          console.log('🖼️ Converted edited image to data URL (size:', dataUrl.length, 'chars)');
+          console.log('🖼️ Data URL starts with:', dataUrl.substring(0, 50));
+          
+          // Log binary data details
+          console.log('📊 Current image file details:', {
+            name: currentImage.name,
+            size: currentImage.size,
+            type: currentImage.type,
+            lastModified: currentImage.lastModified
+          });
+          
+          // Log blob data in chunks to avoid console truncation
+          const chunkSize = 100;
+          for (let i = 0; i < Math.min(500, dataUrl.length); i += chunkSize) {
+            console.log(`🔢 Binary chunk ${Math.floor(i/chunkSize)+1}:`, dataUrl.substring(i, i + chunkSize));
+          }
+          
+          // Create a blob URL for verification
+          const blobUrl = URL.createObjectURL(currentImage);
+          console.log('🌐 Created blob URL for verification:', blobUrl);
+          
+          // Test if the data URL can be loaded as an image
+          if (typeof window !== 'undefined') {
+            const testImg = document.createElement('img');
+            testImg.onload = () => {
+              console.log('✅ Data URL successfully creates valid image:', {
+                width: testImg.width,
+                height: testImg.height,
+                naturalWidth: testImg.naturalWidth,
+                naturalHeight: testImg.naturalHeight
+              });
+              URL.revokeObjectURL(blobUrl); // Clean up test blob URL
+            };
+            testImg.onerror = (error: any) => {
+              console.error('❌ Data URL failed to load as image:', error);
+              URL.revokeObjectURL(blobUrl); // Clean up test blob URL
+            };
+            testImg.src = dataUrl;
+          }
+          
+          const pinturaPayload = {
+            pageIndex,
+            editedImage: dataUrl,
+            templateId: templateIdParam,
+            returnToPintura: true,
+            timestamp: Date.now(),
+            blobUrl: blobUrl, // Include blob URL for reference
+            fileSize: currentImage.size,
+            fileType: currentImage.type
+          };
+          
+          try {
+            sessionStorage.setItem('pixshopToPintura', JSON.stringify(pinturaPayload));
+            console.log('💾 Saved edited image for Pintura to consume');
+            console.log('📦 Payload size:', JSON.stringify(pinturaPayload).length, 'chars');
+            console.log('📋 Payload structure:', {
+              pageIndex: pinturaPayload.pageIndex,
+              templateId: pinturaPayload.templateId,
+              hasEditedImage: !!pinturaPayload.editedImage,
+              editedImageSize: pinturaPayload.editedImage.length,
+              blobUrl: pinturaPayload.blobUrl,
+              fileSize: pinturaPayload.fileSize,
+              fileType: pinturaPayload.fileType
+            });
+            
+            // Verify sessionStorage was written correctly
+            const stored = sessionStorage.getItem('pixshopToPintura');
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              console.log('✅ Verified sessionStorage contains blob data:', {
+                hasData: !!parsed.editedImage,
+                dataSize: parsed.editedImage?.length || 0,
+                dataPrefix: parsed.editedImage?.substring(0, 30) || 'none'
+              });
+            }
+          } catch (storageError) {
+            console.warn('⚠️ Failed to save to sessionStorage:', storageError);
+          }
+          
+          // Navigate back to template editor (which will open Pintura with the edited image)
+          const q = new URLSearchParams();
+          if (templateIdParam) q.set('templateId', templateIdParam);
+          if (templateNameParam) q.set('templateName', templateNameParam || '');
+          q.set('returnToPintura', '1');
+          q.set('pageIndex', String(pageIndex));
+          console.log('🔄 Returning to template editor to reopen Pintura with edited image');
+          router.push(`/my-cards/template-editor?${q.toString()}`);
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+      
+      // Regular template editor return (not from Pintura)
       try {
         setIsLoading(true);
         // Convert file to data URL and stash into sessionStorage for template-editor to pick up
@@ -510,13 +714,17 @@ const PixshopPage: React.FC = () => {
         const payload = { pageIndex, image: dataUrl, templateId: templateIdParam };
         try {
           sessionStorage.setItem('pixshopTemplateEdit', JSON.stringify(payload));
-        } catch {}
+          console.log('💾 Saved edited image to sessionStorage for template editor');
+        } catch (storageError) {
+          console.warn('⚠️ Failed to save to sessionStorage:', storageError);
+        }
         const q = new URLSearchParams();
         if (templateIdParam) q.set('templateId', templateIdParam);
         if (templateNameParam) q.set('templateName', templateNameParam || '');
         q.set('updated', '1');
         q.set('fromPixshop', '1');
         q.set('pageIndex', String(pageIndex));
+        console.log('🔄 Redirecting back to template editor with query:', q.toString());
         router.push(`/my-cards/template-editor?${q.toString()}`);
       } finally {
         setIsLoading(false);
@@ -529,6 +737,17 @@ const PixshopPage: React.FC = () => {
       setError('Missing design id');
       return;
     }
+
+    // Extra safety check - should never reach here in template context
+    if (isTemplateContext) {
+      console.error('🚨 ERROR: Reached database save section while in template context!');
+      console.error('🚨 Template context details:', { cardParam, templateIdParam, isTemplateContext });
+      setError('Internal error: Template context should not save to database');
+      return;
+    }
+    
+    console.log('💾 Non-template context - proceeding with database save');
+    console.log('🔍 Save context details:', { effectiveDesignId, cardParam, isTemplateContext });
     
     try {
       setIsLoading(true);
@@ -566,7 +785,8 @@ const PixshopPage: React.FC = () => {
         body: JSON.stringify({
           supabaseUrl: existingSupabaseUrl,
           newImageBlob: newImageDataUrl,
-          designId: effectiveDesignId  // Pass the design ID to ensure only this design is updated
+          // Only pass designId if we're NOT in template context (extra safety)
+          designId: isTemplateContext ? undefined : effectiveDesignId
         })
       });
 
@@ -772,12 +992,20 @@ const PixshopPage: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleCancel}
+              disabled={isLoading}
+              className="bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg px-3 py-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="Cancel and return to editor without saving changes"
+            >
+              Cancel
+            </button>
+            <button
               onClick={handleSave}
               disabled={!currentImage || isLoading || isInitialLoad}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg px-3 py-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              aria-label="Return edited image to editor"
+              aria-label="Save and return edited image to editor"
             >
-              {isLoading ? 'Returning...' : 'Return to Editor'}
+              {isLoading ? 'Saving...' : 'Done'}
             </button>
           </div>
         </div>
