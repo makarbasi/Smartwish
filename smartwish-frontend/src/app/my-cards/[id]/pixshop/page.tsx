@@ -168,6 +168,17 @@ const PixshopPage: React.FC = () => {
   const returnToPintura = searchParams?.get('returnToPintura') === '1';
   const fromPintura = searchParams?.get('fromPintura') === '1';
   const isTemplateContext = cardParam === 'template-editor' || !!templateIdParam;
+  
+  console.log('🎯 Pixshop page loading with params:', {
+    cardParam,
+    templateIdParam,
+    templateNameParam,
+    returnToPintura,
+    fromPintura,
+    isTemplateContext,
+    rawPageIndex,
+    allSearchParams: Object.fromEntries(searchParams?.entries() || [])
+  });
   // Effective design id we use to look up saved design
   const effectiveDesignId = isTemplateContext ? (templateIdParam || '') : (cardParam || '');
   const pageIndexParam = rawPageIndex ? parseInt(rawPageIndex, 10) : 0;
@@ -190,6 +201,17 @@ const PixshopPage: React.FC = () => {
   const [isComparing, setIsComparing] = useState<boolean>(false);
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
   const [hasStarted, setHasStarted] = useState<boolean>(true);
+  const [hasUserInteracted, setHasUserInteracted] = useState<boolean>(false);
+  
+  // Reset interaction state when component mounts (reopening Pixshop)
+  useEffect(() => {
+    console.log('🔄 Pixshop component mounted - resetting interaction state');
+    setHasUserInteracted(false);
+  }, []);
+  
+  // Create a unique storage key for this page
+  const pageStorageKey = `pixshop-page-${templateIdParam}-${pageIndex}`;
+  const stackStorageKey = `pixshop-stack-${templateIdParam}`;
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -198,6 +220,129 @@ const PixshopPage: React.FC = () => {
 
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
+
+  // Save current page state to sessionStorage AND update the global stack
+  const savePageState = useCallback(() => {
+    if (typeof window === 'undefined' || !templateIdParam) return;
+    
+    try {
+      const pageState = {
+        historyLength: history.length,
+        historyIndex,
+        hasChanges: history.length > 1 || historyIndex > 0,
+        timestamp: Date.now(),
+        pageIndex
+      };
+      
+      // Store the current edited image if we have changes
+      if (currentImage && (history.length > 1 || historyIndex > 0)) {
+        fileToDataURL(currentImage).then(dataUrl => {
+          const stateWithImage = {
+            ...pageState,
+            editedImageDataUrl: dataUrl,
+            originalImageExists: !!originalImage
+          };
+          
+          // Save individual page state
+          sessionStorage.setItem(pageStorageKey, JSON.stringify(stateWithImage));
+          
+          // Update global stack
+          updateGlobalStack(pageIndex, dataUrl);
+          
+          console.log(`💾 Saved page state for page ${pageIndex}:`, {
+            hasChanges: stateWithImage.hasChanges,
+            historyLength: stateWithImage.historyLength,
+            imageSize: dataUrl.length
+          });
+        }).catch(console.error);
+      } else {
+        // Save state without image
+        sessionStorage.setItem(pageStorageKey, JSON.stringify(pageState));
+        console.log(`💾 Saved page state for page ${pageIndex} (no changes)`);
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to save page state:', error);
+    }
+  }, [pageStorageKey, stackStorageKey, history, historyIndex, currentImage, originalImage, pageIndex, templateIdParam]);
+
+  // Update the global stack with current page changes
+  const updateGlobalStack = useCallback((pageIdx: number, imageDataUrl: string) => {
+    if (typeof window === 'undefined' || !templateIdParam) return;
+    
+    try {
+      // Get existing stack or create new one
+      const existingStack = sessionStorage.getItem(stackStorageKey);
+      const stack = existingStack ? JSON.parse(existingStack) : {};
+      
+      // Update this page in the stack
+      stack[pageIdx] = {
+        editedImageDataUrl: imageDataUrl,
+        hasChanges: true,
+        timestamp: Date.now(),
+        pageIndex: pageIdx
+      };
+      
+      // Save updated stack
+      sessionStorage.setItem(stackStorageKey, JSON.stringify(stack));
+      
+      console.log(`📚 Updated global stack - page ${pageIdx} added:`, {
+        totalPagesInStack: Object.keys(stack).length,
+        pagesWithChanges: Object.keys(stack).map(key => parseInt(key))
+      });
+    } catch (error) {
+      console.warn('⚠️ Failed to update global stack:', error);
+    }
+  }, [stackStorageKey, templateIdParam]);
+
+  // Get the global stack of all page changes
+  const getGlobalStack = useCallback(() => {
+    if (typeof window === 'undefined' || !templateIdParam) return {};
+    
+    try {
+      const stackData = sessionStorage.getItem(stackStorageKey);
+      return stackData ? JSON.parse(stackData) : {};
+    } catch (error) {
+      console.warn('⚠️ Failed to get global stack:', error);
+      return {};
+    }
+  }, [stackStorageKey, templateIdParam]);
+
+  // Restore page state from sessionStorage
+  const restorePageState = useCallback(async () => {
+    if (typeof window === 'undefined' || !templateIdParam) return false;
+    
+    try {
+      const savedState = sessionStorage.getItem(pageStorageKey);
+      if (!savedState) {
+        console.log(`📂 No saved state found for page ${pageIndex}`);
+        return false;
+      }
+      
+      const pageState = JSON.parse(savedState);
+      console.log(`📂 Found saved state for page ${pageIndex}:`, {
+        hasChanges: pageState.hasChanges,
+        historyLength: pageState.historyLength,
+        hasEditedImage: !!pageState.editedImageDataUrl
+      });
+      
+      if (pageState.hasChanges && pageState.editedImageDataUrl) {
+        // Restore the edited image
+        const editedFile = dataURLtoFile(pageState.editedImageDataUrl, `restored-page-${pageIndex}-${Date.now()}.jpg`);
+        console.log(`✅ Restored edited image for page ${pageIndex}:`, {
+          fileName: editedFile.name,
+          fileSize: editedFile.size,
+          fileType: editedFile.type
+        });
+        
+        return editedFile;
+      }
+      
+      return false;
+    } catch (error) {
+      console.warn('⚠️ Failed to restore page state:', error);
+      return false;
+    }
+  }, [pageStorageKey, pageIndex, templateIdParam]);
 
   // Check for incoming Pintura state when coming from Pintura editor
   useEffect(() => {
@@ -265,12 +410,28 @@ const PixshopPage: React.FC = () => {
     // Skip if we've already loaded from Pintura state or if we already have history
     if (history.length > 0) return;
     
-    if (apiResponse?.data && effectiveDesignId) {
-      const savedDesign = apiResponse.data.find((d) => d.id === effectiveDesignId);
-      if (!savedDesign) {
-        // If we're in template context, attempt to load template directly
-        if (isTemplateContext && templateIdParam) {
-          (async () => {
+    // First try to restore page state
+    const loadImage = async () => {
+      console.log(`🔄 Loading image for page ${pageIndex}...`);
+      
+      // Try to restore from saved page state first
+      const restoredImage = await restorePageState();
+      if (restoredImage) {
+        console.log(`✅ Restored edited image from saved state for page ${pageIndex}`);
+        setHistory([restoredImage]);
+        setHistoryIndex(0);
+        setIsInitialLoad(false);
+        return;
+      }
+      
+      // If no restored state, proceed with normal loading
+      console.log(`📥 No saved state found, loading original image for page ${pageIndex}`);
+      
+      if (apiResponse?.data && effectiveDesignId) {
+        const savedDesign = apiResponse.data.find((d) => d.id === effectiveDesignId);
+        if (!savedDesign) {
+          // If we're in template context, attempt to load template directly
+          if (isTemplateContext && templateIdParam) {
             try {
               // First try sessionStorage handoff (faster, includes edited pages in memory)
               if (typeof window !== 'undefined') {
@@ -342,33 +503,35 @@ const PixshopPage: React.FC = () => {
               console.error('❌ Failed to load template fallback:', e);
               setError(e instanceof Error ? e.message : 'Failed to load template');
             }
-          })();
-        } else {
-          setError(`Card with ID ${effectiveDesignId} not found. Please check the URL or try refreshing the page.`);
+          } else {
+            setError(`Card with ID ${effectiveDesignId} not found. Please check the URL or try refreshing the page.`);
+          }
+          return;        
         }
-        return;        
-      }
-  // Cache locally for subsequent operations
-  setLocalDesign(savedDesign);
-      const { url } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
-      if (!url) {
-        setError(`No image found at index ${pageIndex} for this card.`);
-        return;
-      }
-      fetch(url)
-        .then(res => res.blob())
-        .then(blob => {
+        // Cache locally for subsequent operations
+        setLocalDesign(savedDesign);
+        const { url } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
+        if (!url) {
+          setError(`No image found at index ${pageIndex} for this card.`);
+          return;
+        }
+        try {
+          const res = await fetch(url);
+          const blob = await res.blob();
           const file = new File([blob], `card-${effectiveDesignId}-page-${pageIndex}.jpg`, { type: 'image/jpeg' });
           setHistory([file]);
           setHistoryIndex(0);
           setIsInitialLoad(false);
-        })
-        .catch(err => {
+        } catch (err) {
           console.error('❌ Error loading image:', err);
           setError('Failed to load image from saved design');
-        });
-    }
-  }, [apiResponse, effectiveDesignId, history.length, pageIndex, isTemplateContext, templateIdParam, templateNameParam]);
+        }
+      }
+    };
+    
+    // Call the async function
+    loadImage();
+  }, [apiResponse, effectiveDesignId, history.length, pageIndex, isTemplateContext, templateIdParam, templateNameParam, restorePageState]);
 
   // Effect to create and revoke object URLs safely for the current image
   useEffect(() => {
@@ -394,17 +557,35 @@ const PixshopPage: React.FC = () => {
 
   // Handle browser navigation (back button) as cancellation
   useEffect(() => {
+    console.log('🔧 Setting up popstate handler for browser back button');
+    
     const handlePopState = () => {
-      console.log('🚫 Browser back button detected - cleaning up sessionStorage');
+      console.log('🚫 Browser back button detected - saving state and cleaning up sessionStorage');
+      // Save current state before leaving
+      savePageState();
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('pixshopToPintura');
         sessionStorage.removeItem('pixshopTemplateEdit');
       }
     };
 
+    // Also save state when page is about to unload
+    const handleBeforeUnload = () => {
+      console.log('📤 Page unloading - saving current state');
+      savePageState();
+    };
+
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      console.log('🧹 Cleaning up navigation handlers and saving state');
+      // Save state when component unmounts
+      savePageState();
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [savePageState]);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
@@ -414,7 +595,10 @@ const PixshopPage: React.FC = () => {
     newHistory.push(newImageFile);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
-  }, [history, historyIndex]);
+    
+    // Save page state when we add new image to history
+    setTimeout(() => savePageState(), 100); // Small delay to ensure state is updated
+  }, [history, historyIndex, savePageState]);
 
   const handleImageUpload = useCallback((file: File) => {
     setError(null);
@@ -522,16 +706,20 @@ const PixshopPage: React.FC = () => {
       setHistoryIndex(historyIndex - 1);
       setEditHotspot(null);
       setDisplayHotspot(null);
+      // Save state after undo
+      setTimeout(() => savePageState(), 100);
     }
-  }, [canUndo, historyIndex]);
+  }, [canUndo, historyIndex, savePageState]);
 
   const handleRedo = useCallback(() => {
     if (canRedo) {
       setHistoryIndex(historyIndex + 1);
       setEditHotspot(null);
       setDisplayHotspot(null);
+      // Save state after redo
+      setTimeout(() => savePageState(), 100);
     }
-  }, [canRedo, historyIndex]);
+  }, [canRedo, historyIndex, savePageState]);
 
   const handleReset = useCallback(() => {
     if (history.length > 0) {
@@ -539,8 +727,10 @@ const PixshopPage: React.FC = () => {
       setError(null);
       setEditHotspot(null);
       setDisplayHotspot(null);
+      // Save state after reset
+      setTimeout(() => savePageState(), 100);
     }
-  }, [history]);
+  }, [history, savePageState]);
 
   const handleUploadNew = useCallback(() => {
     if (fileInputRef.current) {
@@ -561,11 +751,17 @@ const PixshopPage: React.FC = () => {
   const handleCancel = useCallback(() => {
     console.log('🚫 User canceled pixshop editing - returning without saving');
     
+    // Mark that user has interacted (clicked cancel)
+    setHasUserInteracted(true);
+    
     // Clean up any potential sessionStorage data to prevent stale data issues
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('pixshopToPintura');
       sessionStorage.removeItem('pixshopTemplateEdit');
-      console.log('🧹 Cleaned up sessionStorage on cancel');
+      // Also clean up individual page state and global stack
+      sessionStorage.removeItem(pageStorageKey);
+      sessionStorage.removeItem(stackStorageKey);
+      console.log('🧹 Cleaned up sessionStorage on cancel (including page state and global stack)');
     }
     
     // Navigate back without saving any changes
@@ -583,9 +779,18 @@ const PixshopPage: React.FC = () => {
       console.log('🔄 Canceling - redirecting back to card editor without changes');
       router.push(`/my-cards/${effectiveDesignId}`);
     }
-  }, [isTemplateContext, templateIdParam, templateNameParam, pageIndex, router, effectiveDesignId]);
+  }, [isTemplateContext, templateIdParam, templateNameParam, pageIndex, router, effectiveDesignId, hasUserInteracted, pageStorageKey, stackStorageKey]);
 
   const handleSave = useCallback(async () => {
+    console.log('💾 handleSave called with state:', {
+      hasCurrentImage: !!currentImage,
+      hasUser: !!session?.user?.id,
+      isTemplateContext,
+      returnToPintura,
+      hasUserInteracted,
+      fromPintura
+    });
+    
     if (!currentImage) {
       setError('No image to save');
       return;
@@ -596,15 +801,23 @@ const PixshopPage: React.FC = () => {
       return;
     }
 
+    // Mark that user has interacted (clicked save)
+    setHasUserInteracted(true);
+
     // Template context: just return to template editor (future: persist changes upstream)
     if (isTemplateContext) {
       console.log('📝 Template context detected - skipping database save');
       console.log('🔍 Template context details:', { cardParam, templateIdParam, isTemplateContext });
       
-      // Check if we came from Pintura (has returnToPintura param or referrer indicates Pintura)
-      const returnToPintura = searchParams?.get('returnToPintura') === '1' || 
-                             document.referrer.includes('template-editor') && 
-                             !document.referrer.includes('pixshop');
+      // Check if we came from Pintura (only check explicit URL parameter, not referrer)
+      const returnToPintura = searchParams?.get('returnToPintura') === '1';
+      
+      console.log('🔍 Return to Pintura check:', {
+        returnToPinturaParam: searchParams?.get('returnToPintura'),
+        willReturnToPintura: returnToPintura,
+        hasUserInteracted,
+        currentImageExists: !!currentImage
+      });
       
       if (returnToPintura) {
         console.log('🔄 Returning edited image to Pintura editor');
@@ -709,22 +922,47 @@ const PixshopPage: React.FC = () => {
       // Regular template editor return (not from Pintura)
       try {
         setIsLoading(true);
-        // Convert file to data URL and stash into sessionStorage for template-editor to pick up
-        const dataUrl = await fileToDataURL(currentImage);
-        const payload = { pageIndex, image: dataUrl, templateId: templateIdParam };
-        try {
-          sessionStorage.setItem('pixshopTemplateEdit', JSON.stringify(payload));
-          console.log('💾 Saved edited image to sessionStorage for template editor');
-        } catch (storageError) {
-          console.warn('⚠️ Failed to save to sessionStorage:', storageError);
+        
+        // Get the complete global stack of changes
+        const globalStack = getGlobalStack();
+        
+        // Add current page to stack before saving
+        if (currentImage) {
+          const currentDataUrl = await fileToDataURL(currentImage);
+          updateGlobalStack(pageIndex, currentDataUrl);
         }
+        
+        // Get updated stack after adding current page
+        const updatedStack = getGlobalStack();
+        
+        console.log('📚 Saving complete stack to template editor:', {
+          totalPages: Object.keys(updatedStack).length,
+          pagesWithChanges: Object.keys(updatedStack).map(key => parseInt(key)),
+          currentPage: pageIndex
+        });
+        
+        // Convert stack to format expected by template editor
+        const stackPayload = {
+          templateId: templateIdParam,
+          pageChanges: updatedStack,
+          lastEditedPage: pageIndex,
+          timestamp: Date.now()
+        };
+        
+        try {
+          sessionStorage.setItem('pixshopTemplateEdit', JSON.stringify(stackPayload));
+          console.log('💾 Saved complete page stack to sessionStorage for template editor');
+        } catch (storageError) {
+          console.warn('⚠️ Failed to save stack to sessionStorage:', storageError);
+        }
+        
         const q = new URLSearchParams();
         if (templateIdParam) q.set('templateId', templateIdParam);
         if (templateNameParam) q.set('templateName', templateNameParam || '');
         q.set('updated', '1');
         q.set('fromPixshop', '1');
         q.set('pageIndex', String(pageIndex));
-        console.log('🔄 Redirecting back to template editor with query:', q.toString());
+        console.log('🔄 Redirecting back to template editor with complete stack:', q.toString());
         router.push(`/my-cards/template-editor?${q.toString()}`);
       } finally {
         setIsLoading(false);
@@ -823,7 +1061,7 @@ const PixshopPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentImage, effectiveDesignId, pageIndex, cardParam, router, isTemplateContext, templateIdParam, templateNameParam, session, apiResponse, searchParams, refetchData]);
+  }, [currentImage, effectiveDesignId, pageIndex, cardParam, router, isTemplateContext, templateIdParam, templateNameParam, session, apiResponse, searchParams, refetchData, hasUserInteracted, getGlobalStack, updateGlobalStack]);
 
   const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     if (activeTab !== 'retouch') return;
