@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import WarningDialog from "./pixshop/WarningDialog";
 import {
   setPlugins,
@@ -88,6 +88,7 @@ interface PinturaEditorModalProps {
   isVisible: boolean;
   onHide: () => void;
   onProcess?: (result: { dest: File }) => void;
+  editingPageIndex?: number;
 }
 
 export default function PinturaEditorModal({
@@ -95,6 +96,7 @@ export default function PinturaEditorModal({
   isVisible,
   onHide,
   onProcess,
+  editingPageIndex = 0,
 }: PinturaEditorModalProps) {
   // Use state to manage the current image source so we can update it dynamically
   const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
@@ -103,6 +105,7 @@ export default function PinturaEditorModal({
   const [isWarningDialogOpen, setIsWarningDialogOpen] = useState(false);
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
 
   // Update currentImageSrc when imageSrc prop changes
   useEffect(() => {
@@ -161,10 +164,36 @@ export default function PinturaEditorModal({
     }
     setIsWarningDialogOpen(false);
     
-    // Get current card ID from URL params and redirect to card's pixshop page
-    const cardId = params.id;
+    const cardId = params.id as string | undefined;
+    const templateId = searchParams?.get('templateId');
+    const templateName = searchParams?.get('templateName');
+
+    // If template context
+    if (!cardId && templateId) {
+      try {
+        // Stash pages info if available (template-editor stored earlier)
+        const stored = sessionStorage.getItem('templateForEditor');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const ctx = {
+            templateId,
+            templateName,
+            pages: parsed?.pages || [],
+            timestamp: Date.now()
+          };
+            sessionStorage.setItem('templateEditorForPixshop', JSON.stringify(ctx));
+        }
+      } catch {}
+      const q = new URLSearchParams();
+      q.set('templateId', templateId);
+      if (templateName) q.set('templateName', templateName);
+      q.set('pageIndex', String(editingPageIndex));
+      router.push(`/my-cards/template-editor/pixshop?${q.toString()}`);
+      return;
+    }
+
     if (cardId) {
-      router.push(`/my-cards/${cardId}/pixshop`);
+      router.push(`/my-cards/${cardId}/pixshop?pageIndex=${editingPageIndex}`);
     } else {
       router.push('/pixshop');
     }

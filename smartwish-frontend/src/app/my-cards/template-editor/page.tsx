@@ -236,6 +236,29 @@ function TemplateEditorContent() {
     loadTemplate();
   }, [templateId, templateName, router]);
 
+  // Consume Pixshop return payload (single page edit) if present
+  useEffect(() => {
+    if (!templateData) return;
+    try {
+      const payloadRaw = sessionStorage.getItem('pixshopTemplateEdit');
+      if (!payloadRaw) return;
+      const payload = JSON.parse(payloadRaw);
+      if (!payload || payload.templateId !== templateData.id || !payload.image) return;
+      const idx = Number(payload.pageIndex) || 0;
+      if (idx < 0 || idx >= pageImages.length) return;
+      // Push current state to undo stack
+      setUndoStack((prev) => [...prev, [...pageImages]]);
+      const updated = [...pageImages];
+      updated[idx] = payload.image;
+      setPageImages(updated);
+      setHasUnsavedChanges(true);
+      sessionStorage.removeItem('pixshopTemplateEdit');
+      console.log('✅ Applied Pixshop returned edit to template page', idx);
+    } catch (e) {
+      console.error('Failed to consume pixshopTemplateEdit payload', e);
+    }
+  }, [templateData, pageImages.length]);
+
   // Define callback functions before early returns
   const handleFlipNext = useCallback(() => {
     console.log(
@@ -415,7 +438,7 @@ function TemplateEditorContent() {
         selectedCategory?.id || templateData.categoryId || "None"
       );
       console.log("�📸 Current page images:", pageImages);
-      const userId = session.user.id;
+  const userId = String(session.user.id);
 
       // Copy the template to saved designs with updated metadata and images
       const selectedCategoryId =

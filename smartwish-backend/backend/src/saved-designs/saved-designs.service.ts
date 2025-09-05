@@ -327,4 +327,12 @@ export class SavedDesignsService {
   async getPublishedToTemplates(userId: string): Promise<SavedDesign[]> {
     return await this.supabaseService.getPublishedToTemplates(userId);
   }
+
+  async updateImageContent(supabaseUrl: string, newImageData: string): Promise<string> {
+    return await this.supabaseService.updateImageContent(supabaseUrl, newImageData);
+  }
+
+  async updateImageUrlsInDesigns(userId: string, oldUrl: string, newUrl: string, designId?: string): Promise<number> {
+    return await this.supabaseService.updateImageUrlsInDesigns(userId, oldUrl, newUrl, designId);
+  }
 }

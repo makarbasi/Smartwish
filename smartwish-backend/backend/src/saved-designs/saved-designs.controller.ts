@@ -454,4 +454,87 @@ export class SavedDesignsController {
       });
     }
   }
+
+  @Post('update-supabase-image')
+  async updateSupabaseImage(
+    @Body() body: { supabaseUrl: string; newImageData: string; designId?: string },
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+
+      const { supabaseUrl, newImageData, designId } = body;
+
+      // Enhanced validation
+      if (!supabaseUrl) {
+        console.log('❌ Missing supabaseUrl in request body');
+        return res.status(400).json({ error: 'Supabase URL is required' });
+      }
+
+      if (!newImageData) {
+        console.log('❌ Missing newImageData in request body');
+        return res.status(400).json({ error: 'New image data is required' });
+      }
+
+      // Validate URL format
+      if (!supabaseUrl.includes('supabase') || !supabaseUrl.includes('smartwish-assets')) {
+        console.log('❌ Invalid supabaseUrl format:', supabaseUrl);
+        return res.status(400).json({ error: 'Invalid Supabase URL format' });
+      }
+
+      // Validate image data format
+      if (!newImageData.startsWith('data:image/') && !newImageData.match(/^[A-Za-z0-9+/]+=*$/)) {
+        console.log('❌ Invalid image data format - not data URL or base64');
+        return res.status(400).json({ error: 'Invalid image data format. Expected data URL or base64 string' });
+      }
+
+      console.log('🔄 Updating Supabase image content for user:', userId);
+      console.log('📍 URL:', supabaseUrl);
+      console.log('📊 Image data size:', newImageData.length, 'characters');
+      console.log('📋 Image data type:', newImageData.startsWith('data:') ? 'data URL' : 'base64');
+
+      const updatedUrl = await this.savedDesignsService.updateImageContent(
+        supabaseUrl,
+        newImageData,
+      );
+
+      console.log('✅ Image update completed successfully');
+      console.log('🔄 New versioned URL:', updatedUrl);
+
+      // Always update saved designs to use the new versioned URL
+      // We need to update because the new URL has a cache-busting parameter
+      console.log('🔄 Updating saved designs to use new versioned URL...');
+      
+      // Extract base URL without version parameters for database search
+      const baseUrl = supabaseUrl.split('?')[0];
+      
+      const updatedCount = await this.savedDesignsService.updateImageUrlsInDesigns(
+        userId,
+        baseUrl,
+        updatedUrl,
+        designId,
+      );
+      console.log(`✅ Updated ${updatedCount} saved designs with new image URL`);
+
+      res.json({
+        success: true,
+        message: 'Image content updated successfully',
+        url: updatedUrl,
+      });
+    } catch (error) {
+      console.error('❌ Error updating Supabase image:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error details:', errorMessage);
+      
+      res.status(500).json({
+        error: 'Failed to update image content',
+        details: errorMessage,
+      });
+    }
+  }
 }

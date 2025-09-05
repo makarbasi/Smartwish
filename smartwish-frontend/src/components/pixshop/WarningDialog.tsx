@@ -17,7 +17,7 @@ const WarningDialog: React.FC<WarningDialogProps> = ({ isOpen, onContinue, onCan
   console.log('🚨 WarningDialog is open - rendering dialog');
 
   const dialogContent = (
-    <div className="fixed inset-0  bg-opacity-5 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
+    <div className="fixed inset-0 bg-gray-900 bg-opacity-5 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
         <div className="flex items-center mb-4">
           <div className="flex-shrink-0 w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
