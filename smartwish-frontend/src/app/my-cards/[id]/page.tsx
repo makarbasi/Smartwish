@@ -195,6 +195,12 @@ export default function CustomizeCardPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flipBookRef = useRef<any>(null);
 
+  // Check if we're on a pixshop route - if so, don't fetch saved designs
+  const isPixshopRoute = pathname?.includes('/pixshop');
+  
+  console.log('🔍 Parent page pathname:', pathname);
+  console.log('🔍 isPixshopRoute:', isPixshopRoute);
+
   // Editing state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
@@ -227,12 +233,25 @@ export default function CustomizeCardPage() {
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
-  // Fetch all saved designs and find the specific one
+  // Loading state for when transitioning to Pintura editor
+  const [isOpeningPintura, setIsOpeningPintura] = useState(() => {
+    // Check immediately if we should show loading state
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('openPintura') === '1';
+    }
+    return false;
+  });
+
+  // Fetch all saved designs and find the specific one (only if not on pixshop route)
+  const shouldFetch = !isPixshopRoute;
+  console.log('🔍 Should fetch saved designs:', shouldFetch);
+  
   const {
     data: apiResponse,
     error,
     isLoading,
-  } = useSWR<ApiResponse>("/api/saved-designs", fetcher);
+  } = useSWR<ApiResponse>(shouldFetch ? "/api/saved-designs" : null, fetcher);
 
   // Fetch categories
   const categoriesResponse = useSWR<CategoriesResponse>(
@@ -240,6 +259,11 @@ export default function CustomizeCardPage() {
     fetcher
   );
   const categories = categoriesResponse?.data?.data || [];
+
+  // If we're on pixshop route, don't render this component - let the child route handle it
+  if (isPixshopRoute) {
+    return null;
+  }
 
   const cardData = useMemo(() => {
     if (!apiResponse?.data || !cardId) return null;
@@ -410,26 +434,67 @@ export default function CustomizeCardPage() {
     console.log("🔄 Selected category changed:", selectedCategory);
   }, [selectedCategory]);
 
-  // Handle openPintura URL parameter to automatically open editor after pixshop save
+  // Handle openPintura URL parameter to automatically open editor after pixshop save or back button
   useEffect(() => {
     const openPintura = searchParams.get('openPintura');
     const updated = searchParams.get('updated');
+    const fromPixshop = searchParams.get('fromPixshop');
     
-    if (openPintura === '1' && updated === '1' && cardData && pageImages.length > 0) {
-      console.log("🎨 Auto-opening Pintura editor after pixshop save");
-      // Open editor for the first page (which was edited in pixshop)
+    if (openPintura === '1' && cardData && pageImages.length > 0) {
+      if (updated === '1') {
+        console.log("🎨 Auto-opening Pintura editor after pixshop save");
+      } else if (fromPixshop === '1') {
+        console.log("🎨 Auto-opening Pintura editor from pixshop back button");
+      }
+      
+      // Open editor for the correct page (get from URL params)
       setTimeout(() => {
-        setEditingPageIndex(0);
+        const pageIndex = parseInt(searchParams.get('pageIndex') || '0', 10);
+        setEditingPageIndex(pageIndex);
         setEditorVisible(true);
+        setIsOpeningPintura(false); // Clear loading state when editor opens
       }, 500); // Small delay to ensure everything is loaded
       
       // Clean up URL parameters
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete('openPintura');
       newUrl.searchParams.delete('updated');
+      newUrl.searchParams.delete('fromPixshop');
       window.history.replaceState({}, '', newUrl.toString());
     }
   }, [searchParams, cardData, pageImages]);
+
+  // Consume pixshopCardEdit sessionStorage entry (image blob returned from Pixshop) WITHOUT saving to backend
+  useEffect(() => {
+    if (!cardId) return;
+    try {
+      const stored = sessionStorage.getItem('pixshopCardEdit');
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (!parsed || parsed.designId !== cardId) return; // Not for this card
+      const { pageIndex, image } = parsed as { pageIndex: number; image: string };
+      if (
+        typeof pageIndex === 'number' &&
+        pageIndex >= 0 &&
+        pageIndex < 4 &&
+        typeof image === 'string' &&
+        image.length > 0
+      ) {
+        setPageImages(prev => {
+          const next = [...prev];
+          next[pageIndex] = image; // Replace only the edited page
+          return next;
+        });
+        // Mark unsaved changes so user can manually save if desired
+        setHasUnsavedChanges(true);
+        console.log('🧩 Applied pixshopCardEdit image to page', pageIndex);
+      }
+      // Clean up so it is only applied once
+      sessionStorage.removeItem('pixshopCardEdit');
+    } catch (err) {
+      console.warn('Failed to apply pixshopCardEdit session data', err);
+    }
+  }, [cardId]);
 
   // Auto-detect changes by comparing current state with original state
   useEffect(() => {
@@ -550,7 +615,7 @@ export default function CustomizeCardPage() {
       const result = await saveSavedDesignWithImages(cardData.id, pageImages, {
         action: "duplicate",
         title: saveAsName.trim(),
-        userId: session.user.id,
+        userId: String(session.user.id),
         categoryId: selectedCategory?.id || cardData.categoryId,
         categoryName: selectedCategory?.name || cardData.categoryName,
       });
@@ -603,7 +668,7 @@ export default function CustomizeCardPage() {
       console.log("📂 Category:", selectedCategory?.name || "None");
       console.log("📸 Current page images:", pageImages);
       console.log("🖼️ Cover image (first):", pageImages[0]);
-      const userId = session.user.id;
+  const userId = String(session.user.id);
       console.log("🆔 Using user ID:", userId);
 
       const result = await saveSavedDesignWithImages(cardData.id, pageImages, {
@@ -655,6 +720,18 @@ export default function CustomizeCardPage() {
       setIsSaving(false);
     }
   };
+
+  // Show loading screen when transitioning to Pintura editor
+  if (isOpeningPintura) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Opening Pintura Editor...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (status === "loading") {
     return (
@@ -733,6 +810,9 @@ export default function CustomizeCardPage() {
       </div>
     );
   }
+
+  // From here onward cardData is guaranteed non-null
+  const cd = cardData!;
 
   // Function to handle editing a specific page
   const handleEditPage = async (pageIndex: number) => {
@@ -866,6 +946,19 @@ export default function CustomizeCardPage() {
 
   // Chat / Style Assistant removed
 
+  // Show loading screen when openPintura parameter is present
+  const openPintura = searchParams.get('openPintura');
+  if (openPintura === '1') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading Editor...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -932,7 +1025,7 @@ export default function CustomizeCardPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <h1 className="text-xl font-bold text-gray-900 leading-tight">
-                      {editedName || cardData.name}
+                      {editedName || cd.name}
                     </h1>
                     <button
                       onClick={handleStartEditingName}
@@ -953,7 +1046,7 @@ export default function CustomizeCardPage() {
                 </div>
               )}
               <p className="text-sm text-gray-500 mt-1">
-                Created on {new Date(cardData.createdAt).toLocaleDateString()}
+                Created on {new Date(cd.createdAt).toLocaleDateString()}
               </p>
             </div>
 
@@ -1068,7 +1161,7 @@ export default function CustomizeCardPage() {
                   ) : (
                     <div className="flex items-center gap-3">
                       <h1 className="text-xl font-bold text-gray-900">
-                        {editedName || cardData.name}
+                        {editedName || cd.name}
                       </h1>
                       <button
                         onClick={handleStartEditingName}
@@ -1089,7 +1182,7 @@ export default function CustomizeCardPage() {
                   )}
                   <p className="text-sm text-gray-500 mt-1">
                     Created on{" "}
-                    {new Date(cardData.createdAt).toLocaleDateString()}
+                    {new Date(cd.createdAt).toLocaleDateString()}
                   </p>
                 </div>
               </div>
@@ -1278,7 +1371,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[0] || cardData.pages[0]}
+                    src={pageImages[0] || cd.pages[0]}
                     alt="Gift Card Cover"
                     width={500}
                     height={772}
@@ -1344,7 +1437,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[1] || cardData.pages[1]}
+                    src={pageImages[1] || cd.pages[1]}
                     alt="Gift Card Page 2"
                     width={500}
                     height={772}
@@ -1409,7 +1502,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[2] || cardData.pages[2]}
+                    src={pageImages[2] || cd.pages[2]}
                     alt="Gift Card Page 3"
                     width={500}
                     height={772}
@@ -1461,7 +1554,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[3] || cardData.pages[3]}
+                    src={pageImages[3] || cd.pages[3]}
                     alt="Gift Card Page 4"
                     width={500}
                     height={772}
@@ -1528,7 +1621,7 @@ export default function CustomizeCardPage() {
             >
               <div className="w-full aspect-[640/989] relative">
                 <Image
-                  src={pageImages[currentPage] || cardData.pages[currentPage]}
+                  src={pageImages[currentPage] || cd.pages[currentPage]}
                   alt={`Card Page ${currentPage + 1}`}
                   width={320}
                   height={494}
@@ -1612,11 +1705,13 @@ export default function CustomizeCardPage() {
       {editingPageIndex !== null && (
         <PinturaEditorModal
           imageSrc={
-            pageImages[editingPageIndex] || cardData.pages[editingPageIndex]
+            pageImages[editingPageIndex] || cardData?.pages[editingPageIndex]
           }
+          originalImageSrc={cardData?.pages[editingPageIndex]}
           isVisible={editorVisible}
           onHide={handleEditorClose}
           onProcess={handleEditorProcess}
+          editingPageIndex={editingPageIndex}
         />
       )}
 

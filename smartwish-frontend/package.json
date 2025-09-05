@@ -19,6 +19,7 @@
     "@pqina/pintura": "^8.92.19",
     "@pqina/react-pintura": "^9.0.4",
     "@types/qrcode": "^1.5.5",
+  "@supabase/supabase-js": "^2.54.0",
     "axios": "^1.11.0",
     "next": "15.4.6",
     "next-auth": "^5.0.0-beta.29",

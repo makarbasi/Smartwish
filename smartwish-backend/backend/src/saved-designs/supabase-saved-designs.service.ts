@@ -1209,4 +1209,301 @@ export class SupabaseSavedDesignsService {
       return originalImageUrl;
     }
   }
+
+  /**
+   * Update the content of an existing image in Supabase Storage
+   */
+  async updateImageContent(supabaseUrl: string, newImageData: string): Promise<string> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    try {
+      console.log('🔄 Starting image update process');
+      console.log('📍 Supabase URL:', supabaseUrl);
+      console.log('📊 Image data preview:', newImageData.substring(0, 50) + '...');
+
+      // Extract the file path from the URL - handle both storage URLs and CDN URLs
+      let imagePath = '';
+      const bucketName = 'smartwish-assets';
+      
+      if (supabaseUrl.includes('/storage/v1/object/public/')) {
+        // Handle storage API URL format
+        const storageIndex = supabaseUrl.indexOf('/storage/v1/object/public/');
+        const pathPart = supabaseUrl.substring(storageIndex + '/storage/v1/object/public/'.length);
+        const pathSegments = pathPart.split('/');
+        if (pathSegments[0] === bucketName) {
+          imagePath = pathSegments.slice(1).join('/');
+        }
+      } else if (supabaseUrl.includes(`/${bucketName}/`)) {
+        // Handle CDN URL format
+        const bucketIndex = supabaseUrl.indexOf(`/${bucketName}/`);
+        imagePath = supabaseUrl.substring(bucketIndex + `/${bucketName}/`.length);
+      }
+
+      if (!imagePath) {
+        throw new Error(`Could not extract file path from URL: ${supabaseUrl}`);
+      }
+
+      console.log('� Extracted image path:', imagePath);
+
+      // Convert base64 data URL to buffer
+      let base64Data: string;
+      let contentType = 'image/png'; // default
+
+      if (newImageData.startsWith('data:')) {
+        // Handle data URL format (data:image/png;base64,...)
+        const parts = newImageData.split(',');
+        if (parts.length !== 2) {
+          throw new Error('Invalid data URL format');
+        }
+        
+        base64Data = parts[1];
+        const mimeMatch = newImageData.match(/^data:([^;]+)/);
+        if (mimeMatch) {
+          contentType = mimeMatch[1];
+        }
+      } else {
+        // Assume it's already base64 encoded
+        base64Data = newImageData;
+      }
+
+      if (!base64Data) {
+        throw new Error('No base64 data found in image data');
+      }
+
+      console.log('🔧 Content type:', contentType);
+      console.log('📏 Base64 data length:', base64Data.length);
+
+      // Convert base64 to buffer using Node.js Buffer (not atob which is browser-only)
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      
+      console.log('📦 Buffer size:', imageBuffer.length, 'bytes');
+
+      // Upload the new image content, replacing the existing file
+      const { data: uploadData, error: uploadError } =
+        await this.supabase.storage
+          .from(bucketName)
+          .upload(imagePath, imageBuffer, {
+            contentType,
+            upsert: true, // This will overwrite the existing file
+          });
+
+      if (uploadError) {
+        console.error('❌ Supabase upload error:', uploadError);
+        throw new Error(
+          `Failed to update image content: ${uploadError.message}`,
+        );
+      }
+
+      console.log('✅ Image content updated successfully in Supabase Storage');
+      console.log('📋 Upload data:', uploadData);
+      
+      // Return the URL with a cache-busting parameter to force browser refresh
+      const timestamp = Date.now();
+      const urlWithCacheBust = supabaseUrl.includes('?') 
+        ? `${supabaseUrl}&v=${timestamp}` 
+        : `${supabaseUrl}?v=${timestamp}`;
+      
+      console.log('🔗 Returning URL with cache bust:', urlWithCacheBust);
+      return urlWithCacheBust;
+    } catch (error) {
+      console.error('❌ Error updating image content:', error);
+      if (error instanceof Error) {
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+      }
+      throw error;
+    }
+  }
+
+  async updateImageUrlsInDesigns(userId: string, oldUrl: string, newUrl: string, designId?: string): Promise<number> {
+    try {
+      console.log('🔄 Updating saved designs to use new image URL...');
+      console.log('👤 User ID:', userId);
+      console.log('🔗 Old URL:', oldUrl);
+      console.log('🆕 New URL:', newUrl);
+      if (designId) {
+        console.log('🎯 Design ID filter:', designId);
+      }
+
+      // Extract the base URL without cache-busting parameters for comparison
+      const oldBaseUrl = oldUrl.split('?')[0];
+      const newBaseUrl = newUrl.split('?')[0];
+      
+      // If base URLs are the same, we're just updating cache-busting parameters
+      const isVersionUpdate = oldBaseUrl === newBaseUrl;
+      
+      if (isVersionUpdate) {
+        console.log('🔄 This is a version update (cache-busting), updating all matching URLs');
+      }
+
+      // Track unique design IDs that were updated
+      const updatedDesignIds = new Set<string>();
+
+      // Build the update query for each individual image column
+      // Note: thumbnail is stored in cover_image column, so we don't include both
+      const imageColumns = ['image_1', 'image_2', 'image_3', 'image_4', 'cover_image'];
+      
+      for (const column of imageColumns) {
+        let query = this.supabase
+          .from('saved_designs')
+          .update({ [column]: newUrl })
+          .eq('author_id', userId)
+          .like(column, isVersionUpdate ? `${oldBaseUrl}*` : oldUrl);
+
+        // Filter by specific design if provided
+        if (designId) {
+          query = query.eq('id', designId);
+        }
+
+        const { data, error } = await query.select('id');
+
+        if (error) {
+          console.error(`❌ Error updating ${column}:`, error);
+          throw new Error(`Failed to update ${column}: ${error.message}`);
+        }
+
+        if (data && data.length > 0) {
+          console.log(`✅ Updated ${data.length} designs in ${column} column`);
+          // Track unique design IDs
+          data.forEach(design => updatedDesignIds.add(design.id));
+        }
+      }
+
+      // Update metadata.imageUrls if it exists (JSONB column)
+      // First, get all designs that might have imageUrls in their metadata
+      let metadataQuery = this.supabase
+        .from('saved_designs')
+        .select('id, metadata')
+        .eq('author_id', userId)
+        .not('metadata', 'is', null);
+
+      // Filter by specific design if provided
+      if (designId) {
+        metadataQuery = metadataQuery.eq('id', designId);
+      }
+
+      const { data: designsWithMetadata, error: fetchMetadataError } = await metadataQuery;
+
+      if (fetchMetadataError) {
+        console.error('❌ Error fetching designs with metadata:', fetchMetadataError);
+        throw new Error(`Failed to fetch designs: ${fetchMetadataError.message}`);
+      }
+
+      if (designsWithMetadata && designsWithMetadata.length > 0) {
+        for (const design of designsWithMetadata) {
+          if (design.metadata && design.metadata.imageUrls && Array.isArray(design.metadata.imageUrls)) {
+            let updated = false;
+            const updatedMetadata = { ...design.metadata };
+            
+            updatedMetadata.imageUrls = design.metadata.imageUrls.map((url: string) => {
+              if (isVersionUpdate && url && url.startsWith(oldBaseUrl)) {
+                updated = true;
+                return newUrl;
+              } else if (!isVersionUpdate && url === oldUrl) {
+                updated = true;
+                return newUrl;
+              }
+              return url;
+            });
+
+            if (updated) {
+              const { error: updateError } = await this.supabase
+                .from('saved_designs')
+                .update({ metadata: updatedMetadata })
+                .eq('id', design.id);
+
+              if (updateError) {
+                console.error(`❌ Error updating metadata imageUrls for design ${design.id}:`, updateError);
+              } else {
+                console.log(`✅ Updated metadata imageUrls for design ${design.id}`);
+                updatedDesignIds.add(design.id);
+              }
+            }
+          }
+        }
+      }
+
+      // Update designData.pages stored in metadata (JSONB column)
+      // The design data is actually stored in the metadata column, not a separate design_data column
+      let metadataPagesQuery = this.supabase
+        .from('saved_designs')
+        .select('id, metadata')
+        .eq('author_id', userId)
+        .not('metadata', 'is', null);
+
+      // Filter by specific design if provided
+      if (designId) {
+        metadataPagesQuery = metadataPagesQuery.eq('id', designId);
+      }
+
+      const { data: designsWithMetadataPages, error: fetchMetadataPagesError } = await metadataPagesQuery;
+
+      if (fetchMetadataPagesError) {
+        console.error('❌ Error fetching designs with metadata pages:', fetchMetadataPagesError);
+        throw new Error(`Failed to fetch designs with metadata pages: ${fetchMetadataPagesError.message}`);
+      }
+
+      if (designsWithMetadataPages && designsWithMetadataPages.length > 0) {
+        for (const design of designsWithMetadataPages) {
+          if (design.metadata && design.metadata.designData && design.metadata.designData.pages && Array.isArray(design.metadata.designData.pages)) {
+            let updated = false;
+            const updatedMetadata = { ...design.metadata };
+            const updatedDesignData = { ...design.metadata.designData };
+            
+            updatedDesignData.pages = design.metadata.designData.pages.map((page: any) => {
+              if (page.image) {
+                if (isVersionUpdate && page.image.startsWith(oldBaseUrl)) {
+                  updated = true;
+                  return { ...page, image: newUrl };
+                } else if (!isVersionUpdate && page.image === oldUrl) {
+                  updated = true;
+                  return { ...page, image: newUrl };
+                }
+              }
+              return page;
+            });
+
+            // Also check editedPages in metadata
+            if (design.metadata.designData.editedPages) {
+              for (const [pageIndex, pageImage] of Object.entries(design.metadata.designData.editedPages)) {
+                if (typeof pageImage === 'string') {
+                  if (isVersionUpdate && pageImage.startsWith(oldBaseUrl)) {
+                    updated = true;
+                    updatedDesignData.editedPages[pageIndex] = newUrl;
+                  } else if (!isVersionUpdate && pageImage === oldUrl) {
+                    updated = true;
+                    updatedDesignData.editedPages[pageIndex] = newUrl;
+                  }
+                }
+              }
+            }
+
+            if (updated) {
+              updatedMetadata.designData = updatedDesignData;
+              const { error: updateError } = await this.supabase
+                .from('saved_designs')
+                .update({ metadata: updatedMetadata })
+                .eq('id', design.id);
+
+              if (updateError) {
+                console.error(`❌ Error updating metadata designData for design ${design.id}:`, updateError);
+              } else {
+                console.log(`✅ Updated metadata designData for design ${design.id}`);
+                updatedDesignIds.add(design.id);
+              }
+            }
+          }
+        }
+      }
+
+      const totalUniqueDesigns = updatedDesignIds.size;
+      console.log(`✅ Total unique designs updated: ${totalUniqueDesigns}`);
+      return totalUniqueDesigns;
+    } catch (error) {
+      console.error('❌ Error updating image URLs in designs:', error);
+      throw error;
+    }
+  }
 }

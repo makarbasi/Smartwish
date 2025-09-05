@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
+import { mutate } from 'swr';
 
 // Types for API responses
 type SavedDesign = {
@@ -32,6 +34,17 @@ const fetcher = (url: string) =>
 
 // Use the centralized Gemini-based image generation service
 import { generateEditedImage, generateFilteredImage, generateAdjustedImage } from '../../../services/geminiService';
+import { saveSavedDesignWithImages } from '@/utils/savedDesignUtils';
+
+// Helper function to convert File to Data URL
+const fileToDataURL = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+    reader.readAsDataURL(file);
+  });
+};
 
 // Spinner Component
 const Spinner = () => (
@@ -104,36 +117,63 @@ const dataURLtoFile = (dataurl: string, filename: string): File => {
   return new File([u8arr], filename, { type: mime });
 }
 
-// Helper to extract the best image URL from a savedDesign object
-const getFirstImageFromSavedDesign = (savedDesign: any): string | null => {
-  if (!savedDesign) return null;
-  // Prefer explicit image columns
-  if (savedDesign.image1) return savedDesign.image1;
-  if (savedDesign.image2) return savedDesign.image2;
-  if (savedDesign.image3) return savedDesign.image3;
-  if (savedDesign.image4) return savedDesign.image4;
+// Helper to extract an image at a given index from a savedDesign object
+const getImageByIndexFromSavedDesign = (savedDesign: any, index: number): { url: string | null; total: number } => {
 
-  // designData.pages fallback
-  if (savedDesign.designData && Array.isArray(savedDesign.designData.pages) && savedDesign.designData.pages.length > 0) {
-    const first = savedDesign.designData.pages.find((p: any) => p && (p.image || p.header));
-    if (first && first.image) return first.image;
+  console.log('getImageByIndexFromSavedDesign', { savedDesign, index });
+  if (!savedDesign) return { url: null, total: 0 };
+
+  // Collect images in priority order into an array preserving positions
+  let images: (string | undefined)[] = [];
+  const individual = [savedDesign.image1, savedDesign.image2, savedDesign.image3, savedDesign.image4].filter((v: any) => v !== undefined && v !== null);
+  if (individual.length > 0) images = [savedDesign.image1, savedDesign.image2, savedDesign.image3, savedDesign.image4];
+
+  if (images.length === 0 && savedDesign.designData && Array.isArray(savedDesign.designData.pages)) {
+    images = savedDesign.designData.pages.map((p: any) => p?.image || '');
   }
 
-  // imageUrls array
-  if (Array.isArray(savedDesign.imageUrls) && savedDesign.imageUrls.length > 0) return savedDesign.imageUrls[0];
+  if (images.length === 0 && Array.isArray(savedDesign.imageUrls) && savedDesign.imageUrls.length > 0) {
+    images = [...savedDesign.imageUrls];
+  }
 
-  // thumbnail fallback
-  if (savedDesign.thumbnail) return savedDesign.thumbnail;
+  if (images.length === 0 && savedDesign.thumbnail) {
+    images = [savedDesign.thumbnail];
+  }
 
-  return null;
-}
+  const total = images.length;
+  if (total === 0) return { url: null, total: 0 };
+
+  // If index is out of range but looks 1-based, attempt (index-1)
+  let chosenIndex = index;
+  if (chosenIndex >= total && index - 1 >= 0 && index - 1 < total) {
+    // Treat provided pageIndex as 1-based
+    chosenIndex = index - 1;
+  }
+
+  if (chosenIndex < 0 || chosenIndex >= total) chosenIndex = 0; // fallback
+
+  return { url: images[chosenIndex] || null, total };
+};
 
 type Tab = 'retouch' | 'adjust' | 'filters';
 
 const PixshopPage: React.FC = () => {
+  const { data: session } = useSession();
   const params = useParams();
-  const cardId = params?.id as string;
+  const cardParam = params?.id as string; // could be actual id or 'template-editor'
+  const searchParams = useSearchParams();
+  const rawPageIndex = searchParams?.get('pageIndex');
+  const templateIdParam = searchParams?.get('templateId') || undefined;
+  const templateNameParam = searchParams?.get('templateName') || undefined;
+  const isTemplateContext = cardParam === 'template-editor' || !!templateIdParam;
+  // Effective design id we use to look up saved design
+  const effectiveDesignId = isTemplateContext ? (templateIdParam || '') : (cardParam || '');
+  const pageIndexParam = rawPageIndex ? parseInt(rawPageIndex, 10) : 0;
+  // We'll treat incoming index as zero-based, but fallback code in getter handles 1-based if needed
+  const pageIndex = Number.isNaN(pageIndexParam) ? 0 : pageIndexParam;
   const router = useRouter();
+  // Local copy of the design so we don't repeatedly depend on the SWR array lookups
+  const [localDesign, setLocalDesign] = useState<SavedDesign | null>(null);
   
   const [history, setHistory] = useState<File[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
@@ -143,6 +183,7 @@ const PixshopPage: React.FC = () => {
   const [editHotspot, setEditHotspot] = useState<{ x: number, y: number } | null>(null);
   const [displayHotspot, setDisplayHotspot] = useState<{ x: number, y: number } | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('retouch');
+  // Removed remote save; we only pass edited image back via sessionStorage
 
   const [isComparing, setIsComparing] = useState<boolean>(false);
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
@@ -168,42 +209,112 @@ const PixshopPage: React.FC = () => {
     dedupingInterval: 2000, // Prevent too frequent requests
   });
 
-  // Load image from saved design when data is available
+  // Load image from saved design when data is available and page index changes (initial only)
   useEffect(() => {
-    if (apiResponse?.data && cardId && history.length === 0) {
-      console.log('🔍 Looking for card with ID:', cardId);
-      console.log('📋 Available cards:', apiResponse.data.map(d => ({ id: d.id, title: d.title })));
-      
-      const savedDesign = apiResponse.data.find((d) => d.id === cardId);
-      if (savedDesign) {
-        console.log('✅ Found card:', savedDesign.title || 'Untitled');
-        const imageUrl = getFirstImageFromSavedDesign(savedDesign);
-        if (imageUrl) {
-          console.log('🖼️ Loading image from:', imageUrl);
-          // Convert URL to File object
-          fetch(imageUrl)
-            .then(res => res.blob())
-            .then(blob => {
-              const file = new File([blob], `card-${cardId}.jpg`, { type: 'image/jpeg' });
+    if (apiResponse?.data && effectiveDesignId && history.length === 0) {
+      const savedDesign = apiResponse.data.find((d) => d.id === effectiveDesignId);
+      if (!savedDesign) {
+        // If we're in template context, attempt to load template directly
+        if (isTemplateContext && templateIdParam) {
+          (async () => {
+            try {
+              // First try sessionStorage handoff (faster, includes edited pages in memory)
+              if (typeof window !== 'undefined') {
+                const stored = sessionStorage.getItem('templateEditorForPixshop');
+                if (stored) {
+                  try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed?.templateId === templateIdParam && Array.isArray(parsed.pages) && parsed.pages.length) {
+                      const pseudo: SavedDesign = {
+                        id: templateIdParam,
+                        title: parsed.templateName || 'Template',
+                        image1: parsed.pages[0],
+                        image2: parsed.pages[1],
+                        image3: parsed.pages[2],
+                        image4: parsed.pages[3],
+                        thumbnail: parsed.pages[0],
+                        designData: { pages: parsed.pages.map((img: string) => ({ image: img })) }
+                      };
+                      setLocalDesign(pseudo);
+                      const { url } = getImageByIndexFromSavedDesign(pseudo, pageIndex);
+                      if (url) {
+                        const blobRes = await fetch(url);
+                        const blob = await blobRes.blob();
+                        const file = new File([blob], `template-${templateIdParam}-page-${pageIndex}.jpg`, { type: blob.type || 'image/jpeg' });
+                        setHistory([file]);
+                        setHistoryIndex(0);
+                        setIsInitialLoad(false);
+                        return; // Done via session storage
+                      }
+                    }
+                  } catch {}
+                }
+              }
+              const resp = await fetch(`/api/templates/${templateIdParam}`);
+              if (!resp.ok) {
+                throw new Error(`Template fetch failed: ${resp.status}`);
+              }
+              const result = await resp.json();
+              if (!result?.data) throw new Error('Template data missing');
+              const t = result.data;
+              const images = [t.image_1, t.image_2, t.image_3, t.image_4].filter(Boolean);
+              if (images.length === 0) {
+                setError('Template has no images to edit.');
+                return;
+              }
+              const pseudo: SavedDesign = {
+                id: templateIdParam,
+                title: templateNameParam ? decodeURIComponent(templateNameParam) : (t.title || 'Template'),
+                image1: t.image_1 || undefined,
+                image2: t.image_2 || undefined,
+                image3: t.image_3 || undefined,
+                image4: t.image_4 || undefined,
+                thumbnail: t.image_1 || undefined,
+                designData: { pages: images.map((img: string) => ({ image: img })) }
+              };
+              setLocalDesign(pseudo);
+              const { url } = getImageByIndexFromSavedDesign(pseudo, pageIndex);
+              if (!url) {
+                setError(`No image found at index ${pageIndex} for this template.`);
+                return;
+              }
+              const blobRes = await fetch(url);
+              const blob = await blobRes.blob();
+              const file = new File([blob], `template-${templateIdParam}-page-${pageIndex}.jpg`, { type: blob.type || 'image/jpeg' });
               setHistory([file]);
               setHistoryIndex(0);
               setIsInitialLoad(false);
-              console.log('✅ Image loaded successfully');
-            })
-            .catch(err => {
-              console.error('❌ Error loading image:', err);
-              setError('Failed to load image from saved design');
-            });
+            } catch (e) {
+              console.error('❌ Failed to load template fallback:', e);
+              setError(e instanceof Error ? e.message : 'Failed to load template');
+            }
+          })();
         } else {
-          console.log('❌ No image URL found for card');
-          setError('No image found for this card');
+          setError(`Card with ID ${effectiveDesignId} not found. Please check the URL or try refreshing the page.`);
         }
-      } else {
-        console.log('❌ Card not found in fetched data');
-        setError(`Card with ID ${cardId} not found. Please check the URL or try refreshing the page.`);
+        return;        
       }
+  // Cache locally for subsequent operations
+  setLocalDesign(savedDesign);
+      const { url } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
+      if (!url) {
+        setError(`No image found at index ${pageIndex} for this card.`);
+        return;
+      }
+      fetch(url)
+        .then(res => res.blob())
+        .then(blob => {
+          const file = new File([blob], `card-${effectiveDesignId}-page-${pageIndex}.jpg`, { type: 'image/jpeg' });
+          setHistory([file]);
+          setHistoryIndex(0);
+          setIsInitialLoad(false);
+        })
+        .catch(err => {
+          console.error('❌ Error loading image:', err);
+          setError('Failed to load image from saved design');
+        });
     }
-  }, [apiResponse, cardId, history.length]);
+  }, [apiResponse, effectiveDesignId, history.length, pageIndex, isTemplateContext, templateIdParam, templateNameParam]);
 
   // Effect to create and revoke object URLs safely for the current image
   useEffect(() => {
@@ -385,116 +496,114 @@ const PixshopPage: React.FC = () => {
       return;
     }
 
-    // Ensure we have the card data loaded
-    if (!apiResponse?.data || !cardId) {
-      setError('Card data not loaded. Please wait and try again.');
+    if (!session?.user?.id) {
+      setError('Please log in to save changes');
       return;
     }
 
-    // Find the saved design data we originally loaded (from SWR response)
-    const savedDesign = apiResponse.data.find(d => d.id === cardId);
-    if (!savedDesign) {
-      console.log('❌ Card not found in local data, available cards:', apiResponse.data.map(d => d.id));
-      setError('Card not found in loaded data. Please refresh the page and try again.');
+    // Template context: just return to template editor (future: persist changes upstream)
+    if (isTemplateContext) {
+      try {
+        setIsLoading(true);
+        // Convert file to data URL and stash into sessionStorage for template-editor to pick up
+        const dataUrl = await fileToDataURL(currentImage);
+        const payload = { pageIndex, image: dataUrl, templateId: templateIdParam };
+        try {
+          sessionStorage.setItem('pixshopTemplateEdit', JSON.stringify(payload));
+        } catch {}
+        const q = new URLSearchParams();
+        if (templateIdParam) q.set('templateId', templateIdParam);
+        if (templateNameParam) q.set('templateName', templateNameParam || '');
+        q.set('updated', '1');
+        q.set('fromPixshop', '1');
+        q.set('pageIndex', String(pageIndex));
+        router.push(`/my-cards/template-editor?${q.toString()}`);
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
-
+    
+    // Non-template context: save through backend using the proper utility
+    if (!effectiveDesignId) {
+      setError('Missing design id');
+      return;
+    }
+    
     try {
       setIsLoading(true);
       setError(null);
 
-      console.log('💾 Saving card with ID:', cardId);
-      console.log('📄 Found saved design:', savedDesign.title || 'Untitled');
-
+      // Convert the edited image file to data URL
       const newImageDataUrl = await fileToDataURL(currentImage);
+      console.log('📸 Converted edited image to data URL');
 
-      // Build pages array preserving existing other images if available
-      const existingImages: string[] = [];
-      if (savedDesign) {
-        // Prefer individual image fields
-        const possible = [savedDesign.image1, savedDesign.image2, savedDesign.image3, savedDesign.image4];
-        if (possible.some(Boolean)) {
-          existingImages.push(...possible.map(i => i || ''));
-        } else if (savedDesign.designData?.pages?.length) {
-          existingImages.push(...savedDesign.designData.pages.map(p => p.image || ''));
-        } else if (savedDesign.imageUrls?.length) {
-          existingImages.push(...savedDesign.imageUrls);
-        } else if (savedDesign.thumbnail) {
-          existingImages.push(savedDesign.thumbnail);
-        }
-      }
-      while (existingImages.length < 4) existingImages.push('');
-
-      // Replace first slot with new edited image (future: track which slot was edited)
-      existingImages[0] = newImageDataUrl;
-
-      // Prepare designData pages if original had designData
-      let updatedDesignData = undefined as any;
-      if (savedDesign?.designData?.pages?.length) {
-        updatedDesignData = {
-          ...savedDesign.designData,
-          pages: savedDesign.designData.pages.map((p, idx) => idx === 0 ? { ...p, image: newImageDataUrl } : p)
-        };
-      }
-
-      const body: any = {
-        title: savedDesign?.title || 'Edited Design',
-        image1: existingImages[0] || null,
-        image2: existingImages[1] || null,
-        image3: existingImages[2] || null,
-        image4: existingImages[3] || null,
-        thumbnail: existingImages[0] || null,
-        imageUrls: existingImages.filter(Boolean),
-      };
-      if (updatedDesignData) body.designData = updatedDesignData;
-
-      console.log('📡 Sending PUT request to:', `/api/saved-designs/${cardId}`);
-      console.log('📦 Request body keys:', Object.keys(body));
+      // Get current saved design to find the existing Supabase URL for this page
+      const savedDesign = apiResponse?.data?.find((d) => d.id === effectiveDesignId);
       
-      const resp = await fetch(`/api/saved-designs/${cardId}` , {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+      if (!savedDesign) {
+        setError('Design not found. Please go back and try again.');
+        return;
+      }
+      
+      // Get the existing Supabase URL for this page index
+      const { url: existingSupabaseUrl } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
+      
+      if (!existingSupabaseUrl) {
+        setError(`No existing image found at page index ${pageIndex} to update.`);
+        return;
+      }
+
+      console.log('🔄 Updating Supabase image content...');
+      
+      // Use the simplified update-images API to replace the Supabase image content
+      const response = await fetch('/api/update-images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          supabaseUrl: existingSupabaseUrl,
+          newImageBlob: newImageDataUrl,
+          designId: effectiveDesignId  // Pass the design ID to ensure only this design is updated
+        })
       });
-      
-      console.log('📨 Response status:', resp.status, resp.statusText);
-      
-      if (!resp.ok) {
-        const responseText = await resp.text();
-        console.log('❌ Response text:', responseText);
-        
-        let errorMessage = `Save failed: ${resp.status}`;
-        
-        try {
-          const errorData = JSON.parse(responseText);
-          if (errorData.error) {
-            errorMessage = errorData.error;
-          }
-        } catch (e) {
-          // Use the raw response text if JSON parsing fails
-          errorMessage = responseText || errorMessage;
-        }
-        
-        if (resp.status === 404) {
-          // If it's a 404, let's try to refetch the data and retry once
-          console.log('🔄 Card not found, trying to refetch data...');
-          throw new Error(`Card not found on server. This might be a temporary issue. Please try again or refresh the page. (${errorMessage})`);
-        } else {
-          throw new Error(`${errorMessage}. Please try again.`);
-        }
-      }
-      
-      console.log('✅ Save successful!');
 
-      // Navigate back directly into Pintura editor for this design
-      router.push(`/my-cards/${cardId}?openPintura=1&updated=1`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update images');
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update images');
+      }
+
+      console.log('✅ Image content updated successfully in Supabase');
+
+      // Force refresh the SWR cache for saved designs to show updated image
+      if (typeof window !== 'undefined') {
+        // Clear the cache and trigger refetch
+        mutate('/api/saved-designs');
+        
+        // Add a small delay to allow cache to clear
+        setTimeout(() => {
+          // Navigate back with a cache-busting timestamp
+          const timestamp = Date.now();
+          router.push(`/my-cards/${cardParam}?openPintura=1&updated=${timestamp}&pageIndex=${pageIndex}`);
+        }, 500);
+      } else {
+        router.push(`/my-cards/${cardParam}?openPintura=1&updated=1&pageIndex=${pageIndex}`);
+      }
     } catch (err) {
       console.error('Save failed', err);
       setError(err instanceof Error ? err.message : 'Failed to save image');
     } finally {
       setIsLoading(false);
     }
-  }, [currentImage, apiResponse, cardId, router]);
+  }, [currentImage, effectiveDesignId, pageIndex, cardParam, router, isTemplateContext, templateIdParam, templateNameParam, session, apiResponse, searchParams, refetchData]);
 
   const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     if (activeTab !== 'retouch') return;
@@ -593,7 +702,18 @@ const PixshopPage: React.FC = () => {
         <div className="flex items-center justify-between gap-2 mb-3 w-full">
           <div className="flex items-center gap-2">
           <button
-            onClick={() => router.push(`/my-cards/${cardId}?openPintura=1`)}
+            onClick={() => {
+              if (isTemplateContext) {
+                const q = new URLSearchParams();
+                if (templateIdParam) q.set('templateId', templateIdParam);
+                if (templateNameParam) q.set('templateName', templateNameParam);
+                q.set('fromPixshop', '1');
+                q.set('pageIndex', String(pageIndex));
+                router.push(`/my-cards/template-editor?${q.toString()}`);
+              } else {
+                router.push(`/my-cards/${cardParam}?openPintura=1&fromPixshop=1&pageIndex=${pageIndex}`);
+              }
+            }}
             className="flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 px-3 py-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
             aria-label="Back to Pintura Editor"
           >
@@ -653,11 +773,11 @@ const PixshopPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSave}
-              disabled={!currentImage || isLoading || !apiResponse?.data || isInitialLoad}
+              disabled={!currentImage || isLoading || isInitialLoad}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg px-3 py-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              aria-label="Save edited image and return"
+              aria-label="Return edited image to editor"
             >
-              {isLoading ? 'Saving...' : !apiResponse?.data ? 'Loading...' : 'Save & Return'}
+              {isLoading ? 'Returning...' : 'Return to Editor'}
             </button>
           </div>
         </div>
