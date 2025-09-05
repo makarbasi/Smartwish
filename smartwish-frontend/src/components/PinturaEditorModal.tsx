@@ -100,6 +100,12 @@ export default function PinturaEditorModal({
 }: PinturaEditorModalProps) {
   // Use state to manage the current image source so we can update it dynamically
   const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
+  // Track the original image source for reverting
+  const [originalImageSrc, setOriginalImageSrc] = useState(imageSrc);
+  // Track if we have a pending blob that needs user confirmation
+  const [pendingBlobSrc, setPendingBlobSrc] = useState<string | null>(null);
+  // Track if user is canceling to prevent onProcess from updating the card
+  const [isCanceling, setIsCanceling] = useState(false);
   
   // State for warning dialog
   const [isWarningDialogOpen, setIsWarningDialogOpen] = useState(false);
@@ -114,8 +120,36 @@ export default function PinturaEditorModal({
       newSrc: imageSrc?.substring(0, 50),
       editingPageIndex,
       isDataUrl: imageSrc?.startsWith('data:'),
-      imageSize: imageSrc?.length || 0
+      imageSize: imageSrc?.length || 0,
+      hasPendingBlob: !!pendingBlobSrc
     });
+    
+    // Clean up any stale sessionStorage data when switching pages
+    try {
+      const pixshopReturn = sessionStorage.getItem('pixshopToPintura');
+      if (pixshopReturn) {
+        const payload = JSON.parse(pixshopReturn);
+        if (payload.pageIndex !== editingPageIndex) {
+          console.log('🧹 Cleaning up stale sessionStorage data from different page:', {
+            stalePageIndex: payload.pageIndex,
+            currentPageIndex: editingPageIndex
+          });
+          sessionStorage.removeItem('pixshopToPintura');
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Error checking sessionStorage for stale data:', error);
+    }
+    
+    // If we have a pending blob, don't reset the state
+    if (pendingBlobSrc) {
+      console.log('🔒 Has pending blob - preserving current state and not resetting');
+      console.log('🔒 Keeping currentImageSrc as blob, originalImageSrc as:', imageSrc?.substring(0, 50));
+      
+      // Only update originalImageSrc to the new prop, but keep currentImageSrc as the blob
+      setOriginalImageSrc(imageSrc);
+      return;
+    }
     
     // If this is a data URL (blob data), log more details
     if (imageSrc?.startsWith('data:')) {
@@ -138,36 +172,270 @@ export default function PinturaEditorModal({
       }
     }
     
+    console.log('🔄 Normal state update - no pending blob');
     setCurrentImageSrc(imageSrc);
-  }, [imageSrc, currentImageSrc, editingPageIndex]);
+    setOriginalImageSrc(imageSrc);
+    setPendingBlobSrc(null); // Clear any pending blobs when new image loads
+    setIsCanceling(false); // Reset canceling flag
+  }, [imageSrc, editingPageIndex, pendingBlobSrc]);
+
+  // Check for returning blob from Pixshop
+  useEffect(() => {
+    console.log('🔍 PinturaEditorModal useEffect triggered:', {
+      isVisible,
+      editingPageIndex,
+      currentImageSrc: currentImageSrc?.substring(0, 50)
+    });
+    
+    if (!isVisible) {
+      console.log('👁️ Not visible, skipping blob check');
+      return;
+    }
+    
+    const checkForPixshopReturn = () => {
+      try {
+        console.log('🔍 Checking sessionStorage for pixshopToPintura...');
+        const pixshopReturn = sessionStorage.getItem('pixshopToPintura');
+        
+        if (pixshopReturn) {
+          console.log('📦 Found pixshopToPintura in sessionStorage!');
+          const payload = JSON.parse(pixshopReturn);
+          console.log('📥 Received blob from Pixshop:', {
+            hasEditedImage: !!payload.editedImage,
+            dataSize: payload.editedImage?.length || 0,
+            pageIndex: payload.pageIndex,
+            currentEditingPageIndex: editingPageIndex,
+            templateId: payload.templateId,
+            pageIndexMatch: payload.pageIndex === editingPageIndex,
+            payloadKeys: Object.keys(payload)
+          });
+          
+          // Log the first chunk of the blob data
+          if (payload.editedImage) {
+            console.log('🔢 Blob data preview:', payload.editedImage.substring(0, 100));
+          }
+          
+          if (payload.editedImage) {
+            if (payload.pageIndex === editingPageIndex) {
+              console.log('✅ Page index matches! Processing blob...');
+              console.log('📥 Adding Pixshop blob to pending stack - waiting for user confirmation in Pintura');
+              console.log('📥 Blob state transition: RECEIVED → PENDING_IN_STACK');
+              console.log('📥 User must click "Done" in Pintura to confirm or "X" to remove from stack');
+              
+              // Set the pending blob and current image AFTER Pintura is ready
+              setTimeout(() => {
+                console.log('⏰ Setting blob after Pintura initialization delay');
+                setPendingBlobSrc(payload.editedImage);
+                setCurrentImageSrc(payload.editedImage);
+                
+                console.log('✅ Successfully set pending blob in Pintura');
+              }, 300); // Give Pintura time to initialize
+              
+              // Clean up the sessionStorage
+              sessionStorage.removeItem('pixshopToPintura');
+              console.log('🧹 Cleaned up sessionStorage');
+            } else {
+              console.log('❌ Page index mismatch - cleaning up stale data:', {
+                payloadPageIndex: payload.pageIndex,
+                payloadPageIndexType: typeof payload.pageIndex,
+                currentEditingPageIndex: editingPageIndex,
+                currentEditingPageIndexType: typeof editingPageIndex
+              });
+              // Clean up stale data immediately to prevent issues on other pages
+              sessionStorage.removeItem('pixshopToPintura');
+              console.log('🧹 Removed stale sessionStorage data');
+            }
+          } else {
+            console.log('❌ No editedImage in payload - cleaning up');
+            sessionStorage.removeItem('pixshopToPintura');
+          }
+        } else {
+          console.log('🔍 No pixshopToPintura data found in sessionStorage');
+          
+          // Let's also check what IS in sessionStorage
+          const allKeys = Object.keys(sessionStorage);
+          console.log('🗂️ All sessionStorage keys:', allKeys);
+          allKeys.forEach(key => {
+            const value = sessionStorage.getItem(key);
+            console.log(`   📁 ${key}:`, value?.substring(0, 100) + ((value?.length || 0) > 100 ? '...' : ''));
+          });
+        }
+      } catch (error) {
+        console.error('❌ Failed to process Pixshop return:', error);
+      }
+    };
+    
+    // Check immediately when visible
+    console.log('🚀 Running immediate blob check...');
+    checkForPixshopReturn();
+    
+    // Also check with delays to handle race conditions
+    console.log('⏱️ Setting up delayed blob checks...');
+    const timeoutId1 = setTimeout(() => {
+      console.log('⏰ Running delayed blob check (100ms)...');
+      checkForPixshopReturn();
+    }, 100);
+    
+    const timeoutId2 = setTimeout(() => {
+      console.log('⏰ Running delayed blob check (500ms)...');
+      checkForPixshopReturn();
+    }, 500);
+    
+    const timeoutId3 = setTimeout(() => {
+      console.log('⏰ Running delayed blob check (1000ms)...');
+      checkForPixshopReturn();
+    }, 1000);
+    
+    // Cleanup function
+    return () => {
+      clearTimeout(timeoutId1);
+      clearTimeout(timeoutId2);
+      clearTimeout(timeoutId3);
+      
+      // Clean up any stale data when component unmounts or page changes
+      try {
+        const pixshopReturn = sessionStorage.getItem('pixshopToPintura');
+        if (pixshopReturn) {
+          const payload = JSON.parse(pixshopReturn);
+          if (payload.pageIndex !== editingPageIndex) {
+            console.log('🧹 Cleanup: Removing stale sessionStorage data on component change');
+            sessionStorage.removeItem('pixshopToPintura');
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Error during cleanup:', error);
+      }
+      
+      // Clean up DOM overlays and modal states when component unmounts or page changes
+      try {
+        const overlay = document.getElementById('pixshop-warning-overlay');
+        if (overlay) {
+          console.log('🧹 Cleanup: Removing pixshop warning overlay');
+          overlay.remove();
+        }
+      } catch (error) {
+        console.warn('⚠️ Error cleaning up overlay:', error);
+      }
+    };
+  }, [isVisible, editingPageIndex]);
+
+  // Reset warning dialog state when switching pages
+  useEffect(() => {
+    if (isWarningDialogOpen) {
+      console.log('🧹 Resetting warning dialog state for page switch');
+      setIsWarningDialogOpen(false);
+      
+      // Also clean up any overlay that might be stuck
+      const overlay = document.getElementById('pixshop-warning-overlay');
+      if (overlay) {
+        console.log('🧹 Removing stuck overlay during page switch');
+        overlay.remove();
+      }
+    }
+  }, [editingPageIndex]);
+
+  // Clean up warning dialog state when modal becomes invisible
+  useEffect(() => {
+    if (!isVisible && isWarningDialogOpen) {
+      console.log('🧹 Cleaning up warning dialog state - modal not visible');
+      setIsWarningDialogOpen(false);
+      
+      // Clean up any overlay
+      const overlay = document.getElementById('pixshop-warning-overlay');
+      if (overlay) {
+        console.log('🧹 Removing overlay - modal not visible');
+        overlay.remove();
+      }
+    }
+  }, [isVisible, isWarningDialogOpen]);
+
+
+
+
 
   console.log("🎨 PinturaEditorModal rendered:", {
-    imageSrc,
-    currentImageSrc,
+    imageSrc: imageSrc?.substring(0, 50),
+    currentImageSrc: currentImageSrc?.substring(0, 50),
+    pendingBlobSrc: pendingBlobSrc?.substring(0, 50),
     isVisible,
+    hasPendingBlob: !!pendingBlobSrc,
+    whatWillBePassedToPintura: currentImageSrc?.substring(0, 50)
   });
 
   const handleProcess = ({ dest }: { dest: File }) => {
     console.log("✅ Editor process complete:", dest);
-    if (dest) {
-      onProcess?.({ dest });
+    
+    // If we're in canceling state, do not update the card
+    if (isCanceling) {
+      console.log('🚫 Canceling in progress - blocking onProcess to prevent card update');
+      return;
+    }
+    
+    // If we have a pending blob, confirm it by clearing the pending state
+    if (pendingBlobSrc) {
+      console.log('✅ User clicked Done in Pintura - confirming pending blob and adding to stack');
+      console.log('✅ Blob state transition: PENDING → CONFIRMED → ADDED_TO_STACK');
+      setPendingBlobSrc(null);
+      setOriginalImageSrc(currentImageSrc); // Update original to the new confirmed state
+      
+      // Process the confirmed blob - this adds it to the final version
+      if (dest) {
+        console.log('📦 Adding confirmed blob to final card version');
+        onProcess?.({ dest });
+      }
+    } else {
+      // Normal processing without pending blob
+      if (dest) {
+        onProcess?.({ dest });
+      }
     }
     onHide();
   };
 
   const handleHide = () => {
     console.log("🚪 Editor hide triggered");
+    
+    // If we have a pending blob, revert to original image and remove from stack
+    if (pendingBlobSrc) {
+      console.log('❌ User clicked X in Pintura - discarding pending blob and removing from stack');
+      console.log('❌ Blob state transition: PENDING → DISCARDED → REMOVED_FROM_STACK');
+      
+      // Set canceling flag to prevent any onProcess calls
+      setIsCanceling(true);
+      
+      setCurrentImageSrc(originalImageSrc);
+      setPendingBlobSrc(null);
+      
+      // Also clear any sessionStorage just in case
+      sessionStorage.removeItem('pixshopToPintura');
+      console.log('🗑️ Removed pending blob from stack - will not be included in final version');
+      console.log('🚫 IMPORTANT: onProcess will NOT be called - no card update will happen');
+    }
+    
+    // Always call onHide to close the editor
     onHide();
+    
+    // Reset canceling flag after editor closes
+    setTimeout(() => setIsCanceling(false), 100);
   };
 
   // Handle opening Pixshop with warning
   const handleOpenPixshop = () => {
+    console.log('🎯 Opening Pixshop warning dialog');
     setIsWarningDialogOpen(true);
     
     // Add translucent overlay to Pintura editor via DOM
     setTimeout(() => {
+      // Check if overlay already exists to prevent duplicates
+      const existingOverlay = document.getElementById('pixshop-warning-overlay');
+      if (existingOverlay) {
+        console.log('⚠️ Overlay already exists, removing old one');
+        existingOverlay.remove();
+      }
+
       const pinturaEditor = document.querySelector('.pintura-editor, .PinturaModal, .PinturaRoot');
       if (pinturaEditor) {
+        console.log('✅ Found Pintura editor, adding overlay');
         const overlay = document.createElement('div');
         overlay.id = 'pixshop-warning-overlay';
         overlay.style.cssText = `
@@ -181,6 +449,9 @@ export default function PinturaEditorModal({
           pointer-events: none;
         `;
         pinturaEditor.appendChild(overlay);
+        console.log('✅ Overlay added successfully');
+      } else {
+        console.warn('⚠️ Could not find Pintura editor for overlay');
       }
     }, 10);
   };
@@ -295,15 +566,97 @@ export default function PinturaEditorModal({
   };
 
   const handleCancelPixshop = () => {
+    console.log('❌ User canceled Pixshop warning dialog');
+    
     // Remove overlay when canceled
     const overlay = document.getElementById('pixshop-warning-overlay');
     if (overlay) {
+      console.log('🧹 Removing overlay on cancel');
       overlay.remove();
+    } else {
+      console.log('ℹ️ No overlay found to remove on cancel');
     }
+    
     setIsWarningDialogOpen(false);
+    console.log('✅ Warning dialog closed');
   };
 
-  // Setup retouch button interception with MutationObserver
+  // Handle image upload
+  const handleImageUpload = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    
+    if (file) {
+      console.log('📁 User selected image file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) {
+          console.log('📷 Converting uploaded file to data URL');
+          setPendingBlobSrc(dataUrl);
+          setCurrentImageSrc(dataUrl);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    
+    // Clear the input value so the same file can be selected again
+    input.value = '';
+  };
+
+  // Add upload button to Pintura's navigation
+  const addUploadButton = () => {
+    const navGroup = document.querySelector('.PinturaNavGroup:last-child');
+    const doneButton = document.querySelector('.PinturaButtonExport');
+    
+    if (navGroup && doneButton && !document.getElementById('custom-upload-button')) {
+      // Create upload input
+      const uploadInput = document.createElement('input');
+      uploadInput.type = 'file';
+      uploadInput.accept = 'image/*';
+      uploadInput.style.display = 'none';
+      uploadInput.id = 'custom-upload-input';
+      uploadInput.addEventListener('change', handleImageUpload);
+      
+      // Create upload button
+      const uploadButton = document.createElement('button');
+      uploadButton.type = 'button';
+      uploadButton.id = 'custom-upload-button';
+      uploadButton.className = 'PinturaButton';
+      uploadButton.title = 'Upload Image';
+      uploadButton.style.marginRight = '8px';
+      
+      uploadButton.innerHTML = `
+        <span class="PinturaButtonInner">
+          <svg class="PinturaButtonIcon" width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" stroke-linecap="round" stroke-linejoin="round">
+            <g><g fill="none" fill-rule="evenodd" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor" stroke-width=".125em">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7,10 12,5 17,10"></polyline>
+              <line x1="12" y1="5" x2="12" y2="15"></line>
+            </g></g>
+          </svg>
+          <span class="PinturaButtonLabel">Upload</span>
+        </span>
+      `;
+      
+      uploadButton.addEventListener('click', () => {
+        uploadInput.click();
+      });
+      
+      // Insert before the Done button
+      navGroup.insertBefore(uploadInput, doneButton);
+      navGroup.insertBefore(uploadButton, doneButton);
+      
+      console.log('✅ Added upload button to Pintura navigation');
+    }
+  };
+
+  // Setup retouch button interception and upload button injection
   useEffect(() => {
     if (!isVisible) return;
 
@@ -326,15 +679,22 @@ export default function PinturaEditorModal({
       return false;
     };
 
+    const setupButtons = () => {
+      const retouchSuccess = setupRetouchInterception();
+      addUploadButton();
+      return retouchSuccess;
+    };
+
     // Initial setup attempts
-    setTimeout(setupRetouchInterception, 100);
-    setTimeout(setupRetouchInterception, 500);
+    setTimeout(setupButtons, 100);
+    setTimeout(setupButtons, 500);
+    setTimeout(setupButtons, 1000);
     
     // Use MutationObserver to watch for dynamically created buttons
     const observerTimeout = setTimeout(() => {
-      if (!setupRetouchInterception()) {
+      if (!setupButtons()) {
         observer = new MutationObserver(() => {
-          if (setupRetouchInterception() && observer) {
+          if (setupButtons() && observer) {
             observer.disconnect();
             observer = null;
           }
@@ -350,13 +710,20 @@ export default function PinturaEditorModal({
           });
         }
       }
-    }, 1000);
+    }, 1500);
 
     return () => {
       if (observer) {
         observer.disconnect();
       }
       clearTimeout(observerTimeout);
+      
+      // Clean up custom elements
+      const uploadInput = document.getElementById('custom-upload-input');
+      const uploadButton = document.getElementById('custom-upload-button');
+      if (uploadInput) uploadInput.remove();
+      if (uploadButton) uploadButton.remove();
+      
       // Remove intercepted attribute from buttons
       const interceptedButtons = document.querySelectorAll('[data-pixshop-intercepted="true"]');
       interceptedButtons.forEach(button => {
@@ -377,6 +744,15 @@ export default function PinturaEditorModal({
   console.log("🎨 Editor IS visible, rendering PinturaEditorModal");
 
   const editorDefaults = createEditorDefaults(handleOpenPixshop);
+
+  console.log("🎯 About to render PinturaEditorModalComponent with src:", {
+    src: currentImageSrc?.substring(0, 100),
+    isDataUrl: currentImageSrc?.startsWith('data:'),
+    isBlobUrl: currentImageSrc?.startsWith('blob:'),
+    srcLength: currentImageSrc?.length,
+    pendingBlobSrc: pendingBlobSrc?.substring(0, 50),
+    hasPendingBlob: !!pendingBlobSrc
+  });
 
   return (
     <>

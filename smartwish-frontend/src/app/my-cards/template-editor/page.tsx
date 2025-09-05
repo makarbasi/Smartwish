@@ -249,7 +249,7 @@ function TemplateEditorContent() {
         const pinturaPayload = sessionStorage.getItem('pixshopToPintura');
         if (pinturaPayload) {
           const payload = JSON.parse(pinturaPayload);
-          console.log('📥 Received pixshop return payload:', {
+          console.log('📥 Received pixshop return payload for Pintura:', {
             hasEditedImage: !!payload.editedImage,
             dataSize: payload.editedImage?.length || 0,
             pageIndex: payload.pageIndex,
@@ -274,53 +274,38 @@ function TemplateEditorContent() {
               console.log('🔄 Reopening Pintura with edited image from pixshop');
               console.log('🖼️ Original image URL (first 50 chars):', pageImages[idx]?.substring(0, 50));
               console.log('🖼️ Edited image URL (first 50 chars):', payload.editedImage?.substring(0, 50));
+              console.log('🔢 Page index details:', {
+                payloadPageIndex: payload.pageIndex,
+                parsedIdx: idx,
+                currentPageImages: pageImages.length
+              });
               
-              // Update the page images with the edited image
-              const updated = [...pageImages];
-              updated[idx] = payload.editedImage;
-              console.log('🔄 Updated pageImages state, preparing to reopen Pintura...');
-              console.log('🎯 Updated image at index', idx, ':', payload.editedImage.substring(0, 50));
+              console.log('🚫 IMPORTANT: Pixshop blob will NOT update main card - only Pintura can do that');
+              console.log('🎯 Blob will be passed to Pintura for user confirmation');
               
-              // Update state immediately
-              setPageImages(updated);
-              setHasUnsavedChanges(true);
+              // REMOVED: Direct pageImages update - this was the problem!
+              // Pixshop should NEVER directly update the card
+              // The blob will be handled by PinturaEditorModal's pending system
               
-              // Verify the blob data can be used to create an image
-              if (typeof window !== 'undefined') {
-                const testImage = document.createElement('img');
-                testImage.onload = () => {
-                  console.log('✅ Blob data successfully loaded as image:', {
-                    width: testImage.width,
-                    height: testImage.height,
-                    naturalWidth: testImage.naturalWidth,
-                    naturalHeight: testImage.naturalHeight
-                  });
-                };
-                testImage.onerror = (error: any) => {
-                  console.error('❌ Failed to load blob data as image:', error);
-                };
-                testImage.src = payload.editedImage;
-              }
-              
-              // Use setTimeout to ensure state updates are processed before opening Pintura
+              // Just reopen Pintura - the PinturaEditorModal will handle the pending blob
               setTimeout(() => {
-                console.log('⏰ Timeout executed, now opening Pintura with updated image');
-                // Force update the pageImages state again to ensure it's current
-                setPageImages(prev => {
-                  const currentUpdated = [...prev];
-                  currentUpdated[idx] = payload.editedImage;
-                  console.log('🖼️ Final image being passed to Pintura (first 50 chars):', currentUpdated[idx]?.substring(0, 50) || 'undefined');
-                  return currentUpdated;
-                });
-                
-                // Use data URL directly with Pintura (it supports data URLs)
-                console.log('🎨 Using data URL directly with Pintura');
+                console.log('⏰ Opening Pintura - blob will be handled by PinturaEditorModal');
+                console.log('� Pintura will show blob as pending until user clicks Done');
                 setEditingPageIndex(idx);
                 setEditorVisible(true);
-              }, 200); // Increased delay to be more certain
+                
+                // Debug: Check if sessionStorage still has the data after opening
+                setTimeout(() => {
+                  const checkData = sessionStorage.getItem('pixshopToPintura');
+                  console.log('📦 Final sessionStorage check after opening Pintura:', {
+                    hasData: !!checkData,
+                    dataSize: checkData?.length || 0
+                  });
+                }, 50);
+              }, 200);
               
-              // Clean up
-              sessionStorage.removeItem('pixshopToPintura');
+              // DON'T clean up sessionStorage here - let PinturaEditorModal handle it
+              // sessionStorage.removeItem('pixshopToPintura'); // REMOVED - PinturaEditorModal will clean up
               
               // Remove the returnToPintura param from URL
               const newUrl = new URL(window.location.href);
@@ -1477,11 +1462,12 @@ function TemplateEditorContent() {
           key={`pintura-${editingPageIndex}-${Date.now()}-${pageImages[editingPageIndex]?.substring(0, 20)}`}
           imageSrc={(() => {
             const imgSrc = pageImages[editingPageIndex];
-            console.log('🎨 Passing image to Pintura:', {
+            console.log('🎨 Passing current pageImage to Pintura:', {
               pageIndex: editingPageIndex,
               isDataUrl: imgSrc?.startsWith('data:'),
               imageSize: imgSrc?.length || 0,
-              imagePrefix: imgSrc?.substring(0, 50) || 'undefined'
+              imagePrefix: imgSrc?.substring(0, 50) || 'undefined',
+              note: 'Pixshop blobs will stay in Pintura until Done is clicked'
             });
             return imgSrc;
           })()}
