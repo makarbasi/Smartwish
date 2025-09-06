@@ -42,7 +42,6 @@ const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ onApplyAdjustment, is
     },
   ];
 
-  const activePrompt = selectedPresetPrompt || customPrompt;
 
   const getEffectClass = (effect: string) => {
     switch (effect) {
@@ -73,6 +72,10 @@ const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ onApplyAdjustment, is
         return 'bg-gray-200';
     }
   };
+
+  const activePrompt = selectedPresetPrompt || customPrompt;
+
+  // ...removed effect/background classes for consistency with FilterPanel...
 
   const handlePresetClick = (prompt: string) => {
     setSelectedPresetPrompt(prompt);
@@ -125,14 +128,14 @@ const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ onApplyAdjustment, is
             type="text"
             value={customPrompt}
             onChange={handleCustomChange}
-            placeholder="Describe or tweak an adjustment"
+            placeholder="Describe or tweak a filter prompt"
             aria-label="Adjustment prompt"
             className="w-64 md:w-80 bg-transparent placeholder-gray-400 text-gray-800 text-sm md:text-base focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
           />
           <button
             onClick={handleApply}
-            className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed min-w-[84px]"
+            className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isLoading || !activePrompt?.trim()}
             title="Apply Adjustment"
           >

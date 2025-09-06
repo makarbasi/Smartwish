@@ -75,6 +75,9 @@ export type TemplateCard = {
   downloads: number;
   likes: number;
   pages?: string[];
+  category_id?: string;
+  category_name?: string;
+  category_display_name?: string;
 };
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -101,6 +104,9 @@ function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
       avatar: "https://i.pravatar.cc/80?img=1",
     },
     downloads: apiTemplate.num_downloads,
+    category_id: apiTemplate.category_id,
+    category_name: apiTemplate.category_name,
+    category_display_name: apiTemplate.category_display_name,
     likes: Math.floor(apiTemplate.num_downloads / 10), // Estimate likes from downloads
     pages: [
       apiTemplate.image_1,
@@ -252,27 +258,49 @@ function TemplatesPageContent() {
         return;
       }
 
-      console.log("✅ User is authenticated, redirecting to editor mode");
+      console.log("✅ User is authenticated, copying template to my-cards");
 
       try {
-        console.log("🎨 Opening template in editor mode");
+        console.log("🎨 Copying template to user's saved designs");
         console.log("🔍 Template product data:", product);
         console.log("🔍 Template ID:", product.id);
 
-        // Store template data temporarily for editor access
-        sessionStorage.setItem('templateForEditor', JSON.stringify({
-          id: product.id,
-          name: product.name,
-          pages: product.pages || [product.imageSrc]
-        }));
+        // First, copy the template to user's saved designs
+        const copyResponse = await fetch(`/api/templates/${product.id}/copy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            title: product.name,
+            categoryId: product.category_id || '1', // Default to general category if not available
+            categoryName: product.category_display_name || product.category_name || 'General',
+          }),
+        });
 
-        // Redirect directly to editor mode without copying to saved_designs yet
-        // The editor will handle copying to saved_designs only when user saves
-        router.push(`/my-cards/template-editor?templateId=${product.id}&templateName=${encodeURIComponent(product.name)}`);
+        if (!copyResponse.ok) {
+          const errorData = await copyResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || `Failed to copy template (${copyResponse.status})`);
+        }
+
+        const savedDesignResult = await copyResponse.json();
+        console.log("✅ Template copied successfully:", savedDesignResult);
+
+        if (!savedDesignResult.success || !savedDesignResult.data) {
+          throw new Error(savedDesignResult.error || 'Failed to get saved design data');
+        }
+
+        const savedDesignId = savedDesignResult.data.id;
+        console.log("📝 Redirecting to saved design:", savedDesignId);
+
+        // Now redirect to the saved design's edit page
+        router.push(`/my-cards/${savedDesignId}`);
 
       } catch (error) {
-        console.error("❌ Error opening template editor:", error);
-        alert(`Failed to open template editor: ${error.message}`);
+        console.error("❌ Error copying template:", error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        alert(`Failed to copy template: ${errorMessage}`);
       }
     },
     [session, status, openAuthModal, setRedirectUrl, pathname, router]

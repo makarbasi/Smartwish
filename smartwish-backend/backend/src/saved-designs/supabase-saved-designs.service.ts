@@ -133,6 +133,59 @@ export class SupabaseSavedDesignsService {
     page3Image = designData.image3 || page3Image;
     page4Image = designData.image4 || page4Image;
 
+    // Create unique copies of template images before saving
+    console.log('Checking for template images to copy...');
+    const images = [page1Image, page2Image, page3Image, page4Image];
+    const uniqueImages = await Promise.all(
+      images.map(async (imageUrl, index) => {
+        if (imageUrl && imageUrl.includes('supabase') && imageUrl.includes('templates/images/')) {
+          try {
+            console.log(`Creating unique copy for page ${index + 1}: ${imageUrl}`);
+            // Create a unique image for each page, even if source is the same
+            const uniqueImageUrl = await this.copyImageWithPageIndex(imageUrl, userId, index);
+            console.log(`✅ Created unique copy for page ${index + 1}: ${uniqueImageUrl}`);
+            return uniqueImageUrl;
+          } catch (error) {
+            console.error(`Failed to copy image for page ${index + 1}:`, error);
+            return imageUrl; // Keep original if copy fails
+          }
+        }
+        return imageUrl;
+      })
+    );
+
+    // Update the page images with unique copies
+    page1Image = uniqueImages[0];
+    page2Image = uniqueImages[1];
+    page3Image = uniqueImages[2];
+    page4Image = uniqueImages[3];
+
+    // Also update the designData pages with unique images
+    let updatedDesignData = designData.designData;
+    if (updatedDesignData?.pages) {
+      updatedDesignData = {
+        ...updatedDesignData,
+        pages: updatedDesignData.pages.map((page, index) => ({
+          ...page,
+          image: uniqueImages[index] || page.image
+        }))
+      };
+    }
+
+    // Update thumbnail to use unique copy if it's a template image
+    let updatedThumbnail = designData.thumbnail;
+    if (updatedThumbnail && updatedThumbnail.includes('supabase') && updatedThumbnail.includes('templates/images/')) {
+      try {
+        console.log(`Creating unique copy for thumbnail: ${updatedThumbnail}`);
+        // Use page index -1 for thumbnail to make it distinct from pages
+        updatedThumbnail = await this.copyImageWithPageIndex(updatedThumbnail, userId, -1);
+        console.log(`✅ Created unique copy for thumbnail: ${updatedThumbnail}`);
+      } catch (error) {
+        console.error('Failed to copy thumbnail:', error);
+        // Keep original if copy fails
+      }
+    }
+
     const { data, error } = await this.supabase
       .from('saved_designs')
       .insert({
@@ -146,17 +199,17 @@ export class SupabaseSavedDesignsService {
         status: designData.status || 'draft',
         popularity: designData.popularity || 0,
         num_downloads: designData.num_downloads || 0,
-        cover_image: designData.thumbnail || page1Image, // Use first page as cover if no thumbnail
-        // Store individual page images
+        cover_image: updatedThumbnail || page1Image, // Use updated thumbnail or first page as cover
+        // Store individual page images with unique copies
         image_1: page1Image,
         image_2: page2Image,
         image_3: page3Image,
         image_4: page4Image,
         search_keywords: designData.searchKeywords || [],
         tags: designData.tags || [],
-        // Keep minimal metadata for backward compatibility
+        // Keep minimal metadata for backward compatibility with updated design data
         metadata: {
-          designData: designData.designData,
+          designData: updatedDesignData,
           imageUrls: designData.imageUrls || [],
           imageTimestamp: designData.imageTimestamp,
           author: designData.author || 'User',
@@ -804,6 +857,98 @@ export class SupabaseSavedDesignsService {
       throw new Error('Failed to fetch copied design');
     }
 
+    if (!savedDesign) {
+      return null;
+    }
+
+    // Now create unique copies of all images for this saved design
+    console.log('Creating unique image copies for saved design...');
+    
+    try {
+      const imageFields = ['image_1', 'image_2', 'image_3', 'image_4', 'cover_image'];
+      const updateData: any = {};
+      let hasUpdates = false;
+
+      for (let i = 0; i < imageFields.length; i++) {
+        const field = imageFields[i];
+        const imageUrl = savedDesign[field];
+        if (imageUrl && imageUrl.includes('supabase') && imageUrl.includes('templates/images/')) {
+          try {
+            console.log(`Copying ${field}: ${imageUrl}`);
+            // Use page index for field-based copying (image_1 = page 0, etc.)
+            const pageIndex = field === 'cover_image' ? 0 : parseInt(field.split('_')[1]) - 1;
+            const uniqueImageUrl = await this.copyImageWithPageIndex(imageUrl, userId, pageIndex);
+            updateData[field] = uniqueImageUrl;
+            hasUpdates = true;
+            console.log(`✅ Created unique copy for ${field}: ${uniqueImageUrl}`);
+          } catch (copyError) {
+            console.error(`Failed to copy ${field}:`, copyError);
+            // Keep original URL if copy fails
+          }
+        }
+      }
+
+      // Also copy images from design_data if present
+      if (savedDesign.design_data && typeof savedDesign.design_data === 'object') {
+        const designData = savedDesign.design_data as any;
+        
+        if (designData.pages && Array.isArray(designData.pages)) {
+          const updatedPages = await Promise.all(
+            designData.pages.map(async (page: any, index: number) => {
+              if (page.image && page.image.includes('supabase') && page.image.includes('templates/images/')) {
+                try {
+                  console.log(`Copying page image: ${page.image}`);
+                  const uniqueImageUrl = await this.copyImageWithPageIndex(page.image, userId, index);
+                  console.log(`✅ Created unique copy for page image: ${uniqueImageUrl}`);
+                  return { ...page, image: uniqueImageUrl };
+                } catch (copyError) {
+                  console.error('Failed to copy page image:', copyError);
+                  return page;
+                }
+              }
+              return page;
+            })
+          );
+          
+          updateData.design_data = {
+            ...designData,
+            pages: updatedPages
+          };
+          hasUpdates = true;
+        }
+      }
+
+      // Update the saved design with unique image URLs
+      if (hasUpdates) {
+        console.log('Updating saved design with unique image URLs...');
+        const { error: updateError } = await this.supabase
+          .from('saved_designs')
+          .update(updateData)
+          .eq('id', data);
+
+        if (updateError) {
+          console.error('Error updating saved design with unique images:', updateError);
+          // Continue anyway - the design was created, just with original template images
+        } else {
+          console.log('✅ Successfully updated saved design with unique image URLs');
+          
+          // Fetch the updated design
+          const { data: updatedDesign, error: refetchError } = await this.supabase
+            .from('saved_designs')
+            .select('*')
+            .eq('id', data)
+            .single();
+
+          if (!refetchError && updatedDesign) {
+            return this.mapDatabaseRecordToSavedDesign(updatedDesign);
+          }
+        }
+      }
+    } catch (imageError) {
+      console.error('Error during image copying process:', imageError);
+      // Continue with original saved design if image copying fails
+    }
+
     return savedDesign
       ? this.mapDatabaseRecordToSavedDesign(savedDesign)
       : null;
@@ -1211,6 +1356,88 @@ export class SupabaseSavedDesignsService {
   }
 
   /**
+   * Copy an image from one location to another in Supabase Storage with page-specific naming
+   * This ensures each page gets a unique image copy, even if they share the same source
+   */
+  async copyImageWithPageIndex(originalImageUrl: string, userId: string, pageIndex: number): Promise<string> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    try {
+      // Extract the file path from the URL
+      const urlParts = originalImageUrl.split('/');
+      const bucketName = 'smartwish-assets'; // Based on your URL structure
+      const originalPath = urlParts
+        .slice(urlParts.indexOf('smartwish-assets') + 1)
+        .join('/');
+
+      // Generate a new path for the copied image with page index for uniqueness
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 9);
+      const fileName = originalPath.split('/').pop() || 'image.png';
+      const fileExtension = fileName.split('.').pop() || 'png';
+      const baseFileName = fileName.replace(`.${fileExtension}`, '');
+      
+      // Handle thumbnail case (pageIndex = -1) separately
+      const pageIdentifier = pageIndex === -1 ? 'thumbnail' : `page${pageIndex + 1}`;
+      const newFileName = `${baseFileName}_${pageIdentifier}_${timestamp}_${randomId}.${fileExtension}`;
+      const newPath = `users/${userId}/designs/copied_images/${newFileName}`;
+
+      const logIdentifier = pageIndex === -1 ? 'thumbnail' : `page ${pageIndex + 1}`;
+      console.log(`🖼️ Creating unique copy for ${logIdentifier}:`);
+      console.log(`   Original: ${originalPath}`);
+      console.log(`   New path: ${newPath}`);
+
+      // Download the original image
+      const { data: originalData, error: downloadError } =
+        await this.supabase.storage.from(bucketName).download(originalPath);
+
+      if (downloadError) {
+        console.error('Error downloading original image:', downloadError);
+        throw new Error(
+          `Failed to download original image: ${downloadError.message}`,
+        );
+      }
+
+      // Upload the image to the new location
+      const { data: uploadData, error: uploadError } =
+        await this.supabase.storage
+          .from(bucketName)
+          .upload(newPath, originalData, {
+            contentType: originalData.type,
+            upsert: false,
+          });
+
+      if (uploadError) {
+        console.error('Error uploading copied image:', uploadError);
+        throw new Error(
+          `Failed to upload copied image: ${uploadError.message}`,
+        );
+      }
+
+      // Generate the public URL for the new image
+      const { data: publicUrlData } = this.supabase.storage
+        .from(bucketName)
+        .getPublicUrl(newPath);
+
+      if (!publicUrlData.publicUrl) {
+        throw new Error('Failed to generate public URL for copied image');
+      }
+
+      console.log(
+        `✅ Image copied successfully for ${logIdentifier}: ${originalImageUrl} -> ${publicUrlData.publicUrl}`,
+      );
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      const errorIdentifier = pageIndex === -1 ? 'thumbnail' : `page ${pageIndex + 1}`;
+      console.error(`Error copying image for ${errorIdentifier}:`, error);
+      // Return the original URL as fallback
+      return originalImageUrl;
+    }
+  }
+
+  /**
    * Update the content of an existing image in Supabase Storage
    */
   async updateImageContent(supabaseUrl: string, newImageData: string): Promise<string> {
@@ -1316,6 +1543,7 @@ export class SupabaseSavedDesignsService {
       throw error;
     }
   }
+
 
   async updateImageUrlsInDesigns(userId: string, oldUrl: string, newUrl: string, designId?: string): Promise<number> {
     try {

@@ -39,6 +39,7 @@ import {
   ensureSupabaseUrls,
 } from "@/utils/savedDesignUtils";
 import useSWR from "swr";
+import { sessionDataManager } from "@/utils/sessionDataManager";
 
 type TemplateData = {
   id: string;
@@ -398,6 +399,51 @@ function TemplateEditorContent() {
     }
   }, []);
 
+  // Restore session data when component loads (for cross-route persistence)
+  useEffect(() => {
+    if (!templateId) return;
+
+    console.log('🔄 Template editor checking for session data...', { templateId });
+
+    // Check for unsaved changes from previous session
+    const sessionSummary = sessionDataManager.getSessionSummary(templateId);
+    if (sessionSummary && sessionSummary.pagesWithChanges > 0) {
+      console.log(`📂 Found session data with changes:`, sessionSummary);
+
+      // Restore all pages with changes
+      const pagesWithChanges = sessionDataManager.getAllPagesWithChanges(templateId);
+      
+      // Update pageImages with restored data
+      const updatedImages = [...pageImages];
+      let hasAnyChanges = false;
+
+      pagesWithChanges.forEach(pageData => {
+        if (pageData.editedImageBlob && pageData.pageIndex < updatedImages.length) {
+          // Convert blob to data URL for display
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            updatedImages[pageData.pageIndex] = dataUrl;
+            
+            console.log(`✅ Restored page ${pageData.pageIndex} from session`);
+            
+            // Update state after all restorations
+            setPageImages([...updatedImages]);
+            setHasUnsavedChanges(true);
+            hasAnyChanges = true;
+          };
+          reader.readAsDataURL(pageData.editedImageBlob);
+        }
+      });
+
+      if (pagesWithChanges.length > 0) {
+        console.log(`🎉 Template editor restored ${pagesWithChanges.length} pages from session`);
+      }
+    } else {
+      console.log('📂 No session data found or no changes to restore');
+    }
+  }, [templateId, templateData]); // Run when template loads
+
   const handlePageFlip = useCallback((e: { data: number }) => {
     setCurrentPage(e.data);
   }, []);
@@ -706,6 +752,12 @@ function TemplateEditorContent() {
 
       setHasUnsavedChanges(false); // Clear unsaved changes flag
       setSaveMessage("Template saved to My Cards!");
+
+      // Clear session data after successful save
+      if (templateId) {
+        sessionDataManager.clearSession(templateId);
+        console.log(`🗑️ Cleared session data after successful save for template ${templateId}`);
+      }
 
       // Redirect to the saved card in editor mode after a short delay
       setTimeout(() => {

@@ -30,7 +30,7 @@ const items: Item[] = [
   { href: "/event", label: "Event", icon: CalendarDaysIcon },
   { href: "/marketplace", label: "Market", icon: ShoppingBagIcon },
   { href: "/templates", label: "Templates", icon: PencilSquareIcon },
-  { href: "/my-cards", label: "My designs", icon: PencilSquareIcon },
+  { href: "/my-cards", label: "Designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
 ];
 

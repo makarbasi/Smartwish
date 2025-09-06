@@ -455,6 +455,7 @@ export class SavedDesignsController {
     }
   }
 
+
   @Post('update-supabase-image')
   async updateSupabaseImage(
     @Body() body: { supabaseUrl: string; newImageData: string; designId?: string },

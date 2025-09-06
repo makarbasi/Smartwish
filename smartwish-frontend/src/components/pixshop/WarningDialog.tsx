@@ -10,15 +10,35 @@ interface WarningDialogProps {
 }
 
 const WarningDialog: React.FC<WarningDialogProps> = ({ isOpen, onContinue, onCancel }) => {
-  console.log('🚨 WarningDialog render:', { isOpen });
+  console.log('🚨 WarningDialog render:', { 
+    isOpen, 
+    timestamp: new Date().toISOString(),
+    willRender: isOpen 
+  });
   
-  if (!isOpen) return null;
+  if (!isOpen) {
+    console.log('🚨 WarningDialog not open - returning null');
+    return null;
+  }
 
-  console.log('🚨 WarningDialog is open - rendering dialog');
+  console.log('🚨 WarningDialog IS OPEN - rendering dialog content');
 
   const dialogContent = (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-5 flex items-center justify-center" style={{ zIndex: 2147483647 }}>
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+    <div 
+      className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center" 
+      style={{ zIndex: 2147483647 }}
+      onClick={(e) => {
+        // Prevent clicks on backdrop from immediately closing dialog
+        e.stopPropagation();
+      }}
+    >
+      <div 
+        className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
+        onClick={(e) => {
+          // Prevent clicks on dialog content from bubbling to backdrop
+          e.stopPropagation();
+        }}
+      >
         <div className="flex items-center mb-4">
           <div className="flex-shrink-0 w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
             <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
