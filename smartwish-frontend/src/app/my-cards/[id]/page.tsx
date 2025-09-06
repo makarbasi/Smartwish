@@ -1,7 +1,9 @@
+// ...existing code...
 "use client";
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useParams, usePathname, useSearchParams } from "next/navigation";
+// Removed FaRegSave, using Heroicons ArchiveBoxIcon for save
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -13,7 +15,7 @@ import {
   ArrowPathIcon,
   DocumentDuplicateIcon,
 } from "@heroicons/react/24/outline";
-import { ArchiveBoxIcon } from "@heroicons/react/24/solid";
+import { FaRegSave } from "react-icons/fa";
 import {
   Listbox,
   ListboxButton,
@@ -1291,7 +1293,7 @@ export default function CustomizeCardPage() {
             {isSaving ? (
               <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 border-t-current rounded-full animate-spin" />
             ) : (
-              <ArchiveBoxIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+              <FaRegSave className="h-4 w-4 sm:h-5 sm:w-5" />
             )}
           </button>
 

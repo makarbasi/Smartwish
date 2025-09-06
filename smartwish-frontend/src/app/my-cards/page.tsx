@@ -588,7 +588,7 @@ function MyCardsContent() {
         {/* Header */}
         <div className="mb-12">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-            My designs
+            Designs
           </h1>
         </div>
 

@@ -110,7 +110,11 @@
       "Read(/F:\\Smartwish\\smartwish-frontend\\src\\app\\my-cards\\[id]\\pixshop/**)",
       "Read(/F:\\Smartwish\\smartwish-frontend\\src\\app\\my-cards\\[id]\\pixshop/**)",
       "Read(/F:\\Smartwish\\smartwish-frontend\\src\\app\\my-cards\\[id]\\pixshop/**)",
-      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\app\\my-cards\\[id]\\pixshop/**)"
+      "Read(/F:\\Smartwish\\smartwish-frontend\\src\\app\\my-cards\\[id]\\pixshop/**)",
+      "WebFetch(domain:pqina.nl)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Read(//c/Users/abuba/AppData/Roaming/Code/User/workspaceStorage/vscode-chat-images/**)"
     ],
     "deny": [],
     "ask": [],

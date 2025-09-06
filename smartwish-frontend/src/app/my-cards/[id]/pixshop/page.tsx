@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import { mutate } from 'swr';
+import { sessionDataManager, fileToBlob, blobToFile } from '@/utils/sessionDataManager';
 
 // Types for API responses
 type SavedDesign = {
@@ -24,6 +25,126 @@ type ApiResponse = {
   success: boolean;
   data: SavedDesign[];
   count?: number;
+};
+
+// IndexedDB utilities for efficient image storage
+const DB_NAME = 'SmartWishPixshop';
+const DB_VERSION = 1;
+const STORE_NAME = 'pageImages';
+
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+  });
+};
+
+const storeImageInDB = async (key: string, imageFile: File): Promise<void> => {
+  const db = await openDB();
+  const transaction = db.transaction([STORE_NAME], 'readwrite');
+  const store = transaction.objectStore(STORE_NAME);
+  
+  await new Promise<void>((resolve, reject) => {
+    const request = store.put({
+      id: key,
+      file: imageFile,
+      timestamp: Date.now()
+    });
+    
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+  
+  db.close();
+};
+
+const getImageFromDB = async (key: string): Promise<File | null> => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    
+    const result = await new Promise<any>((resolve, reject) => {
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    
+    db.close();
+    return result?.file || null;
+  } catch (error) {
+    console.warn('Failed to get image from IndexedDB:', error);
+    return null;
+  }
+};
+
+const cleanupOldSessionData = async (): Promise<void> => {
+  // Remove oldest page data to free up space
+  const keysToRemove: string[] = [];
+  const now = Date.now();
+  const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+  
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i);
+    if (key?.startsWith('pixshop-page-') || key?.startsWith('pixshop-stack-')) {
+      try {
+        const data = JSON.parse(sessionStorage.getItem(key) || '{}');
+        if (data.timestamp && (now - data.timestamp) > maxAge) {
+          keysToRemove.push(key);
+        }
+      } catch (e) {
+        // Invalid data, mark for removal
+        keysToRemove.push(key);
+      }
+    }
+  }
+  
+  keysToRemove.forEach(key => {
+    console.log(`🧹 Removing old session data: ${key}`);
+    sessionStorage.removeItem(key);
+  });
+  
+  console.log(`🧹 Cleaned up ${keysToRemove.length} old session storage entries`);
+};
+
+// Synchronous fallback save for when async operations might be interrupted
+const synchronousFallbackSave = (
+  pageStorageKey: string, 
+  stackStorageKey: string, 
+  history: File[], 
+  historyIndex: number, 
+  currentImage: File | null, 
+  originalImage: File | null, 
+  pageIndex: number, 
+  templateIdParam: string | null
+): void => {
+  if (typeof window === 'undefined' || !templateIdParam || !currentImage) return;
+  
+  try {
+    const pageState = {
+      historyLength: history.length,
+      historyIndex,
+      hasChanges: history.length > 1 || historyIndex > 0,
+      timestamp: Date.now(),
+      pageIndex,
+      synchronousSave: true
+    };
+    
+    // Only save basic state info without image data in synchronous mode
+    sessionStorage.setItem(pageStorageKey, JSON.stringify(pageState));
+    console.log(`⚡ Synchronous fallback save completed for page ${pageIndex}`);
+  } catch (error) {
+    console.warn('⚠️ Even synchronous save failed:', error);
+  }
 };
 
 const fetcher = (url: string) =>
@@ -78,6 +199,12 @@ const EyeIcon = ({ className }: { className?: string }) => (
 const CheckIcon = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+  </svg>
+)
+
+const XMarkIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
   </svg>
 )
 
@@ -202,6 +329,8 @@ const PixshopPage: React.FC = () => {
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
   const [hasStarted, setHasStarted] = useState<boolean>(true);
   const [hasUserInteracted, setHasUserInteracted] = useState<boolean>(false);
+  const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
   // Reset interaction state when component mounts (reopening Pixshop)
   useEffect(() => {
@@ -221,128 +350,85 @@ const PixshopPage: React.FC = () => {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
 
-  // Save current page state to sessionStorage AND update the global stack
-  const savePageState = useCallback(() => {
+  // Save current page state using session manager for cross-route persistence
+  const savePageState = useCallback(async () => {
     if (typeof window === 'undefined' || !templateIdParam) return;
     
     try {
-      const pageState = {
+      const hasChanges = history.length > 1 || historyIndex > 0;
+      
+      const pageData = {
         historyLength: history.length,
         historyIndex,
-        hasChanges: history.length > 1 || historyIndex > 0,
-        timestamp: Date.now(),
-        pageIndex
+        hasChanges,
+        originalImageExists: !!originalImage,
+        timestamp: Date.now()
       };
-      
-      // Store the current edited image if we have changes
-      if (currentImage && (history.length > 1 || historyIndex > 0)) {
-        fileToDataURL(currentImage).then(dataUrl => {
-          const stateWithImage = {
-            ...pageState,
-            editedImageDataUrl: dataUrl,
-            originalImageExists: !!originalImage
-          };
-          
-          // Save individual page state
-          sessionStorage.setItem(pageStorageKey, JSON.stringify(stateWithImage));
-          
-          // Update global stack
-          updateGlobalStack(pageIndex, dataUrl);
-          
-          console.log(`💾 Saved page state for page ${pageIndex}:`, {
-            hasChanges: stateWithImage.hasChanges,
-            historyLength: stateWithImage.historyLength,
-            imageSize: dataUrl.length
-          });
-        }).catch(console.error);
-      } else {
-        // Save state without image
-        sessionStorage.setItem(pageStorageKey, JSON.stringify(pageState));
-        console.log(`💾 Saved page state for page ${pageIndex} (no changes)`);
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to save page state:', error);
-    }
-  }, [pageStorageKey, stackStorageKey, history, historyIndex, currentImage, originalImage, pageIndex, templateIdParam]);
 
-  // Update the global stack with current page changes
-  const updateGlobalStack = useCallback((pageIdx: number, imageDataUrl: string) => {
-    if (typeof window === 'undefined' || !templateIdParam) return;
-    
-    try {
-      // Get existing stack or create new one
-      const existingStack = sessionStorage.getItem(stackStorageKey);
-      const stack = existingStack ? JSON.parse(existingStack) : {};
+      // Get current image blob if we have changes
+      let imageBlob: Blob | undefined;
+      if (currentImage && hasChanges) {
+        try {
+          imageBlob = await fileToBlob(currentImage);
+          console.log(`🖼️ Converted current image to blob for page ${pageIndex}`);
+        } catch (error) {
+          console.warn('⚠️ Failed to convert image to blob:', error);
+        }
+      }
+
+      // Save to session manager (handles both sessionStorage and memory)
+      sessionDataManager.savePageData(templateIdParam, pageIndex, pageData, imageBlob);
       
-      // Update this page in the stack
-      stack[pageIdx] = {
-        editedImageDataUrl: imageDataUrl,
-        hasChanges: true,
-        timestamp: Date.now(),
-        pageIndex: pageIdx
-      };
-      
-      // Save updated stack
-      sessionStorage.setItem(stackStorageKey, JSON.stringify(stack));
-      
-      console.log(`📚 Updated global stack - page ${pageIdx} added:`, {
-        totalPagesInStack: Object.keys(stack).length,
-        pagesWithChanges: Object.keys(stack).map(key => parseInt(key))
+      console.log(`💾 Saved page state via session manager for page ${pageIndex}:`, {
+        hasChanges,
+        historyLength: history.length,
+        hasImageBlob: !!imageBlob
       });
     } catch (error) {
-      console.warn('⚠️ Failed to update global stack:', error);
+      console.warn('⚠️ Failed to save page state via session manager:', error);
     }
-  }, [stackStorageKey, templateIdParam]);
+  }, [history, historyIndex, currentImage, originalImage, pageIndex, templateIdParam]);
 
-  // Get the global stack of all page changes
-  const getGlobalStack = useCallback(() => {
-    if (typeof window === 'undefined' || !templateIdParam) return {};
-    
-    try {
-      const stackData = sessionStorage.getItem(stackStorageKey);
-      return stackData ? JSON.parse(stackData) : {};
-    } catch (error) {
-      console.warn('⚠️ Failed to get global stack:', error);
-      return {};
-    }
-  }, [stackStorageKey, templateIdParam]);
-
-  // Restore page state from sessionStorage
+  // Restore page state using session manager
   const restorePageState = useCallback(async () => {
     if (typeof window === 'undefined' || !templateIdParam) return false;
     
     try {
-      const savedState = sessionStorage.getItem(pageStorageKey);
-      if (!savedState) {
-        console.log(`📂 No saved state found for page ${pageIndex}`);
+      const pageData = sessionDataManager.getPageData(templateIdParam, pageIndex);
+      
+      if (!pageData) {
+        console.log(`📂 No session data found for template ${templateIdParam}, page ${pageIndex}`);
         return false;
       }
-      
-      const pageState = JSON.parse(savedState);
-      console.log(`📂 Found saved state for page ${pageIndex}:`, {
-        hasChanges: pageState.hasChanges,
-        historyLength: pageState.historyLength,
-        hasEditedImage: !!pageState.editedImageDataUrl
+
+      console.log(`📂 Found session data for page ${pageIndex}:`, {
+        hasChanges: pageData.hasChanges,
+        historyLength: pageData.historyLength,
+        hasBlob: !!pageData.editedImageBlob
       });
-      
-      if (pageState.hasChanges && pageState.editedImageDataUrl) {
-        // Restore the edited image
-        const editedFile = dataURLtoFile(pageState.editedImageDataUrl, `restored-page-${pageIndex}-${Date.now()}.jpg`);
-        console.log(`✅ Restored edited image for page ${pageIndex}:`, {
-          fileName: editedFile.name,
-          fileSize: editedFile.size,
-          fileType: editedFile.type
+
+      if (pageData.hasChanges && pageData.editedImageBlob) {
+        // Convert blob back to File
+        const restoredFile = blobToFile(
+          pageData.editedImageBlob, 
+          `restored-page-${pageIndex}-${Date.now()}.jpg`
+        );
+        
+        console.log(`✅ Restored image from session for page ${pageIndex}:`, {
+          fileName: restoredFile.name,
+          fileSize: restoredFile.size,
+          fileType: restoredFile.type
         });
         
-        return editedFile;
+        return restoredFile;
       }
-      
+
       return false;
     } catch (error) {
-      console.warn('⚠️ Failed to restore page state:', error);
+      console.warn('⚠️ Failed to restore page state from session:', error);
       return false;
     }
-  }, [pageStorageKey, pageIndex, templateIdParam]);
+  }, [pageIndex, templateIdParam]);
 
   // Check for incoming Pintura state when coming from Pintura editor
   useEffect(() => {
@@ -354,37 +440,20 @@ const PixshopPage: React.FC = () => {
         if (pinturaStateStr) {
           const pinturaState = JSON.parse(pinturaStateStr);
           console.log('📥 Found Pintura state for Pixshop:', {
-            hasOriginal: !!pinturaState.originalImage,
-            hasEdited: !!pinturaState.editedImage,
-            editedSize: pinturaState.editedImage?.length,
             pageIndex: pinturaState.pageIndex,
             templateId: pinturaState.templateId,
             fromPintura: pinturaState.fromPintura,
-            fallback: pinturaState.fallback
+            changesSaved: pinturaState.changesSaved
           });
 
-          // Use the edited image from Pintura as the starting point
-          const imageToUse = pinturaState.editedImage || pinturaState.originalImage;
-          if (imageToUse && imageToUse.startsWith('data:')) {
-            // Convert data URL to File
-            const file = dataURLtoFile(imageToUse, `pintura-edited-${Date.now()}.jpg`);
-            console.log('✅ Converted Pintura image to File object:', {
-              name: file.name,
-              size: file.size,
-              type: file.type
-            });
-            
-            // Set this as the initial image in history
-            setHistory([file]);
-            setHistoryIndex(0);
-            setIsInitialLoad(false);
-            
-            console.log('🎨 Pixshop initialized with Pintura edited image');
-            
-            // Clear the sessionStorage to prevent reuse
-            sessionStorage.removeItem('pinturaToPixshop');
-            return; // Skip normal image loading
-          }
+          // Clear the sessionStorage since we've received the state
+          sessionStorage.removeItem('pinturaToPixshop');
+
+          // All cases: let the normal loading process happen to get the current card state
+          console.log('✅ Coming from Pintura - loading current card state from database');
+          return;
+        } else {
+          console.log('📝 No Pintura state found - proceeding with normal loading');
         }
       } catch (error) {
         console.error('❌ Failed to load Pintura state:', error);
@@ -414,7 +483,47 @@ const PixshopPage: React.FC = () => {
     const loadImage = async () => {
       console.log(`🔄 Loading image for page ${pageIndex}...`);
       
-      // Try to restore from saved page state first
+      // PRIORITY 1: Check for processed image from retouch flow
+      if (typeof window !== 'undefined') {
+        const retouchImageUrl = sessionStorage.getItem('retouchProcessedImage');
+        const retouchTimestamp = sessionStorage.getItem('retouchProcessedImageTimestamp');
+        
+        if (retouchImageUrl && retouchTimestamp) {
+          const timestamp = parseInt(retouchTimestamp);
+          const now = Date.now();
+          
+          // Only use if processed within the last 10 seconds (fresh from retouch)
+          if (now - timestamp < 10000) {
+            try {
+              console.log('🎨 Found fresh processed image from retouch button:', retouchImageUrl.substring(0, 50));
+              
+              const response = await fetch(retouchImageUrl);
+              const blob = await response.blob();
+              const file = new File([blob], `retouch-processed-${Date.now()}.jpg`, { type: blob.type });
+              
+              setHistory([file]);
+              setHistoryIndex(0);
+              setIsInitialLoad(false);
+              
+              // Clean up session storage
+              sessionStorage.removeItem('retouchProcessedImage');
+              sessionStorage.removeItem('retouchProcessedImageTimestamp');
+              
+              console.log('✅ Successfully loaded processed image from retouch');
+              return;
+            } catch (error) {
+              console.error('❌ Failed to load retouch processed image:', error);
+              // Continue with normal loading
+            }
+          } else {
+            console.log('⏰ Retouch processed image is stale, removing and continuing with normal loading');
+            sessionStorage.removeItem('retouchProcessedImage');
+            sessionStorage.removeItem('retouchProcessedImageTimestamp');
+          }
+        }
+      }
+      
+      // PRIORITY 2: Try to restore from saved page state
       const restoredImage = await restorePageState();
       if (restoredImage) {
         console.log(`✅ Restored edited image from saved state for page ${pageIndex}`);
@@ -424,7 +533,7 @@ const PixshopPage: React.FC = () => {
         return;
       }
       
-      // If no restored state, proceed with normal loading
+      // PRIORITY 3: Proceed with normal loading
       console.log(`📥 No saved state found, loading original image for page ${pageIndex}`);
       
       if (apiResponse?.data && effectiveDesignId) {
@@ -559,10 +668,15 @@ const PixshopPage: React.FC = () => {
   useEffect(() => {
     console.log('🔧 Setting up popstate handler for browser back button');
     
-    const handlePopState = () => {
+    const handlePopState = async () => {
       console.log('🚫 Browser back button detected - saving state and cleaning up sessionStorage');
       // Save current state before leaving
-      savePageState();
+      try {
+        await savePageState();
+        console.log('✅ State saved successfully before navigation');
+      } catch (error) {
+        console.warn('⚠️ Failed to save state before navigation:', error);
+      }
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('pixshopToPintura');
         sessionStorage.removeItem('pixshopTemplateEdit');
@@ -570,25 +684,215 @@ const PixshopPage: React.FC = () => {
     };
 
     // Also save state when page is about to unload
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       console.log('📤 Page unloading - saving current state');
-      savePageState();
+      
+      // Try async save first, but don't wait for it
+      savePageState().catch(error => {
+        console.warn('⚠️ Async save failed during unload:', error);
+      });
+      
+      // Immediate synchronous fallback to ensure SOMETHING is saved
+      synchronousFallbackSave(
+        pageStorageKey, 
+        stackStorageKey, 
+        history, 
+        historyIndex, 
+        currentImage, 
+        originalImage, 
+        pageIndex, 
+        templateIdParam
+      );
+      
+      // Don't prevent the user from leaving, just save what we can
+      console.log('✅ Synchronous save completed during unload');
+    };
+
+    // Handle page visibility changes (user switches tabs or navigates)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log('📱 Page becoming hidden - saving state immediately');
+        // Page is being hidden, save immediately with fallback
+        savePageState().catch(error => {
+          console.warn('⚠️ Async save failed on visibility change:', error);
+        });
+        
+        // Synchronous fallback
+        synchronousFallbackSave(
+          pageStorageKey, 
+          stackStorageKey, 
+          history, 
+          historyIndex, 
+          currentImage, 
+          originalImage, 
+          pageIndex, 
+          templateIdParam
+        );
+      }
     };
 
     window.addEventListener('popstate', handlePopState);
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
       console.log('🧹 Cleaning up navigation handlers and saving state');
-      // Save state when component unmounts
-      savePageState();
+      
+      // Try async save first
+      savePageState().catch(error => {
+        console.warn('⚠️ Async save failed during unmount:', error);
+      });
+      
+      // Immediate synchronous fallback
+      synchronousFallbackSave(
+        pageStorageKey, 
+        stackStorageKey, 
+        history, 
+        historyIndex, 
+        currentImage, 
+        originalImage, 
+        pageIndex, 
+        templateIdParam
+      );
+      
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [savePageState]);
+  }, [savePageState, pageStorageKey, stackStorageKey, history, historyIndex, currentImage, originalImage, pageIndex, templateIdParam]);
+
+  // Auto-save when history or historyIndex changes (user made edits)
+  useEffect(() => {
+    // Don't save during initial load or if there are no changes
+    if (isInitialLoad || (!history.length || (history.length === 1 && historyIndex === 0))) {
+      return;
+    }
+
+    console.log('🔄 History changed, auto-saving state:', {
+      historyLength: history.length,
+      historyIndex,
+      hasChanges: history.length > 1 || historyIndex > 0
+    });
+
+    // Debounced save to avoid excessive saves during rapid changes
+    const saveTimeout = setTimeout(async () => {
+      try {
+        await savePageState();
+        console.log('✅ Auto-saved state after history change');
+      } catch (error) {
+        console.warn('⚠️ Failed to auto-save state:', error);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(saveTimeout);
+  }, [history, historyIndex, savePageState, isInitialLoad]);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
+
+  // Auto-save function that runs after each edit
+  const handleAutoSave = useCallback(async () => {
+    console.log('🚀 Auto-save triggered with state:', {
+      hasCurrentImage: !!currentImage,
+      hasUser: !!session?.user?.id,
+      isTemplateContext,
+      isAutoSaving,
+      autoSaveStatus
+    });
+    
+    if (!currentImage || !session?.user?.id || isTemplateContext || isAutoSaving) {
+      console.log('❌ Auto-save skipped:', {
+        noImage: !currentImage,
+        noUser: !session?.user?.id,
+        templateContext: isTemplateContext,
+        alreadySaving: isAutoSaving
+      });
+      return;
+    }
+
+    if (!effectiveDesignId) {
+      console.log('❌ Auto-save skipped: Missing design id');
+      return;
+    }
+
+    try {
+      setIsAutoSaving(true);
+      setAutoSaveStatus('saving');
+
+      // Convert the edited image file to data URL
+      const newImageDataUrl = await fileToDataURL(currentImage);
+      console.log('📸 Auto-save: Converted edited image to data URL');
+
+      // Get current saved design to find the existing Supabase URL for this page
+      const savedDesign = apiResponse?.data?.find((d) => d.id === effectiveDesignId);
+      
+      if (!savedDesign) {
+        console.error('❌ Auto-save failed: Design not found');
+        setAutoSaveStatus('error');
+        return;
+      }
+      
+      // Get the existing Supabase URL for this page index
+      const { url: existingSupabaseUrl } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
+      
+      if (!existingSupabaseUrl) {
+        console.error(`❌ Auto-save failed: No existing image found at page index ${pageIndex}`);
+        setAutoSaveStatus('error');
+        return;
+      }
+
+      console.log('🔄 Auto-save: Updating Supabase image content...');
+      
+      // Use the simplified update-images API to replace the Supabase image content
+      const response = await fetch('/api/update-images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          supabaseUrl: existingSupabaseUrl,
+          newImageBlob: newImageDataUrl,
+          designId: effectiveDesignId
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to auto-save image');
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to auto-save image');
+      }
+
+      console.log('✅ Auto-save successful: Image content updated in Supabase');
+      setAutoSaveStatus('saved');
+
+      // Force refresh the SWR cache for saved designs to show updated image
+      if (typeof window !== 'undefined') {
+        mutate('/api/saved-designs');
+      }
+
+      // Reset status after 2 seconds
+      setTimeout(() => {
+        setAutoSaveStatus('idle');
+      }, 2000);
+
+    } catch (err) {
+      console.error('❌ Auto-save failed:', err);
+      setAutoSaveStatus('error');
+      
+      // Reset error status after 3 seconds
+      setTimeout(() => {
+        setAutoSaveStatus('idle');
+      }, 3000);
+    } finally {
+      setIsAutoSaving(false);
+    }
+  }, [currentImage, effectiveDesignId, pageIndex, session, apiResponse, isTemplateContext, isAutoSaving, autoSaveStatus]);
 
   const addImageToHistory = useCallback((newImageFile: File) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -597,8 +901,25 @@ const PixshopPage: React.FC = () => {
     setHistoryIndex(newHistory.length - 1);
     
     // Save page state when we add new image to history
-    setTimeout(() => savePageState(), 100); // Small delay to ensure state is updated
-  }, [history, historyIndex, savePageState]);
+    setTimeout(async () => {
+      try {
+        await savePageState();
+        console.log('✅ State saved after adding image to history');
+      } catch (error) {
+        console.warn('⚠️ Failed to save state after adding image:', error);
+      }
+    }, 100); // Small delay to ensure state is updated
+
+    // Trigger auto-save after image edit (for non-template context)
+    setTimeout(() => {
+      if (!isTemplateContext) {
+        console.log('🚀 Triggering auto-save after image edit...');
+        handleAutoSave();
+      } else {
+        console.log('📝 Template context - skipping auto-save');
+      }
+    }, 500); // Small delay to ensure history state is fully updated
+  }, [history, historyIndex, savePageState, isTemplateContext, handleAutoSave]);
 
   const handleImageUpload = useCallback((file: File) => {
     setError(null);
@@ -707,7 +1028,14 @@ const PixshopPage: React.FC = () => {
       setEditHotspot(null);
       setDisplayHotspot(null);
       // Save state after undo
-      setTimeout(() => savePageState(), 100);
+      setTimeout(async () => {
+        try {
+          await savePageState();
+          console.log('✅ State saved after undo');
+        } catch (error) {
+          console.warn('⚠️ Failed to save state after undo:', error);
+        }
+      }, 100);
     }
   }, [canUndo, historyIndex, savePageState]);
 
@@ -717,7 +1045,14 @@ const PixshopPage: React.FC = () => {
       setEditHotspot(null);
       setDisplayHotspot(null);
       // Save state after redo
-      setTimeout(() => savePageState(), 100);
+      setTimeout(async () => {
+        try {
+          await savePageState();
+          console.log('✅ State saved after redo');
+        } catch (error) {
+          console.warn('⚠️ Failed to save state after redo:', error);
+        }
+      }, 100);
     }
   }, [canRedo, historyIndex, savePageState]);
 
@@ -1061,7 +1396,7 @@ const PixshopPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentImage, effectiveDesignId, pageIndex, cardParam, router, isTemplateContext, templateIdParam, templateNameParam, session, apiResponse, searchParams, refetchData, hasUserInteracted, getGlobalStack, updateGlobalStack]);
+  }, [currentImage, effectiveDesignId, pageIndex, cardParam, router, isTemplateContext, templateIdParam, templateNameParam, session, apiResponse, searchParams, refetchData, hasUserInteracted]);
 
   const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     if (activeTab !== 'retouch') return;
@@ -1139,7 +1474,8 @@ const PixshopPage: React.FC = () => {
             key={originalImageUrl}
             src={originalImageUrl || undefined}
             alt="Original"
-            className={`h-auto object-contain ${imageMaxHeightClass} max-w-full rounded-xl pointer-events-none`}
+            className={`w-auto h-auto object-contain ${imageMaxHeightClass} max-w-full rounded-xl pointer-events-none`}
+            style={{ maxWidth: '100%', height: 'auto' }}
           />
         )}
         {/* The current image is an overlay that fades in/out for comparison */}
@@ -1149,15 +1485,16 @@ const PixshopPage: React.FC = () => {
           src={currentImageUrl || undefined}
           alt="Current"
           onClick={handleImageClick}
-          className={`absolute top-0 left-0 h-auto object-contain ${imageMaxHeightClass} max-w-full rounded-xl transition-opacity duration-200 ease-in-out ${isComparing ? 'opacity-0' : 'opacity-100'} ${activeTab === 'retouch' ? 'cursor-crosshair' : ''}`}
+          className={`absolute top-0 left-0 w-auto h-auto object-contain ${imageMaxHeightClass} max-w-full rounded-xl transition-opacity duration-200 ease-in-out ${isComparing ? 'opacity-0' : 'opacity-100'} ${activeTab === 'retouch' ? 'cursor-crosshair' : ''}`}
+          style={{ maxWidth: '100%', height: 'auto' }}
         />
       </div>
     );
 
     return (
-  <div className="w-full mx-auto flex flex-col items-center gap-5 animate-fade-in pb-20">
+  <div className="w-full mx-auto flex flex-col items-center gap-4 animate-fade-in pb-20">
         {/* Top Action Buttons */}
-        <div className="flex items-center justify-between gap-2 mb-3 w-full">
+        <div className="flex items-center justify-between gap-2 mb-2 w-full">
           <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -1172,13 +1509,12 @@ const PixshopPage: React.FC = () => {
                 router.push(`/my-cards/${cardParam}?openPintura=1&fromPixshop=1&pageIndex=${pageIndex}`);
               }
             }}
-            className="flex items-center gap-2 bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 px-3 py-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
+            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
             aria-label="Back to Pintura Editor"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
             </svg>
-            <span className="text-sm font-medium">Back to Editor</span>
           </button>
 
           <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
@@ -1228,30 +1564,56 @@ const PixshopPage: React.FC = () => {
           </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleCancel}
-              disabled={isLoading}
-              className="bg-gray-500 hover:bg-gray-600 text-white font-medium rounded-lg px-3 py-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              aria-label="Cancel and return to editor without saving changes"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!currentImage || isLoading || isInitialLoad}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg px-3 py-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              aria-label="Save and return edited image to editor"
-            >
-              {isLoading ? 'Saving...' : 'Done'}
-            </button>
+          <div className="flex items-center gap-3">
+            {/* Auto-save status indicator */}
+            {!isTemplateContext && (
+              <div className="flex items-center gap-2 text-sm">
+                {autoSaveStatus === 'saving' && (
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Auto-saving...</span>
+                  </div>
+                )}
+                {autoSaveStatus === 'saved' && (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Auto-saved</span>
+                  </div>
+                )}
+                {autoSaveStatus === 'error' && (
+                  <div className="flex items-center gap-2 text-red-600">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <span>Auto-save failed</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSave}
+                disabled={!currentImage || isLoading || isInitialLoad}
+                className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                aria-label="Save and return edited image to editor"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <CheckIcon className="w-5 h-5" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
   {/* Upload button removed as per request */}
 
         <div className="flex justify-center w-full">
-          <div className="relative inline-block shadow-lg rounded-xl overflow-hidden bg-white p-2">
+          <div className="relative inline-block shadow-lg rounded-xl overflow-hidden bg-white p-2 max-w-full">
           {isLoading && (
             <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 animate-fade-in rounded-xl">
               <Spinner />
@@ -1277,12 +1639,12 @@ const PixshopPage: React.FC = () => {
   };
 
   // Dynamic layout sizing for image area (subtract estimated bottom bar heights per tab)
-  const bottomPaddingClass = activeTab === 'retouch' ? 'pb-[170px]' : 'pb-[360px]';
-  const imageMaxHeightClass = activeTab === 'retouch' ? 'max-h-[calc(100vh-240px)]' : 'max-h-[calc(100vh-430px)]';
+  const bottomPaddingClass = activeTab === 'retouch' ? 'pb-[160px]' : 'pb-[350px]';
+  const imageMaxHeightClass = activeTab === 'retouch' ? 'max-h-[calc(100vh-220px)]' : 'max-h-[calc(100vh-420px)]';
 
   return (
     <div className="min-h-screen h-screen text-gray-800 bg-[#fafafa] flex flex-col">
-      <main className={`flex-grow w-full max-w-[1600px] mx-auto p-4 md:p-8 flex justify-center ${currentImage ? 'items-start' : 'items-center'} ${bottomPaddingClass}`}>
+      <main className={`flex-grow w-full max-w-[1600px] mx-auto p-3 sm:p-4 md:p-8 flex justify-center ${currentImage ? 'items-start' : 'items-center'} ${bottomPaddingClass}`}>
         {/* Inject dynamic max-height class into image elements by replacing their max-h utility */}
         <style>{`
           /* Override existing 60vh cap with dynamic calculation */
@@ -1292,28 +1654,27 @@ const PixshopPage: React.FC = () => {
       </main>
 
       {/* Fixed bottom tools bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white">
         <div className="max-w-[1600px] mx-auto px-4 pt-3 pb-4 flex flex-col items-center gap-5">
           {/* Active panel / input ABOVE tool icons */}
           {activeTab === 'retouch' && (
-            <div className="flex items-center gap-3 bg-white/95 border border-gray-200 rounded-xl px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition w-full max-w-[28rem] mx-auto">
+            <div className="flex items-center gap-3 bg-white/95 border border-gray-200 rounded-xl px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition w-full max-w-sm mx-auto">
               <input
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder={editHotspot ? 'Describe your edit (e.g., change shirt to blue)' : 'Click an area first'}
+                placeholder={editHotspot ? 'Describe your edit...' : 'Click an area first'}
                 aria-label="Retouch prompt"
-                className="w-64 md:w-80 bg-transparent placeholder-gray-400 text-gray-800 text-sm md:text-base focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex-1 bg-transparent placeholder-gray-400 text-gray-800 text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isLoading || !editHotspot}
               />
               <button
                 onClick={handleGenerate}
-                className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed min-w-[84px] justify-center"
+                className="flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-500 text-white p-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isLoading || !prompt.trim() || !editHotspot}
-                title="Generate edit"
+                title="Apply edit"
               >
-                <CheckIcon className="w-4 h-4" />
-                <span className="hidden sm:inline text-sm">Apply</span>
+                <CheckIcon className="w-5 h-5" />
               </button>
             </div>
           )}
