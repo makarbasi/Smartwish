@@ -117,7 +117,8 @@
       "Read(//c/Users/abuba/AppData/Roaming/Code/User/workspaceStorage/vscode-chat-images/**)",
       "Bash(npm install:*)",
       "Bash(npm start)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Read(//c/Users/abuba/AppData/Roaming/Code - Insiders/User/workspaceStorage/vscode-chat-images/**)"
     ],
     "deny": [],
     "ask": [],

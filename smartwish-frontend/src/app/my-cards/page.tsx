@@ -16,6 +16,28 @@ import {
   postRequest,
 } from "@/utils/request_utils";
 
+// Utility function to format relative time
+const formatRelativeTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - date.getTime());
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return "Today";
+  } else if (diffDays === 1) {
+    return "1 day ago";
+  } else if (diffDays < 30) {
+    return `${diffDays} days ago`;
+  } else if (diffDays < 365) {
+    const diffMonths = Math.floor(diffDays / 30);
+    return diffMonths === 1 ? "1 month ago" : `${diffMonths} months ago`;
+  } else {
+    const diffYears = Math.floor(diffDays / 365);
+    return diffYears === 1 ? "1 year ago" : `${diffYears} years ago`;
+  }
+};
+
 type MyCard = {
   id: string;
   name: string;
@@ -103,10 +125,6 @@ const createAuthenticatedFetcher =
 
 // Transform saved design to MyCard format
 const transformSavedDesign = (design: SavedDesign): MyCard => {
-  const daysAgo = Math.floor(
-    (Date.now() - new Date(design.updatedAt).getTime()) / (1000 * 60 * 60 * 24)
-  );
-
   // Prioritize individual image columns for thumbnail, fallback to existing thumbnail
   const thumbnail =
     design.image1 || design.thumbnail || "/placeholder-image.jpg";
@@ -115,7 +133,7 @@ const transformSavedDesign = (design: SavedDesign): MyCard => {
     id: design.id,
     name: design.title,
     thumbnail: thumbnail,
-    lastEdited: `Edited ${daysAgo > 0 ? `${daysAgo}d` : "1d"} ago`,
+    lastEdited: `Edited ${formatRelativeTime(design.updatedAt)}`,
     category: design.category,
     status: design.status || "draft",
   };
@@ -123,11 +141,6 @@ const transformSavedDesign = (design: SavedDesign): MyCard => {
 
 // Transform published template to MyCard format
 const transformPublishedTemplate = (template: PublishedTemplate): MyCard => {
-  const daysAgo = Math.floor(
-    (Date.now() - new Date(template.updated_at).getTime()) /
-      (1000 * 60 * 60 * 24)
-  );
-
   // Use cover_image or image_1 as thumbnail
   const thumbnail =
     template.cover_image || template.image_1 || "/placeholder-image.jpg";
@@ -136,9 +149,25 @@ const transformPublishedTemplate = (template: PublishedTemplate): MyCard => {
     id: template.id,
     name: template.title,
     thumbnail: thumbnail,
-    lastEdited: `Updated ${daysAgo > 0 ? `${daysAgo}d` : "1d"} ago`,
+    lastEdited: "", // No date display for published cards
     category: template.category_name || "General",
     status: "published",
+  };
+};
+
+// Transform published saved design to MyCard format (without date)
+const transformPublishedSavedDesign = (design: SavedDesign): MyCard => {
+  // Prioritize individual image columns for thumbnail, fallback to existing thumbnail
+  const thumbnail =
+    design.image1 || design.thumbnail || "/placeholder-image.jpg";
+
+  return {
+    id: design.id,
+    name: design.title,
+    thumbnail: thumbnail,
+    lastEdited: "", // No date display for published cards
+    category: design.category,
+    status: design.status || "published",
   };
 };
 
@@ -282,7 +311,7 @@ function MyCardsContent() {
   // Get user's published designs
   const userPublishedCards: MyCard[] = allDesigns
     .filter((d) => publishedStatuses.has(d.status || ""))
-    .map(transformSavedDesign);
+    .map(transformPublishedSavedDesign);
 
   // Get user's published templates from the templates API (filtered by author_id)
   const userPublishedTemplates: MyCard[] = (templatesResponse?.data || []).map(
@@ -299,16 +328,15 @@ function MyCardsContent() {
     ),
   ].sort((a, b) => {
     // Sort by last edited/updated date (newest first)
-    const aTime = a.lastEdited.includes("Edited")
-      ? new Date().getTime() -
-        parseInt(a.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000
-      : new Date().getTime() -
-        parseInt(a.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000;
-    const bTime = b.lastEdited.includes("Edited")
-      ? new Date().getTime() -
-        parseInt(b.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000
-      : new Date().getTime() -
-        parseInt(b.lastEdited.match(/\d+/)?.[0] || "0") * 24 * 60 * 60 * 1000;
+    // We need to extract the actual dates from the original data for proper sorting
+    const aDesign = [...allDesigns, ...(templatesResponse?.data || [])]
+      .find(item => item.id === a.id);
+    const bDesign = [...allDesigns, ...(templatesResponse?.data || [])]
+      .find(item => item.id === b.id);
+    
+    const aTime = aDesign ? new Date(aDesign.updatedAt || aDesign.updated_at).getTime() : 0;
+    const bTime = bDesign ? new Date(bDesign.updatedAt || bDesign.updated_at).getTime() : 0;
+    
     return bTime - aTime;
   });
 
@@ -388,6 +416,7 @@ function MyCardsContent() {
         "🎉 Your design is now live and published for everyone to see!"
       );
       fetchSavedDesigns();
+      fetchPublishedTemplates();
     } catch (e: unknown) {
       console.error("❌ Error publishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to publish design";
@@ -415,6 +444,7 @@ function MyCardsContent() {
         "Your design has been unpublished and moved back to drafts."
       );
       fetchSavedDesigns();
+      fetchPublishedTemplates();
     } catch (e: unknown) {
       console.error("❌ Error unpublishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to unpublish design";
@@ -932,9 +962,6 @@ function MyCardsContent() {
                     <h3 className="line-clamp-1 text-[15px] font-semibold leading-6 text-gray-900">
                       {c.name}
                     </h3>
-                    <div className="mt-1.5 text-[12px] text-gray-600">
-                      {c.lastEdited}
-                    </div>
                   </div>
                 </div>
               ))

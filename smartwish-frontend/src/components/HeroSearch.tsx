@@ -130,12 +130,15 @@ export default function HeroSearch(props: Props) {
         searchRoute = '/marketplace'
       } else {
         searchRoute = '/templates'
-        // Only add region/language/author/category filters for templates
-        if (currentRegion && currentRegion !== 'Any region') params.set('region', currentRegion)
-        if (currentLanguage && currentLanguage !== 'Any language') params.set('language', currentLanguage)
-        if (currentAuthor && currentAuthor !== 'Any author') params.set('author', currentAuthor)
-        if (currentCategory) params.set('category', currentCategory)
       }
+    }
+
+    // Add region/language/author/category filters for templates (whether auto-determined or from props)
+    if (searchRoute === '/templates') {
+      if (currentRegion && currentRegion !== 'Any region') params.set('region', currentRegion)
+      if (currentLanguage && currentLanguage !== 'Any language') params.set('language', currentLanguage)
+      if (currentAuthor && currentAuthor !== 'Any author') params.set('author', currentAuthor)
+      if (currentCategory) params.set('category', currentCategory)
     }
 
     const search = params.toString()

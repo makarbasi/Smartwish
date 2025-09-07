@@ -7,6 +7,24 @@ import HeroSearch from '@/components/HeroSearch'
 import GallerySection from '@/components/GallerySection'
 import { ClockIcon } from '@heroicons/react/20/solid'
 import MadeWithSmartWish from '@/components/MadeWithSmartWish'
+import useSWR from 'swr'
+
+type Category = {
+  id: string
+  name: string
+  description: string
+  slug: string
+  created_at: string
+  updated_at: string
+}
+
+type CategoriesResponse = {
+  success: boolean
+  data: Category[]
+  count: number
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 const chips = [
   'Birthday',
@@ -38,6 +56,11 @@ const gallery = [
 
 export default function Home() {
   const pathname = usePathname()
+
+  // Fetch categories for search options
+  const { data: categoriesResponse } = useSWR<CategoriesResponse>('/api/categories', fetcher)
+  const categories = categoriesResponse?.data || []
+
   return (
     <main className="font-sans">
       {/* Hero */}
@@ -50,13 +73,13 @@ export default function Home() {
             Whether it’s birthdays, anniversaries, holidays, or just because, our AI-powered card
             designer helps you craft heartfelt messages and stunning designs in a click.
           </p>
-          
+
           {/* search */}
           <div className="mt-8">
-            <HeroSearch />
+            <HeroSearch categories={categories} searchRoute="/templates" />
           </div>
 
-          
+
         </div>
       </section>
 
@@ -117,17 +140,16 @@ function WhatYouGetGrid() {
       {items.map((it, idx) => (
         <div
           key={idx}
-          className={`group relative overflow-hidden rounded-2xl bg-gray-50 ring-1 ring-gray-200 shadow-sm transition hover:shadow-md hover:ring-gray-300 ${
-            it.span === 7 ? 'lg:col-span-7' : 'lg:col-span-5'
-          }`}
+          className={`group relative overflow-hidden rounded-2xl bg-gray-50 ring-1 ring-gray-200 shadow-sm transition hover:shadow-md hover:ring-gray-300 ${it.span === 7 ? 'lg:col-span-7' : 'lg:col-span-5'
+            }`}
         >
           {/* Mobile: side-by-side layout with 70/30 split */}
           <div className="flex md:hidden min-h-[180px] p-6">
-            <div className="flex-1 pr-4" style={{width: '70%'}}>
+            <div className="flex-1 pr-4" style={{ width: '70%' }}>
               <h3 className="text-lg font-semibold tracking-tight text-gray-900 leading-6">{it.title}</h3>
               <p className="mt-2 text-[0.925rem] leading-6 text-gray-500 group-hover:text-gray-600">{it.description}</p>
             </div>
-            <div className="relative flex-shrink-0 ml-4" style={{width: '30%'}}>
+            <div className="relative flex-shrink-0 ml-4" style={{ width: '30%' }}>
               <img
                 alt=""
                 src={it.image}
@@ -135,7 +157,7 @@ function WhatYouGetGrid() {
               />
             </div>
           </div>
-          
+
           {/* Desktop: side-by-side layout */}
           <div className="hidden md:flex items-center min-h-[200px] lg:min-h-[220px] p-8 gap-6">
             <div className="flex-1">
@@ -236,7 +258,7 @@ function CalendarGrid() {
   return (
     <div className="shadow-sm ring-1 ring-black/5 lg:flex lg:flex-auto lg:flex-col">
       <div className="grid grid-cols-7 gap-px border-b border-gray-300 bg-gray-200 text-center text-xs/6 font-semibold text-gray-700 lg:flex-none">
-        {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d) => (
+        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
           <div key={d} className="flex justify-center bg-white py-2">{d}</div>
         ))}
       </div>

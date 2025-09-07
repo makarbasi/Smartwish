@@ -67,22 +67,25 @@ export default function GallerySection({ chips }: GallerySectionProps) {
   const selectedCategory = categories.find((cat) => cat.name === selected);
   const selectedCategoryId = selectedCategory?.id;
 
-  // Fetch templates without author (anonymous templates only) - max 4
-  // Use category filtering if a category is selected
-  const templatesUrl = selectedCategoryId
-    ? DynamicRouter(
-        "api",
-        `simple-templates/no-author/category/${selectedCategoryId}`,
-        undefined,
-        false
-      )
-    : DynamicRouter("api", "simple-templates/no-author", undefined, false);
-
+  // Use templates API with SmartWish Studio author filter
+  const params = new URLSearchParams();
+  params.set('author', 'SmartWish Studio');
+  if (selectedCategoryId) {
+    params.set('category_id', selectedCategoryId);
+  }
+  params.set('limit', '4');
+  
+  const templatesUrl = `/api/templates?${params.toString()}`;
+  
   const {
     data: apiResponse,
     error,
     isLoading,
-  } = useSWR<ApiResponse>(templatesUrl, fetcher);
+  } = useSWR<ApiResponse>(templatesUrl, fetcher, {
+    // Revalidate when the URL changes
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
 
   const templates = apiResponse?.data || [];
 
@@ -172,10 +175,6 @@ export default function GallerySection({ chips }: GallerySectionProps) {
         ) : (
           // Template data
           templates.slice(0, 4).map((template, idx) => {
-            const daysAgo = Math.floor(
-              (Date.now() - new Date(template.created_at).getTime()) /
-                (1000 * 60 * 60 * 24)
-            );
             const imageSrc =
               template.image_1 && template.image_1.trim() !== ""
                 ? template.image_1
@@ -183,23 +182,27 @@ export default function GallerySection({ chips }: GallerySectionProps) {
             return (
               <div
                 key={template.id}
-                className="group overflow-hidden rounded-lg border border-gray-200 bg-white cursor-pointer"
+                className="group rounded-lg border border-gray-200 bg-white cursor-pointer overflow-hidden"
                 onClick={() => handleTemplateClick(template)}
               >
-                <Image
-                  alt={template.title}
-                  src={imageSrc}
-                  width={640}
-                  height={989}
-                  className="aspect-[640/989] w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
+                <div className="overflow-hidden">
+                  <Image
+                    alt={template.title}
+                    src={imageSrc}
+                    width={640}
+                    height={989}
+                    className="aspect-[640/989] w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                </div>
                 <div className="p-3">
                   <div className="text-sm font-semibold leading-5 text-gray-900 line-clamp-1">
                     {template.title}
                   </div>
-                  <div className="mt-1 text-xs text-gray-600">
-                    Created {daysAgo > 0 ? `${daysAgo}d` : "1d"} ago
-                  </div>
+                  {template.author && (
+                    <div className="mt-1 text-xs text-gray-600">
+                      by {template.author}
+                    </div>
+                  )}
                 </div>
               </div>
             );

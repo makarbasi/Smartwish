@@ -19,6 +19,7 @@ type Template = {
   image_2: string;
   image_3: string;
   image_4: string;
+  author?: string;
 };
 
 type ApiResponse = {
@@ -41,13 +42,13 @@ export default function MadeWithSmartWish() {
   const [latestTemplates, setLatestTemplates] = useState<Template[]>([]);
   const router = useRouter();
 
-  // Fetch all templates (latest first)
+  // Fetch templates from Community authors (user-generated content)
   const {
     data: apiResponse,
     error,
     isLoading,
   } = useSWR<ApiResponse>(
-    DynamicRouter("api", "simple-templates", undefined, false),
+    "/api/templates?author=Community&limit=8",
     fetcher
   );
 
@@ -125,8 +126,15 @@ export default function MadeWithSmartWish() {
                 className="aspect-[640/989] w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
               />
               <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-opacity" />
-              <div className="pointer-events-none absolute bottom-0 left-0 right-0 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all p-2 text-center text-xs font-medium text-white bg-gradient-to-t from-black/60 via-black/20 to-transparent">
-                {t.title}
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all p-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+                <div className="text-center text-xs font-medium text-white">
+                  {t.title}
+                </div>
+                {t.author && (
+                  <div className="text-center text-xs text-white/80 mt-1">
+                    by {t.author}
+                  </div>
+                )}
               </div>
             </div>
           ))
