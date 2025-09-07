@@ -114,7 +114,10 @@
       "WebFetch(domain:pqina.nl)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Read(//c/Users/abuba/AppData/Roaming/Code/User/workspaceStorage/vscode-chat-images/**)"
+      "Read(//c/Users/abuba/AppData/Roaming/Code/User/workspaceStorage/vscode-chat-images/**)",
+      "Bash(npm install:*)",
+      "Bash(npm start)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": [],

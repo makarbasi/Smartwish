@@ -1,18 +1,43 @@
 "use client"
 
-import Image from 'next/image'
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from '@heroicons/react/20/solid'
-import { useMemo, useState } from 'react'
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, EllipsisVerticalIcon } from '@heroicons/react/20/solid'
+import { useMemo, useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react';
+import useSWR from 'swr';
 
-type BaseEvent = { id: number; name: string; time?: string; type?: string; datetime?: string }
+// Types
+interface UserEvent {
+  id: string;
+  name: string;
+  event_date: string;
+  event_type: string;
+}
 
-type MyCard = { id: number; name: string; thumbnail: string; lastEdited: string }
-const demoMyCards: MyCard[] = [
-  { id: 1, name: 'Thank You – Clients', thumbnail: 'https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-02-image-card-06.jpg', lastEdited: 'Edited 2d ago' },
-  { id: 2, name: 'Birthday – For John', thumbnail: 'https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-02-image-card-04.jpg', lastEdited: 'Edited 5d ago' },
-  { id: 3, name: 'Holiday – Family Card', thumbnail: 'https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-02-image-card-05.jpg', lastEdited: 'Edited 1w ago' },
-  { id: 4, name: 'New Baby – Congrats', thumbnail: 'https://tailwindcss.com/plus-assets/img/ecommerce-images/category-page-02-image-card-03.jpg', lastEdited: 'Edited 2w ago' },
-]
+interface ApiResponse {
+  success: boolean;
+  data: UserEvent[];
+  count: number;
+  year: number;
+  month: number;
+}
+
+// Fetcher function with authentication
+const fetcher = async (url: string) => {
+  const response = await fetch(url, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+type BaseEvent = { id: string; name: string; time?: string; type?: string; datetime?: string; event_date: string; event_type: string }
 
 function toDateStr(d: Date) {
   const y = d.getFullYear()
@@ -21,12 +46,40 @@ function toDateStr(d: Date) {
   return `${y}-${m}-${dd}`
 }
 
-function iconForEvent(name: string) {
-  const n = (name || '').toLowerCase()
-  if (n.includes('birth')) return { icon: '🎂', label: 'Birthday' }
-  if (n.includes('anniv')) return { icon: '💍', label: 'Anniversary' }
-  if (n.includes('wedding')) return { icon: '💒', label: 'Wedding' }
-  return { icon: '📌', label: 'Event' }
+function iconForEvent(nameOrType: string) {
+  const input = (nameOrType || '').toLowerCase()
+  
+  // First check by event type (for API data)
+  if (input === 'birthday') return { icon: '🎂', label: 'Birthday' }
+  if (input === 'meeting') return { icon: '🤝', label: 'Meeting' }
+  if (input === 'personal') return { icon: '👤', label: 'Personal' }
+  if (input === 'work') return { icon: '💼', label: 'Work' }
+  if (input === 'holiday') return { icon: '🏖️', label: 'Holiday' }
+  if (input === 'general') return { icon: '📅', label: 'General' }
+  
+  // Then check by name content (for backward compatibility and custom events)
+  if (input.includes('birth')) return { icon: '🎂', label: 'Birthday' }
+  if (input.includes('anniv')) return { icon: '💍', label: 'Anniversary' }
+  if (input.includes('wedding')) return { icon: '💒', label: 'Wedding' }
+  if (input.includes('graduation')) return { icon: '🎓', label: 'Graduation' }
+  if (input.includes('cinema') || input.includes('movie')) return { icon: '🎬', label: 'Cinema' }
+  if (input.includes('date')) return { icon: '💕', label: 'Date' }
+  if (input.includes('meeting') || input.includes('meet')) return { icon: '🤝', label: 'Meeting' }
+  if (input.includes('work') || input.includes('office')) return { icon: '�', label: 'Work' }
+  if (input.includes('holiday') || input.includes('vacation')) return { icon: '🏖️', label: 'Holiday' }
+  if (input.includes('doctor') || input.includes('medical')) return { icon: '🏥', label: 'Medical' }
+  if (input.includes('gym') || input.includes('workout')) return { icon: '💪', label: 'Fitness' }
+  if (input.includes('travel') || input.includes('trip')) return { icon: '✈️', label: 'Travel' }
+  if (input.includes('party') || input.includes('celebration')) return { icon: '🎉', label: 'Party' }
+  if (input.includes('dinner') || input.includes('lunch') || input.includes('meal')) return { icon: '🍽️', label: 'Meal' }
+  if (input.includes('shopping')) return { icon: '🛍️', label: 'Shopping' }
+  if (input.includes('sports') || input.includes('game')) return { icon: '⚽', label: 'Sports' }
+  if (input.includes('music') || input.includes('concert')) return { icon: '🎵', label: 'Music' }
+  if (input.includes('appointment')) return { icon: '📋', label: 'Appointment' }
+  if (input.includes('reminder')) return { icon: '⏰', label: 'Reminder' }
+  
+  // Default fallback
+  return { icon: '📅', label: 'Event' }
 }
 
 function generateMonthDays(base: Date, eventsMap: Record<string, BaseEvent[]>) {
@@ -54,45 +107,173 @@ function generateMonthDays(base: Date, eventsMap: Record<string, BaseEvent[]>) {
   return res
 }
 
-export default function EventCalendarPage() {
-  const userName = 'User'
+// Event Actions Dropdown Component
+const EventActionsDropdown = ({ event, onEdit, onDelete }: { 
+  event: BaseEvent; 
+  onEdit: (event: BaseEvent) => void; 
+  onDelete: (event: BaseEvent) => void;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        className="p-1 rounded-full hover:bg-gray-200 transition-colors"
+        title="More actions"
+      >
+        <EllipsisVerticalIcon className="w-4 h-4 text-gray-500" />
+      </button>
+      
+      {isOpen && (
+        <>
+          {/* Backdrop to close dropdown */}
+          <div 
+            className="fixed inset-0 z-10" 
+            onClick={() => setIsOpen(false)}
+          />
+          {/* Dropdown menu */}
+          <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-20">
+            <div className="py-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(event);
+                  setIsOpen(false);
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                Edit
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(event);
+                  setIsOpen(false);
+                }}
+                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Delete Confirmation Modal Component
+const DeleteConfirmationModal = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  eventName,
+  isDeleting 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onConfirm: () => void; 
+  eventName: string;
+  isDeleting: boolean;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
+        <div className="px-6 py-4">
+          <div className="flex items-center mb-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+          </div>
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Event</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to delete "<span className="font-medium">{eventName}</span>"? This action cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3 rounded-b-lg">
+          <button 
+            onClick={onClose}
+            disabled={isDeleting}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function EventsPage() {
+  const { data: session, status } = useSession();
+  const userName = session?.user?.name || 'User'
   const [current, setCurrent] = useState(new Date())
   const today = toDateStr(new Date())
   const [selectedDate, setSelectedDate] = useState<string>(today)
-  const [customEvents, setCustomEvents] = useState<BaseEvent[]>([])
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [formName, setFormName] = useState('')
   const [formDate, setFormDate] = useState(toDateStr(new Date()))
-  const [formType, setFormType] = useState('Event')
+  const [formType, setFormType] = useState('general')
   const [selectedEventsPage, setSelectedEventsPage] = useState(0)
   const [upcomingPage, setUpcomingPage] = useState(0)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [eventToDelete, setEventToDelete] = useState<BaseEvent | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Generate API URL for current month
+  const apiUrl = useMemo(() => {
+    const year = current.getFullYear();
+    const month = current.getMonth() + 1;
+    return `/api/events/month/${year}/${month}`;
+  }, [current]);
+
+  // Fetch events for current month
+  const { data: eventsResponse, error, mutate, isLoading } = useSWR<ApiResponse>(
+    session ? apiUrl : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 30000 // 30 seconds
+    }
+  );
+
+  const events = eventsResponse?.data || [];
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, BaseEvent[]> = {}
-    const sample: BaseEvent[] = [
-      { id: 101, name: 'Team Meeting', datetime: `${toDateStr(new Date())}T10:00` },
-      { id: 102, name: 'Alice Birthday', datetime: `${toDateStr(new Date(new Date().setDate(new Date().getDate()+3)))}T00:00` },
-      // fewer demo events for September 2025 with mixed event types
-      ...Array.from({ length: 10 }).map((_, i) => {
-        const day = i + 1
-        const iso = `2025-09-${String(day).padStart(2, '0')}`
-        const types = ['Birthday', 'Anniversary', 'Graduation', 'Wedding', 'Cinema', 'Date night', 'Meeting', 'Other', 'Birthday', 'Event']
-        const name = `${types[i % types.length]} - Sample ${day}`
-        return { id: 2000 + day, name, datetime: `${iso}T12:00` }
-      }),
-      // Small set of extra events for 2025-09-10 to test pagination (fewer than before)
-      ...Array.from({ length: 3 }).map((_, i) => {
-        const eventNum = i + 11
-        return { id: 3000 + eventNum, name: `Extra Sep Event ${eventNum}`, datetime: `2025-09-10T${String(9 + i).padStart(2, '0')}:00` }
-      }),
-    ]
-    for (const ev of sample.concat(customEvents)) {
-      const key = ev.datetime ? ev.datetime.slice(0, 10) : toDateStr(new Date())
+    
+    // Convert API events to BaseEvent format
+    for (const ev of events) {
+      const key = ev.event_date
       if (!map[key]) map[key] = []
-      map[key].push(ev)
+      map[key].push({
+        id: ev.id,
+        name: ev.name,
+        event_date: ev.event_date,
+        event_type: ev.event_type,
+        datetime: `${ev.event_date}T00:00`
+      })
     }
     return map
-  }, [customEvents])
+  }, [events])
 
   const days = useMemo(() => generateMonthDays(current, eventsByDate), [current, eventsByDate])
   const selectedEvents = eventsByDate[selectedDate] || []
@@ -115,16 +296,105 @@ export default function EventCalendarPage() {
     (upcomingPage + 1) * upcomingPerPage
   )
 
-  function saveEvent() {
-    if (!formName || !formDate) return
-    const ev: BaseEvent = { id: Date.now(), name: formName, datetime: `${formDate}T00:00`, type: formType }
-    setCustomEvents(s => [ev, ...s])
-    setIsAddOpen(false)
-    setFormName('')
-    setFormDate(toDateStr(new Date()))
-    setFormType('Event')
-    setSelectedDate(formDate)
-    setSelectedEventsPage(0) // Reset to first page when new event added
+  const handleSaveEvent = async () => {
+    if (!formName || !formDate || !session) return
+
+    try {
+      const method = editingEventId ? 'PUT' : 'POST';
+      const url = editingEventId ? `/api/events/${editingEventId}` : '/api/events';
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: formName,
+          event_date: formDate,
+          event_type: formType
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      await mutate(); // Refresh events
+      setIsAddOpen(false)
+      setFormName('')
+      setFormDate(toDateStr(new Date()))
+      setFormType('general')
+      setEditingEventId(null)
+      setSelectedDate(formDate)
+      setSelectedEventsPage(0) // Reset to first page when new event added
+    } catch (error) {
+      console.error('Error saving event:', error);
+    }
+  }
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!session) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/events/${eventId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      await mutate(); // Refresh events
+      setDeleteModalOpen(false);
+      setEventToDelete(null);
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      throw error;
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  const handleDeleteClick = (event: BaseEvent) => {
+    setEventToDelete(event);
+    setDeleteModalOpen(true);
+  }
+
+  const handleConfirmDelete = async () => {
+    if (eventToDelete) {
+      await handleDeleteEvent(eventToDelete.id);
+    }
+  }
+
+  const handleEditEvent = (event: BaseEvent) => {
+    setFormName(event.name);
+    setFormDate(event.event_date);
+    setFormType(event.event_type);
+    setIsAddOpen(true);
+    setEditingEventId(event.id);
+  }
+
+  // Loading and authentication states
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Please Sign In</h1>
+          <p className="text-gray-600">You need to be signed in to view your events.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -140,7 +410,10 @@ export default function EventCalendarPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">{label}</h2>
               <div className="flex items-center">
-                <button onClick={() => setIsAddOpen(true)} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">
+                <button onClick={() => {
+                  setFormDate(selectedDate);
+                  setIsAddOpen(true);
+                }} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">
                   <PlusIcon className="-ml-0.5 mr-2 h-4 w-4" /> Add Event
                 </button>
               </div>
@@ -214,7 +487,7 @@ export default function EventCalendarPage() {
                             {/* Desktop: Show icons */}
                             <div className="hidden lg:flex items-center gap-1 flex-wrap">
                               {day.events.slice(0, 3).map((event) => {
-                                const info = iconForEvent(event.name)
+                                const info = iconForEvent(event.event_type || event.name)
                                 return (
                                   <span key={event.id} title={event.name} className="text-sm" aria-hidden>{info.icon}</span>
                                 )
@@ -232,9 +505,6 @@ export default function EventCalendarPage() {
               </div>
             </div>
 
-            {/* Legends removed as requested */}
-
-
             {/* Mobile/Tablet sections - show below calendar in this order */}
             <div className="lg:hidden mt-8 space-y-6">
               {/* 1. Selected Date Events - FIRST on mobile/tablet */}
@@ -247,11 +517,16 @@ export default function EventCalendarPage() {
                     <ol className="space-y-3 mb-4">
                       {selectedEventsSlice.map(ev => (
                         <li key={ev.id} className="flex items-start gap-3 p-3 rounded-md bg-gray-50">
-                          <div className="text-lg">{iconForEvent(ev.name).icon}</div>
-                          <div>
+                          <div className="text-lg">{iconForEvent(ev.event_type || ev.name).icon}</div>
+                          <div className="flex-1 min-w-0">
                             <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
                             {ev.time && <div className="text-xs text-gray-500">{ev.time}</div>}
                           </div>
+                          <EventActionsDropdown 
+                            event={ev} 
+                            onEdit={handleEditEvent}
+                            onDelete={handleDeleteClick}
+                          />
                         </li>
                       ))}
                     </ol>
@@ -290,11 +565,16 @@ export default function EventCalendarPage() {
                     <ol className="space-y-3 mb-4">
                       {upcomingPageSlice.map(ev => (
                         <li key={ev.id} className="flex items-start gap-3 p-3 rounded-md bg-gray-50">
-                          <div className="text-lg">{iconForEvent(ev.name).icon}</div>
-                          <div>
+                          <div className="text-lg">{iconForEvent(ev.event_type || ev.name).icon}</div>
+                          <div className="flex-1 min-w-0">
                             <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
                             <div className="text-xs text-gray-500">{ev.datetime?.slice(0,10)}</div>
                           </div>
+                          <EventActionsDropdown 
+                            event={ev} 
+                            onEdit={handleEditEvent}
+                            onDelete={handleDeleteClick}
+                          />
                         </li>
                       ))}
                     </ol>
@@ -322,14 +602,11 @@ export default function EventCalendarPage() {
                   </div>
                 )}
               </div>
-
-
             </div>
           </div>
 
           {/* Desktop Sidebar - hidden on mobile/tablet */}
           <aside className="hidden lg:block lg:col-span-1 space-y-6">
-
             {/* Selected date events - shows second on desktop */}
             <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-100">
               <h3 className="text-lg font-medium text-gray-900 mb-2">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(selectedDate))}</h3>
@@ -340,11 +617,16 @@ export default function EventCalendarPage() {
                   <ol className="space-y-3 mb-4">
                     {selectedEventsSlice.map(ev => (
                       <li key={ev.id} className="flex items-start gap-3 p-3 rounded-md bg-gray-50">
-                        <div className="text-lg">{iconForEvent(ev.name).icon}</div>
-                        <div>
+                        <div className="text-lg">{iconForEvent(ev.event_type || ev.name).icon}</div>
+                        <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
                           {ev.time && <div className="text-xs text-gray-500">{ev.time}</div>}
                         </div>
+                        <EventActionsDropdown 
+                          event={ev} 
+                          onEdit={handleEditEvent}
+                          onDelete={handleDeleteClick}
+                        />
                       </li>
                     ))}
                   </ol>
@@ -383,11 +665,16 @@ export default function EventCalendarPage() {
                   <ol className="space-y-3 mb-4">
                     {upcomingPageSlice.map(ev => (
                       <li key={ev.id} className="flex items-start gap-3 p-3 rounded-md bg-gray-50">
-                        <div className="text-lg">{iconForEvent(ev.name).icon}</div>
-                        <div>
+                        <div className="text-lg">{iconForEvent(ev.event_type || ev.name).icon}</div>
+                        <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
                           <div className="text-xs text-gray-500">{ev.datetime?.slice(0,10)}</div>
                         </div>
+                        <EventActionsDropdown 
+                          event={ev} 
+                          onEdit={handleEditEvent}
+                          onDelete={handleDeleteClick}
+                        />
                       </li>
                     ))}
                   </ol>
@@ -417,12 +704,49 @@ export default function EventCalendarPage() {
             </div>
           </aside>
         </div>
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="mt-4 text-center text-gray-500">
+            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+            <span className="ml-2">Loading events...</span>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-md shadow-lg">
+            <div className="flex items-center space-x-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span>Failed to load events</span>
+            </div>
+          </div>
+        )}
       </main>
 
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setEventToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        eventName={eventToDelete?.name || ''}
+        isDeleting={isDeleting}
+      />
+
+      {/* Add/Edit Event Modal */}
       {isAddOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
-            <div className="px-6 py-4 border-b border-gray-200"><h3 className="text-lg font-semibold text-gray-900">Add event</h3></div>
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingEventId ? 'Edit Event' : 'Add Event'}
+              </h3>
+            </div>
             <div className="px-6 py-4 space-y-4">
               <div>
                 <label htmlFor="event-name" className="block text-sm font-medium text-gray-700 mb-2">Event Name</label>
@@ -448,37 +772,56 @@ export default function EventCalendarPage() {
               <div>
                 <label htmlFor="event-type" className="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl flex-shrink-0">{iconForEvent(formType === 'Event' ? formName : formType).icon}</div>
+                  <div className="text-2xl flex-shrink-0">{iconForEvent(formType === 'general' ? formName : formType).icon}</div>
                   <select 
                     id="event-type"
                     value={formType} 
                     onChange={(e) => setFormType(e.target.value)} 
                     className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
                   >
-                    <option>Event</option>
-                    <option>Birthday</option>
-                    <option>Anniversary</option>
-                    <option>Graduation</option>
-                    <option>Wedding</option>
-                    <option>Cinema</option>
-                    <option>Date night</option>
-                    <option>Other</option>
+                    <option value="general">General</option>
+                    <option value="birthday">Birthday</option>
+                    <option value="meeting">Meeting</option>
+                    <option value="personal">Personal</option>
+                    <option value="work">Work</option>
+                    <option value="holiday">Holiday</option>
+                    <option value="anniversary">Anniversary</option>
+                    <option value="wedding">Wedding</option>
+                    <option value="graduation">Graduation</option>
+                    <option value="cinema">Cinema</option>
+                    <option value="date">Date</option>
+                    <option value="medical">Medical</option>
+                    <option value="fitness">Fitness</option>
+                    <option value="travel">Travel</option>
+                    <option value="party">Party</option>
+                    <option value="meal">Meal</option>
+                    <option value="shopping">Shopping</option>
+                    <option value="sports">Sports</option>
+                    <option value="music">Music</option>
+                    <option value="appointment">Appointment</option>
+                    <option value="reminder">Reminder</option>
                   </select>
                 </div>
               </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3 rounded-b-lg">
               <button 
-                onClick={() => setIsAddOpen(false)} 
+                onClick={() => {
+                  setIsAddOpen(false);
+                  setEditingEventId(null);
+                  setFormName('');
+                  setFormDate(toDateStr(new Date()));
+                  setFormType('general');
+                }} 
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               >
                 Cancel
               </button>
               <button 
-                onClick={saveEvent} 
+                onClick={handleSaveEvent} 
                 className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               >
-                Save Event
+                {editingEventId ? 'Update Event' : 'Save Event'}
               </button>
             </div>
           </div>
@@ -487,4 +830,3 @@ export default function EventCalendarPage() {
     </>
   )
 }
-

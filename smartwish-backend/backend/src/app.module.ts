@@ -19,6 +19,8 @@ import { AuthorEarningsModule } from './revenue/author-earnings.module';
 import { SharingController } from './sharing/sharing.controller';
 import { SharingService } from './sharing/sharing.service';
 import { ECardModule } from './ecard/ecard.module';
+import { EventsModule } from './events/events.module';
+import { SupabaseModule } from './supabase/supabase.module';
 import { LoggerService } from './common/logger/logger.service';
 import { AuditModule } from './common/audit/audit.module';
 import { databaseConfig } from './config/database.config';
@@ -91,6 +93,8 @@ import { TemplatesEnhancedController } from './templates/templates-enhanced.cont
     AuthorEarningsModule,
     AuditModule,
     ECardModule,
+    SupabaseModule,
+    EventsModule,
   ],
   controllers: [AppController, SharingController, TemplatesEnhancedController],
   providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService],

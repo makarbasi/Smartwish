@@ -17,6 +17,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 import { main, getPrintJobStatus } from './print-card.js';
 
+
 // Configure multer to store files in memory
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -83,6 +84,7 @@ if (!fs.existsSync(mediaDir)) {
 }
 
 app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
+
 
 // Utility function to get base URL based on environment
 const getBaseUrl = () => {
