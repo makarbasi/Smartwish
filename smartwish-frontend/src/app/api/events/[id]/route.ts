@@ -46,8 +46,8 @@ export async function GET(
   }
 }
 
-// PUT /api/events/[id] - Update an event
-export async function PUT(
+// PATCH /api/events/[id] - Update an event
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -65,7 +65,7 @@ export async function PUT(
     console.log('Frontend API - Updating event:', { id, body, hasToken: !!accessToken });
 
     const response = await fetch(`${API_BASE_URL}/api/events/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken || ''}`,
@@ -91,6 +91,14 @@ export async function PUT(
       { status: 500 }
     );
   }
+}
+
+// PUT /api/events/[id] - Update an event (alias for PATCH for compatibility)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return PATCH(request, { params });
 }
 
 // DELETE /api/events/[id] - Delete an event

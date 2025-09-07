@@ -260,20 +260,23 @@ export default function EventsPage() {
   const eventsByDate = useMemo(() => {
     const map: Record<string, BaseEvent[]> = {}
     
-    // Convert API events to BaseEvent format
-    for (const ev of events) {
-      const key = ev.event_date
-      if (!map[key]) map[key] = []
-      map[key].push({
-        id: ev.id,
-        name: ev.name,
-        event_date: ev.event_date,
-        event_type: ev.event_type,
-        datetime: `${ev.event_date}T00:00`
-      })
+    // Only process events if user is signed in
+    if (session && events.length > 0) {
+      // Convert API events to BaseEvent format
+      for (const ev of events) {
+        const key = ev.event_date
+        if (!map[key]) map[key] = []
+        map[key].push({
+          id: ev.id,
+          name: ev.name,
+          event_date: ev.event_date,
+          event_type: ev.event_type,
+          datetime: `${ev.event_date}T00:00`
+        })
+      }
     }
     return map
-  }, [events])
+  }, [events, session])
 
   const days = useMemo(() => generateMonthDays(current, eventsByDate), [current, eventsByDate])
   const selectedEvents = eventsByDate[selectedDate] || []
@@ -386,23 +389,19 @@ export default function EventsPage() {
     );
   }
 
-  if (status === 'unauthenticated') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Please Sign In</h1>
-          <p className="text-gray-600">You need to be signed in to view your events.</p>
-        </div>
-      </div>
-    );
-  }
+  // Show disabled Add Event button and empty sidebar when not authenticated
+  const isAuthenticated = status === 'authenticated' && session;
+  const showAddEventButton = isAuthenticated;
+  const canEditEvents = isAuthenticated;
 
   return (
     <>
       <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">Hello, {userName}</h1>
-          <p className="mt-2 text-lg text-gray-600">Welcome back to your calendar dashboard</p>
+          <p className="mt-2 text-lg text-gray-600">
+            {isAuthenticated ? 'Welcome back to your calendar dashboard' : 'Sign in to manage your events and schedule'}
+          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -410,12 +409,22 @@ export default function EventsPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900">{label}</h2>
               <div className="flex items-center">
-                <button onClick={() => {
-                  setFormDate(selectedDate);
-                  setIsAddOpen(true);
-                }} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">
-                  <PlusIcon className="-ml-0.5 mr-2 h-4 w-4" /> Add Event
-                </button>
+                {showAddEventButton ? (
+                  <button onClick={() => {
+                    setFormDate(selectedDate);
+                    setIsAddOpen(true);
+                  }} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">
+                    <PlusIcon className="-ml-0.5 mr-2 h-4 w-4" /> Add Event
+                  </button>
+                ) : (
+                  <button 
+                    disabled 
+                    className="inline-flex items-center rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-gray-500 shadow-sm cursor-not-allowed"
+                    title="Sign in to add events"
+                  >
+                    <PlusIcon className="-ml-0.5 mr-2 h-4 w-4" /> Add Event
+                  </button>
+                )}
               </div>
             </div>
 
@@ -437,7 +446,7 @@ export default function EventsPage() {
               </div>
               
               <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-500">
-                <span>Click dates to view details</span>
+                <span>{isAuthenticated ? 'Click dates to view details' : 'Sign in to manage events'}</span>
               </div>
             </header>
 
@@ -456,13 +465,13 @@ export default function EventsPage() {
                     >
                       <button 
                         onClick={() => {
-                          if (day.isCurrentMonth) {
+                          if (day.isCurrentMonth && canEditEvents) {
                             setSelectedDate(day.date)
                             setSelectedEventsPage(0)
                           }
                         }} 
-                        className="w-full h-full text-left flex flex-col items-start"
-                        disabled={!day.isCurrentMonth}
+                        className={`w-full h-full text-left flex flex-col items-start ${!canEditEvents ? 'cursor-default' : ''}`}
+                        disabled={!day.isCurrentMonth || !canEditEvents}
                       >
                         <time 
                           dateTime={day.date || ''} 
@@ -510,8 +519,14 @@ export default function EventsPage() {
               {/* 1. Selected Date Events - FIRST on mobile/tablet */}
               <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-100">
                 <h3 className="text-lg font-medium text-gray-900 mb-2">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(selectedDate))}</h3>
-                {selectedEvents.length === 0 ? (
-                  <div className="text-center text-sm text-gray-500">No events for this date</div>
+                {!isAuthenticated ? (
+                  <div className="text-center text-sm text-gray-500 py-4">
+                    Sign in to view and manage your events
+                  </div>
+                ) : selectedEvents.length === 0 ? (
+                  <div className="text-center text-sm text-gray-500 py-4">
+                    No events for this date
+                  </div>
                 ) : (
                   <div>
                     <ol className="space-y-3 mb-4">
@@ -558,7 +573,9 @@ export default function EventsPage() {
               {/* 2. Upcoming Events - SECOND on mobile/tablet */}
               <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-100">
                 <h3 className="text-lg font-medium text-gray-900 mb-3">Upcoming Events</h3>
-                {upcomingPageSlice.length === 0 ? (
+                {!isAuthenticated ? (
+                  <div className="text-center text-sm text-gray-500">Sign in to view upcoming events</div>
+                ) : upcomingPageSlice.length === 0 ? (
                   <div className="text-center text-sm text-gray-500">No upcoming events</div>
                 ) : (
                   <div>
@@ -610,7 +627,9 @@ export default function EventsPage() {
             {/* Selected date events - shows second on desktop */}
             <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-100">
               <h3 className="text-lg font-medium text-gray-900 mb-2">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(selectedDate))}</h3>
-              {selectedEvents.length === 0 ? (
+              {!isAuthenticated ? (
+                <div className="text-center text-sm text-gray-500">Sign in to view and manage your events</div>
+              ) : selectedEvents.length === 0 ? (
                 <div className="text-center text-sm text-gray-500">No events for this date</div>
               ) : (
                 <div>
@@ -658,7 +677,9 @@ export default function EventsPage() {
             {/* Upcoming events - shows third on desktop */}
             <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-100">
               <h3 className="text-lg font-medium text-gray-900 mb-3">Upcoming Events</h3>
-              {upcomingPageSlice.length === 0 ? (
+              {!isAuthenticated ? (
+                <div className="text-center text-sm text-gray-500">Sign in to view your upcoming events</div>
+              ) : upcomingPageSlice.length === 0 ? (
                 <div className="text-center text-sm text-gray-500">No upcoming events</div>
               ) : (
                 <div>
