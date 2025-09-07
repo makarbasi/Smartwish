@@ -109,6 +109,38 @@ export class TemplatesEnhancedController {
     }
   }
 
+  // Enhanced search endpoint with filter support (must be before parameterized routes)
+  @Get('templates/search')
+  async searchTemplatesWithFilters(
+    @Query('q') query?: string,
+    @Query('category_id') categoryId?: string,
+    @Query('author') author?: string,
+    @Query('region') region?: string,
+    @Query('language') language?: string,
+    @Query('limit') limit?: string
+  ) {
+    try {
+      const results = await this.templatesEnhancedService.searchTemplatesWithFilters({
+        query,
+        categoryId,
+        author,
+        region,
+        language,
+        limit: limit ? parseInt(limit) : undefined
+      });
+
+      return {
+        success: true,
+        data: results,
+        count: results.length,
+        total: results.length
+      };
+    } catch (error) {
+      console.error('Error searching templates with filters:', error);
+      throw new HttpException('Failed to search templates', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   @Get('templates/:id')
   async getTemplateById(@Param('id') id: string) {
     try {
@@ -214,7 +246,7 @@ export class TemplatesEnhancedController {
     }
   }
 
-  // Search endpoint
+  // Original search endpoint (keeping for backward compatibility)
   @Post('search')
   async searchTemplates(
     @Body() searchData: {
