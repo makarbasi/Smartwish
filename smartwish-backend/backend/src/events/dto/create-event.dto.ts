@@ -8,6 +8,11 @@ export class CreateEventDto {
   event_date: string;
 
   @IsOptional()
-  @IsIn(['general', 'meeting', 'personal', 'work', 'holiday', 'birthday'])
+  @IsIn([
+    'general', 'birthday', 'meeting', 'personal', 'work', 'holiday', 
+    'anniversary', 'wedding', 'graduation', 'cinema', 'date', 
+    'medical', 'fitness', 'travel', 'party', 'meal', 'shopping', 
+    'sports', 'music', 'appointment', 'reminder'
+  ])
   event_type?: string = 'general';
 }
