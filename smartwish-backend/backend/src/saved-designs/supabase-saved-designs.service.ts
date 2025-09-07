@@ -371,8 +371,8 @@ export class SupabaseSavedDesignsService {
         ? updates.publishedAt.toISOString()
         : null;
     }
-    if (updates.updatedAt)
-      updateData.updated_at = updates.updatedAt.toISOString();
+    // Always update the updated_at timestamp when making any changes
+    updateData.updated_at = new Date().toISOString();
     if (updates.sourceTemplateId)
       updateData.original_saved_design_id = updates.sourceTemplateId;
 
@@ -1075,7 +1075,7 @@ export class SupabaseSavedDesignsService {
       title: designRecord.title || 'Untitled Design',
       description: designRecord.description || null,
       category_id: designRecord.category_id || null,
-      author_id: designRecord.author_id || userId,
+      author_id: userId, // Always use the userId of the person publishing the design
       price: designRecord.price ?? 0,
       language: designRecord.language || 'en',
       region: designRecord.region || 'US',
