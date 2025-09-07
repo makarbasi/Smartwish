@@ -186,7 +186,7 @@ export class SupabaseTemplatesEnhancedService {
         author_name:users!author_id(name)
       `)
       .eq('status', 'published')
-      .order('popularity', { ascending: false });
+      .order('published_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching templates:', error);
@@ -207,7 +207,7 @@ export class SupabaseTemplatesEnhancedService {
       `)
       .eq('category_id', categoryId)
       .eq('status', 'published')
-      .order('popularity', { ascending: false });
+      .order('published_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching templates by category:', error);
@@ -493,6 +493,74 @@ export class SupabaseTemplatesEnhancedService {
     results.sort((a, b) => b.relevance_score - a.relevance_score);
 
     return results;
+  }
+
+  // Enhanced search with filters (author, region, language, category)
+  async searchTemplatesWithFilters(options: {
+    query?: string;
+    categoryId?: string;
+    author?: string;
+    region?: string;
+    language?: string;
+    limit?: number;
+  } = {}): Promise<Template[]> {
+    if (!this.supabase) return [];
+    
+    let queryBuilder = this.supabase
+      .from('sw_templates')
+      .select(`
+        *,
+        author_name:users!author_id(name),
+        sw_categories (
+          id,
+          name,
+          display_name,
+          description
+        )
+      `)
+      .eq('status', 'published');
+
+    // Apply filters
+    if (options.categoryId) {
+      queryBuilder = queryBuilder.eq('category_id', options.categoryId);
+    }
+
+    if (options.author) {
+      if (options.author === 'SmartWish Studio') {
+        // SmartWish Studio templates: author_id is null and is_user_generated is false
+        queryBuilder = queryBuilder.is('author_id', null).eq('is_user_generated', false);
+      } else if (options.author === 'Community') {
+        // Community templates: author_id is not null and is_user_generated is true
+        queryBuilder = queryBuilder.not('author_id', 'is', null).eq('is_user_generated', true);
+      }
+    }
+
+    if (options.region && options.region !== 'Any region') {
+      queryBuilder = queryBuilder.eq('region', options.region);
+    }
+
+    if (options.language && options.language !== 'Any language') {
+      queryBuilder = queryBuilder.eq('language', options.language);
+    }
+
+    // Text search if query provided
+    if (options.query) {
+      queryBuilder = queryBuilder.or(`title.ilike.%${options.query}%,description.ilike.%${options.query}%`);
+    }
+
+    // Apply limit
+    if (options.limit) {
+      queryBuilder = queryBuilder.limit(options.limit);
+    }
+
+    const { data, error } = await queryBuilder.order('published_at', { ascending: false });
+
+    if (error) {
+      console.error('Error searching templates with filters:', error);
+      return [];
+    }
+
+    return data || [];
   }
 
   private calculateRelevanceScore(query: string, template: any): number {
