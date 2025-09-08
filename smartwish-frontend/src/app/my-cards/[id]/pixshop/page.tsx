@@ -156,6 +156,8 @@ const fetcher = (url: string) =>
 // Use the centralized Gemini-based image generation service
 import { generateEditedImage, generateFilteredImage, generateAdjustedImage } from '../../../services/geminiService';
 import { saveSavedDesignWithImages } from '@/utils/savedDesignUtils';
+import { processImageForUpload } from '@/utils/imageOptimizer';
+import { usePixshop } from '@/contexts/PixshopContext';
 
 // Helper function to convert File to Data URL
 const fileToDataURL = (file: File): Promise<string> => {
@@ -295,6 +297,9 @@ const PixshopPage: React.FC = () => {
   const returnToPintura = searchParams?.get('returnToPintura') === '1';
   const fromPintura = searchParams?.get('fromPintura') === '1';
   const isTemplateContext = cardParam === 'template-editor' || !!templateIdParam;
+  
+  // Pixshop context for managing blob data
+  const { setPixshopBlob, setSaveStatus } = usePixshop();
   
   console.log('🎯 Pixshop page loading with params:', {
     cardParam,
@@ -1326,77 +1331,135 @@ const PixshopPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      // Convert the edited image file to data URL
-      const newImageDataUrl = await fileToDataURL(currentImage);
-      console.log('📸 Converted edited image to data URL');
-
-      // Get current saved design to find the existing Supabase URL for this page
-      const savedDesign = apiResponse?.data?.find((d) => d.id === effectiveDesignId);
+      // IMMEDIATE RETURN: Store the current blob in context for instant preview
+      console.log('🚀 Storing image blob for immediate preview in context...');
       
-      if (!savedDesign) {
-        setError('Design not found. Please go back and try again.');
-        return;
-      }
-      
-      // Get the existing Supabase URL for this page index
-      const { url: existingSupabaseUrl } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
-      
-      if (!existingSupabaseUrl) {
-        setError(`No existing image found at page index ${pageIndex} to update.`);
-        return;
-      }
-
-      console.log('🔄 Updating Supabase image content...');
-      
-      // Use the simplified update-images API to replace the Supabase image content
-      const response = await fetch('/api/update-images', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          supabaseUrl: existingSupabaseUrl,
-          newImageBlob: newImageDataUrl,
-          // Only pass designId if we're NOT in template context (extra safety)
-          designId: isTemplateContext ? undefined : effectiveDesignId
-        })
+      // Convert blob to data URL for cross-page compatibility
+      console.log('🔄 Converting blob to data URL for cross-page transfer...');
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(currentImage);
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update images');
-      }
-
-      const result = await response.json();
       
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to update images');
-      }
+      console.log('✅ Blob converted to data URL:', dataUrl.substring(0, 50) + '...');
+      
+      // Store the data URL in context for instant preview
+      const pixshopBlobData = {
+        designId: effectiveDesignId,
+        pageIndex: pageIndex,
+        blob: currentImage, // Store the actual blob for potential use
+        blobUrl: dataUrl, // Use data URL instead of blob URL for cross-page compatibility
+        timestamp: Date.now(),
+        fromPixshop: true
+      };
+      
+      setPixshopBlob(pixshopBlobData);
+      console.log('📸 Data URL stored in context, navigating back immediately...');
+      
+      // Navigate back immediately with the blob for instant preview
+      const timestamp = Date.now();
+      router.push(`/my-cards/${cardParam}?openPintura=1&fromPixshop=1&pageIndex=${pageIndex}&timestamp=${timestamp}`);
 
-      console.log('✅ Image content updated successfully in Supabase');
-
-      // Force refresh the SWR cache for saved designs to show updated image
-      if (typeof window !== 'undefined') {
-        // Clear the cache and trigger refetch
-        mutate('/api/saved-designs');
-        
-        // Add a small delay to allow cache to clear
-        setTimeout(() => {
-          // Navigate back with a cache-busting timestamp
-          const timestamp = Date.now();
-          router.push(`/my-cards/${cardParam}?openPintura=1&updated=${timestamp}&pageIndex=${pageIndex}`);
-        }, 500);
-      } else {
-        router.push(`/my-cards/${cardParam}?openPintura=1&updated=1&pageIndex=${pageIndex}`);
-      }
+      // ASYNC SAVE: Continue save operation in background
+      console.log('🔄 Starting async save in background...');
+      setSaveStatus(true); // Mark as saving
+      
+      // Don't await this - let it run in background
+      saveInBackground();
+      
     } catch (err) {
       console.error('Save failed', err);
       setError(err instanceof Error ? err.message : 'Failed to save image');
-    } finally {
       setIsLoading(false);
     }
-  }, [currentImage, effectiveDesignId, pageIndex, cardParam, router, isTemplateContext, templateIdParam, templateNameParam, session, apiResponse, searchParams, refetchData, hasUserInteracted]);
+
+    // Background save function
+    async function saveInBackground() {
+      try {
+        console.log('🔄 Background save: Finding saved design...');
+        
+        // Get current saved design to find the existing Supabase URL for this page
+        const savedDesign = apiResponse?.data?.find((d) => d.id === effectiveDesignId);
+        
+        if (!savedDesign) {
+          console.error('❌ Background save failed: Design not found');
+          return;
+        }
+        
+        // Get the existing Supabase URL for this page index
+        const { url: existingSupabaseUrl } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
+        
+        if (!existingSupabaseUrl) {
+          console.error(`❌ Background save failed: No existing image found at page index ${pageIndex}`);
+          return;
+        }
+
+        console.log('🔄 Background save: Optimizing and updating image in Supabase...');
+        
+        // Optimize the image for faster upload
+        const optimizedImage = await processImageForUpload(currentImage);
+        
+        // Convert optimized image to base64 data URL for the API
+        console.log('🔄 Converting optimized image to base64 for API...');
+        const base64DataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(optimizedImage);
+        });
+        
+        // Create JSON payload for the API
+        const updatePayload = {
+          supabaseUrl: existingSupabaseUrl,
+          newImageBlob: base64DataUrl,
+          // Only pass designId if we're NOT in template context (extra safety)
+          ...((!isTemplateContext) && { designId: effectiveDesignId })
+        };
+
+        console.log('🔄 Sending JSON payload to update-images API...');
+        
+        // Use the existing update-images API with JSON payload
+        const response = await fetch('/api/update-images', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(updatePayload)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to update image');
+        }
+
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to update image');
+        }
+
+        console.log('✅ Background save: Image updated successfully in Supabase');
+
+        // Update context to mark save as complete
+        setSaveStatus(false);
+
+        // Force refresh the SWR cache for saved designs
+        if (typeof window !== 'undefined') {
+          mutate('/api/saved-designs');
+        }
+
+      } catch (err) {
+        console.error('❌ Background save failed:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setSaveStatus(false, errorMessage);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  }, [currentImage, effectiveDesignId, pageIndex, cardParam, router, isTemplateContext, templateIdParam, templateNameParam, session, apiResponse, searchParams, refetchData, hasUserInteracted, setPixshopBlob, setSaveStatus]);
 
   const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     if (activeTab !== 'retouch') return;
