@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { usePixshop } from "@/contexts/PixshopContext";
 // Removed WarningDialog import - now using direct redirect
 import {
   setPlugins,
@@ -98,6 +99,9 @@ export default function PinturaEditorModal({
   onProcess,
   editingPageIndex = 0,
 }: PinturaEditorModalProps) {
+  // Pixshop context for getting blob data
+  const { getBlobForDesign, currentBlob, isSaving, saveError, clearPixshopBlob } = usePixshop();
+  
   // Use state to manage the current image source so we can update it dynamically
   const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
   // Track the original image source for reverting
@@ -203,7 +207,38 @@ export default function PinturaEditorModal({
     setIsCanceling(false); // Reset canceling flag
   }, [imageSrc, editingPageIndex, pendingBlobSrc]);
 
-  // Check for returning blob from Pixshop
+  // Check for blob from Pixshop context (new approach)
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const cardId = params?.id as string;
+    if (!cardId) return;
+
+    // Check if we have a blob from Pixshop context for this design and page
+    const blobData = getBlobForDesign(cardId, editingPageIndex);
+    
+    if (blobData && blobData.fromPixshop) {
+      console.log('🚀 Found Pixshop blob in context for instant preview!', {
+        designId: blobData.designId,
+        pageIndex: blobData.pageIndex,
+        blobUrl: blobData.blobUrl.substring(0, 50),
+        timestamp: blobData.timestamp,
+        isSaving,
+        saveError
+      });
+
+      // Use the blob URL for instant preview
+      setCurrentImageSrc(blobData.blobUrl);
+      setPendingBlobSrc(blobData.blobUrl);
+      
+      // Clear the blob from context after using it (one-time use)
+      clearPixshopBlob();
+      
+      console.log('✅ Applied Pixshop blob to Pintura for instant preview');
+    }
+  }, [isVisible, editingPageIndex, getBlobForDesign, clearPixshopBlob, params?.id, isSaving, saveError]);
+
+  // Check for returning blob from Pixshop (legacy sessionStorage approach)
   useEffect(() => {
     console.log('🔍 PinturaEditorModal useEffect triggered:', {
       isVisible,
@@ -296,19 +331,19 @@ export default function PinturaEditorModal({
     // Also check with delays to handle race conditions
     console.log('⏱️ Setting up delayed blob checks...');
     const timeoutId1 = setTimeout(() => {
+      console.log('⏰ Running delayed blob check (10ms)...');
+      checkForPixshopReturn();
+    }, 10);
+    
+    const timeoutId2 = setTimeout(() => {
+      console.log('⏰ Running delayed blob check (50ms)...');
+      checkForPixshopReturn();
+    }, 50);
+    
+    const timeoutId3 = setTimeout(() => {
       console.log('⏰ Running delayed blob check (100ms)...');
       checkForPixshopReturn();
     }, 100);
-    
-    const timeoutId2 = setTimeout(() => {
-      console.log('⏰ Running delayed blob check (500ms)...');
-      checkForPixshopReturn();
-    }, 500);
-    
-    const timeoutId3 = setTimeout(() => {
-      console.log('⏰ Running delayed blob check (1000ms)...');
-      checkForPixshopReturn();
-    }, 1000);
     
     // Cleanup function
     return () => {
@@ -461,7 +496,7 @@ export default function PinturaEditorModal({
     onHide();
     
     // Reset canceling flag after editor closes
-    setTimeout(() => setIsCanceling(false), 100);
+    setTimeout(() => setIsCanceling(false), 10);
   };
 
   // Removed old popup functions - now using direct redirect
@@ -612,7 +647,7 @@ export default function PinturaEditorModal({
           // Step 3: After onProcess updates the images, we need to save the entire card
           // We need to wait a moment for the parent component to update the page images
           console.log('⏱️ Waiting for page images to update...');
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 100));
           
           // Note: We can't directly call saveSavedDesignWithImages here because we don't have
           // access to the updated pageImages from the parent component.
@@ -740,21 +775,21 @@ export default function PinturaEditorModal({
     // Initial setup attempts with more logging
     console.log('🚀 Starting button setup attempts...');
     setTimeout(() => {
+      console.log('⏰ Running button setup (10ms)...');
+      setupButtons();
+    }, 10);
+    setTimeout(() => {
+      console.log('⏰ Running button setup (25ms)...');
+      setupButtons();
+    }, 25);
+    setTimeout(() => {
+      console.log('⏰ Running button setup (50ms)...');
+      setupButtons();
+    }, 50);
+    setTimeout(() => {
       console.log('⏰ Running button setup (100ms)...');
       setupButtons();
     }, 100);
-    setTimeout(() => {
-      console.log('⏰ Running button setup (500ms)...');
-      setupButtons();
-    }, 500);
-    setTimeout(() => {
-      console.log('⏰ Running button setup (1000ms)...');
-      setupButtons();
-    }, 1000);
-    setTimeout(() => {
-      console.log('⏰ Running button setup (2000ms)...');
-      setupButtons();
-    }, 2000);
     
     // Use MutationObserver to watch for dynamically created buttons
     const observerTimeout = setTimeout(() => {

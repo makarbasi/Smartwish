@@ -466,37 +466,7 @@ export default function CustomizeCardPage() {
     }
   }, [searchParams, cardData, pageImages]);
 
-  // Consume pixshopCardEdit sessionStorage entry (image blob returned from Pixshop) WITHOUT saving to backend
-  useEffect(() => {
-    if (!cardId) return;
-    try {
-      const stored = sessionStorage.getItem('pixshopCardEdit');
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (!parsed || parsed.designId !== cardId) return; // Not for this card
-      const { pageIndex, image } = parsed as { pageIndex: number; image: string };
-      if (
-        typeof pageIndex === 'number' &&
-        pageIndex >= 0 &&
-        pageIndex < 4 &&
-        typeof image === 'string' &&
-        image.length > 0
-      ) {
-        setPageImages(prev => {
-          const next = [...prev];
-          next[pageIndex] = image; // Replace only the edited page
-          return next;
-        });
-        // Mark unsaved changes so user can manually save if desired
-        setHasUnsavedChanges(true);
-        console.log('🧩 Applied pixshopCardEdit image to page', pageIndex);
-      }
-      // Clean up so it is only applied once
-      sessionStorage.removeItem('pixshopCardEdit');
-    } catch (err) {
-      console.warn('Failed to apply pixshopCardEdit session data', err);
-    }
-  }, [cardId]);
+  // Legacy sessionStorage code removed - now using PixshopContext for instant preview
 
   // Auto-detect changes by comparing current state with original state
   useEffect(() => {
