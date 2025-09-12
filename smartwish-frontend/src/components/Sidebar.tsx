@@ -18,6 +18,7 @@ import {
   ArrowRightStartOnRectangleIcon,
   // UserIcon removed (unused)
   UserGroupIcon,
+  BuildingStorefrontIcon,
 } from "@heroicons/react/24/outline";
 
 type Item = {
@@ -31,6 +32,7 @@ const items: Item[] = [
   { href: "/marketplace", label: "Market", icon: ShoppingBagIcon },
   { href: "/my-cards", label: "Designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
+  { href: "/partners", label: "Partners", icon: BuildingStorefrontIcon },
 ];
 
 // Page Navigator Component for card detail pages
@@ -311,7 +313,7 @@ export default function Sidebar() {
 
         {/* Bottom Navigation */}
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200">
-          <div className="grid grid-cols-5 py-2 justify-center place-items-center">
+          <div className="grid grid-cols-6 py-2 justify-center place-items-center">
             <Link
               href="/marketplace"
               className="flex flex-col items-center py-2 px-1"
@@ -347,6 +349,13 @@ export default function Sidebar() {
             >
               <UserGroupIcon className="w-6 h-6 text-gray-600" />
               <span className="text-xs text-gray-600 mt-1">Contacts</span>
+            </Link>
+            <Link
+              href="/partners"
+              className="flex flex-col items-center py-2 px-1"
+            >
+              <BuildingStorefrontIcon className="w-6 h-6 text-gray-600" />
+              <span className="text-xs text-gray-600 mt-1">Partners</span>
             </Link>
 
           </div>

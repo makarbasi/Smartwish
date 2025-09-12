@@ -43,6 +43,7 @@ import { Template } from './templates/template.entity';
 import { Category } from './templates/category.entity';
 import { SupabaseTemplatesEnhancedService } from './templates/supabase-templates-enhanced.service';
 import { TemplatesEnhancedController } from './templates/templates-enhanced.controller';
+import { PartnersModule } from './partners/partners.module';
 
 @Module({
   imports: [
@@ -95,6 +96,7 @@ import { TemplatesEnhancedController } from './templates/templates-enhanced.cont
     ECardModule,
     SupabaseModule,
     EventsModule,
+    PartnersModule,
   ],
   controllers: [AppController, SharingController, TemplatesEnhancedController],
   providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService],
