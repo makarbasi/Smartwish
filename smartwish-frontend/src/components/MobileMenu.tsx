@@ -18,6 +18,7 @@ import {
   ShoppingBagIcon,
   ArrowRightStartOnRectangleIcon,
   UserGroupIcon,
+  BuildingStorefrontIcon,
 } from "@heroicons/react/24/outline";
 
 type Item = {
@@ -32,6 +33,7 @@ const items: Item[] = [
   { href: "/templates", label: "Templates", icon: PencilSquareIcon },
   { href: "/my-cards", label: "Designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
+  { href: "/partners", label: "Partners", icon: BuildingStorefrontIcon },
 ];
 
 export default function MobileMenu() {
