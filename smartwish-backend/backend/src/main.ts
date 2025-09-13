@@ -101,7 +101,7 @@ async function bootstrap() {
     prefix: '/',
   });
 
-  // Add subdomain middleware for hotels.smartwish.us
+  // Add subdomain middleware for hotels.smartwish.us and hotels.smartwish.onrender.com
   app.use((req: any, res: any, next: any) => {
     const host = req.get('host') || '';
     const subdomain = host.split('.')[0];
@@ -109,6 +109,7 @@ async function bootstrap() {
     // Check if this is a request to hotels subdomain or localhost development
     const isHotelsRequest = subdomain === 'hotels' || 
                            host === 'hotels.smartwish.us' || 
+                           host === 'hotels.smartwish.onrender.com' ||
                            host === 'hotels.localhost:3001' ||
                            (host.includes('localhost:3001') && req.headers['x-forwarded-host'] === 'hotels.localhost:3001');
     
