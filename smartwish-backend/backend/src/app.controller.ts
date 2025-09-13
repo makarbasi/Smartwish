@@ -205,7 +205,7 @@ export class AppController {
       };
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -720,17 +720,24 @@ export class AppController {
         templateDescriptions.length,
       );
 
-      const prompt = `Given the user's search query: "${query}"
+      const prompt = `You are an expert at semantic search and understanding user intent for greeting card templates.
 
-And these template descriptions:
+User's search query: "${query}"
+
+Template descriptions (ID: description + keywords):
 ${templateDescriptions}
 
-Please analyze which templates are most relevant to the user's search query. Consider the theme, occasion, and content of each template.
+Task: Find templates that semantically match the user's query. Consider:
+- Synonyms and variations (e.g., "water color" = "watercolor", "playful girl" includes "girl")
+- Related themes and concepts (e.g., "birthday" relates to "celebration", "party")
+- Artistic styles and moods (e.g., "elegant" relates to "sophisticated", "classy")
+- Occasions and emotions (e.g., "thank you" relates to "gratitude", "appreciation")
+- Partial matches and broader categories
 
-Return ONLY a JSON array of template IDs that are most relevant to the search query. 
-Do not include any other text, just the JSON array.
+Be inclusive rather than restrictive. If a template could reasonably match the user's intent or contains related concepts, include it.
 
-Focus on templates that match the user's intent, occasion, or theme they're looking for.`;
+Return ONLY a JSON array of relevant template IDs, ordered by relevance (most relevant first):
+["id1", "id2", "id3"]`;
 
       const payload = {
         contents: [
@@ -744,10 +751,10 @@ Focus on templates that match the user's intent, occasion, or theme they're look
           },
         ],
         generation_config: {
-          temperature: 0.1,
-          top_p: 0.8,
-          top_k: 40,
-          max_output_tokens: 1024,
+          temperature: 0.3,
+          top_p: 0.9,
+          top_k: 50,
+          max_output_tokens: 512,
         },
       };
 
@@ -782,6 +789,8 @@ Focus on templates that match the user's intent, occasion, or theme they're look
       const data = await response.json();
       const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
+      // console.log('[search-templates] Raw Gemini response:', responseText);
+
       if (!responseText) {
         return res.status(500).json({ message: 'No response from Gemini API' });
       }
@@ -790,7 +799,18 @@ Focus on templates that match the user's intent, occasion, or theme they're look
       let relevantTemplates;
       try {
         // Clean the response text to extract just the JSON array
-        const jsonMatch = responseText.match(/\[.*\]/);
+        // Handle both plain JSON and markdown-wrapped JSON
+        let jsonText = responseText.trim();
+        
+        // Remove markdown code block formatting if present
+        if (jsonText.includes('```json')) {
+          jsonText = jsonText.replace(/```json\s*/, '').replace(/\s*```/, '');
+        } else if (jsonText.includes('```')) {
+          jsonText = jsonText.replace(/```\s*/, '').replace(/\s*```/, '');
+        }
+        
+        // Extract JSON array
+        const jsonMatch = jsonText.match(/\[.*\]/s);
         if (jsonMatch) {
           relevantTemplates = JSON.parse(jsonMatch[0]);
         } else {
