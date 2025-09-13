@@ -23,6 +23,7 @@ import { getPrinters } from 'pdf-to-printer';
 import { SharingService } from './sharing/sharing.service';
 import { SupabaseStorageService } from './saved-designs/supabase-storage.service';
 import { SavedDesignsService } from './saved-designs/saved-designs.service';
+import { SupabaseTemplatesEnhancedService } from './templates/supabase-templates-enhanced.service';
 
 const downloadsDir = path.join(__dirname, '../../downloads');
 if (!fs.existsSync(downloadsDir)) {
@@ -65,6 +66,7 @@ export class AppController {
     private readonly appService: AppService,
     private readonly sharingService: SharingService,
     private readonly storageService: SupabaseStorageService,
+    private readonly templatesService: SupabaseTemplatesEnhancedService,
   ) {
     console.log('AppController instantiated');
   }
@@ -687,11 +689,8 @@ export class AppController {
 
       console.log('[search-templates] Received query:', query);
 
-      // Use centralized template system
-      const { getAllTemplates } = await import(
-        '../../shared/constants/templates'
-      );
-      const templates = getAllTemplates();
+      // Fetch templates from database
+      const templates = await this.templatesService.getAllTemplates();
 
       console.log(
         '[search-templates] Loaded templates count:',
@@ -700,13 +699,16 @@ export class AppController {
 
       // Convert templates to the format expected by the search algorithm
       const templatesData: Record<string, any> = {};
-      templates.forEach((template: any) => {
+      
+      // Fetch keywords for each template and build the search data
+      for (const template of templates) {
+        const keywords = await this.templatesService.getTemplateKeywords(template.id);
         templatesData[template.id] = {
           title: template.title,
-          text: `${template.description} ${template.searchKeywords.join(', ')}`,
-          category: template.category,
+          text: `${template.description || ''} ${keywords.join(', ')}`,
+          category: template.category_id,
         };
-      });
+      }
 
       // Prepare the prompt for Gemini
       const templateDescriptions = Object.entries(templatesData)
@@ -812,18 +814,23 @@ Focus on templates that match the user's intent, occasion, or theme they're look
         relevantTemplates = [];
       }
 
-      // Filter templates to only include valid ones
-      const validTemplates = relevantTemplates.filter(
-        (templateKey: string) =>
-          templatesData[templateKey] &&
-          Object.keys(templatesData).includes(templateKey),
+      // Filter templates to only include valid ones and get full template data
+      const validTemplateIds = relevantTemplates.filter(
+        (templateId: string) => templatesData[templateId]
       );
 
-      // Return the relevant templates with their data
-      const results = validTemplates.map((templateKey: string) => ({
-        key: templateKey,
-        ...templatesData[templateKey],
-      }));
+      console.log('[search-templates] Valid template IDs:', validTemplateIds);
+
+      // Get full template data from database for valid IDs
+      const results = [];
+      for (const templateId of validTemplateIds) {
+        const template = templates.find(t => t.id === templateId);
+        if (template) {
+          results.push(template);
+        }
+      }
+
+      console.log('[search-templates] Final results count:', results.length);
 
       return res.json({
         query,
