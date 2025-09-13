@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartWish - Transform Your Photos Into Beautiful Prints</title>
+    <link rel="stylesheet" href="styles.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SmartWish">
+
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link active">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </a>
+                <a href="locations.html" class="nav-link">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Locations</span>
+                </a>
+
+                <a href="contact.html" class="nav-link">
+                    <i class="fas fa-envelope"></i>
+                    <span>Contact</span>
+                </a>
+            </div>
+            <button class="hamburger" id="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobile-menu">
+        <div class="mobile-nav-links">
+            <a href="index.html" class="nav-link active">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </a>
+            <a href="locations.html" class="nav-link">
+                <i class="fas fa-map-marker-alt"></i>
+                <span>Locations</span>
+            </a>
+
+            <a href="contact.html" class="nav-link">
+                <i class="fas fa-envelope"></i>
+                <span>Contact</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    Design on Your <span class="gradient-text">SmartWish App</span><br>
+                    Print at Hotel Kiosks
+                </h1>
+                <p class="hero-subtitle">
+                    Create beautiful digital photo albums using the SmartWish app, then visit our planned kiosks
+                    in hotel lobbies to print your memories instantly. Coming soon for travelers and hotel residents.
+                </p>
+                <div class="hero-buttons">
+                    <a href="locations.html" class="btn btn-secondary">
+                        <i class="fas fa-map-marker-alt"></i>
+                        View our current partners
+                    </a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="kiosk-showcase">
+                    <img src="kiosk-main.jpg" alt="SmartWish Kiosk" class="kiosk-image">
+                    <div class="floating-photos">
+                        <div class="photo-card photo-1">
+                            <img src="sample-photo-1.png" alt="Sample Photo">
+                        </div>
+                        <div class="photo-card photo-2">
+                            <img src="sample-photo-2.png" alt="Sample Photo">
+                        </div>
+                        <div class="photo-card photo-3">
+                            <img src="sample-photo-3.png" alt="Sample Photo">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="scroll-indicator">
+            <div class="scroll-arrow"></div>
+        </div>
+    </section>
+
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">How It Works</h2>
+                <p class="section-subtitle">Design on your phone, print at Smartwish hotel kiosks - it's that simple</p>
+            </div>
+
+            <div class="process-steps">
+                <div class="process-step">
+                    <div class="step-content">
+                        <div class="step-number">1</div>
+                        <h3>Design Your Album</h3>
+                        <p>Create personalized photos album using our intuitive mobile app. Choose from
+                            professional templates or start from scratch with our powerful editing tools.</p>
+                        <div class="step-features">
+                            <span class="feature-tag">📱 Mobile-First Design</span>
+                            <span class="feature-tag">🎨 Professional Templates</span>
+                            <span class="feature-tag">⚡ Real-time Preview</span>
+                        </div>
+                    </div>
+                    <div class="step-image">
+                        <img src="step-1.jpg" alt="Design interface on mobile device">
+                    </div>
+                </div>
+
+                <div class="process-step reverse">
+                    <div class="step-content">
+                        <div class="step-number">2</div>
+                        <h3>Perfect & Customize</h3>
+                        <p>Fine-tune your design with advanced editing tools, apply filters, and add personal touches.
+                            Preview your creation and make adjustments until it's exactly right.</p>
+                        <div class="step-features">
+                            <span class="feature-tag">🔧 Advanced Tools</span>
+                            <span class="feature-tag">🎭 Custom Filters</span>
+                            <span class="feature-tag">✨ Smart Suggestions</span>
+                        </div>
+                    </div>
+                    <div class="step-image">
+                        <img src="step-2.jpg" alt="Customization and editing interface">
+                    </div>
+                </div>
+
+                <div class="process-step">
+                    <div class="step-content">
+                        <div class="step-number">3</div>
+                        <h3>Print at Smartwish Kiosks</h3>
+                        <p>Visit our upcoming kiosks in hotel lobbies worldwide. Simply scan your order code and watch
+                            your designs come to life with professional-grade printing quality.</p>
+                        <div class="step-features">
+                            <span class="feature-tag">🏨 Hotel Locations</span>
+                            <span class="feature-tag">🖨️ Premium Quality</span>
+                            <span class="feature-tag">⚡ Instant Results</span>
+                        </div>
+                    </div>
+                    <div class="step-image">
+                        <img src="kiosk-hotel-lobby.png" alt="Modern hotel kiosk printing station">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Print Your Memories?</h2>
+                <p>Design your photo albums on the SmartWish app, then visit our future kiosks in hotel lobbies to print
+                    instantly</p>
+                <div class="cta-buttons">
+                    <a href="locations.html" class="btn btn-primary btn-large">
+                        <i class="fas fa-search"></i>
+                        View our current partners
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img src="logo.png" alt="SmartWish">
+
+                    </div>
+                    <p>Design photo albums on your phone, print instantly at future hotel kiosks worldwide.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="locations.html">Locations</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                        <li><a href="#features">Features</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <ul>
+                        <li><a href="contact.html">Help Center</a></li>
+                        <li><a href="contact.html">Contact Us</a></li>
+                        <li><a href="#privacy">Privacy Policy</a></li>
+                        <li><a href="#terms">Terms of Service</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Connect</h4>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#"><i class="fab fa-linkedin"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 SmartWish. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js?v=2"></script>
+</body>
+
+</html>

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Debug Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f0f0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .debug-container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .test-slot {
+            width: 200px;
+            height: 200px;
+            border: 3px dashed #ccc;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px auto;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            background: #fafafa;
+        }
+        
+        .test-slot:hover, .test-slot:active {
+            border-color: #007bff;
+            background: rgba(0, 123, 255, 0.1);
+            transform: scale(1.02);
+        }
+        
+        .test-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1500;
+            padding: 20px;
+        }
+        
+        .test-modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            width: 100%;
+            max-width: 300px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .debug-log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .device-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        
+        .clear-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        
+        .test-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <h2>Mobile Debug Test</h2>
+        
+        <div class="device-info" id="deviceInfo">
+            Loading device info...
+        </div>
+        
+        <div class="test-slot" id="testSlot">
+            <span>📷 Tap to Test</span>
+        </div>
+        
+        <button class="test-btn" onclick="testModal()">Test Modal</button>
+        <button class="clear-btn" onclick="clearLog()">Clear Log</button>
+        
+        <div class="debug-log" id="debugLog"></div>
+    </div>
+    
+    <!-- Test Modal -->
+    <div class="test-modal" id="testModal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal()">&times;</button>
+            <h3>Test Modal</h3>
+            <p>This modal opened successfully!</p>
+            <button class="test-btn" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+    
+    <script>
+        let debugLogs = [];
+        let touchStarted = false;
+        let touchStartTime = 0;
+        
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `[${timestamp}] ${message}`;
+            debugLogs.push(logMessage);
+            updateDebugLog();
+            console.log(logMessage);
+        }
+        
+        function updateDebugLog() {
+            const debugLog = document.getElementById('debugLog');
+            debugLog.textContent = debugLogs.slice(-20).join('\n');
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+        
+        function clearLog() {
+            debugLogs = [];
+            updateDebugLog();
+            console.clear();
+            log('Log cleared');
+        }
+        
+        function updateDeviceInfo() {
+            const deviceInfo = document.getElementById('deviceInfo');
+            const isMobile = window.innerWidth <= 768;
+            const hasTouch = 'ontouchstart' in window;
+            
+            deviceInfo.innerHTML = `
+                <strong>Device Info:</strong><br>
+                Screen: ${screen.width}x${screen.height}<br>
+                Viewport: ${window.innerWidth}x${window.innerHeight}<br>
+                Mobile: ${isMobile ? 'Yes' : 'No'}<br>
+                Touch Support: ${hasTouch ? 'Yes' : 'No'}<br>
+                User Agent: ${navigator.userAgent.substring(0, 50)}...
+            `;
+        }
+        
+        function openModal() {
+            log('=== OPENING MODAL ===');
+            const modal = document.getElementById('testModal');
+            log('Modal element found: ' + !!modal);
+            
+            if (modal) {
+                log('Modal classes before: ' + modal.className);
+                modal.classList.add('active');
+                log('Modal classes after: ' + modal.className);
+                log('Modal opened successfully');
+                
+                // Check computed styles
+                const styles = getComputedStyle(modal);
+                log('Modal display: ' + styles.display);
+                log('Modal z-index: ' + styles.zIndex);
+                log('Modal visibility: ' + styles.visibility);
+            } else {
+                log('ERROR: Modal element not found!');
+            }
+        }
+        
+        function closeModal() {
+            log('=== CLOSING MODAL ===');
+            const modal = document.getElementById('testModal');
+            if (modal) {
+                modal.classList.remove('active');
+                log('Modal closed');
+            }
+        }
+        
+        function testModal() {
+            log('Test modal button clicked');
+            openModal();
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            log('=== PAGE LOADED ===');
+            updateDeviceInfo();
+            
+            const testSlot = document.getElementById('testSlot');
+            log('Test slot found: ' + !!testSlot);
+            
+            // Add click event
+            testSlot.addEventListener('click', function(e) {
+                log('=== CLICK EVENT ===');
+                log('Click target: ' + e.target.tagName);
+                log('Event type: ' + e.type);
+                log('Timestamp: ' + e.timeStamp);
+                
+                e.preventDefault();
+                e.stopPropagation();
+                log('Event prevented and stopped');
+                
+                log('Opening modal from click...');
+                openModal();
+            });
+            
+            // Add touch events
+            if ('ontouchstart' in window) {
+                log('Adding touch event listeners');
+                
+                testSlot.addEventListener('touchstart', function(e) {
+                    log('=== TOUCH START ===');
+                    log('Touch target: ' + e.target.tagName);
+                    log('Touches count: ' + e.touches.length);
+                    log('Touch coordinates: ' + (e.touches[0] ? e.touches[0].clientX + ',' + e.touches[0].clientY : 'none'));
+                    
+                    touchStarted = true;
+                    touchStartTime = Date.now();
+                    e.preventDefault();
+                    testSlot.style.transform = 'scale(0.95)';
+                    log('Touch started, visual feedback applied');
+                }, { passive: false });
+                
+                testSlot.addEventListener('touchend', function(e) {
+                    log('=== TOUCH END ===');
+                    log('Touch started flag: ' + touchStarted);
+                    log('Touch duration: ' + (Date.now() - touchStartTime) + 'ms');
+                    log('Changed touches: ' + e.changedTouches.length);
+                    
+                    if (touchStarted) {
+                        log('Processing touch end');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        testSlot.style.transform = 'scale(1)';
+                        
+                        log('Opening modal from touch end...');
+                        openModal();
+                        touchStarted = false;
+                        log('Touch end processing complete');
+                    } else {
+                        log('Touch end ignored - touchStarted was false');
+                    }
+                }, { passive: false });
+                
+                testSlot.addEventListener('touchcancel', function(e) {
+                    log('=== TOUCH CANCEL ===');
+                    testSlot.style.transform = 'scale(1)';
+                    touchStarted = false;
+                    log('Touch cancelled');
+                });
+                
+                log('Touch event listeners added');
+            } else {
+                log('Touch events not supported');
+            }
+            
+            // Close modal when clicking outside
+            document.getElementById('testModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeModal();
+                }
+            });
+            
+            log('=== INITIALIZATION COMPLETE ===');
+        });
+        
+        // Global event listeners for debugging
+        document.addEventListener('click', function(e) {
+            log('GLOBAL CLICK: ' + e.target.tagName + ' (' + e.target.className + ')');
+        }, true);
+        
+        if ('ontouchstart' in window) {
+            document.addEventListener('touchstart', function(e) {
+                log('GLOBAL TOUCH START: ' + e.target.tagName + ' (' + e.target.className + ')');
+            }, true);
+            
+            document.addEventListener('touchend', function(e) {
+                log('GLOBAL TOUCH END: ' + e.target.tagName + ' (' + e.target.className + ')');
+            }, true);
+        }
+    </script>
+</body>
+</html>
