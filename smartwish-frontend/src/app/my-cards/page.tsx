@@ -498,6 +498,13 @@ function MyCardsContent() {
     setECardModalOpen(true);
   };
 
+  // Handle print card
+  const handlePrint = (card: MyCard) => {
+    // Open the card in a new window for printing
+    const printUrl = `/my-cards/${card.id}?print=true`;
+    window.open(printUrl, '_blank');
+  };
+
   const handleECardSend = async (email: string, message: string) => {
     if (!session || !cardToSend) return;
 
@@ -797,6 +804,17 @@ function MyCardsContent() {
                               Send E-Card (Disabled)
                             </button>
                           </MenuItem>
+                          <MenuItem>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handlePrint(c);
+                              }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                            >
+                              Print
+                            </button>
+                          </MenuItem>
                           {/* Promote removed */}
                           <MenuItem>
                             <button
@@ -939,6 +957,17 @@ function MyCardsContent() {
                               title="E-Card sending is temporarily disabled"
                             >
                               Send E-Card (Disabled)
+                            </button>
+                          </MenuItem>
+                          <MenuItem>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handlePrint(c);
+                              }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                            >
+                              Print
                             </button>
                           </MenuItem>
                           <MenuItem>
