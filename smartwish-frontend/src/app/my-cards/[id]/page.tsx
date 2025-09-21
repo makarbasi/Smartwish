@@ -28,6 +28,7 @@ import Image from "next/image";
 import HTMLFlipBook from "react-pageflip";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import SendECardModal from "@/components/SendECardModal";
 import useSWR from "swr";
 import { saveSavedDesignWithImages } from "@/utils/savedDesignUtils";
 import { useSession } from "next-auth/react";
@@ -244,6 +245,10 @@ export default function CustomizeCardPage() {
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsName, setSaveAsName] = useState("");
   const [isSavingAs, setIsSavingAs] = useState(false);
+  
+  // Send E-card functionality state
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Swipe functionality state
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -630,6 +635,55 @@ export default function CustomizeCardPage() {
       setTimeout(() => setSaveMessage(""), 3000);
     } finally {
       setIsSavingAs(false);
+    }
+  };
+
+  // Send E-card function
+  const handleSendEcard = async (email: string, message: string) => {
+    if (!cardData) {
+      throw new Error("No card data available");
+    }
+
+    if (!session?.user?.id) {
+      throw new Error("Please sign in to send e-cards");
+    }
+
+    setIsSendingEmail(true);
+
+    try {
+      const response = await fetch("/api/send-ecard", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          cardId: cardData.id,
+          cardName: cardData.name,
+          recipientEmail: email,
+          message: message,
+          senderName: session.user.name || session.user.email,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // Show specific error message from API
+        const errorMessage = result.error || "Failed to send e-card";
+        setSaveMessage(`❌ ${errorMessage}`);
+        setTimeout(() => setSaveMessage(""), 5000);
+        throw new Error(errorMessage);
+      }
+
+      setSaveMessage("✅ E-card sent successfully!");
+      setTimeout(() => setSaveMessage(""), 3000);
+    } catch (error) {
+      console.error("❌ Send e-card failed:", error);
+      // Don't throw the error again since we already handled it
+      return;
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -1305,6 +1359,17 @@ export default function CustomizeCardPage() {
             <DocumentDuplicateIcon className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
+          {/* Send E-card Button */}
+          <button
+            onClick={() => setShowSendModal(true)}
+            className="p-1.5 sm:p-2 rounded-full text-blue-600 hover:bg-blue-50 transition-all duration-200 touch-manipulation"
+            title="Send E-card"
+          >
+            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </button>
+
           {/* Undo Button */}
           <button
             onClick={handleUndo}
@@ -1893,6 +1958,16 @@ export default function CustomizeCardPage() {
           </div>
         </div>
       )}
+
+      {/* Send E-card Modal */}
+      <SendECardModal
+        isOpen={showSendModal}
+        onClose={() => setShowSendModal(false)}
+        onSend={handleSendEcard}
+        cardName={cardData?.name || "Untitled Card"}
+        cardThumbnail={cardData?.pages?.[0] || ""}
+        isLoading={isSendingEmail}
+      />
     </div>
   );
 }
