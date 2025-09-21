@@ -9,6 +9,8 @@ import Image from "next/image";
 import { useSession } from "next-auth/react";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal";
 import SendECardModal from "@/components/SendECardModal";
+import PrinterSelectionModal from "@/components/PrinterSelectionModal";
+import jsPDF from 'jspdf';
 import {
   DynamicRouter,
   authGet,
@@ -214,6 +216,11 @@ function MyCardsContent() {
     thumbnail: string;
   } | null>(null);
   const [sendingECard, setSendingECard] = useState(false);
+  
+  // Printer selection modal state
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [cardToPrint, setCardToPrint] = useState<MyCard | null>(null);
 
   // Manual state management for data
   const [savedDesignsResponse, setSavedDesignsResponse] =
@@ -502,7 +509,7 @@ function MyCardsContent() {
   const handlePrint = async (card: MyCard) => {
     try {
       // Get the card data to extract image URLs
-       const savedDesign = apiResponse?.data?.find(d => d.id === card.id);
+      const savedDesign = savedDesignsResponse?.data?.find(d => d.id === card.id);
       if (!savedDesign) {
         alert('Card data not found');
         return;
@@ -541,23 +548,178 @@ function MyCardsContent() {
       }
 
       const result = await response.json();
+      console.log('Backend API response:', result);
       
       if (result.success) {
-        // Create download links for both JPEG files
-        const downloadLink1 = document.createElement('a');
-        downloadLink1.href = result.files.jpeg1;
-        downloadLink1.download = `${card.name}_print_1.jpg`;
-        downloadLink1.click();
+        console.log('JPEG files generated successfully, creating PDF...');
+        console.log('JPEG file URLs:', {
+          jpeg1: result.files?.jpeg1,
+          jpeg2: result.files?.jpeg2
+        });
+        
+        // Create PDF from the JPEG files
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        });
 
-        // Small delay before second download
-        setTimeout(() => {
-          const downloadLink2 = document.createElement('a');
-          downloadLink2.href = result.files.jpeg2;
-          downloadLink2.download = `${card.name}_print_2.jpg`;
-          downloadLink2.click();
-        }, 500);
+        // Function to load image and add to PDF with timeout
+        const addImageToPDF = (imageUrl: string, pageNumber: number): Promise<void> => {
+          return new Promise((resolve, reject) => {
+            console.log(`Loading image ${pageNumber}: ${imageUrl}`);
+            
+            // Check if URL is valid
+            if (!imageUrl || typeof imageUrl !== 'string') {
+              const error = `Invalid image URL for page ${pageNumber}: ${imageUrl}`;
+              console.error(error);
+              reject(new Error(error));
+              return;
+            }
+            
+            const img = document.createElement('img');
+            let isResolved = false;
+            
+            // Set up timeout (30 seconds)
+            const timeout = setTimeout(() => {
+              if (!isResolved) {
+                isResolved = true;
+                console.error(`Timeout loading image ${pageNumber}: ${imageUrl}`);
+                reject(new Error(`Timeout loading image ${pageNumber}: ${imageUrl}`));
+              }
+            }, 30000);
+            
+            // Set up error handler first
+            img.onerror = (error) => {
+              if (!isResolved) {
+                isResolved = true;
+                clearTimeout(timeout);
+                console.error(`Failed to load image ${pageNumber}:`, error);
+                console.error(`Image URL: ${imageUrl}`);
+                console.error(`Error details:`, {
+                  type: 'image_load_error',
+                  pageNumber,
+                  imageUrl,
+                  error
+                });
+                reject(new Error(`Failed to load image ${pageNumber}: ${imageUrl}. Error: ${error}`));
+              }
+            };
+            
+            // Set up load handler
+            img.onload = () => {
+              if (!isResolved) {
+                isResolved = true;
+                clearTimeout(timeout);
+                try {
+                  console.log(`Image ${pageNumber} loaded successfully, dimensions: ${img.width}x${img.height}`);
+                  
+                  // Validate image dimensions
+                  if (img.width === 0 || img.height === 0) {
+                    throw new Error(`Invalid image dimensions: ${img.width}x${img.height}`);
+                  }
+                  
+                  // Calculate dimensions to fit A4 page (210 x 297 mm)
+                  const pageWidth = 210;
+                  const pageHeight = 297;
+                  const margin = 10;
+                  const maxWidth = pageWidth - (margin * 2);
+                  const maxHeight = pageHeight - (margin * 2);
+                  
+                  // Calculate aspect ratio and dimensions
+                  const imgAspectRatio = img.width / img.height;
+                  let imgWidth = maxWidth;
+                  let imgHeight = maxWidth / imgAspectRatio;
+                  
+                  if (imgHeight > maxHeight) {
+                    imgHeight = maxHeight;
+                    imgWidth = maxHeight * imgAspectRatio;
+                  }
+                  
+                  // Center the image on the page
+                  const x = (pageWidth - imgWidth) / 2;
+                  const y = (pageHeight - imgHeight) / 2;
+                  
+                  if (pageNumber > 1) {
+                    pdf.addPage();
+                  }
+                  
+                  console.log(`Adding image ${pageNumber} to PDF at position (${x}, ${y}) with size ${imgWidth}x${imgHeight}`);
+                  pdf.addImage(img, 'JPEG', x, y, imgWidth, imgHeight);
+                  console.log(`Image ${pageNumber} added to PDF successfully`);
+                  resolve();
+                } catch (error) {
+                  console.error(`Error adding image ${pageNumber} to PDF:`, error);
+                  console.error(`PDF addImage error details:`, {
+                    type: 'pdf_add_image_error',
+                    pageNumber,
+                    imageUrl,
+                    imageDimensions: `${img.width}x${img.height}`,
+                    error
+                  });
+                  reject(new Error(`PDF generation error for image ${pageNumber}: ${error.message}`));
+                }
+              }
+            };
+            
+            // Try to set crossOrigin, but don't fail if it doesn't work
+            try {
+              img.crossOrigin = 'anonymous';
+            } catch (corsError) {
+              console.warn(`Could not set crossOrigin for image ${pageNumber}:`, corsError);
+            }
+            
+            // Set the source last to trigger loading
+            img.src = imageUrl;
+          });
+        };
 
-        alert('Print files generated successfully! Two JPEG files will be downloaded.');
+        // Add both JPEG images to PDF
+        try {
+          console.log('Starting PDF generation process...');
+          console.log('Available JPEG files:', {
+            jpeg1: result.files?.jpeg1,
+            jpeg2: result.files?.jpeg2
+          });
+          
+          // Validate that we have the required JPEG files
+          if (!result.files?.jpeg1 || !result.files?.jpeg2) {
+            throw new Error('Missing JPEG files from backend response');
+          }
+          
+          console.log('Adding first image to PDF...');
+          await addImageToPDF(result.files.jpeg1, 1);
+          console.log('First image added successfully');
+          
+          console.log('Adding second image to PDF...');
+          await addImageToPDF(result.files.jpeg2, 2);
+          console.log('Second image added successfully');
+          
+          console.log('Generating PDF blob...');
+          const pdfBlob = pdf.output('blob');
+          console.log('PDF blob generated successfully, size:', pdfBlob.size, 'bytes');
+          
+          // Validate PDF blob
+          if (!pdfBlob || pdfBlob.size === 0) {
+            throw new Error('Generated PDF blob is empty or invalid');
+          }
+          
+          // Set state and open printer selection modal
+          setPdfBlob(pdfBlob);
+          setCardToPrint(card);
+          setPrinterModalOpen(true);
+          console.log('Printer modal opened successfully');
+        } catch (pdfError) {
+          console.error('Error during PDF generation process:', pdfError);
+          console.error('PDF Error details:', {
+            type: 'pdf_generation_error',
+            cardId: card.id,
+            error: pdfError,
+            jpegFiles: result.files
+          });
+          throw new Error(`PDF generation failed: ${pdfError.message || pdfError}`);
+        }
+        
       } else {
         throw new Error(result.message || 'Failed to generate print files');
       }
@@ -1083,6 +1245,22 @@ function MyCardsContent() {
               : ""
           }
           isLoading={sendingECard}
+        />
+
+        {/* Printer Selection Modal */}
+        <PrinterSelectionModal
+          isOpen={printerModalOpen}
+          onClose={() => {
+            setPrinterModalOpen(false);
+            setPdfBlob(null);
+            setCardToPrint(null);
+          }}
+          onPrint={(printerName: string) => {
+            console.log(`Printing to: ${printerName}`);
+            // The actual printing is handled within the modal
+          }}
+          pdfBlob={pdfBlob}
+          cardName={cardToPrint?.name || ""}
         />
       </div>
     </main>
