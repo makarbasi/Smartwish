@@ -59,7 +59,8 @@ type SavedDesign = {
   createdAt: string;
   updatedAt: string;
   status?: string;
-  // New individual image fields
+  metadata?: string | object;
+  // Add image fields for the four card pages
   image1?: string;
   image2?: string;
   image3?: string;
@@ -563,6 +564,49 @@ function MyCardsContent() {
       }
 
       console.log('Generating print JPEG files for card:', card.id);
+      console.log('🔍 Print Debug - Full saved design object:', savedDesign);
+      console.log('🔍 Print Debug - Saved design metadata:', savedDesign.metadata);
+      console.log('🔍 Print Debug - Metadata type:', typeof savedDesign.metadata);
+
+      // Extract gift card data from metadata if present
+      let giftCardData = null;
+      if (savedDesign.metadata) {
+        try {
+          const metadata = typeof savedDesign.metadata === 'string' 
+            ? JSON.parse(savedDesign.metadata) 
+            : savedDesign.metadata;
+          console.log('🔍 Print Debug - Parsed metadata:', metadata);
+          console.log('🔍 Print Debug - Metadata keys:', Object.keys(metadata || {}));
+          giftCardData = metadata.giftCard || metadata.giftCardData || null;
+          console.log('🔍 Print Debug - Extracted gift card data:', giftCardData);
+        } catch (error) {
+          console.warn('Failed to parse metadata for gift card data:', error);
+        }
+      } else {
+        console.log('🔍 Print Debug - No metadata found in saved design');
+      }
+      
+      // Also check localStorage as fallback
+      const localGiftData = localStorage.getItem(`giftCard_${card.id}`);
+      if (localGiftData && !giftCardData) {
+        try {
+          giftCardData = JSON.parse(localGiftData);
+          console.log('🔍 Print Debug - Using gift card data from localStorage:', giftCardData);
+        } catch (error) {
+          console.warn('Failed to parse localStorage gift card data:', error);
+        }
+      }
+
+      // Prepare request payload
+      const requestPayload = {
+        cardId: card.id,
+        image1,
+        image2,
+        image3,
+        image4,
+        giftCardData,
+      };
+      console.log('🔍 Print Debug - Request payload to backend:', requestPayload);
 
       // Call the backend API to generate JPEG files
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/generate-print-jpegs`, {
@@ -570,13 +614,7 @@ function MyCardsContent() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          cardId: card.id,
-          image1,
-          image2,
-          image3,
-          image4,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!response.ok) {

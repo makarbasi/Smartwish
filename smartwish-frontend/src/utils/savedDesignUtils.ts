@@ -187,6 +187,7 @@ export async function saveSavedDesign(
     userId: string;
     categoryId?: string;
     categoryName?: string;
+    giftCardData?: any;
   }
 ): Promise<SaveSavedDesignResponse> {
   try {
@@ -225,6 +226,7 @@ export async function saveSavedDesign(
             pageImages.map((image, index) => [index, image])
           ),
         },
+        metadata: options.giftCardData ? { giftCard: options.giftCardData } : undefined,
       };
     } else {
       // For update, use PUT to existing design
@@ -253,6 +255,7 @@ export async function saveSavedDesign(
             pageImages.map((image, index) => [index, image])
           ),
         },
+        metadata: options.giftCardData ? { giftCard: options.giftCardData } : undefined,
       };
 
       console.log("📝 Update body categoryId:", options.categoryId);
@@ -294,6 +297,7 @@ export async function saveSavedDesignWithImages(
     designId?: string;
     categoryId?: string;
     categoryName?: string;
+    giftCardData?: any;
   }
 ): Promise<{
   saveResult: SaveSavedDesignResponse;
@@ -327,6 +331,7 @@ export async function saveSavedDesignWithImages(
       userId: options.userId,
       categoryId: options.categoryId,
       categoryName: options.categoryName,
+      giftCardData: options.giftCardData,
     });
 
     if (!saveResult.success) {

@@ -57,6 +57,8 @@ export interface SavedDesign {
   currentVersion?: string;
   publishedAt?: Date;
   sourceTemplateId?: string;
+  // Metadata field for storing additional data like gift cards
+  metadata?: any;
 }
 
 @Injectable()
@@ -417,6 +419,12 @@ export class SupabaseSavedDesignsService {
       newMetadata.isFeatured = updates.isFeatured;
     if (updates.currentVersion)
       newMetadata.currentVersion = updates.currentVersion;
+    
+    // Handle metadata updates (including gift card data)
+    if (updates.metadata) {
+      Object.assign(newMetadata, updates.metadata);
+      console.log('🎁 SupabaseService - Merging metadata updates:', updates.metadata);
+    }
 
     // Only update metadata if we have changes
     if (
@@ -807,6 +815,8 @@ export class SupabaseSavedDesignsService {
         : undefined,
       sourceTemplateId:
         metadata.sourceTemplateId || record.original_saved_design_id,
+      // Include metadata field for gift card data and other additional data
+      metadata: record.metadata,
     };
   }
 
