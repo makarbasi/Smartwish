@@ -35,7 +35,7 @@ interface ECard {
         image2?: string;
         image3?: string;
         image4?: string;
-    };
+    } | null;
 }
 
 export default function ECardViewer() {
@@ -84,16 +84,27 @@ export default function ECardViewer() {
     }, [shareId]);
 
     const getCardImages = (): string[] => {
-        if (!eCard?.cardData) return [];
+        if (!eCard?.cardData) {
+            return [];
+        }
 
-        const images = [
+        // First try to get images from image1-image4 properties
+        const directImages = [
             eCard.cardData.image1,
             eCard.cardData.image2,
             eCard.cardData.image3,
             eCard.cardData.image4,
         ].filter(Boolean) as string[];
+        
+        // If no direct images, try to get from designData pages
+        if (directImages.length === 0 && eCard.cardData.designData?.pages) {
+            const pageImages = eCard.cardData.designData.pages
+                .map(page => page.image)
+                .filter(Boolean) as string[];
+            return pageImages.length > 0 ? pageImages : ["/placeholder-image.jpg"];
+        }
 
-        return images.length > 0 ? images : ["/placeholder-image.jpg"];
+        return directImages.length > 0 ? directImages : ["/placeholder-image.jpg"];
     };
 
     const cardImages = getCardImages();
@@ -234,16 +245,23 @@ export default function ECardViewer() {
 
                             {/* Card Image */}
                             <div className={`relative aspect-[640/989] transition-transform duration-150 ${isFlipping ? 'scale-95' : 'scale-100'}`}>
-                                <Image
-                                    src={cardImages[currentPage]}
-                                    alt={`Card page ${currentPage + 1}`}
-                                    fill
-                                    className="object-cover"
-                                    priority
-                                    onError={(e) => {
-                                        e.currentTarget.src = "/placeholder-image.jpg";
-                                    }}
-                                />
+                                {cardImages[currentPage] && (
+                                    <Image
+                                        src={cardImages[currentPage]}
+                                        alt={`Card page ${currentPage + 1}`}
+                                        fill
+                                        className="object-cover"
+                                        priority
+                                        onError={(e) => {
+                                            e.currentTarget.src = "/placeholder-image.jpg";
+                                        }}
+                                    />
+                                )}
+                                {!cardImages[currentPage] && (
+                                    <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                                        <p className="text-gray-500">No image available</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Page Indicator */}
@@ -293,12 +311,12 @@ export default function ECardViewer() {
                     <div className="w-full lg:w-80">
                         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 sticky top-24">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">
-                                {eCard.cardData.title}
+                                {eCard.cardData?.title || "E-Card"}
                             </h2>
 
-                            {eCard.cardData.description && (
-                                <p className="text-gray-600 mb-6 leading-relaxed">
-                                    {eCard.cardData.description}
+                            {eCard.cardData?.description && (
+                                <p className="text-gray-600 mb-4">
+                                    {eCard.cardData?.description}
                                 </p>
                             )}
 
