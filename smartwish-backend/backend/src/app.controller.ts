@@ -905,7 +905,7 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
       const jpeg1Path = path.join(outputDir, `${cardId}_print_1.jpg`);
       const jpeg2Path = path.join(outputDir, `${cardId}_print_2.jpg`);
 
-      // First JPEG: Image 1 and Image 4 side by side
+      // First JPEG: Image 4 and Image 1 side by side
       await sharp({
         create: {
           width: 3300, // 11 inches * 300 DPI
@@ -916,12 +916,12 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
       })
         .composite([
           { 
-            input: await sharp(tempImage1).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            input: await sharp(tempImage4).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
             top: 0, 
             left: 0 
           },
           { 
-            input: await sharp(tempImage4).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            input: await sharp(tempImage1).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
             top: 0, 
             left: 1650 
           },
@@ -929,7 +929,7 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         .jpeg({ quality: 90 })
         .toFile(jpeg1Path);
 
-      // Second JPEG: Image 2 and Image 3 side by side
+      // Second JPEG: Image 3 and Image 2 side by side
       await sharp({
         create: {
           width: 3300, // 11 inches * 300 DPI
@@ -940,12 +940,12 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
       })
         .composite([
           { 
-            input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
             top: 0, 
             left: 0 
           },
           { 
-            input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
             top: 0, 
             left: 1650 
           },

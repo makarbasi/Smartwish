@@ -89,10 +89,9 @@ export default function PrinterSelectionModal({
           }, 5000);
         };
         
-        // Show success message
+        // Complete the print process
         setTimeout(() => {
           setLoading(false);
-          alert(`Print dialog opened successfully for ${selectedPrinter}!\n\nThe print window will remain open so you can control the printing process. You can close it manually when done.`);
           onPrint(selectedPrinter);
           onClose();
         }, 1000);
