@@ -499,10 +499,72 @@ function MyCardsContent() {
   };
 
   // Handle print card
-  const handlePrint = (card: MyCard) => {
-    // Open the card in a new window for printing
-    const printUrl = `/my-cards/${card.id}?print=true`;
-    window.open(printUrl, '_blank');
+  const handlePrint = async (card: MyCard) => {
+    try {
+      // Get the card data to extract image URLs
+       const savedDesign = apiResponse?.data?.find(d => d.id === card.id);
+      if (!savedDesign) {
+        alert('Card data not found');
+        return;
+      }
+
+      // Extract image URLs
+      const image1 = savedDesign.image1;
+      const image2 = savedDesign.image2;
+      const image3 = savedDesign.image3;
+      const image4 = savedDesign.image4;
+
+      if (!image1 || !image2 || !image3 || !image4) {
+        alert('All four card images are required for printing');
+        return;
+      }
+
+      console.log('Generating print JPEG files for card:', card.id);
+
+      // Call the backend API to generate JPEG files
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/generate-print-jpegs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cardId: card.id,
+          image1,
+          image2,
+          image3,
+          image4,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate print files');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Create download links for both JPEG files
+        const downloadLink1 = document.createElement('a');
+        downloadLink1.href = result.files.jpeg1;
+        downloadLink1.download = `${card.name}_print_1.jpg`;
+        downloadLink1.click();
+
+        // Small delay before second download
+        setTimeout(() => {
+          const downloadLink2 = document.createElement('a');
+          downloadLink2.href = result.files.jpeg2;
+          downloadLink2.download = `${card.name}_print_2.jpg`;
+          downloadLink2.click();
+        }, 500);
+
+        alert('Print files generated successfully! Two JPEG files will be downloaded.');
+      } else {
+        throw new Error(result.message || 'Failed to generate print files');
+      }
+    } catch (error) {
+      console.error('Print error:', error);
+      alert('Failed to generate print files. Please try again.');
+    }
   };
 
   const handleECardSend = async (email: string, message: string) => {
