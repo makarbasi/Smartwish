@@ -1046,6 +1046,18 @@ function MyCardsContent() {
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
+                                handleSendECard(c);
+                              }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              title="Digital Sent"
+                            >
+                              Digital Sent
+                            </button>
+                          </MenuItem>
+                          <MenuItem>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
                                 handlePrint(c);
                               }}
                               className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50 hidden md:block"
@@ -1205,6 +1217,18 @@ function MyCardsContent() {
                               title="Send E-Card"
                             >
                               Send E-Card
+                            </button>
+                          </MenuItem>
+                          <MenuItem>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleSendECard(c);
+                              }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              title="Digital Sent"
+                            >
+                              Digital Sent
                             </button>
                           </MenuItem>
                           <MenuItem>
