@@ -756,59 +756,50 @@ function MyCardsContent() {
   const handleECardSend = async (email: string, message: string) => {
     if (!session || !cardToSend) return;
 
+    if (!session?.user?.id) {
+      throw new Error("Please sign in to send e-cards");
+    }
+
     setSendingECard(true);
+
     try {
-      console.log("📧 Sending E-Card:", {
-        cardId: cardToSend.id,
-        email,
-        message: message || undefined,
+      const response = await fetch("/api/send-ecard", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          cardId: cardToSend.id,
+          cardName: cardToSend.name,
+          recipientEmail: email,
+          message: message,
+          senderName: session.user.name || session.user.email,
+        }),
       });
 
-      const sendECardUrl = DynamicRouter("api", "ecard/send", undefined, false);
+      const result = await response.json();
 
-      const response = await postRequest(
-        sendECardUrl,
-        {
-          cardId: cardToSend.id,
-          recipientEmail: email,
-          message: message || "",
-        },
-        session as any
-      );
-
-      console.log("✅ E-Card sent successfully:", response);
-
-      // Check if the response contains success: false in the data
-      if (response.data && response.data.success === false) {
-        throw new Error(response.data.error || "E-Card sending failed");
+      if (!response.ok) {
+        // Show specific error message from API
+        const errorMessage = result.error || "Failed to send e-card";
+        setSuccessMessage(`❌ ${errorMessage}`);
+        setTimeout(() => setSuccessMessage(""), 5000);
+        throw new Error(errorMessage);
       }
 
       setSuccessMessage(
-        `🎉 E-Card "${cardToSend.name}" has been sent to ${email}!`
+        `✅ E-Card "${cardToSend.name}" has been sent to ${email}!`
       );
+      setTimeout(() => setSuccessMessage(""), 3000);
 
       // Close modal and reset state
       setECardModalOpen(false);
       setCardToSend(null);
-    } catch (error: unknown) {
-      console.error("❌ Error sending E-Card:", error);
-      let errorMessage = "Failed to send E-Card";
-
-      if (error instanceof Error) {
-        errorMessage = error.message;
-
-        // Parse additional error information from API responses
-        if (error.message.includes("Card not found")) {
-          errorMessage =
-            "This card could not be found. Please try refreshing the page and selecting the card again.";
-        } else if (error.message.includes("permission")) {
-          errorMessage = "You don't have permission to share this card.";
-        } else if (error.message.includes("Authentication")) {
-          errorMessage = "Please log in again to send E-Cards.";
-        }
-      }
-
-      alert(`Failed to send E-Card: ${errorMessage}`);
+    } catch (error) {
+      console.error("❌ Send e-card failed:", error);
+      // Don't throw the error again since we already handled it
+      return;
     } finally {
       setSendingECard(false);
     }
