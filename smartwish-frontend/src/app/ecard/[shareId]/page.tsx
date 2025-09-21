@@ -52,11 +52,23 @@ export default function ECardViewer() {
 
         const fetchECard = async () => {
             try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'}/api/ecard/view/${shareId}`);
+                // Fetch the ecard using the new API endpoint
+                const response = await fetch(`/api/ecard/${shareId}`);
                 const data = await response.json();
 
-                if (data.success) {
-                    setECard(data.eCard);
+                if (data.success && data.ecard) {
+                    // Use the ecard data directly
+                    const ecardData = data.ecard;
+                    const ecard: ECard = {
+                        id: ecardData.id,
+                        cardId: ecardData.cardId,
+                        senderName: ecardData.senderName,
+                        senderEmail: ecardData.senderEmail,
+                        message: ecardData.message,
+                        createdAt: ecardData.createdAt,
+                        cardData: ecardData.cardData
+                    };
+                    setECard(ecard);
                 } else {
                     setError(data.error || "E-Card not found");
                 }
