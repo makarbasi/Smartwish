@@ -69,6 +69,8 @@ export default function PrinterSelectionModal({
     }
 
     try {
+      setLoading(true);
+      
       // Create a URL for the PDF blob
       const pdfUrl = URL.createObjectURL(pdfBlob);
       
@@ -80,12 +82,20 @@ export default function PrinterSelectionModal({
           // Trigger print dialog
           printWindow.print();
           
-          // Clean up the URL after a delay
+          // Clean up the URL after a longer delay to allow user control
           setTimeout(() => {
             URL.revokeObjectURL(pdfUrl);
-            printWindow.close();
-          }, 1000);
+            // Don't auto-close the window - let user control it
+          }, 5000);
         };
+        
+        // Show success message
+        setTimeout(() => {
+          setLoading(false);
+          alert(`Print dialog opened successfully for ${selectedPrinter}!\n\nThe print window will remain open so you can control the printing process. You can close it manually when done.`);
+          onPrint(selectedPrinter);
+          onClose();
+        }, 1000);
       } else {
         // Fallback: create download link
         const downloadLink = document.createElement('a');
@@ -93,11 +103,14 @@ export default function PrinterSelectionModal({
         downloadLink.download = `${cardName}_print.pdf`;
         downloadLink.click();
         URL.revokeObjectURL(pdfUrl);
+        
+        setLoading(false);
+        alert('Print dialog was blocked. PDF has been downloaded instead.');
+        onPrint(selectedPrinter);
+        onClose();
       }
-      
-      onPrint(selectedPrinter);
-      onClose();
     } catch (err) {
+      setLoading(false);
       setError('Failed to print. Please try again.');
       console.error('Print error:', err);
     }
