@@ -52,11 +52,8 @@ export async function POST(request: NextRequest) {
     let displayCardName = cardName; // Use the cardName from request body
     
     try {
-      const cardsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/saved-designs`, {
-        headers: {
-          'Authorization': `Bearer ${session.accessToken}`,
-        },
-      });
+      // Use the local saved-designs API endpoint
+      const cardsResponse = await fetch(`${request.nextUrl.origin}/api/saved-designs`);
       
       if (cardsResponse.ok) {
         const cardsData = await cardsResponse.json();
