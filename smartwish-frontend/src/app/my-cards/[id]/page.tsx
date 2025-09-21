@@ -39,10 +39,12 @@ type SavedDesign = {
   imageUrls?: string[];
   thumbnail?: string;
   createdAt: string | Date;
+  updatedAt?: string | Date;
   categoryId?: string;
   categoryName?: string;
   category_id?: string;
   category_name?: string;
+  status?: string;
   // New individual image fields
   image1?: string;
   image2?: string;
@@ -58,6 +60,8 @@ type SavedDesign = {
     }>;
     editedPages: Record<number, string>;
   };
+  // Metadata field for storing additional data like gift cards
+  metadata?: any;
 };
 
 type ApiResponse = {
@@ -224,15 +228,7 @@ export default function CustomizeCardPage() {
   const [giftCardData, setGiftCardData] = useState<any>(null);
   const showGift = searchParams.get('showGift') === 'true';
   
-  // Load gift card data if needed
-  useEffect(() => {
-    if (showGift && cardId) {
-      const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
-      if (storedGiftData) {
-        setGiftCardData(JSON.parse(storedGiftData));
-      }
-    }
-  }, [showGift, cardId]);
+
   const [saveMessage, setSaveMessage] = useState("");
   const [showRevertConfirm, setShowRevertConfirm] = useState(false);
 
@@ -291,6 +287,39 @@ export default function CustomizeCardPage() {
     const savedDesign = apiResponse.data.find((d) => d.id === cardId);
     return savedDesign ? transformSavedDesignToCard(savedDesign) : null;
   }, [apiResponse, cardId]);
+
+  // Get the saved design data to access status field
+  const savedDesign = useMemo(() => {
+    if (!apiResponse?.data || !cardId) return null;
+    return apiResponse.data.find((d) => d.id === cardId) || null;
+  }, [apiResponse, cardId]);
+
+  // Load gift card data - check both localStorage and saved design metadata
+  useEffect(() => {
+    if (cardId) {
+      // First check localStorage for immediate availability
+      const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+      if (storedGiftData) {
+        setGiftCardData(JSON.parse(storedGiftData));
+      }
+      
+      // Also check saved design metadata for persistent storage
+      if (savedDesign?.metadata) {
+        try {
+          const metadata = typeof savedDesign.metadata === 'string' 
+            ? JSON.parse(savedDesign.metadata) 
+            : savedDesign.metadata;
+          if (metadata.giftCard) {
+            setGiftCardData(metadata.giftCard);
+            // Update localStorage to sync with database
+            localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(metadata.giftCard));
+          }
+        } catch (error) {
+          console.warn('Failed to parse metadata for gift card data:', error);
+        }
+      }
+    }
+  }, [cardId, savedDesign]);
 
   // Initialize page images when card data is available
   useEffect(() => {
@@ -609,6 +638,7 @@ export default function CustomizeCardPage() {
         userId: String(session.user.id),
         categoryId: selectedCategory?.id || cardData.categoryId,
         categoryName: selectedCategory?.name || cardData.categoryName,
+        giftCardData: giftCardData,
       });
 
       if (result.saveResult.success) {
@@ -718,6 +748,7 @@ export default function CustomizeCardPage() {
         designId: `updated_${cardData.id}_${Date.now()}`,
         categoryId: selectedCategory?.id,
         categoryName: selectedCategory?.name,
+        giftCardData: giftCardData,
       });
 
       console.log("✅ Save result:", result);
@@ -1576,7 +1607,7 @@ export default function CustomizeCardPage() {
                   />
                   
                   {/* Gift Card QR Code and Logo Overlay */}
-                  {giftCardData && (
+                  {giftCardData && savedDesign?.status !== 'published' && (
                     <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200">
                       <div className="flex flex-col items-center space-y-3">
                         {/* QR Code */}

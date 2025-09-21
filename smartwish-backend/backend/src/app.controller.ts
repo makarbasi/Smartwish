@@ -869,13 +869,25 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
   @Post('generate-print-jpegs')
   async generatePrintJpegs(@Req() req: Request, @Res() res: Response) {
     try {
-      const { cardId, image1, image2, image3, image4 } = req.body;
+      const { cardId, image1, image2, image3, image4, giftCardData } = req.body;
 
       if (!cardId || !image1 || !image2 || !image3 || !image4) {
         return res.status(400).json({ message: 'Card ID and all four image URLs are required' });
       }
 
       console.log('[generate-print-jpegs] Processing card:', cardId);
+      
+      // Get current timestamp for print generation
+      const printTimestamp = new Date().toLocaleString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      console.log('[generate-print-jpegs] Print generated at:', printTimestamp);
 
       // Create output directory if it doesn't exist
       const outputDir = path.join(downloadsDir, 'print-jpegs');
@@ -930,6 +942,170 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         .toFile(jpeg1Path);
 
       // Second JPEG: Image 3 and Image 2 side by side
+      const compositeElements = [
+        { 
+          input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+          top: 0, 
+          left: 0 
+        },
+        { 
+          input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+          top: 0, 
+          left: 1650 
+        },
+      ];
+
+      // Add gift card QR code and logo overlay if present
+      if (giftCardData && giftCardData.qrCode) {
+        try {
+          console.log('[generate-print-jpegs] Adding gift card overlay to print:', giftCardData);
+          console.log('[generate-print-jpegs] QR code URL:', giftCardData.qrCode);
+          
+          // Handle QR code image (base64 data URL or HTTP URL)
+          let qrBuffer;
+          let qrMimeType = 'image/png'; // default
+          
+          if (giftCardData.qrCode.startsWith('data:')) {
+            // Handle base64 data URL
+            const [mimeInfo, base64Data] = giftCardData.qrCode.split(',');
+            qrMimeType = mimeInfo.split(':')[1].split(';')[0]; // Extract MIME type
+            qrBuffer = Buffer.from(base64Data, 'base64');
+            console.log('[generate-print-jpegs] QR code processed from base64, MIME type:', qrMimeType, 'buffer size:', qrBuffer.length);
+          } else {
+            // Handle HTTP URL
+            const qrResponse = await fetch(giftCardData.qrCode);
+            if (qrResponse.ok) {
+              qrBuffer = await qrResponse.buffer();
+              qrMimeType = giftCardData.qrCode.includes('.png') ? 'image/png' : 'image/jpeg';
+              console.log('[generate-print-jpegs] QR code downloaded from URL, buffer size:', qrBuffer.length);
+            } else {
+              throw new Error(`Failed to download QR code: ${qrResponse.status}`);
+            }
+          }
+          
+          if (qrBuffer) {
+            
+            // Create gift card overlay SVG with QR code, logo, and info
+            let storeLogo = '';
+            if (giftCardData.storeLogo) {
+              try {
+                if (giftCardData.storeLogo.startsWith('data:')) {
+                  // Already a base64 data URL
+                  storeLogo = giftCardData.storeLogo;
+                  console.log('[generate-print-jpegs] Store logo is already base64 encoded');
+                } else {
+                  // Handle HTTP URL
+                  const logoResponse = await fetch(giftCardData.storeLogo);
+                  if (logoResponse.ok) {
+                    const logoBuffer = await logoResponse.buffer();
+                    const logoBase64 = logoBuffer.toString('base64');
+                    const logoMimeType = giftCardData.storeLogo.includes('.png') ? 'image/png' : 'image/jpeg';
+                    storeLogo = `data:${logoMimeType};base64,${logoBase64}`;
+                    console.log('[generate-print-jpegs] Store logo downloaded and encoded');
+                  }
+                }
+              } catch (logoError) {
+                console.warn('[generate-print-jpegs] Failed to process store logo:', logoError);
+              }
+            }
+            
+            // Convert QR code to base64 for SVG embedding
+            const qrBase64 = qrBuffer.toString('base64');
+            
+            // Create comprehensive gift card overlay SVG
+            const giftCardOverlaySvg = `
+              <svg width="500" height="300" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background with rounded corners and shadow -->
+                <defs>
+                  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="rgba(0,0,0,0.15)"/>
+                  </filter>
+                </defs>
+                
+                <rect x="10" y="10" width="480" height="280" rx="20" ry="20" 
+                      fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.1)" 
+                      stroke-width="1" filter="url(#shadow)"/>
+                
+                <!-- QR Code -->
+                <image x="30" y="30" width="120" height="120" 
+                       href="data:${qrMimeType};base64,${qrBase64}"/>
+                
+                <!-- Store Logo (if available) -->
+                ${storeLogo ? `<image x="170" y="40" width="60" height="60" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>` : ''}
+                
+                <!-- Store Name -->
+                <text x="${storeLogo ? '250' : '170'}" y="60" font-family="Arial, sans-serif" 
+                      font-size="24" font-weight="bold" fill="#1a202c">
+                  ${giftCardData.storeName || 'Gift Card'}
+                </text>
+                
+                <!-- Amount -->
+                <text x="${storeLogo ? '250' : '170'}" y="90" font-family="Arial, sans-serif" 
+                      font-size="20" font-weight="600" fill="#2d3748">
+                  $${giftCardData.amount || '0'}
+                </text>
+                
+                <!-- Instructions -->
+                <text x="30" y="180" font-family="Arial, sans-serif" 
+                      font-size="14" fill="#4a5568">
+                  Scan QR code to redeem this gift card
+                </text>
+                
+                <!-- Decorative border -->
+                <rect x="10" y="10" width="480" height="280" rx="20" ry="20" 
+                      fill="none" stroke="rgba(99,102,241,0.3)" stroke-width="2"/>
+              </svg>
+            `;
+            
+            const giftCardOverlayBuffer = Buffer.from(giftCardOverlaySvg);
+            
+            // Position the gift card overlay on the bottom right of the right page (image2)
+            const overlayTop = 1800; // Higher up from bottom for better visibility
+            const overlayLeft = 2200; // Right side of right panel
+            
+            compositeElements.push({
+              input: giftCardOverlayBuffer,
+              top: overlayTop,
+              left: overlayLeft
+            });
+            
+            console.log(`[generate-print-jpegs] Gift card overlay positioned at top: ${overlayTop}, left: ${overlayLeft}`);
+            console.log('[generate-print-jpegs] Gift card overlay with QR code and logo added successfully to print JPEG');
+          }
+        } catch (giftCardError) {
+          console.error('[generate-print-jpegs] Failed to add gift card overlay to print version:', giftCardError);
+          console.error('[generate-print-jpegs] Gift card error details:', giftCardError.message, giftCardError.stack);
+        }
+      } else {
+        console.log('[generate-print-jpegs] No gift card data provided or QR code missing');
+        console.log('[generate-print-jpegs] Gift card data received:', giftCardData);
+      }
+      
+      // Add timestamp overlay to the print
+      try {
+        const timestampSvg = `
+          <svg width="400" height="30" xmlns="http://www.w3.org/2000/svg">
+            <rect width="400" height="30" fill="rgba(255,255,255,0.8)" rx="5"/>
+            <text x="10" y="20" font-family="Arial, sans-serif" font-size="14" fill="#333">
+              Printed: ${printTimestamp}
+            </text>
+          </svg>
+        `;
+        
+        const timestampBuffer = Buffer.from(timestampSvg);
+        
+        // Add timestamp to bottom right of the right page (image2)
+        compositeElements.push({
+          input: timestampBuffer,
+          top: 2500, // Bottom of the page
+          left: 2850  // Right side of right panel
+        });
+        
+        console.log('[generate-print-jpegs] Timestamp added to print JPEG');
+      } catch (timestampError) {
+        console.warn('[generate-print-jpegs] Failed to add timestamp:', timestampError);
+      }
+
       await sharp({
         create: {
           width: 3300, // 11 inches * 300 DPI
@@ -938,18 +1114,7 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
           background: { r: 255, g: 255, b: 255, alpha: 1 },
         },
       })
-        .composite([
-          { 
-            input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
-            top: 0, 
-            left: 0 
-          },
-          { 
-            input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
-            top: 0, 
-            left: 1650 
-          },
-        ])
+        .composite(compositeElements)
         .jpeg({ quality: 90 })
         .toFile(jpeg2Path);
 
