@@ -1118,5 +1118,173 @@
       "tags": [],
       "sourceTemplateId": null
     }
+  },
+  {
+    "id": "181e49d7-411c-4a64-b169-3e784f1b908c",
+    "cardId": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+    "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "makarbasi@gmail.com",
+    "message": "Hi",
+    "createdAt": "2025-09-21T06:06:08.719Z",
+    "expiresAt": "2025-12-20T06:06:08.719Z",
+    "cardData": {
+      "id": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+      "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "title": "A Cool & Crafty Birthday Card",
+      "description": "Celebrate a January-born star with this fun and personalized coloring-style card. The simple, charming line art declares, \"all the cool people are born in January,\" making the recipient feel extra special. At the center is an adorable, hand-drawn cupcake with a single lit candle and star decorations, just waiting to be colored in or enjoyed as is. It’s a playful and unique way to acknowledge their birth month with a cool, understated, and creative touch.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {
+          "0": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+          "1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+          "2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+          "3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+        },
+        "templateKey": "custom"
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "imageUrls": [
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+      ],
+      "author": "User",
+      "upload_time": "2025-09-21T02:36:11.491653+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-09-21T02:36:11.491Z",
+      "updatedAt": "2025-09-21T03:23:24.912Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "createdByUserId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "09d26871-0997-4d9c-ba59-bca7c40420fa",
+    "cardId": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+    "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "makarbasi@gmail.com",
+    "message": "Hi",
+    "createdAt": "2025-09-21T06:06:15.562Z",
+    "expiresAt": "2025-12-20T06:06:15.562Z",
+    "cardData": {
+      "id": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+      "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "title": "A Cool & Crafty Birthday Card",
+      "description": "Celebrate a January-born star with this fun and personalized coloring-style card. The simple, charming line art declares, \"all the cool people are born in January,\" making the recipient feel extra special. At the center is an adorable, hand-drawn cupcake with a single lit candle and star decorations, just waiting to be colored in or enjoyed as is. It’s a playful and unique way to acknowledge their birth month with a cool, understated, and creative touch.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {
+          "0": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+          "1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+          "2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+          "3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+        },
+        "templateKey": "custom"
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "imageUrls": [
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+      ],
+      "author": "User",
+      "upload_time": "2025-09-21T02:36:11.491653+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-09-21T02:36:11.491Z",
+      "updatedAt": "2025-09-21T03:23:24.912Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "createdByUserId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
   }
 ]
