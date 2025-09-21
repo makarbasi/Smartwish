@@ -866,6 +866,124 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
     }
   }
 
+  @Post('generate-print-jpegs')
+  async generatePrintJpegs(@Req() req: Request, @Res() res: Response) {
+    try {
+      const { cardId, image1, image2, image3, image4 } = req.body;
+
+      if (!cardId || !image1 || !image2 || !image3 || !image4) {
+        return res.status(400).json({ message: 'Card ID and all four image URLs are required' });
+      }
+
+      console.log('[generate-print-jpegs] Processing card:', cardId);
+
+      // Create output directory if it doesn't exist
+      const outputDir = path.join(downloadsDir, 'print-jpegs');
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+
+      // Download images from URLs
+      const downloadImage = async (url: string, filename: string) => {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to download image from ${url}`);
+        }
+        const buffer = await response.buffer();
+        const tempPath = path.join(outputDir, filename);
+        fs.writeFileSync(tempPath, buffer);
+        return tempPath;
+      };
+
+      // Download all images
+      const tempImage1 = await downloadImage(image1, `temp_${cardId}_1.jpg`);
+      const tempImage2 = await downloadImage(image2, `temp_${cardId}_2.jpg`);
+      const tempImage3 = await downloadImage(image3, `temp_${cardId}_3.jpg`);
+      const tempImage4 = await downloadImage(image4, `temp_${cardId}_4.jpg`);
+
+      // Create composite images
+      const jpeg1Path = path.join(outputDir, `${cardId}_print_1.jpg`);
+      const jpeg2Path = path.join(outputDir, `${cardId}_print_2.jpg`);
+
+      // First JPEG: Image 1 and Image 4 side by side
+      await sharp({
+        create: {
+          width: 3300, // 11 inches * 300 DPI
+          height: 2550, // 8.5 inches * 300 DPI
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+        },
+      })
+        .composite([
+          { 
+            input: await sharp(tempImage1).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            top: 0, 
+            left: 0 
+          },
+          { 
+            input: await sharp(tempImage4).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            top: 0, 
+            left: 1650 
+          },
+        ])
+        .jpeg({ quality: 90 })
+        .toFile(jpeg1Path);
+
+      // Second JPEG: Image 2 and Image 3 side by side
+      await sharp({
+        create: {
+          width: 3300, // 11 inches * 300 DPI
+          height: 2550, // 8.5 inches * 300 DPI
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+        },
+      })
+        .composite([
+          { 
+            input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            top: 0, 
+            left: 0 
+          },
+          { 
+            input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
+            top: 0, 
+            left: 1650 
+          },
+        ])
+        .jpeg({ quality: 90 })
+        .toFile(jpeg2Path);
+
+      // Clean up temporary files
+      [tempImage1, tempImage2, tempImage3, tempImage4].forEach(tempPath => {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      });
+
+      // Return download URLs
+      const baseUrl = getBaseUrl();
+      const jpeg1Url = `${baseUrl}/downloads/print-jpegs/${cardId}_print_1.jpg`;
+      const jpeg2Url = `${baseUrl}/downloads/print-jpegs/${cardId}_print_2.jpg`;
+
+      console.log('[generate-print-jpegs] Successfully created JPEG files:', { jpeg1Url, jpeg2Url });
+
+      return res.json({
+        success: true,
+        message: 'Print JPEG files generated successfully',
+        files: {
+          jpeg1: jpeg1Url,
+          jpeg2: jpeg2Url
+        }
+      });
+    } catch (error) {
+      console.error('[generate-print-jpegs] Error:', error);
+      return res.status(500).json({
+        message: 'Failed to generate print JPEG files',
+        error: error.message,
+      });
+    }
+  }
+
   @Post('search-designs')
   async searchDesigns(@Req() req: Request, @Res() res: Response) {
     try {
