@@ -218,6 +218,20 @@ export default function CustomizeCardPage() {
 
   // Save functionality state
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Gift card integration state
+  const [giftCardData, setGiftCardData] = useState<any>(null);
+  const showGift = searchParams.get('showGift') === 'true';
+  
+  // Load gift card data if needed
+  useEffect(() => {
+    if (showGift && cardId) {
+      const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+      if (storedGiftData) {
+        setGiftCardData(JSON.parse(storedGiftData));
+      }
+    }
+  }, [showGift, cardId]);
   const [saveMessage, setSaveMessage] = useState("");
   const [showRevertConfirm, setShowRevertConfirm] = useState(false);
 
@@ -1495,6 +1509,37 @@ export default function CustomizeCardPage() {
                     height={772}
                     className="w-full h-full object-cover rounded-lg"
                   />
+                  
+                  {/* Gift Card QR Code and Logo Overlay */}
+                  {giftCardData && (
+                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200">
+                      <div className="flex flex-col items-center space-y-3">
+                        {/* QR Code */}
+                        <div className="bg-white p-2 rounded-lg shadow-sm">
+                          <img 
+                            src={giftCardData.qrCode} 
+                            alt="Gift Card QR Code" 
+                            className="w-24 h-24 object-contain"
+                          />
+                        </div>
+                        
+                        {/* Store Logo and Info */}
+                        <div className="flex items-center space-x-2">
+                          {giftCardData.storeLogo && (
+                            <img 
+                              src={giftCardData.storeLogo} 
+                              alt={giftCardData.storeName} 
+                              className="w-8 h-8 object-contain rounded"
+                            />
+                          )}
+                          <div className="text-center">
+                            <p className="text-sm font-semibold text-gray-800">{giftCardData.storeName}</p>
+                            <p className="text-xs text-gray-600">${giftCardData.amount}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {/* Edit icon */}
                   <button
                     onMouseDown={(e) => {

@@ -216,6 +216,23 @@ function MyCardsContent() {
     thumbnail: string;
   } | null>(null);
   const [sendingECard, setSendingECard] = useState(false);
+  const [giftCardData, setGiftCardData] = useState<any>(null);
+  
+  // Check for gift card integration
+  const cardId = searchParams.get('cardId');
+  const showGift = searchParams.get('showGift') === 'true';
+  
+  // Load gift card data if needed
+  useEffect(() => {
+    if (showGift && cardId) {
+      const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+      if (storedGiftData) {
+        setGiftCardData(JSON.parse(storedGiftData));
+        // Navigate to the card editor with gift card integration
+        window.location.href = `/my-cards/${cardId}?showGift=true`;
+      }
+    }
+  }, [showGift, cardId]);
   
   // Printer selection modal state
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
@@ -729,6 +746,13 @@ function MyCardsContent() {
     }
   };
 
+  // Handle add gift
+  const handleAddGift = (card: MyCard) => {
+    console.log('Adding gift for card:', card.id);
+    // Navigate to marketplace with card integration mode
+    window.location.href = `/marketplace?cardId=${card.id}&cardName=${encodeURIComponent(card.name)}&mode=gift`;
+  };
+
   const handleECardSend = async (email: string, message: string) => {
     if (!session || !cardToSend) return;
 
@@ -1037,6 +1061,17 @@ function MyCardsContent() {
                               className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50 hidden md:block"
                             >
                               Print
+                            </button>
+                          </MenuItem>
+                          <MenuItem>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleAddGift(c);
+                              }}
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                            >
+                              Add Gift
                             </button>
                           </MenuItem>
                           {/* Promote removed */}

@@ -72,6 +72,8 @@ function ProductCard({ p }: { p: Product }) {
 }
 
 function MarketplaceContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [isVoiceRecording, setIsVoiceRecording] = useState(false)
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
@@ -82,6 +84,11 @@ function MarketplaceContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successData, setSuccessData] = useState<any>(null)
   const [activeFilter, setActiveFilter] = useState<string>('all')
+  
+  // Check if we're in gift card integration mode
+  const cardId = searchParams.get('cardId')
+  const cardName = searchParams.get('cardName')
+  const isGiftMode = searchParams.get('mode') === 'gift'
 
   // Fetch data from API
   const { data: productsData, error, isLoading } = useSWR<ProductsResponse>(
@@ -476,8 +483,40 @@ function CheckoutModal({
       const data = await response.json()
 
       if (response.ok && data.success) {
-        setSuccessData(data)
         // Generate QR code from the redemption link
+        const qrCodeUrl = await QRCode.toDataURL(data.redemptionLink, {
+          width: 200,
+          margin: 2,
+          color: {
+            dark: '#2d3748',
+            light: '#ffffff'
+          },
+          errorCorrectionLevel: 'H'
+        })
+        
+        // Check if we're in gift mode - integrate with card design
+        const searchParams = new URLSearchParams(window.location.search)
+        const cardId = searchParams.get('cardId')
+        const isGiftMode = searchParams.get('mode') === 'gift'
+        
+        if (isGiftMode && cardId) {
+          // Store gift card data in localStorage for card integration
+          const giftCardData = {
+            qrCode: qrCodeUrl,
+            storeLogo: currentSelectedProduct.image || '',
+            storeName: currentSelectedProduct.name,
+            amount: amount,
+            redemptionLink: data.redemptionLink
+          }
+          localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
+          
+          // Navigate back to card editor with gift card integration
+          window.location.href = `/my-cards?cardId=${cardId}&showGift=true`
+          return
+        }
+        
+        // Normal flow - show modal
+        setSuccessData(data)
         await generateQRCodeFromLink(data.redemptionLink)
         setGiftCardAmount('')
       } else {
