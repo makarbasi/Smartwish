@@ -5,6 +5,7 @@ import AppChrome from "@/components/AppChrome";
 import AuthProvider from "@/components/AuthProvider";
 import RequireAuthModal from "@/components/RequireAuthModal";
 import { AuthModalProvider } from "@/contexts/AuthModalContext";
+import { ToastProvider } from "@/contexts/ToastContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,13 +38,15 @@ export default function RootLayout({
         suppressHydrationWarning={true}
       >
         <AuthProvider>
-          <AuthModalProvider>
-            <RequireAuthModal
-              protectedPaths={["/contacts", "/my-cards", "/event"]}
-            >
-              <AppChrome>{children}</AppChrome>
-            </RequireAuthModal>
-          </AuthModalProvider>
+          <ToastProvider>
+            <AuthModalProvider>
+              <RequireAuthModal
+                protectedPaths={["/contacts", "/my-cards", "/event"]}
+              >
+                <AppChrome>{children}</AppChrome>
+              </RequireAuthModal>
+            </AuthModalProvider>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>
