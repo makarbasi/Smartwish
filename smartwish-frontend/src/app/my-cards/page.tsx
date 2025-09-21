@@ -1043,13 +1043,12 @@ function MyCardsContent() {
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
-                                // handleSendECard(c); // Temporarily disabled
+                                handleSendECard(c);
                               }}
-                              disabled={true}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
-                              title="E-Card sending is temporarily disabled"
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              title="Send E-Card"
                             >
-                              Send E-Card (Disabled)
+                              Send E-Card
                             </button>
                           </MenuItem>
                           <MenuItem>
@@ -1209,13 +1208,12 @@ function MyCardsContent() {
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
-                                // handleSendECard(c); // Temporarily disabled
+                                handleSendECard(c);
                               }}
-                              disabled={true}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
-                              title="E-Card sending is temporarily disabled"
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              title="Send E-Card"
                             >
-                              Send E-Card (Disabled)
+                              Send E-Card
                             </button>
                           </MenuItem>
                           <MenuItem>
