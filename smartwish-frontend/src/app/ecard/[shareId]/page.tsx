@@ -178,11 +178,14 @@ export default function ECardViewer() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                                <span className="text-white font-bold text-sm">SW</span>
-                            </div>
+                            <Image
+                                src="/resources/logo/logo-full.png"
+                                alt="SmartWish"
+                                width={288}
+                                height={96}
+                                className="h-24 w-auto"
+                            />
                             <div>
-                                <h1 className="font-bold text-gray-900">SmartWish</h1>
                                 <p className="text-xs text-gray-500">Digital E-Card</p>
                             </div>
                         </div>
@@ -198,25 +201,7 @@ export default function ECardViewer() {
 
             {/* Main Content */}
             <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Sender Info */}
-                <div className="text-center mb-8">
-                    <div className="inline-flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-sm border border-gray-200 mb-4">
-                        <HeartIcon className="h-4 w-4 text-red-500" />
-                        <span className="text-sm font-medium text-gray-700">
-                            From <span className="text-gray-900 font-semibold">{eCard.senderName}</span>
-                        </span>
-                    </div>
-                    {eCard.message && (
-                        <div className="max-w-2xl mx-auto bg-white rounded-2xl p-6 shadow-sm border border-gray-200 mb-6">
-                            <p className="text-gray-700 italic text-lg leading-relaxed">
-                                &ldquo;{eCard.message}&rdquo;
-                            </p>
-                            <p className="text-right text-sm text-gray-500 mt-3">
-                                — {eCard.senderName}
-                            </p>
-                        </div>
-                    )}
-                </div>
+
 
                 {/* Card Viewer */}
                 <div className="flex flex-col lg:flex-row gap-8 items-start">
@@ -314,10 +299,13 @@ export default function ECardViewer() {
                                 {eCard.cardData?.title || "E-Card"}
                             </h2>
 
-                            {eCard.cardData?.description && (
-                                <p className="text-gray-600 mb-4">
-                                    {eCard.cardData?.description}
-                                </p>
+                            {eCard.message && (
+                                <div className="mb-4">
+                                    <p className="text-sm font-medium text-gray-500 mb-2">Message from {eCard.senderName}</p>
+                                    <p className="text-gray-700 italic leading-relaxed">
+                                        &ldquo;{eCard.message}&rdquo;
+                                    </p>
+                                </div>
                             )}
 
                             <div className="space-y-4">
@@ -367,10 +355,13 @@ export default function ECardViewer() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     <div className="text-center">
                         <div className="flex items-center justify-center gap-2 mb-4">
-                            <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-purple-600 rounded-md flex items-center justify-center">
-                                <span className="text-white font-bold text-xs">SW</span>
-                            </div>
-                            <span className="font-bold text-gray-900">SmartWish</span>
+                            <Image
+                                 src="/resources/logo/logo-full.png"
+                                 alt="SmartWish"
+                                 width={240}
+                                 height={80}
+                                 className="h-20 w-auto"
+                             />
                         </div>
                         <p className="text-sm text-gray-500">
                             Creating beautiful digital experiences, one card at a time.
