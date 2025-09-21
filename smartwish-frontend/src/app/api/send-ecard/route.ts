@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
             .cta-button {
               display: inline-block;
               background: #4f46e5;
-              color: white;
+              color: white !important;
               padding: 15px 30px;
               text-decoration: none;
               border-radius: 8px;
@@ -187,6 +187,7 @@ export async function POST(request: NextRequest) {
             }
             .cta-button:hover {
               background: #4338ca;
+              color: white !important;
             }
             .footer {
               text-align: center;
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
             ` : ''}
             
             <div style="text-align: center;">
-              <a href="${cardViewUrl}" class="cta-button">
+              <a href="${cardViewUrl}" class="cta-button" style="display: inline-block; background: #4f46e5; color: white !important; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0;">
                 View Your E-card
               </a>
             </div>
