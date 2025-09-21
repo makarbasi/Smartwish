@@ -11,6 +11,7 @@ import DeleteConfirmModal from "@/components/DeleteConfirmModal";
 import SendECardModal from "@/components/SendECardModal";
 import PrinterSelectionModal from "@/components/PrinterSelectionModal";
 import jsPDF from 'jspdf';
+import { useToast } from "@/contexts/ToastContext";
 import {
   DynamicRouter,
   authGet,
@@ -201,7 +202,7 @@ const templatesFetcher = async (url: string, userId?: string) => {
 function MyCardsContent() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -312,14 +313,18 @@ function MyCardsContent() {
     const message = searchParams?.get("message");
 
     if (newDesignId && message) {
-      setSuccessMessage(decodeURIComponent(message));
+      showToast({
+        type: 'success',
+        title: 'Design created successfully!',
+        message: decodeURIComponent(message),
+        duration: 1000
+      });
 
-      // Clear the message after 5 seconds
+      // Clear the URL parameters
       const timer = setTimeout(() => {
-        setSuccessMessage(null);
         // Clean up URL parameters
         window.history.replaceState({}, "", "/my-cards");
-      }, 5000);
+      }, 1000);
 
       return () => clearTimeout(timer);
     }
@@ -396,7 +401,12 @@ function MyCardsContent() {
       const result = await deleteRequest(deleteUrl, session as any);
       console.log("✅ Delete result:", result);
 
-      setSuccessMessage("Your design has been successfully deleted!");
+      showToast({
+        type: 'success',
+        title: 'Design deleted successfully!',
+        message: 'Your design has been successfully deleted!',
+        duration: 1000
+      });
 
       // Refresh the designs list
       fetchSavedDesigns();
@@ -436,9 +446,12 @@ function MyCardsContent() {
       const result = await postRequest(publishUrl, {}, session as any);
       console.log("✅ Publish result:", result);
 
-      setSuccessMessage(
-        "🎉 Your design is now live and published for everyone to see!"
-      );
+      showToast({
+        type: 'success',
+        title: 'Design published successfully!',
+        message: 'Your design is now live and published for everyone to see!',
+        duration: 1000
+      });
       fetchSavedDesigns();
       fetchPublishedTemplates();
     } catch (e: unknown) {
@@ -464,9 +477,12 @@ function MyCardsContent() {
       const result = await postRequest(unpublishUrl, {}, session as any);
       console.log("✅ Unpublish result:", result);
 
-      setSuccessMessage(
-        "Your design has been unpublished and moved back to drafts."
-      );
+      showToast({
+        type: 'success',
+        title: 'Design unpublished successfully!',
+        message: 'Your design has been unpublished and moved back to drafts.',
+        duration: 1000
+      });
       fetchSavedDesigns();
       fetchPublishedTemplates();
     } catch (e: unknown) {
@@ -495,9 +511,12 @@ function MyCardsContent() {
       const result = await postRequest(duplicateUrl, {}, session as any);
       console.log("✅ Duplicate result:", result);
 
-      setSuccessMessage(
-        "✨ A copy of your design has been created successfully!"
-      );
+      showToast({
+        type: 'success',
+        title: 'Design duplicated successfully!',
+        message: 'A copy of your design has been created successfully!',
+        duration: 1000
+      });
 
       // Refresh the designs list
       fetchSavedDesigns();
@@ -783,15 +802,21 @@ function MyCardsContent() {
       if (!response.ok) {
         // Show specific error message from API
         const errorMessage = result.error || "Failed to send e-card";
-        setSuccessMessage(`❌ ${errorMessage}`);
-        setTimeout(() => setSuccessMessage(""), 5000);
+        showToast({
+          type: 'error',
+          title: 'Failed to send e-card',
+          message: errorMessage,
+          duration: 1000
+        });
         throw new Error(errorMessage);
       }
 
-      setSuccessMessage(
-        `✅ E-Card "${cardToSend.name}" has been sent to ${email}!`
-      );
-      setTimeout(() => setSuccessMessage(""), 3000);
+      showToast({
+        type: 'success',
+        title: 'E-Card sent successfully!',
+        message: `E-Card "${cardToSend.name}" has been sent to ${email}`,
+        duration: 1000
+      });
 
       // Close modal and reset state
       setECardModalOpen(false);
@@ -817,49 +842,7 @@ function MyCardsContent() {
       <div className="px-4 pt-6 sm:px-6 lg:px-8" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Success Message */}
-        {successMessage && (
-          <div className="mb-6 rounded-md bg-green-50 p-4 border border-green-200">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg
-                  className="h-5 w-5 text-green-400"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-green-800">
-                  {successMessage}
-                </p>
-              </div>
-              <div className="ml-auto pl-3">
-                <div className="-mx-1.5 -my-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setSuccessMessage(null)}
-                    className="inline-flex rounded-md bg-green-50 p-1.5 text-green-500 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2 focus:ring-offset-green-50"
-                  >
-                    <span className="sr-only">Dismiss</span>
-                    <svg
-                      className="h-3 w-3"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         {/* Header */}
         <div className="mb-12">
