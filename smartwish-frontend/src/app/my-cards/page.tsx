@@ -1034,7 +1034,7 @@ function MyCardsContent() {
                                 e.preventDefault();
                                 handlePrint(c);
                               }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50 hidden md:block"
                             >
                               Print
                             </button>
