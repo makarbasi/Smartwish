@@ -74,40 +74,67 @@ export default function PrinterSelectionModal({
       // Create a URL for the PDF blob
       const pdfUrl = URL.createObjectURL(pdfBlob);
       
-      // Open the PDF in a new window for printing
-      const printWindow = window.open(pdfUrl, '_blank');
+      // Create a hidden iframe for printing without opening a new tab
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = pdfUrl;
+      document.body.appendChild(iframe);
       
-      if (printWindow) {
-        printWindow.onload = () => {
-          // Trigger print dialog
-          printWindow.print();
+      iframe.onload = () => {
+        try {
+          // Trigger print dialog from the iframe
+          iframe.contentWindow?.print();
           
-          // Clean up the URL after a longer delay to allow user control
-          setTimeout(() => {
-            URL.revokeObjectURL(pdfUrl);
-            // Don't auto-close the window - let user control it
-          }, 5000);
-        };
-        
-        // Complete the print process
-        setTimeout(() => {
+          // Complete the print process immediately - close modal but keep print dialog open
           setLoading(false);
           onPrint(selectedPrinter);
           onClose();
-        }, 1000);
-      } else {
+          
+          // Clean up resources after a delay (but don't remove iframe immediately to keep print dialog open)
+          setTimeout(() => {
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
+            URL.revokeObjectURL(pdfUrl);
+          }, 30000); // 30 seconds delay to allow printing
+        } catch (printErr) {
+          console.warn('Iframe print failed, falling back to download:', printErr);
+          // Fallback: create download link
+          const downloadLink = document.createElement('a');
+          downloadLink.href = pdfUrl;
+          downloadLink.download = `${cardName}_print.pdf`;
+          downloadLink.click();
+          
+          // Clean up
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(pdfUrl);
+          
+          setLoading(false);
+          alert('Print dialog was not available. PDF has been downloaded instead.');
+          onPrint(selectedPrinter);
+          onClose();
+        }
+      };
+      
+      // Handle iframe load error
+      iframe.onerror = () => {
+        console.error('Failed to load PDF in iframe');
         // Fallback: create download link
         const downloadLink = document.createElement('a');
         downloadLink.href = pdfUrl;
         downloadLink.download = `${cardName}_print.pdf`;
         downloadLink.click();
+        
+        // Clean up
+        document.body.removeChild(iframe);
         URL.revokeObjectURL(pdfUrl);
         
         setLoading(false);
-        alert('Print dialog was blocked. PDF has been downloaded instead.');
+        alert('Failed to load PDF for printing. PDF has been downloaded instead.');
         onPrint(selectedPrinter);
         onClose();
-      }
+      };
+      
     } catch (err) {
       setLoading(false);
       setError('Failed to print. Please try again.');

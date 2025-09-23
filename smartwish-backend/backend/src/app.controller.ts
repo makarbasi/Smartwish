@@ -895,23 +895,41 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         fs.mkdirSync(outputDir, { recursive: true });
       }
 
-      // Download images from URLs
-      const downloadImage = async (url: string, filename: string) => {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`Failed to download image from ${url}`);
+      // Process images (handle both base64 data URLs and HTTP URLs)
+      const processImage = async (imageData: string, filename: string) => {
+        if (imageData.startsWith('data:')) {
+          // Handle base64 data URL
+          const [mimeInfo, base64Data] = imageData.split(',');
+          const buffer = Buffer.from(base64Data, 'base64');
+          const tempPath = path.join(outputDir, filename);
+          fs.writeFileSync(tempPath, buffer);
+          console.log(`[generate-print-jpegs] Processed base64 image: ${filename}`);
+          return tempPath;
+        } else {
+          // Handle HTTP URL
+          try {
+            const response = await fetch(imageData);
+            if (!response.ok) {
+              throw new Error(`Failed to download image from ${imageData}`);
+            }
+            const buffer = await response.buffer();
+            const tempPath = path.join(outputDir, filename);
+            fs.writeFileSync(tempPath, buffer);
+            console.log(`[generate-print-jpegs] Downloaded HTTP image: ${filename}`);
+            return tempPath;
+          } catch (error) {
+            console.warn(`[generate-print-jpegs] Failed to download image from ${imageData}:`, error.message);
+            // Return a placeholder or throw error based on requirements
+            throw new Error(`Failed to process image: ${error.message}`);
+          }
         }
-        const buffer = await response.buffer();
-        const tempPath = path.join(outputDir, filename);
-        fs.writeFileSync(tempPath, buffer);
-        return tempPath;
       };
 
-      // Download all images
-      const tempImage1 = await downloadImage(image1, `temp_${cardId}_1.jpg`);
-      const tempImage2 = await downloadImage(image2, `temp_${cardId}_2.jpg`);
-      const tempImage3 = await downloadImage(image3, `temp_${cardId}_3.jpg`);
-      const tempImage4 = await downloadImage(image4, `temp_${cardId}_4.jpg`);
+      // Process all images
+      const tempImage1 = await processImage(image1, `temp_${cardId}_1.jpg`);
+      const tempImage2 = await processImage(image2, `temp_${cardId}_2.jpg`);
+      const tempImage3 = await processImage(image3, `temp_${cardId}_3.jpg`);
+      const tempImage4 = await processImage(image4, `temp_${cardId}_4.jpg`);
 
       // Create composite images
       const jpeg1Path = path.join(outputDir, `${cardId}_print_1.jpg`);
@@ -972,14 +990,15 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
             qrBuffer = Buffer.from(base64Data, 'base64');
             console.log('[generate-print-jpegs] QR code processed from base64, MIME type:', qrMimeType, 'buffer size:', qrBuffer.length);
           } else {
-            // Handle HTTP URL using downloadImage function with fallback
+            // Handle HTTP URL with fallback
             try {
-              const qrImagePath = await downloadImage(giftCardData.qrCode, `qr_${Date.now()}.png`);
-              qrBuffer = fs.readFileSync(qrImagePath);
+              const response = await fetch(giftCardData.qrCode);
+              if (!response.ok) {
+                throw new Error(`Failed to download QR code from ${giftCardData.qrCode}`);
+              }
+              qrBuffer = await response.buffer();
               qrMimeType = 'image/png';
               console.log('[generate-print-jpegs] QR code downloaded from URL, buffer size:', qrBuffer.length);
-              // Clean up temp file
-              fs.unlinkSync(qrImagePath);
             } catch (qrError) {
               console.warn('[generate-print-jpegs] Failed to download QR code, using fallback:', qrError.message);
               // Create a simple fallback QR code placeholder
@@ -1003,15 +1022,16 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
                   storeLogo = giftCardData.storeLogo;
                   console.log('[generate-print-jpegs] Store logo is already base64 encoded');
                 } else {
-                  // Handle HTTP URL using downloadImage function with fallback
+                  // Handle HTTP URL with fallback
                   try {
-                    const logoImagePath = await downloadImage(giftCardData.storeLogo, `logo_${Date.now()}.png`);
-                    const logoBuffer = fs.readFileSync(logoImagePath);
+                    const response = await fetch(giftCardData.storeLogo);
+                    if (!response.ok) {
+                      throw new Error(`Failed to download store logo from ${giftCardData.storeLogo}`);
+                    }
+                    const logoBuffer = await response.buffer();
                     const logoBase64 = logoBuffer.toString('base64');
                     storeLogo = `data:image/png;base64,${logoBase64}`;
                     console.log('[generate-print-jpegs] Store logo downloaded and encoded');
-                    // Clean up temp file
-                    fs.unlinkSync(logoImagePath);
                   } catch (logoError) {
                     console.warn('[generate-print-jpegs] Failed to download store logo, skipping:', logoError.message);
                   }
