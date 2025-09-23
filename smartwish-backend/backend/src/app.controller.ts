@@ -972,14 +972,23 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
             qrBuffer = Buffer.from(base64Data, 'base64');
             console.log('[generate-print-jpegs] QR code processed from base64, MIME type:', qrMimeType, 'buffer size:', qrBuffer.length);
           } else {
-            // Handle HTTP URL
-            const qrResponse = await fetch(giftCardData.qrCode);
-            if (qrResponse.ok) {
-              qrBuffer = await qrResponse.buffer();
-              qrMimeType = giftCardData.qrCode.includes('.png') ? 'image/png' : 'image/jpeg';
+            // Handle HTTP URL using downloadImage function with fallback
+            try {
+              const qrImagePath = await downloadImage(giftCardData.qrCode, `qr_${Date.now()}.png`);
+              qrBuffer = fs.readFileSync(qrImagePath);
+              qrMimeType = 'image/png';
               console.log('[generate-print-jpegs] QR code downloaded from URL, buffer size:', qrBuffer.length);
-            } else {
-              throw new Error(`Failed to download QR code: ${qrResponse.status}`);
+              // Clean up temp file
+              fs.unlinkSync(qrImagePath);
+            } catch (qrError) {
+              console.warn('[generate-print-jpegs] Failed to download QR code, using fallback:', qrError.message);
+              // Create a simple fallback QR code placeholder
+              const fallbackQrSvg = `<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+                <rect width="100" height="100" fill="#f0f0f0" stroke="#ccc" stroke-width="2"/>
+                <text x="50" y="50" text-anchor="middle" dy="0.3em" font-family="Arial" font-size="12" fill="#666">QR Code</text>
+              </svg>`;
+              qrBuffer = Buffer.from(fallbackQrSvg);
+              qrMimeType = 'image/svg+xml';
             }
           }
           
@@ -994,14 +1003,17 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
                   storeLogo = giftCardData.storeLogo;
                   console.log('[generate-print-jpegs] Store logo is already base64 encoded');
                 } else {
-                  // Handle HTTP URL
-                  const logoResponse = await fetch(giftCardData.storeLogo);
-                  if (logoResponse.ok) {
-                    const logoBuffer = await logoResponse.buffer();
+                  // Handle HTTP URL using downloadImage function with fallback
+                  try {
+                    const logoImagePath = await downloadImage(giftCardData.storeLogo, `logo_${Date.now()}.png`);
+                    const logoBuffer = fs.readFileSync(logoImagePath);
                     const logoBase64 = logoBuffer.toString('base64');
-                    const logoMimeType = giftCardData.storeLogo.includes('.png') ? 'image/png' : 'image/jpeg';
-                    storeLogo = `data:${logoMimeType};base64,${logoBase64}`;
+                    storeLogo = `data:image/png;base64,${logoBase64}`;
                     console.log('[generate-print-jpegs] Store logo downloaded and encoded');
+                    // Clean up temp file
+                    fs.unlinkSync(logoImagePath);
+                  } catch (logoError) {
+                    console.warn('[generate-print-jpegs] Failed to download store logo, skipping:', logoError.message);
                   }
                 }
               } catch (logoError) {
@@ -1012,50 +1024,31 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
             // Convert QR code to base64 for SVG embedding
             const qrBase64 = qrBuffer.toString('base64');
             
-            // Create comprehensive gift card overlay SVG
-            const giftCardOverlaySvg = `
-              <svg width="500" height="300" xmlns="http://www.w3.org/2000/svg">
-                <!-- Background with rounded corners and shadow -->
-                <defs>
-                  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="rgba(0,0,0,0.15)"/>
-                  </filter>
-                </defs>
-                
-                <rect x="10" y="10" width="480" height="280" rx="20" ry="20" 
-                      fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.1)" 
-                      stroke-width="1" filter="url(#shadow)"/>
-                
-                <!-- QR Code -->
-                <image x="30" y="30" width="120" height="120" 
-                       href="data:${qrMimeType};base64,${qrBase64}"/>
-                
-                <!-- Store Logo (if available) -->
-                ${storeLogo ? `<image x="170" y="40" width="60" height="60" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>` : ''}
-                
-                <!-- Store Name -->
-                <text x="${storeLogo ? '250' : '170'}" y="60" font-family="Arial, sans-serif" 
-                      font-size="24" font-weight="bold" fill="#1a202c">
-                  ${giftCardData.storeName || 'Gift Card'}
-                </text>
-                
-                <!-- Amount -->
-                <text x="${storeLogo ? '250' : '170'}" y="90" font-family="Arial, sans-serif" 
-                      font-size="20" font-weight="600" fill="#2d3748">
-                  $${giftCardData.amount || '0'}
-                </text>
-                
-                <!-- Instructions -->
-                <text x="30" y="180" font-family="Arial, sans-serif" 
-                      font-size="14" fill="#4a5568">
-                  Scan QR code to redeem this gift card
-                </text>
-                
-                <!-- Decorative border -->
-                <rect x="10" y="10" width="480" height="280" rx="20" ry="20" 
-                      fill="none" stroke="rgba(99,102,241,0.3)" stroke-width="2"/>
-              </svg>
-            `;
+            // Create comprehensive gift card overlay SVG with proper encoding
+            const entities: { [key: string]: string } = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' };
+            
+            const storeName = (giftCardData.storeName || 'Gift Card').replace(/[<>&"']/g, (match: string) => {
+              return entities[match];
+            });
+            
+            const amount = (giftCardData.amount || '0').toString().replace(/[<>&"']/g, (match: string) => {
+              return entities[match];
+            });
+            
+            const giftCardOverlaySvg = `<svg width="500" height="300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="rgba(0,0,0,0.15)"/>
+    </filter>
+  </defs>
+  <rect x="10" y="10" width="480" height="280" rx="20" ry="20" fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.1)" stroke-width="1" filter="url(#shadow)"/>
+  <image x="30" y="30" width="120" height="120" href="data:${qrMimeType};base64,${qrBase64}"/>
+  ${storeLogo ? `<image x="170" y="40" width="60" height="60" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>` : ''}
+  <text x="${storeLogo ? '250' : '170'}" y="60" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1a202c">${storeName}</text>
+  <text x="${storeLogo ? '250' : '170'}" y="90" font-family="Arial, sans-serif" font-size="20" font-weight="600" fill="#2d3748">$${amount}</text>
+  <text x="30" y="180" font-family="Arial, sans-serif" font-size="14" fill="#4a5568">Scan QR code to redeem this gift card</text>
+  <rect x="10" y="10" width="480" height="280" rx="20" ry="20" fill="none" stroke="rgba(99,102,241,0.3)" stroke-width="2"/>
+</svg>`;
             
             const giftCardOverlayBuffer = Buffer.from(giftCardOverlaySvg);
             
@@ -1083,14 +1076,10 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
       
       // Add timestamp overlay to the print
       try {
-        const timestampSvg = `
-          <svg width="400" height="30" xmlns="http://www.w3.org/2000/svg">
-            <rect width="400" height="30" fill="rgba(255,255,255,0.8)" rx="5"/>
-            <text x="10" y="20" font-family="Arial, sans-serif" font-size="14" fill="#333">
-              Printed: ${printTimestamp}
-            </text>
-          </svg>
-        `;
+        const timestampSvg = `<svg width="400" height="30" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="30" fill="rgba(255,255,255,0.8)" rx="5"/>
+  <text x="10" y="20" font-family="Arial, sans-serif" font-size="14" fill="#333">Printed: ${printTimestamp}</text>
+</svg>`;
         
         const timestampBuffer = Buffer.from(timestampSvg);
         
