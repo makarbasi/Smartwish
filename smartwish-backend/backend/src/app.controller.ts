@@ -699,7 +699,7 @@ export class AppController {
 
       // Convert templates to the format expected by the search algorithm
       const templatesData: Record<string, any> = {};
-      
+
       // Fetch keywords for each template and build the search data
       for (const template of templates) {
         const keywords = await this.templatesService.getTemplateKeywords(template.id);
@@ -801,14 +801,14 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         // Clean the response text to extract just the JSON array
         // Handle both plain JSON and markdown-wrapped JSON
         let jsonText = responseText.trim();
-        
+
         // Remove markdown code block formatting if present
         if (jsonText.includes('```json')) {
           jsonText = jsonText.replace(/```json\s*/, '').replace(/\s*```/, '');
         } else if (jsonText.includes('```')) {
           jsonText = jsonText.replace(/```\s*/, '').replace(/\s*```/, '');
         }
-        
+
         // Extract JSON array
         const jsonMatch = jsonText.match(/\[.*\]/s);
         if (jsonMatch) {
@@ -876,7 +876,7 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
       }
 
       console.log('[generate-print-jpegs] Processing card:', cardId);
-      
+
       // Get current timestamp for print generation
       const printTimestamp = new Date().toLocaleString('en-US', {
         year: 'numeric',
@@ -945,15 +945,15 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         },
       })
         .composite([
-          { 
-            input: await sharp(tempImage4).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
-            top: 0, 
-            left: 0 
+          {
+            input: await sharp(tempImage4).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
+            top: 0,
+            left: 0
           },
-          { 
-            input: await sharp(tempImage1).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
-            top: 0, 
-            left: 1650 
+          {
+            input: await sharp(tempImage1).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
+            top: 0,
+            left: 1650
           },
         ])
         .jpeg({ quality: 90 })
@@ -961,15 +961,15 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
 
       // Second JPEG: Image 3 and Image 2 side by side
       const compositeElements = [
-        { 
-          input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
-          top: 0, 
-          left: 0 
+        {
+          input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
+          top: 0,
+          left: 0
         },
-        { 
-          input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(), 
-          top: 0, 
-          left: 1650 
+        {
+          input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
+          top: 0,
+          left: 1650
         },
       ];
 
@@ -978,11 +978,11 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         try {
           console.log('[generate-print-jpegs] Adding gift card overlay to print:', giftCardData);
           console.log('[generate-print-jpegs] QR code URL:', giftCardData.qrCode);
-          
+
           // Handle QR code image (base64 data URL or HTTP URL)
           let qrBuffer;
           let qrMimeType = 'image/png'; // default
-          
+
           if (giftCardData.qrCode.startsWith('data:')) {
             // Handle base64 data URL
             const [mimeInfo, base64Data] = giftCardData.qrCode.split(',');
@@ -1010,9 +1010,9 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
               qrMimeType = 'image/svg+xml';
             }
           }
-          
+
           if (qrBuffer) {
-            
+
             // Create gift card overlay SVG with QR code, logo, and info
             let storeLogo = '';
             if (giftCardData.storeLogo) {
@@ -1040,21 +1040,21 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
                 console.warn('[generate-print-jpegs] Failed to process store logo:', logoError);
               }
             }
-            
+
             // Convert QR code to base64 for SVG embedding
             const qrBase64 = qrBuffer.toString('base64');
-            
+
             // Create comprehensive gift card overlay SVG with proper encoding
             const entities: { [key: string]: string } = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' };
-            
+
             const storeName = (giftCardData.storeName || 'Gift Card').replace(/[<>&"']/g, (match: string) => {
               return entities[match];
             });
-            
+
             const amount = (giftCardData.amount || '0').toString().replace(/[<>&"']/g, (match: string) => {
               return entities[match];
             });
-            
+
             const giftCardOverlaySvg = `<svg width="500" height="300" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
@@ -1069,19 +1069,19 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
   <text x="30" y="180" font-family="Arial, sans-serif" font-size="14" fill="#4a5568">Scan QR code to redeem this gift card</text>
   <rect x="10" y="10" width="480" height="280" rx="20" ry="20" fill="none" stroke="rgba(99,102,241,0.3)" stroke-width="2"/>
 </svg>`;
-            
+
             const giftCardOverlayBuffer = Buffer.from(giftCardOverlaySvg);
-            
+
             // Position the gift card overlay on the bottom right of the right page (image2)
             const overlayTop = 1800; // Higher up from bottom for better visibility
             const overlayLeft = 2200; // Right side of right panel
-            
+
             compositeElements.push({
               input: giftCardOverlayBuffer,
               top: overlayTop,
               left: overlayLeft
             });
-            
+
             console.log(`[generate-print-jpegs] Gift card overlay positioned at top: ${overlayTop}, left: ${overlayLeft}`);
             console.log('[generate-print-jpegs] Gift card overlay with QR code and logo added successfully to print JPEG');
           }
@@ -1093,23 +1093,23 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         console.log('[generate-print-jpegs] No gift card data provided or QR code missing');
         console.log('[generate-print-jpegs] Gift card data received:', giftCardData);
       }
-      
+
       // Add timestamp overlay to the print
       try {
         const timestampSvg = `<svg width="400" height="30" xmlns="http://www.w3.org/2000/svg">
   <rect width="400" height="30" fill="rgba(255,255,255,0.8)" rx="5"/>
   <text x="10" y="20" font-family="Arial, sans-serif" font-size="14" fill="#333">Printed: ${printTimestamp}</text>
 </svg>`;
-        
+
         const timestampBuffer = Buffer.from(timestampSvg);
-        
+
         // Add timestamp to bottom right of the right page (image2)
         compositeElements.push({
           input: timestampBuffer,
           top: 2500, // Bottom of the page
           left: 2850  // Right side of right panel
         });
-        
+
         console.log('[generate-print-jpegs] Timestamp added to print JPEG');
       } catch (timestampError) {
         console.warn('[generate-print-jpegs] Failed to add timestamp:', timestampError);
