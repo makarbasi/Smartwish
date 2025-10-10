@@ -300,7 +300,9 @@ export default function CustomizeCardPage() {
       // First check localStorage for immediate availability
       const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
       if (storedGiftData) {
-        setGiftCardData(JSON.parse(storedGiftData));
+        const parsedData = JSON.parse(storedGiftData);
+        console.log('🎁 Loading gift card from localStorage:', parsedData);
+        setGiftCardData(parsedData);
       }
 
       // Also check saved design metadata for persistent storage
@@ -310,6 +312,7 @@ export default function CustomizeCardPage() {
             ? JSON.parse(savedDesign.metadata)
             : savedDesign.metadata;
           if (metadata.giftCard) {
+            console.log('🎁 Loading gift card from metadata:', metadata.giftCard);
             setGiftCardData(metadata.giftCard);
             // Update localStorage to sync with database
             localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(metadata.giftCard));
@@ -320,6 +323,19 @@ export default function CustomizeCardPage() {
       }
     }
   }, [cardId, savedDesign]);
+
+  // Check for showGift parameter and reload gift card data
+  useEffect(() => {
+    if (showGift && cardId) {
+      console.log('🎁 showGift parameter detected, reloading gift card data');
+      const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+      if (storedGiftData) {
+        const parsedData = JSON.parse(storedGiftData);
+        console.log('🎁 Reloaded gift card:', parsedData);
+        setGiftCardData(parsedData);
+      }
+    }
+  }, [showGift, cardId]);
 
   // Auto-save gift card data to database metadata when it changes
   useEffect(() => {
@@ -337,8 +353,8 @@ export default function CustomizeCardPage() {
           // Update with gift card data
           metadata.giftCard = giftCardData;
 
-          // Save to database
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/saved-designs/${cardId}`, {
+          // Use Next.js API route for proper authentication
+          const response = await fetch(`/api/saved-designs/${cardId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -352,14 +368,17 @@ export default function CustomizeCardPage() {
           if (response.ok) {
             console.log('✅ Gift card data saved to metadata');
           } else {
-            console.error('❌ Failed to save gift card data to metadata');
+            const errorData = await response.json();
+            console.error('❌ Failed to save gift card data to metadata:', errorData);
           }
         } catch (error) {
           console.error('Error saving gift card metadata:', error);
         }
       };
 
-      saveGiftCardMetadata();
+      // Debounce to avoid too many rapid saves
+      const timeoutId = setTimeout(saveGiftCardMetadata, 1000);
+      return () => clearTimeout(timeoutId);
     }
   }, [giftCardData, cardId, session?.user?.id, savedDesign]);
 
@@ -1147,8 +1166,8 @@ export default function CustomizeCardPage() {
                 {saveMessage && (
                   <div
                     className={`px-2 py-1 rounded-md text-xs font-medium ${saveMessage.includes("Failed")
-                        ? "bg-red-50 text-red-600 border border-red-200"
-                        : "bg-green-50 text-green-600 border border-green-200"
+                      ? "bg-red-50 text-red-600 border border-red-200"
+                      : "bg-green-50 text-green-600 border border-green-200"
                       }`}
                   >
                     {saveMessage.includes("Failed") ? "⚠" : "✓"}
@@ -1382,8 +1401,8 @@ export default function CustomizeCardPage() {
                 {saveMessage && (
                   <div
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium ${saveMessage.includes("Failed")
-                        ? "bg-red-50 text-red-700 border border-red-200"
-                        : "bg-green-50 text-green-700 border border-green-200"
+                      ? "bg-red-50 text-red-700 border border-red-200"
+                      : "bg-green-50 text-green-700 border border-green-200"
                       }`}
                   >
                     {saveMessage.includes("Failed") ? "⚠ " : "✓ "}{saveMessage}
@@ -1404,8 +1423,8 @@ export default function CustomizeCardPage() {
             onClick={handleSave}
             disabled={isSaving || !hasUnsavedChanges}
             className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${hasUnsavedChanges
-                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md"
-                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+              ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md"
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             title={hasUnsavedChanges ? "Save Changes" : "No changes to save"}
           >
