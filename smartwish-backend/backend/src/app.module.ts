@@ -44,6 +44,7 @@ import { Category } from './templates/category.entity';
 import { SupabaseTemplatesEnhancedService } from './templates/supabase-templates-enhanced.service';
 import { TemplatesEnhancedController } from './templates/templates-enhanced.controller';
 import { PartnersModule } from './partners/partners.module';
+import { GeminiEmbeddingService } from './services/gemini-embedding.service';
 
 @Module({
   imports: [
@@ -99,7 +100,7 @@ import { PartnersModule } from './partners/partners.module';
     PartnersModule,
   ],
   controllers: [AppController, SharingController, TemplatesEnhancedController],
-  providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService],
+  providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService, GeminiEmbeddingService],
   exports: [LoggerService],
 })
 export class AppModule {

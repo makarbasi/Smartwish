@@ -26,6 +26,8 @@ import { SharingService } from './sharing/sharing.service';
 import { SupabaseStorageService } from './saved-designs/supabase-storage.service';
 import { SavedDesignsService } from './saved-designs/saved-designs.service';
 import { SupabaseTemplatesEnhancedService } from './templates/supabase-templates-enhanced.service';
+import { GeminiEmbeddingService } from './services/gemini-embedding.service';
+import { SupabaseService } from './supabase/supabase.service';
 
 const downloadsDir = path.join(__dirname, '../../downloads');
 if (!fs.existsSync(downloadsDir)) {
@@ -69,6 +71,8 @@ export class AppController {
     private readonly sharingService: SharingService,
     private readonly storageService: SupabaseStorageService,
     private readonly templatesService: SupabaseTemplatesEnhancedService,
+    private readonly embeddingService: GeminiEmbeddingService,
+    private readonly supabaseService: SupabaseService,
   ) {
     console.log('AppController instantiated');
   }
@@ -683,13 +687,36 @@ export class AppController {
   @Post('search-templates')
   async searchTemplates(@Req() req: Request, @Res() res: Response) {
     try {
-      const { query } = req.body;
+      const { query, useEmbeddings = true } = req.body;
 
       if (!query) {
         return res.status(400).json({ message: 'Search query is required' });
       }
 
       console.log('[search-templates] Received query:', query);
+      console.log('[search-templates] Use embeddings:', useEmbeddings);
+
+      // Try embedding-based search first if enabled
+      if (useEmbeddings) {
+        try {
+          const embeddingResults = await this.searchWithEmbeddings(query);
+          if (embeddingResults && embeddingResults.length > 0) {
+            console.log('[search-templates] Using embedding-based search');
+            return res.json({
+              query,
+              results: embeddingResults,
+              totalFound: embeddingResults.length,
+              method: 'embeddings',
+            });
+          }
+          console.log('[search-templates] No embedding results, falling back to Gemini text comparison');
+        } catch (embeddingError) {
+          console.error('[search-templates] Embedding search failed, falling back:', embeddingError.message);
+        }
+      }
+
+      // Fallback to original Gemini text comparison method
+      console.log('[search-templates] Using Gemini text comparison fallback');
 
       // Fetch templates from database
       const templates = await this.templatesService.getAllTemplates();
@@ -858,7 +885,7 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         query,
         results,
         totalFound: results.length,
-        usedGemini: true,
+        method: 'gemini-text-comparison',
       });
     } catch (error) {
       console.error('[search-templates] Error:', error);
@@ -866,6 +893,271 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         .status(500)
         .json({ message: 'Internal server error', error: error.message });
     }
+  }
+
+  /**
+   * Hybrid search: Use embeddings for speed + Gemini for intelligence
+   * Stage 1: Embeddings narrow down to top 30 candidates (fast)
+   * Stage 2: Gemini understands intent and filters/ranks (intelligent)
+   */
+  private async searchWithEmbeddings(query: string): Promise<any[]> {
+    const startTime = Date.now();
+
+    console.log('[Hybrid Search] Starting two-stage search...');
+    console.log(`[Hybrid Search] User query: "${query}"`);
+
+    // STAGE 1: Use embeddings to get candidate templates (SPEED)
+    console.log('\n[Stage 1: Embeddings] Generating query embedding...');
+    const queryEmbedding = await this.embeddingService.generateEmbedding(query);
+    const embeddingTime = Date.now() - startTime;
+    console.log(`[Stage 1: Embeddings] Query embedding generated in ${embeddingTime}ms`);
+
+    // Fetch all templates with embeddings
+    const supabase = this.supabaseService.getClient();
+    const { data: templates, error } = await supabase
+      .from('sw_templates')
+      .select(`
+        id,
+        slug,
+        title,
+        description,
+        category_id,
+        author_id,
+        price,
+        cover_image,
+        image_1,
+        image_2,
+        image_3,
+        image_4,
+        status,
+        popularity,
+        num_downloads,
+        embedding_vector,
+        semantic_description,
+        search_keywords,
+        tags,
+        sw_categories (
+          name,
+          display_name
+        )
+      `)
+      .eq('status', 'published')
+      .not('embedding_vector', 'is', null);
+
+    if (error) {
+      throw new Error(`Failed to fetch templates: ${error.message}`);
+    }
+
+    if (!templates || templates.length === 0) {
+      console.log('[Stage 1: Embeddings] No templates with embeddings found');
+      return [];
+    }
+
+    console.log(`[Stage 1: Embeddings] Found ${templates.length} templates with embeddings`);
+
+    // Calculate similarity scores
+    const templatesWithScores = templates.map((template) => {
+      try {
+        const templateEmbedding = typeof template.embedding_vector === 'string'
+          ? JSON.parse(template.embedding_vector)
+          : template.embedding_vector;
+
+        if (!Array.isArray(templateEmbedding)) {
+          return null;
+        }
+
+        const similarity = this.embeddingService.cosineSimilarity(
+          queryEmbedding,
+          templateEmbedding,
+        );
+
+        return {
+          ...template,
+          similarity_score: similarity,
+        };
+      } catch (err) {
+        return null;
+      }
+    }).filter(t => t !== null);
+
+    // Get top 30 candidates with lower threshold (cast wider net)
+    const CANDIDATE_THRESHOLD = 0.25;
+    const MAX_CANDIDATES = 30;
+    const candidates = templatesWithScores
+      .filter((t) => t.similarity_score >= CANDIDATE_THRESHOLD)
+      .sort((a, b) => b.similarity_score - a.similarity_score)
+      .slice(0, MAX_CANDIDATES);
+
+    const stage1Time = Date.now() - startTime;
+    console.log(`[Stage 1: Embeddings] Found ${candidates.length} candidates (threshold: ${CANDIDATE_THRESHOLD})`);
+    console.log(`[Stage 1: Embeddings] Stage 1 completed in ${stage1Time}ms`);
+
+    if (candidates.length === 0) {
+      console.log('[Hybrid Search] No candidates found, returning empty results');
+      return [];
+    }
+
+    // STAGE 2: Use Gemini to intelligently filter and rank candidates (INTELLIGENCE)
+    console.log('\n[Stage 2: Gemini AI] Analyzing candidates with AI...');
+
+    try {
+      const filteredResults = await this.filterCandidatesWithGemini(query, candidates);
+
+      const totalTime = Date.now() - startTime;
+      console.log(`\n[Hybrid Search] Total search time: ${totalTime}ms`);
+      console.log(`[Hybrid Search] Final results: ${filteredResults.length} templates`);
+
+      if (filteredResults.length > 0) {
+        console.log('[Hybrid Search] Top 3 results:');
+        filteredResults.slice(0, 3).forEach((r, i) => {
+          console.log(`  ${i + 1}. ${r.title} (AI relevance: ${r.ai_relevance_score})`);
+        });
+      }
+
+      return filteredResults;
+    } catch (geminiError) {
+      console.error('[Stage 2: Gemini AI] Failed, falling back to embedding results:', geminiError.message);
+      // Fallback: return top candidates if Gemini fails
+      return candidates.slice(0, 10);
+    }
+  }
+
+  /**
+   * Use Gemini AI to deeply understand user intent and filter/rank candidates
+   * Handles complex queries with multiple details
+   */
+  private async filterCandidatesWithGemini(query: string, candidates: any[]): Promise<any[]> {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+
+    // Prepare candidate descriptions for Gemini
+    const candidateDescriptions = candidates.map((c, index) => {
+      const category = Array.isArray(c.sw_categories)
+        ? c.sw_categories[0]?.display_name || c.sw_categories[0]?.name
+        : c.sw_categories?.display_name || c.sw_categories?.name;
+
+      const keywords = Array.isArray(c.search_keywords)
+        ? c.search_keywords.join(', ')
+        : '';
+
+      return `${index + 1}. ID: ${c.id}
+   Title: ${c.title}
+   Category: ${category || 'N/A'}
+   Description: ${c.description || 'No description'}
+   Keywords: ${keywords || 'None'}
+   Initial Score: ${c.similarity_score.toFixed(3)}`;
+    }).join('\n\n');
+
+    const prompt = `You are an expert AI assistant helping users find the perfect greeting card template. Your job is to deeply understand what the user wants and find the most relevant templates.
+
+USER'S REQUEST:
+"${query}"
+
+CANDIDATE TEMPLATES (${candidates.length} options):
+${candidateDescriptions}
+
+INSTRUCTIONS:
+1. Carefully analyze the user's request - understand ALL details they mentioned (age, gender, occasion, style, tone, etc.)
+2. Consider synonyms and related concepts (e.g., "happy" = "joyful", "girl" = "daughter", "fun" = "playful")
+3. Evaluate each candidate template to see if it truly matches the user's intent
+4. Assign a relevance score from 0-10 for each template (10 = perfect match, 0 = not relevant)
+5. Only include templates with score >= 6
+6. Rank them by relevance (highest first)
+
+Return ONLY a JSON array with this exact format:
+[
+  {"id": "template-id", "relevance": 9, "reason": "Brief explanation why it matches"},
+  {"id": "template-id", "relevance": 8, "reason": "Brief explanation"}
+]
+
+If no templates are relevant (all score < 6), return an empty array: []`;
+
+    console.log(`[Gemini AI] Sending ${candidates.length} candidates for analysis...`);
+
+    const payload = {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: prompt }],
+        },
+      ],
+      generation_config: {
+        temperature: 0.2, // Lower temperature for more consistent results
+        top_p: 0.9,
+        top_k: 40,
+        max_output_tokens: 1024,
+      },
+    };
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API error: ${errorText}`);
+    }
+
+    const data = await response.json();
+    const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!responseText) {
+      throw new Error('No response from Gemini');
+    }
+
+    console.log('[Gemini AI] Received response, parsing...');
+
+    // Parse Gemini's response
+    let geminiResults: Array<{ id: string; relevance: number; reason: string }>;
+    try {
+      let jsonText = responseText.trim();
+
+      // Remove markdown formatting
+      if (jsonText.includes('```json')) {
+        jsonText = jsonText.replace(/```json\s*/, '').replace(/\s*```/, '');
+      } else if (jsonText.includes('```')) {
+        jsonText = jsonText.replace(/```\s*/, '').replace(/\s*```/, '');
+      }
+
+      const jsonMatch = jsonText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        geminiResults = JSON.parse(jsonMatch[0]);
+      } else {
+        geminiResults = [];
+      }
+
+      console.log(`[Gemini AI] Parsed ${geminiResults.length} relevant templates`);
+    } catch (parseError) {
+      console.error('[Gemini AI] Failed to parse response:', parseError);
+      throw new Error('Failed to parse Gemini response');
+    }
+
+    // Map Gemini results back to full template objects
+    const results = geminiResults
+      .map((gr) => {
+        const template = candidates.find((c) => c.id === gr.id);
+        if (!template) return null;
+
+        return {
+          ...template,
+          ai_relevance_score: gr.relevance,
+          ai_match_reason: gr.reason,
+          // Keep original embedding score for reference
+          embedding_score: template.similarity_score,
+        };
+      })
+      .filter((r) => r !== null)
+      .sort((a, b) => b.ai_relevance_score - a.ai_relevance_score);
+
+    console.log(`[Gemini AI] Returning ${results.length} filtered and ranked results`);
+
+    return results;
   }
 
   // =============================================================================

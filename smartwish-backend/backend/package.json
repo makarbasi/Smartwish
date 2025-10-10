@@ -23,7 +23,8 @@
     "migrate:templates": "npm run seed:templates",
     "db:setup": "echo 'Run the SQL migration in Supabase SQL editor: backend/migrations/009_templates_categories_complete.sql'",
     "db:seed": "npm run seed:templates",
-    "db:reset": "echo 'Drop and recreate tables in Supabase, then run: npm run db:setup && npm run db:seed'"
+    "db:reset": "echo 'Drop and recreate tables in Supabase, then run: npm run db:setup && npm run db:seed'",
+    "generate-embeddings": "ts-node src/scripts/generate-embeddings.ts"
   },
   "dependencies": {
     "@nestjs/cli": "^11.0.0",
