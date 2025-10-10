@@ -25,7 +25,7 @@ const formatRelativeTime = (dateString: string): string => {
   const now = new Date();
   const diffTime = Math.abs(now.getTime() - date.getTime());
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 0) {
     return "Today";
   } else if (diffDays === 1) {
@@ -91,41 +91,41 @@ type PublishedTemplatesResponse = {
 // Authenticated fetcher using request utils
 const createAuthenticatedFetcher =
   (session: any) =>
-  async (url: string): Promise<SavedDesignsResponse> => {
-    try {
-      console.log("🔍 Fetching data from:", url);
-      console.log("🔐 Session exists:", !!session);
+    async (url: string): Promise<SavedDesignsResponse> => {
+      try {
+        console.log("🔍 Fetching data from:", url);
+        console.log("🔐 Session exists:", !!session);
 
-      if (!session?.user) {
-        throw new Error("No authenticated session");
+        if (!session?.user) {
+          throw new Error("No authenticated session");
+        }
+
+        const response = await authGet<SavedDesign[]>(url, session);
+        console.log("✅ Data fetched successfully:", response);
+
+        // Check if response.data exists (wrapped response) or if response itself is the array
+        let designs: SavedDesign[] = [];
+        if (Array.isArray(response.data)) {
+          designs = response.data;
+        } else if (Array.isArray(response)) {
+          // Handle case where backend returns array directly
+          designs = response as any;
+        } else {
+          console.log("🔍 Response structure:", response);
+          designs = [];
+        }
+
+        console.log("📋 Processed designs count:", designs.length);
+
+        return {
+          success: true,
+          data: designs,
+        };
+      } catch (error) {
+        console.error("❌ Error fetching data:", error);
+        throw error;
       }
-
-      const response = await authGet<SavedDesign[]>(url, session);
-      console.log("✅ Data fetched successfully:", response);
-
-      // Check if response.data exists (wrapped response) or if response itself is the array
-      let designs: SavedDesign[] = [];
-      if (Array.isArray(response.data)) {
-        designs = response.data;
-      } else if (Array.isArray(response)) {
-        // Handle case where backend returns array directly
-        designs = response as any;
-      } else {
-        console.log("🔍 Response structure:", response);
-        designs = [];
-      }
-
-      console.log("📋 Processed designs count:", designs.length);
-
-      return {
-        success: true,
-        data: designs,
-      };
-    } catch (error) {
-      console.error("❌ Error fetching data:", error);
-      throw error;
-    }
-  };
+    };
 
 // Transform saved design to MyCard format
 const transformSavedDesign = (design: SavedDesign): MyCard => {
@@ -219,11 +219,11 @@ function MyCardsContent() {
   } | null>(null);
   const [sendingECard, setSendingECard] = useState(false);
   const [giftCardData, setGiftCardData] = useState<any>(null);
-  
+
   // Check for gift card integration
   const cardId = searchParams.get('cardId');
   const showGift = searchParams.get('showGift') === 'true';
-  
+
   // Load gift card data if needed
   useEffect(() => {
     if (showGift && cardId) {
@@ -235,7 +235,7 @@ function MyCardsContent() {
       }
     }
   }, [showGift, cardId]);
-  
+
   // Printer selection modal state
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -363,10 +363,10 @@ function MyCardsContent() {
       .find(item => item.id === a.id);
     const bDesign = [...allDesigns, ...(templatesResponse?.data || [])]
       .find(item => item.id === b.id);
-    
+
     const aTime = aDesign ? new Date(aDesign.updatedAt || aDesign.updated_at).getTime() : 0;
     const bTime = bDesign ? new Date(bDesign.updatedAt || bDesign.updated_at).getTime() : 0;
-    
+
     return bTime - aTime;
   });
 
@@ -572,8 +572,8 @@ function MyCardsContent() {
       let giftCardData = null;
       if (savedDesign.metadata) {
         try {
-          const metadata = typeof savedDesign.metadata === 'string' 
-            ? JSON.parse(savedDesign.metadata) 
+          const metadata = typeof savedDesign.metadata === 'string'
+            ? JSON.parse(savedDesign.metadata)
             : savedDesign.metadata;
           console.log('🔍 Print Debug - Parsed metadata:', metadata);
           console.log('🔍 Print Debug - Metadata keys:', Object.keys(metadata || {}));
@@ -585,7 +585,7 @@ function MyCardsContent() {
       } else {
         console.log('🔍 Print Debug - No metadata found in saved design');
       }
-      
+
       // Also check localStorage as fallback
       const localGiftData = localStorage.getItem(`giftCard_${card.id}`);
       if (localGiftData && !giftCardData) {
@@ -623,177 +623,31 @@ function MyCardsContent() {
 
       const result = await response.json();
       console.log('Backend API response:', result);
-      
+
       if (result.success) {
-        console.log('JPEG files generated successfully, creating PDF...');
-        console.log('JPEG file URLs:', {
-          jpeg1: result.files?.jpeg1,
-          jpeg2: result.files?.jpeg2
-        });
-        
-        // Create PDF from the JPEG files
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-        });
+        console.log('PDF generated successfully, downloading...');
+        console.log('PDF URL:', result.pdfUrl);
 
-        // Function to load image and add to PDF with timeout
-        const addImageToPDF = (imageUrl: string, pageNumber: number): Promise<void> => {
-          return new Promise((resolve, reject) => {
-            console.log(`Loading image ${pageNumber}: ${imageUrl}`);
-            
-            // Check if URL is valid
-            if (!imageUrl || typeof imageUrl !== 'string') {
-              const error = `Invalid image URL for page ${pageNumber}: ${imageUrl}`;
-              console.error(error);
-              reject(new Error(error));
-              return;
-            }
-            
-            const img = document.createElement('img');
-            let isResolved = false;
-            
-            // Set up timeout (30 seconds)
-            const timeout = setTimeout(() => {
-              if (!isResolved) {
-                isResolved = true;
-                console.error(`Timeout loading image ${pageNumber}: ${imageUrl}`);
-                reject(new Error(`Timeout loading image ${pageNumber}: ${imageUrl}`));
-              }
-            }, 30000);
-            
-            // Set up error handler first
-            img.onerror = (error) => {
-              if (!isResolved) {
-                isResolved = true;
-                clearTimeout(timeout);
-                console.error(`Failed to load image ${pageNumber}:`, error);
-                console.error(`Image URL: ${imageUrl}`);
-                console.error(`Error details:`, {
-                  type: 'image_load_error',
-                  pageNumber,
-                  imageUrl,
-                  error
-                });
-                reject(new Error(`Failed to load image ${pageNumber}: ${imageUrl}. Error: ${error}`));
-              }
-            };
-            
-            // Set up load handler
-            img.onload = () => {
-              if (!isResolved) {
-                isResolved = true;
-                clearTimeout(timeout);
-                try {
-                  console.log(`Image ${pageNumber} loaded successfully, dimensions: ${img.width}x${img.height}`);
-                  
-                  // Validate image dimensions
-                  if (img.width === 0 || img.height === 0) {
-                    throw new Error(`Invalid image dimensions: ${img.width}x${img.height}`);
-                  }
-                  
-                  // Calculate dimensions to fit A4 page (210 x 297 mm)
-                  const pageWidth = 210;
-                  const pageHeight = 297;
-                  const margin = 10;
-                  const maxWidth = pageWidth - (margin * 2);
-                  const maxHeight = pageHeight - (margin * 2);
-                  
-                  // Calculate aspect ratio and dimensions
-                  const imgAspectRatio = img.width / img.height;
-                  let imgWidth = maxWidth;
-                  let imgHeight = maxWidth / imgAspectRatio;
-                  
-                  if (imgHeight > maxHeight) {
-                    imgHeight = maxHeight;
-                    imgWidth = maxHeight * imgAspectRatio;
-                  }
-                  
-                  // Center the image on the page
-                  const x = (pageWidth - imgWidth) / 2;
-                  const y = (pageHeight - imgHeight) / 2;
-                  
-                  if (pageNumber > 1) {
-                    pdf.addPage();
-                  }
-                  
-                  console.log(`Adding image ${pageNumber} to PDF at position (${x}, ${y}) with size ${imgWidth}x${imgHeight}`);
-                  pdf.addImage(img, 'JPEG', x, y, imgWidth, imgHeight);
-                  console.log(`Image ${pageNumber} added to PDF successfully`);
-                  resolve();
-                } catch (error) {
-                  console.error(`Error adding image ${pageNumber} to PDF:`, error);
-                  console.error(`PDF addImage error details:`, {
-                    type: 'pdf_add_image_error',
-                    pageNumber,
-                    imageUrl,
-                    imageDimensions: `${img.width}x${img.height}`,
-                    error
-                  });
-                  reject(new Error(`PDF generation error for image ${pageNumber}: ${error.message}`));
-                }
-              }
-            };
-            
-            // Try to set crossOrigin, but don't fail if it doesn't work
-            try {
-              img.crossOrigin = 'anonymous';
-            } catch (corsError) {
-              console.warn(`Could not set crossOrigin for image ${pageNumber}:`, corsError);
-            }
-            
-            // Set the source last to trigger loading
-            img.src = imageUrl;
-          });
-        };
-
-        // Add both JPEG images to PDF
-        try {
-          console.log('Starting PDF generation process...');
-          console.log('Available JPEG files:', {
-            jpeg1: result.files?.jpeg1,
-            jpeg2: result.files?.jpeg2
-          });
-          
-          // Validate that we have the required JPEG files
-          if (!result.files?.jpeg1 || !result.files?.jpeg2) {
-            throw new Error('Missing JPEG files from backend response');
-          }
-          
-          console.log('Adding first image to PDF...');
-          await addImageToPDF(result.files.jpeg1, 1);
-          console.log('First image added successfully');
-          
-          console.log('Adding second image to PDF...');
-          await addImageToPDF(result.files.jpeg2, 2);
-          console.log('Second image added successfully');
-          
-          console.log('Generating PDF blob...');
-          const pdfBlob = pdf.output('blob');
-          console.log('PDF blob generated successfully, size:', pdfBlob.size, 'bytes');
-          
-          // Validate PDF blob
-          if (!pdfBlob || pdfBlob.size === 0) {
-            throw new Error('Generated PDF blob is empty or invalid');
-          }
-          
-          // Set state and open printer selection modal
-          setPdfBlob(pdfBlob);
-          setCardToPrint(card);
-          setPrinterModalOpen(true);
-          console.log('Printer modal opened successfully');
-        } catch (pdfError) {
-          console.error('Error during PDF generation process:', pdfError);
-          console.error('PDF Error details:', {
-            type: 'pdf_generation_error',
-            cardId: card.id,
-            error: pdfError,
-            jpegFiles: result.files
-          });
-          throw new Error(`PDF generation failed: ${pdfError.message || pdfError}`);
+        // Download the PDF blob directly from the backend
+        const pdfResponse = await fetch(result.pdfUrl);
+        if (!pdfResponse.ok) {
+          throw new Error('Failed to download PDF from backend');
         }
-        
+
+        const pdfBlob = await pdfResponse.blob();
+        console.log('PDF blob downloaded successfully, size:', pdfBlob.size, 'bytes');
+
+        // Validate PDF blob
+        if (!pdfBlob || pdfBlob.size === 0) {
+          throw new Error('Downloaded PDF blob is empty or invalid');
+        }
+
+        // Set state and open printer selection modal
+        setPdfBlob(pdfBlob);
+        setCardToPrint(card);
+        setPrinterModalOpen(true);
+        console.log('Printer modal opened successfully');
+
       } else {
         throw new Error(result.message || 'Failed to generate print files');
       }
@@ -1224,8 +1078,8 @@ function MyCardsContent() {
                               }}
                               className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
                               title="Send E-Card"
-                             >
-                               Send E-Card
+                            >
+                              Send E-Card
                             </button>
                           </MenuItem>
                           <MenuItem>
