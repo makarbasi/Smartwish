@@ -6,6 +6,7 @@ import { SupabaseSavedDesignsService } from './supabase-saved-designs.service';
 import { SavedDesignEntity } from './saved-designs.entity';
 import { SupabaseStorageService } from './supabase-storage.service';
 import { AuthModule } from '../auth/auth.module';
+import { GeminiEmbeddingService } from '../services/gemini-embedding.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([SavedDesignEntity])],
@@ -14,6 +15,7 @@ import { AuthModule } from '../auth/auth.module';
     SavedDesignsService,
     SupabaseSavedDesignsService,
     SupabaseStorageService,
+    GeminiEmbeddingService,
   ],
   exports: [
     SavedDesignsService,
@@ -21,4 +23,4 @@ import { AuthModule } from '../auth/auth.module';
     SupabaseStorageService,
   ],
 })
-export class SavedDesignsModule {}
+export class SavedDesignsModule { }

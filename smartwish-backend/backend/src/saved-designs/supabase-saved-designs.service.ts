@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v5 as uuidv5 } from 'uuid';
+import { GeminiEmbeddingService } from '../services/gemini-embedding.service';
 
 export interface SavedDesign {
   id: string;
@@ -65,7 +66,9 @@ export interface SavedDesign {
 export class SupabaseSavedDesignsService {
   private supabase: SupabaseClient;
 
-  constructor() {
+  constructor(
+    @Optional() private readonly embeddingService?: GeminiEmbeddingService,
+  ) {
     const supabaseUrl = process.env.SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const anonKey = process.env.SUPABASE_ANON_KEY;
@@ -1215,12 +1218,50 @@ export class SupabaseSavedDesignsService {
     const { data: templateRow, error: insertError } = await this.supabase
       .from('sw_templates')
       .insert(templateInsert)
-      .select('*')
+      .select(`
+        *,
+        sw_categories (
+          name,
+          display_name
+        )
+      `)
       .single();
 
     if (insertError) {
       console.error('promoteToTemplate: insert error', insertError);
       throw new Error('Failed to promote design to template');
+    }
+
+    // 5.5. Generate and store embedding for the new template
+    if (this.embeddingService) {
+      try {
+        console.log(`[promoteToTemplate] Generating embedding for template ${templateRow.id}...`);
+        const semanticDescription = this.embeddingService.generateSemanticDescription({
+          ...templateRow,
+          category_name: templateRow.sw_categories?.name,
+          category_display_name: templateRow.sw_categories?.display_name,
+        });
+        const embedding = await this.embeddingService.generateEmbedding(semanticDescription);
+
+        // Update template with embedding
+        const { error: embeddingError } = await this.supabase
+          .from('sw_templates')
+          .update({
+            semantic_description: semanticDescription,
+            embedding_vector: JSON.stringify(embedding),
+            embedding_updated_at: new Date().toISOString(),
+          })
+          .eq('id', templateRow.id);
+
+        if (embeddingError) {
+          console.error('[promoteToTemplate] Failed to store embedding:', embeddingError);
+        } else {
+          console.log(`[promoteToTemplate] Embedding generated and stored for template ${templateRow.id}`);
+        }
+      } catch (embeddingError) {
+        console.error('[promoteToTemplate] Failed to generate embedding:', embeddingError);
+        // Continue without embedding - it's not critical to fail the whole operation
+      }
     }
 
     // 6. Update saved_design metadata & status with templateId reference
