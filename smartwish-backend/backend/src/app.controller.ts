@@ -1136,26 +1136,49 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
               return entities[match];
             });
 
-            const giftCardOverlaySvg = `<svg width="500" height="300" xmlns="http://www.w3.org/2000/svg">
+            // Create gift card overlay SVG for PRINT version
+            // Print is 300 DPI (3300x2550px), so overlay needs to be much larger
+            // Frontend uses: vertical layout, QR on top, logo+info below, centered horizontally
+            // Scaled up to 600x660px for proper print visibility (3x base size)
+            const giftCardOverlaySvg = `<svg width="600" height="660" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="rgba(0,0,0,0.15)"/>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="25"/>
+      <feOffset dx="0" dy="12" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
   </defs>
-  <rect x="10" y="10" width="480" height="280" rx="20" ry="20" fill="rgba(255,255,255,0.95)" stroke="rgba(0,0,0,0.1)" stroke-width="1" filter="url(#shadow)"/>
-  <image x="30" y="30" width="120" height="120" href="data:${qrMimeType};base64,${qrBase64}"/>
-  ${storeLogo ? `<image x="170" y="40" width="60" height="60" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>` : ''}
-  <text x="${storeLogo ? '250' : '170'}" y="60" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1a202c">${storeName}</text>
-  <text x="${storeLogo ? '250' : '170'}" y="90" font-family="Arial, sans-serif" font-size="20" font-weight="600" fill="#2d3748">$${amount}</text>
-  <text x="30" y="180" font-family="Arial, sans-serif" font-size="14" fill="#4a5568">Scan QR code to redeem this gift card</text>
-  <rect x="10" y="10" width="480" height="280" rx="20" ry="20" fill="none" stroke="rgba(99,102,241,0.3)" stroke-width="2"/>
+  
+  <!-- Main container with shadow -->
+  <rect x="0" y="0" width="600" height="660" rx="48" ry="48" fill="rgba(255,255,255,0.95)" stroke="rgba(229,231,235,1)" stroke-width="3" filter="url(#shadow)"/>
+  
+  <!-- QR Code container background -->
+  <rect x="108" y="48" width="384" height="384" rx="24" ry="24" fill="white"/>
+  
+  <!-- QR Code image (288x288, 3x of base 96px) -->
+  <image x="156" y="96" width="288" height="288" href="data:${qrMimeType};base64,${qrBase64}" preserveAspectRatio="xMidYMid meet"/>
+  
+  <!-- Store logo and info section (centered) -->
+  <g transform="translate(300, 480)">
+    ${storeLogo ? `<image x="-120" y="-60" width="120" height="120" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>` : ''}
+    <text x="${storeLogo ? '30' : '0'}" y="20" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="600" fill="#1f2937">${storeName}</text>
+    <text x="${storeLogo ? '30' : '0'}" y="75" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" fill="#4b5563">$${amount}</text>
+  </g>
 </svg>`;
 
             const giftCardOverlayBuffer = Buffer.from(giftCardOverlaySvg);
 
-            // Position the gift card overlay on the bottom right of the right page (image2)
-            const overlayTop = 1800; // Higher up from bottom for better visibility
-            const overlayLeft = 2200; // Right side of right panel
+            // Position for print: centered horizontally, 100px from bottom for visibility
+            // Composite is 3300px wide (two 1650px panels), page 3 starts at 1650px
+            // Overlay dimensions: 600x660px (scaled for print)
+            const overlayTop = 2550 - 660 - 100; // Total height - overlay height - bottom margin
+            const overlayLeft = 1650 + (1650 - 600) / 2; // Left panel width + centered in right panel
 
             // Create a temporary file with the overlay
             const tempOverlayPath = path.join(outputDir, `temp_${cardId}_overlay.png`);
