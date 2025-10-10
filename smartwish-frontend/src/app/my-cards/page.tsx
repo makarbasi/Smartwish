@@ -823,9 +823,6 @@ function MyCardsContent() {
       {/* Gift Card Animation Overlay */}
       {showGiftAnimation && animatingCardData && animationTargetPosition && (
         <div className="fixed inset-0 z-50 pointer-events-none">
-          {/* Semi-transparent backdrop */}
-          <div className="absolute inset-0 bg-black/20 animate-fade-in" />
-
           {/* Gift Card SVG - starts from center and flies to the target card */}
           <div
             className="absolute"
