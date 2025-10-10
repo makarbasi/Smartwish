@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import LoadingOverlay from '@/components/LoadingOverlay';
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
 import Link from "next/link";
@@ -219,6 +220,8 @@ function MyCardsContent() {
   } | null>(null);
   const [sendingECard, setSendingECard] = useState(false);
   const [giftCardData, setGiftCardData] = useState<any>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Check for gift card integration
   const cardId = searchParams.get('cardId');
@@ -544,11 +547,13 @@ function MyCardsContent() {
 
   // Handle print card
   const handlePrint = async (card: MyCard) => {
+    setIsPrinting(true);
     try {
       // Get the card data to extract image URLs
       const savedDesign = savedDesignsResponse?.data?.find(d => d.id === card.id);
       if (!savedDesign) {
         alert('Card data not found');
+        setIsPrinting(false);
         return;
       }
 
@@ -560,6 +565,7 @@ function MyCardsContent() {
 
       if (!image1 || !image2 || !image3 || !image4) {
         alert('All four card images are required for printing');
+        setIsPrinting(false);
         return;
       }
 
@@ -647,6 +653,7 @@ function MyCardsContent() {
         setCardToPrint(card);
         setPrinterModalOpen(true);
         console.log('Printer modal opened successfully');
+        setIsPrinting(false);
 
       } else {
         throw new Error(result.message || 'Failed to generate print files');
@@ -654,12 +661,14 @@ function MyCardsContent() {
     } catch (error) {
       console.error('Print error:', error);
       alert('Failed to generate print files. Please try again.');
+      setIsPrinting(false);
     }
   };
 
   // Handle add gift
   const handleAddGift = (card: MyCard) => {
     console.log('Adding gift for card:', card.id);
+    setIsNavigating(true);
     // Navigate to marketplace with card integration mode
     window.location.href = `/marketplace?cardId=${card.id}&cardName=${encodeURIComponent(card.name)}&mode=gift`;
   };
@@ -731,6 +740,21 @@ function MyCardsContent() {
 
   return (
     <main className="pb-24">
+      {/* Loading Overlay for Print Operation */}
+      {isPrinting && (
+        <LoadingOverlay
+          message="Preparing your card for printing..."
+          submessage="This may take a few moments"
+        />
+      )}
+
+      {/* Loading Overlay for Navigation */}
+      {isNavigating && (
+        <LoadingOverlay
+          message="Loading marketplace..."
+          submessage="Please wait"
+        />
+      )}
       <div className="px-4 pt-6 sm:px-6 lg:px-8" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -867,90 +891,109 @@ function MyCardsContent() {
                             </Link>
                           </MenuItem>
                           <MenuItem>
-                            {publishedStatuses.has(c.status || "") ? (
+                            {({ close }) => (
+                              publishedStatuses.has(c.status || "") ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    // handleUnpublishDesign(c.id); // Temporarily disabled
+                                    close();
+                                  }}
+                                  disabled={true}
+                                  className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
+                                  title="Unpublish is temporarily disabled"
+                                >
+                                  Unpublish (Disabled)
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handlePublishDesign(c.id);
+                                    close();
+                                  }}
+                                  className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                                >
+                                  Publish
+                                </button>
+                              )
+                            )}
+                          </MenuItem>
+                          <MenuItem>
+                            {({ close }) => (
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  // handleUnpublishDesign(c.id); // Temporarily disabled
+                                  handleDuplicate(c.id);
+                                  close();
                                 }}
-                                disabled={true}
-                                className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
-                                title="Unpublish is temporarily disabled"
+                                disabled={duplicatingId === c.id}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Unpublish (Disabled)
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  handlePublishDesign(c.id);
-                                }}
-                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
-                              >
-                                Publish
+                                {duplicatingId === c.id
+                                  ? "Duplicating..."
+                                  : "Duplicate"}
                               </button>
                             )}
                           </MenuItem>
                           <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleDuplicate(c.id);
-                              }}
-                              disabled={duplicatingId === c.id}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {duplicatingId === c.id
-                                ? "Duplicating..."
-                                : "Duplicate"}
-                            </button>
+                            {({ close }) => (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handleSendECard(c);
+                                  close();
+                                }}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                                title="Send E-Card"
+                              >
+                                Send E-Card
+                              </button>
+                            )}
                           </MenuItem>
                           <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleSendECard(c);
-                              }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
-                              title="Send E-Card"
-                            >
-                              Send E-Card
-                            </button>
+                            {({ close }) => (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handlePrint(c);
+                                  close();
+                                }}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50 hidden md:block"
+                              >
+                                Print
+                              </button>
+                            )}
                           </MenuItem>
                           <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handlePrint(c);
-                              }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50 hidden md:block"
-                            >
-                              Print
-                            </button>
-                          </MenuItem>
-                          <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleAddGift(c);
-                              }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
-                            >
-                              Add Gift
-                            </button>
+                            {({ close }) => (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handleAddGift(c);
+                                  close();
+                                }}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              >
+                                Add Gift
+                              </button>
+                            )}
                           </MenuItem>
                           {/* Promote removed */}
                           <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                showDeleteConfirmation(c.id, c.name);
-                              }}
-                              disabled={deletingId === c.id}
-                              className="w-full text-left block rounded px-2 py-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {deletingId === c.id ? "Deleting..." : "Delete"}
-                            </button>
+                            {({ close }) => (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  showDeleteConfirmation(c.id, c.name);
+                                  close();
+                                }}
+                                disabled={deletingId === c.id}
+                                className="w-full text-left block rounded px-2 py-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {deletingId === c.id ? "Deleting..." : "Delete"}
+                              </button>
+                            )}
                           </MenuItem>
                         </MenuItems>
                       </Menu>
@@ -1071,40 +1114,49 @@ function MyCardsContent() {
                           className="z-50 w-48 rounded-md bg-white p-1 text-sm shadow-2xl ring-1 ring-black/5 origin-top-right data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[leave]:duration-75 data-[enter]:ease-out data-[leave]:ease-in"
                         >
                           <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleSendECard(c);
-                              }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
-                              title="Send E-Card"
-                            >
-                              Send E-Card
-                            </button>
+                            {({ close }) => (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handleSendECard(c);
+                                  close();
+                                }}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                                title="Send E-Card"
+                              >
+                                Send E-Card
+                              </button>
+                            )}
                           </MenuItem>
                           <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handlePrint(c);
-                              }}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
-                            >
-                              Print
-                            </button>
+                            {({ close }) => (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handlePrint(c);
+                                  close();
+                                }}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
+                              >
+                                Print
+                              </button>
+                            )}
                           </MenuItem>
                           <MenuItem>
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                // handleUnpublishDesign(c.id); // Temporarily disabled
-                              }}
-                              disabled={true}
-                              className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
-                              title="Unpublish is temporarily disabled"
-                            >
-                              Unpublish (Disabled)
-                            </button>
+                            {({ close }) => (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  // handleUnpublishDesign(c.id); // Temporarily disabled
+                                  close();
+                                }}
+                                disabled={true}
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
+                                title="Unpublish is temporarily disabled"
+                              >
+                                Unpublish (Disabled)
+                              </button>
+                            )}
                           </MenuItem>
                         </MenuItems>
                       </Menu>
