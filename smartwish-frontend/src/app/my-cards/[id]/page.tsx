@@ -204,7 +204,7 @@ export default function CustomizeCardPage() {
 
   // Check if we're on a pixshop route - if so, don't fetch saved designs
   const isPixshopRoute = pathname?.includes('/pixshop');
-  
+
   console.log('🔍 Parent page pathname:', pathname);
   console.log('🔍 isPixshopRoute:', isPixshopRoute);
 
@@ -223,11 +223,11 @@ export default function CustomizeCardPage() {
 
   // Save functionality state
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Gift card integration state
   const [giftCardData, setGiftCardData] = useState<any>(null);
   const showGift = searchParams.get('showGift') === 'true';
-  
+
 
   const [saveMessage, setSaveMessage] = useState("");
   const [showRevertConfirm, setShowRevertConfirm] = useState(false);
@@ -241,7 +241,7 @@ export default function CustomizeCardPage() {
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsName, setSaveAsName] = useState("");
   const [isSavingAs, setIsSavingAs] = useState(false);
-  
+
   // Send E-card functionality state
   const [showSendModal, setShowSendModal] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -263,7 +263,7 @@ export default function CustomizeCardPage() {
   // Fetch all saved designs and find the specific one (only if not on pixshop route)
   const shouldFetch = !isPixshopRoute;
   console.log('🔍 Should fetch saved designs:', shouldFetch);
-  
+
   const {
     data: apiResponse,
     error,
@@ -302,12 +302,12 @@ export default function CustomizeCardPage() {
       if (storedGiftData) {
         setGiftCardData(JSON.parse(storedGiftData));
       }
-      
+
       // Also check saved design metadata for persistent storage
       if (savedDesign?.metadata) {
         try {
-          const metadata = typeof savedDesign.metadata === 'string' 
-            ? JSON.parse(savedDesign.metadata) 
+          const metadata = typeof savedDesign.metadata === 'string'
+            ? JSON.parse(savedDesign.metadata)
             : savedDesign.metadata;
           if (metadata.giftCard) {
             setGiftCardData(metadata.giftCard);
@@ -320,6 +320,48 @@ export default function CustomizeCardPage() {
       }
     }
   }, [cardId, savedDesign]);
+
+  // Auto-save gift card data to database metadata when it changes
+  useEffect(() => {
+    if (giftCardData && cardId && session?.user?.id && savedDesign) {
+      const saveGiftCardMetadata = async () => {
+        try {
+          console.log('💾 Auto-saving gift card data to metadata...', giftCardData);
+
+          // Get current metadata
+          let metadata = savedDesign.metadata || {};
+          if (typeof metadata === 'string') {
+            metadata = JSON.parse(metadata);
+          }
+
+          // Update with gift card data
+          metadata.giftCard = giftCardData;
+
+          // Save to database
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/saved-designs/${cardId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              metadata: metadata
+            }),
+          });
+
+          if (response.ok) {
+            console.log('✅ Gift card data saved to metadata');
+          } else {
+            console.error('❌ Failed to save gift card data to metadata');
+          }
+        } catch (error) {
+          console.error('Error saving gift card metadata:', error);
+        }
+      };
+
+      saveGiftCardMetadata();
+    }
+  }, [giftCardData, cardId, session?.user?.id, savedDesign]);
 
   // Initialize page images when card data is available
   useEffect(() => {
@@ -489,14 +531,14 @@ export default function CustomizeCardPage() {
     const openPintura = searchParams.get('openPintura');
     const updated = searchParams.get('updated');
     const fromPixshop = searchParams.get('fromPixshop');
-    
+
     if (openPintura === '1' && cardData && pageImages.length > 0) {
       if (updated === '1') {
         console.log("🎨 Auto-opening Pintura editor after pixshop save");
       } else if (fromPixshop === '1') {
         console.log("🎨 Auto-opening Pintura editor from pixshop back button");
       }
-      
+
       // Open editor for the correct page (get from URL params)
       setTimeout(() => {
         const pageIndex = parseInt(searchParams.get('pageIndex') || '0', 10);
@@ -504,7 +546,7 @@ export default function CustomizeCardPage() {
         setEditorVisible(true);
         setIsOpeningPintura(false); // Clear loading state when editor opens
       }, 500); // Small delay to ensure everything is loaded
-      
+
       // Clean up URL parameters
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete('openPintura');
@@ -738,7 +780,7 @@ export default function CustomizeCardPage() {
       console.log("📂 Category:", selectedCategory?.name || "None");
       console.log("📸 Current page images:", pageImages);
       console.log("🖼️ Cover image (first):", pageImages[0]);
-  const userId = String(session.user.id);
+      const userId = String(session.user.id);
       console.log("🆔 Using user ID:", userId);
 
       const result = await saveSavedDesignWithImages(cardData.id, pageImages, {
@@ -1104,16 +1146,15 @@ export default function CustomizeCardPage() {
                 {/* Save Status */}
                 {saveMessage && (
                   <div
-                    className={`px-2 py-1 rounded-md text-xs font-medium ${
-                      saveMessage.includes("Failed")
+                    className={`px-2 py-1 rounded-md text-xs font-medium ${saveMessage.includes("Failed")
                         ? "bg-red-50 text-red-600 border border-red-200"
                         : "bg-green-50 text-green-600 border border-green-200"
-                    }`}
+                      }`}
                   >
                     {saveMessage.includes("Failed") ? "⚠" : "✓"}
                   </div>
                 )}
-                
+
                 {/* Unsaved Changes */}
                 {hasUnsavedChanges && !saveMessage && (
                   <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md">
@@ -1150,10 +1191,9 @@ export default function CustomizeCardPage() {
                       <ListboxOption
                         key={category.id}
                         className={({ focus }) =>
-                          `relative cursor-pointer select-none py-3 pl-10 pr-4 ${
-                            focus
-                              ? "bg-indigo-100 text-indigo-900"
-                              : "text-gray-900"
+                          `relative cursor-pointer select-none py-3 pl-10 pr-4 ${focus
+                            ? "bg-indigo-100 text-indigo-900"
+                            : "text-gray-900"
                           }`
                         }
                         value={category}
@@ -1161,9 +1201,8 @@ export default function CustomizeCardPage() {
                         {({ selected }) => (
                           <>
                             <span
-                              className={`block truncate ${
-                                selected ? "font-semibold" : "font-normal"
-                              }`}
+                              className={`block truncate ${selected ? "font-semibold" : "font-normal"
+                                }`}
                             >
                               {category.name}
                             </span>
@@ -1291,10 +1330,9 @@ export default function CustomizeCardPage() {
                           <ListboxOption
                             key={category.id}
                             className={({ focus }) =>
-                              `relative cursor-pointer select-none py-2 pl-8 pr-4 ${
-                                focus
-                                  ? "bg-indigo-100 text-indigo-900"
-                                  : "text-gray-900"
+                              `relative cursor-pointer select-none py-2 pl-8 pr-4 ${focus
+                                ? "bg-indigo-100 text-indigo-900"
+                                : "text-gray-900"
                               }`
                             }
                             value={category}
@@ -1302,9 +1340,8 @@ export default function CustomizeCardPage() {
                             {({ selected }) => (
                               <>
                                 <span
-                                  className={`block truncate ${
-                                    selected ? "font-semibold" : "font-normal"
-                                  }`}
+                                  className={`block truncate ${selected ? "font-semibold" : "font-normal"
+                                    }`}
                                 >
                                   {category.name}
                                 </span>
@@ -1344,11 +1381,10 @@ export default function CustomizeCardPage() {
                 {/* Save Status Message */}
                 {saveMessage && (
                   <div
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                      saveMessage.includes("Failed")
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${saveMessage.includes("Failed")
                         ? "bg-red-50 text-red-700 border border-red-200"
                         : "bg-green-50 text-green-700 border border-green-200"
-                    }`}
+                      }`}
                   >
                     {saveMessage.includes("Failed") ? "⚠ " : "✓ "}{saveMessage}
                   </div>
@@ -1367,11 +1403,10 @@ export default function CustomizeCardPage() {
           <button
             onClick={handleSave}
             disabled={isSaving || !hasUnsavedChanges}
-            className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${
-              hasUnsavedChanges
+            className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${hasUnsavedChanges
                 ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md"
                 : "bg-gray-100 text-gray-400 cursor-not-allowed"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             title={hasUnsavedChanges ? "Save Changes" : "No changes to save"}
           >
             {isSaving ? (
@@ -1605,26 +1640,26 @@ export default function CustomizeCardPage() {
                     height={772}
                     className="w-full h-full object-cover rounded-lg"
                   />
-                  
+
                   {/* Gift Card QR Code and Logo Overlay */}
                   {giftCardData && savedDesign?.status !== 'published' && (
                     <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200">
                       <div className="flex flex-col items-center space-y-3">
                         {/* QR Code */}
                         <div className="bg-white p-2 rounded-lg shadow-sm">
-                          <img 
-                            src={giftCardData.qrCode} 
-                            alt="Gift Card QR Code" 
+                          <img
+                            src={giftCardData.qrCode}
+                            alt="Gift Card QR Code"
                             className="w-24 h-24 object-contain"
                           />
                         </div>
-                        
+
                         {/* Store Logo and Info */}
                         <div className="flex items-center space-x-2">
                           {giftCardData.storeLogo && (
-                            <img 
-                              src={giftCardData.storeLogo} 
-                              alt={giftCardData.storeName} 
+                            <img
+                              src={giftCardData.storeLogo}
+                              alt={giftCardData.storeName}
                               className="w-8 h-8 object-contain rounded"
                             />
                           )}
