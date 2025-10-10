@@ -1869,13 +1869,6 @@ export default function CustomizeCardPage() {
 
           {/* Mobile/Tablet Single Page View */}
           <div className="xl:hidden relative px-4">
-            {/* Debug info - remove after testing */}
-            <div className="mb-2 p-2 bg-yellow-100 text-xs rounded">
-              <div>Card: {cd?.name || 'No name'}</div>
-              <div>Current Page: {currentPage + 1}/4</div>
-              <div>Has Image: {!!(pageImages[currentPage] || cd.pages[currentPage]) ? 'Yes' : 'No'}</div>
-              <div>Image URL: {(pageImages[currentPage] || cd.pages[currentPage])?.substring(0, 50)}...</div>
-            </div>
             <div
               className="w-full max-w-sm mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
               onTouchStart={handleTouchStart}
@@ -1893,15 +1886,12 @@ export default function CustomizeCardPage() {
                     priority
                     unoptimized
                     onError={(e) => {
-                      console.error('Failed to load image:', pageImages[currentPage] || cd.pages[currentPage]);
                       const target = e.target as HTMLImageElement;
                       target.style.display = 'none';
                     }}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                    <p className="text-gray-500">No image</p>
-                  </div>
+                  <div className="w-full h-full bg-gray-200" />
                 )}
 
                 {/* Gift Card QR Code and Logo Overlay (Mobile) - Show on page 3 (index 2) */}
