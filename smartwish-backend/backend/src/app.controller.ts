@@ -1138,9 +1138,8 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
 
             // Create gift card overlay SVG for PRINT version
             // Print is 300 DPI (3300x2550px), so overlay needs to be much larger
-            // Frontend uses: vertical layout, QR on top, logo+info below, centered horizontally
-            // Scaled up to 600x660px for proper print visibility (3x base size)
-            const giftCardOverlaySvg = `<svg width="600" height="660" xmlns="http://www.w3.org/2000/svg">
+            // Layout: QR Code and Logo side-by-side (same size) at top, text centered below
+            const giftCardOverlaySvg = `<svg width="700" height="550" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="25"/>
@@ -1156,29 +1155,30 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
   </defs>
   
   <!-- Main container with shadow -->
-  <rect x="0" y="0" width="600" height="660" rx="48" ry="48" fill="rgba(255,255,255,0.95)" stroke="rgba(229,231,235,1)" stroke-width="3" filter="url(#shadow)"/>
+  <rect x="0" y="0" width="700" height="550" rx="48" ry="48" fill="rgba(255,255,255,0.95)" stroke="rgba(229,231,235,1)" stroke-width="3" filter="url(#shadow)"/>
   
-  <!-- QR Code container background -->
-  <rect x="108" y="48" width="384" height="384" rx="24" ry="24" fill="white"/>
+  <!-- QR Code on left -->
+  <rect x="50" y="40" width="280" height="280" rx="24" ry="24" fill="white"/>
+  <image x="50" y="40" width="280" height="280" href="data:${qrMimeType};base64,${qrBase64}" preserveAspectRatio="xMidYMid meet"/>
   
-  <!-- QR Code image (288x288, 3x of base 96px) -->
-  <image x="156" y="96" width="288" height="288" href="data:${qrMimeType};base64,${qrBase64}" preserveAspectRatio="xMidYMid meet"/>
+  ${storeLogo ? `
+  <!-- Company logo on right (same size as QR code) -->
+  <rect x="370" y="40" width="280" height="280" rx="24" ry="24" fill="white"/>
+  <image x="370" y="40" width="280" height="280" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>
+  ` : ''}
   
-  <!-- Store logo and info section (centered) -->
-  <g transform="translate(300, 480)">
-    ${storeLogo ? `<image x="-120" y="-60" width="120" height="120" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>` : ''}
-    <text x="${storeLogo ? '30' : '0'}" y="20" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="600" fill="#1f2937">${storeName}</text>
-    <text x="${storeLogo ? '30' : '0'}" y="75" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" fill="#4b5563">$${amount}</text>
-  </g>
+  <!-- Company name and amount centered below both -->
+  <text x="350" y="390" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="600" fill="#1f2937">${storeName}</text>
+  <text x="350" y="450" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" fill="#4b5563">$${amount}</text>
 </svg>`;
 
             const giftCardOverlayBuffer = Buffer.from(giftCardOverlaySvg);
 
             // Position for print: centered horizontally, 100px from bottom for visibility
             // Composite is 3300px wide (two 1650px panels), page 3 starts at 1650px
-            // Overlay dimensions: 600x660px (scaled for print)
-            const overlayTop = 2550 - 660 - 100; // Total height - overlay height - bottom margin
-            const overlayLeft = 1650 + (1650 - 600) / 2; // Left panel width + centered in right panel
+            // Overlay dimensions: 700x550px (scaled for print)
+            const overlayTop = 2550 - 550 - 100; // Total height - overlay height - bottom margin
+            const overlayLeft = 1650 + (1650 - 700) / 2; // Left panel width + centered in right panel
 
             // Create a temporary file with the overlay
             const tempOverlayPath = path.join(outputDir, `temp_${cardId}_overlay.png`);
