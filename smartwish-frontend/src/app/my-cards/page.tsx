@@ -222,10 +222,15 @@ function MyCardsContent() {
   const [giftCardData, setGiftCardData] = useState<any>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [showGiftAnimation, setShowGiftAnimation] = useState(false);
+  const [animatingCardId, setAnimatingCardId] = useState<string | null>(null);
+  const [animatingCardData, setAnimatingCardData] = useState<any>(null);
+  const [animationTargetPosition, setAnimationTargetPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Check for gift card integration
   const cardId = searchParams.get('cardId');
   const showGift = searchParams.get('showGift') === 'true';
+  const giftAdded = searchParams.get('giftAdded');
 
   // Load gift card data if needed
   useEffect(() => {
@@ -238,6 +243,65 @@ function MyCardsContent() {
       }
     }
   }, [showGift, cardId]);
+
+  // Trigger gift card animation when gift is added
+  useEffect(() => {
+    if (giftAdded) {
+      const storedGiftData = localStorage.getItem(`giftCard_${giftAdded}`);
+      if (storedGiftData) {
+        setAnimatingCardId(giftAdded);
+        setAnimatingCardData(JSON.parse(storedGiftData));
+
+        console.log('🎁 Starting gift card animation for card:', giftAdded);
+
+        // Wait for cards to render, then calculate target position and start animation
+        const tryStartAnimation = (attempts = 0) => {
+          const targetCard = document.getElementById(`card-${giftAdded}`);
+
+          if (targetCard) {
+            console.log('🎯 Found target card, calculating position...');
+            const rect = targetCard.getBoundingClientRect();
+            const targetPosition = {
+              x: rect.left + rect.width / 2,
+              y: rect.top + rect.height / 4, // Target the top portion (cover)
+            };
+            console.log('📍 Target position:', targetPosition);
+
+            setAnimationTargetPosition(targetPosition);
+
+            // Start animation slightly after setting position
+            setTimeout(() => {
+              setShowGiftAnimation(true);
+              console.log('✨ Animation started!');
+            }, 50);
+
+            // Clean up URL
+            const url = new URL(window.location.href);
+            url.searchParams.delete('giftAdded');
+            window.history.replaceState({}, '', url.toString());
+
+            // Hide animation after it completes
+            setTimeout(() => {
+              setShowGiftAnimation(false);
+              setAnimatingCardId(null);
+              setAnimatingCardData(null);
+              setAnimationTargetPosition(null);
+              console.log('🎁 Animation completed!');
+            }, 3000); // Animation duration + buffer
+          } else if (attempts < 30) {
+            // Retry up to 30 times (3 seconds total)
+            console.log(`⏳ Card not found yet, retrying... (attempt ${attempts + 1}/30)`);
+            setTimeout(() => tryStartAnimation(attempts + 1), 100);
+          } else {
+            console.error('❌ Could not find target card after 30 attempts');
+          }
+        };
+
+        // Start trying after a longer delay to ensure DOM is fully loaded
+        setTimeout(() => tryStartAnimation(), 500);
+      }
+    }
+  }, [giftAdded]);
 
   // Printer selection modal state
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
@@ -755,6 +819,73 @@ function MyCardsContent() {
           submessage="Please wait"
         />
       )}
+
+      {/* Gift Card Animation Overlay */}
+      {showGiftAnimation && animatingCardData && animationTargetPosition && (
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          {/* Semi-transparent backdrop */}
+          <div className="absolute inset-0 bg-black/20 animate-fade-in" />
+
+          {/* Gift Card SVG - starts from center and flies to the target card */}
+          <div
+            className="absolute"
+            style={{
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              animation: `gift-card-fly-custom 2.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards`,
+              '--target-x': `${animationTargetPosition.x}px`,
+              '--target-y': `${animationTargetPosition.y}px`,
+            } as React.CSSProperties}
+          >
+            <svg
+              width="300"
+              height="250"
+              viewBox="0 0 700 550"
+              xmlns="http://www.w3.org/2000/svg"
+              className="gift-card-svg"
+            >
+              <defs>
+                <filter id="shadow-anim" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur in="SourceAlpha" stdDeviation="25" />
+                  <feOffset dx="0" dy="12" result="offsetblur" />
+                  <feComponentTransfer>
+                    <feFuncA type="linear" slope="0.3" />
+                  </feComponentTransfer>
+                  <feMerge>
+                    <feMergeNode />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              {/* Main container with shadow */}
+              <rect x="0" y="0" width="700" height="550" rx="48" ry="48" fill="rgba(255,255,255,0.95)" stroke="rgba(229,231,235,1)" strokeWidth="3" filter="url(#shadow-anim)" />
+
+              {/* QR Code on left */}
+              <rect x="50" y="40" width="280" height="280" rx="24" ry="24" fill="white" />
+              <image x="50" y="40" width="280" height="280" href={animatingCardData.qrCode} preserveAspectRatio="xMidYMid meet" />
+
+              {/* Company logo on right (same size as QR code) */}
+              {animatingCardData.storeLogo && (
+                <>
+                  <rect x="370" y="40" width="280" height="280" rx="24" ry="24" fill="white" />
+                  <image x="370" y="40" width="280" height="280" href={animatingCardData.storeLogo} preserveAspectRatio="xMidYMid meet" />
+                </>
+              )}
+
+              {/* Company name and amount centered below both */}
+              <text x="350" y="390" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="42" fontWeight="600" fill="#1f2937">
+                {animatingCardData.storeName}
+              </text>
+              <text x="350" y="450" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="36" fill="#4b5563">
+                ${animatingCardData.amount}
+              </text>
+            </svg>
+          </div>
+        </div>
+      )}
+
       <div className="px-4 pt-6 sm:px-6 lg:px-8" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -848,6 +979,7 @@ function MyCardsContent() {
               draftCards.map((c, index) => (
                 <div
                   key={c.id}
+                  id={`card-${c.id}`}
                   className="group rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm"
                 >
                   <div className="relative overflow-hidden rounded-t-2xl">

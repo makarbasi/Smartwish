@@ -63,3 +63,45 @@ body {
 #nprogress .peg {
     box-shadow: 0 0 10px #6366f1, 0 0 5px #6366f1;
 }
+
+/* Gift Card Animation - flies from center to card cover */
+@keyframes gift-card-fly-custom {
+    0% {
+        opacity: 0;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+    }
+
+    15% {
+        opacity: 1;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(1.3) rotate(5deg);
+    }
+
+    30% {
+        opacity: 1;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(1.1) rotate(-3deg);
+    }
+
+    75% {
+        opacity: 0.9;
+        left: var(--target-x);
+        top: var(--target-y);
+        transform: translate(-50%, -50%) scale(0.35) rotate(0deg);
+    }
+
+    100% {
+        opacity: 0;
+        left: var(--target-x);
+        top: var(--target-y);
+        transform: translate(-50%, -50%) scale(0.15) rotate(0deg);
+    }
+}
+
+.gift-card-svg {
+    filter: drop-shadow(0 25px 50px rgba(99, 102, 241, 0.4)) drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
+}
