@@ -22,7 +22,7 @@ interface AuthenticatedRequest extends Request {
 @Controller('saved-designs')
 @UseGuards(JwtAuthGuard)
 export class SavedDesignsController {
-  constructor(private readonly savedDesignsService: SavedDesignsService) {}
+  constructor(private readonly savedDesignsService: SavedDesignsService) { }
 
   @Post()
   async saveDesign(
@@ -362,7 +362,15 @@ export class SavedDesignsController {
   ) {
     try {
       const userId = req.user?.id?.toString();
+      console.log('🔓 Unpublish Controller - Request received:', {
+        designId,
+        userId,
+        hasUser: !!req.user,
+        userEmail: req.user?.email
+      });
+
       if (!userId) {
+        console.error('🔓 Unpublish Controller - No userId found');
         return res.status(401).json({ message: 'User not authenticated' });
       }
 
@@ -370,13 +378,16 @@ export class SavedDesignsController {
         userId,
         designId,
       );
+
       if (!unpublishedDesign) {
+        console.error('🔓 Unpublish Controller - Service returned null');
         return res.status(404).json({ message: 'Design not found' });
       }
 
+      console.log('🔓 Unpublish Controller - Success');
       res.json(unpublishedDesign);
     } catch (error) {
-      console.error('Error unpublishing design:', error);
+      console.error('🔓 Unpublish Controller - Error:', error);
       res
         .status(500)
         .json({ message: 'Failed to unpublish design', error: error.message });
@@ -509,10 +520,10 @@ export class SavedDesignsController {
       // Always update saved designs to use the new versioned URL
       // We need to update because the new URL has a cache-busting parameter
       console.log('🔄 Updating saved designs to use new versioned URL...');
-      
+
       // Extract base URL without version parameters for database search
       const baseUrl = supabaseUrl.split('?')[0];
-      
+
       const updatedCount = await this.savedDesignsService.updateImageUrlsInDesigns(
         userId,
         baseUrl,
@@ -528,10 +539,10 @@ export class SavedDesignsController {
       });
     } catch (error) {
       console.error('❌ Error updating Supabase image:', error);
-      
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Error details:', errorMessage);
-      
+
       res.status(500).json({
         error: 'Failed to update image content',
         details: errorMessage,
