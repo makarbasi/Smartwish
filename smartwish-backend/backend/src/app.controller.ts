@@ -14,12 +14,14 @@ import { Request, Response } from 'express';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import * as fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import * as path from 'path';
 import * as sharp from 'sharp';
 import fetch from 'node-fetch';
 import { Express } from 'express';
 // @ts-ignore
 import { getPrinters } from 'pdf-to-printer';
+import { PDFDocument } from 'pdf-lib';
 import { SharingService } from './sharing/sharing.service';
 import { SupabaseStorageService } from './saved-designs/supabase-storage.service';
 import { SavedDesignsService } from './saved-designs/saved-designs.service';
@@ -866,6 +868,111 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
     }
   }
 
+  // =============================================================================
+  // HELPER FUNCTIONS FOR PDF GENERATION
+  // =============================================================================
+
+  /**
+   * Creates composite images side by side for greeting card printing
+   */
+  async createCompositeImage(outputFilename: string, leftImgPath: string, rightImgPath: string, rotateLeft: boolean = false, rotateRight: boolean = false): Promise<string> {
+    try {
+      console.log(`Creating composite image: ${outputFilename}`);
+
+      // Greeting card dimensions (8.5x11 paper, folded to 5.5x8.5 panels)
+      const panelWidthPx = 1650;  // 5.5 inches * 300 DPI
+      const panelHeightPx = 2550; // 8.5 inches * 300 DPI
+      const paperWidthPx = panelWidthPx * 2;  // 3300px (11 inches)
+      const paperHeightPx = panelHeightPx;    // 2550px (8.5 inches)
+
+      // Read metadata for logging
+      const leftMeta = await sharp(leftImgPath).metadata();
+      const rightMeta = await sharp(rightImgPath).metadata();
+
+      console.log(` -> Left Image (${path.basename(leftImgPath)}): ${leftMeta.width}x${leftMeta.height}`);
+      console.log(` -> Right Image (${path.basename(rightImgPath)}): ${rightMeta.width}x${rightMeta.height}`);
+      console.log(` -> Resizing to Panel Size: ${panelWidthPx}x${panelHeightPx}`);
+
+      // Prepare and transform images
+      let leftImageSharp = sharp(leftImgPath).resize(panelWidthPx, panelHeightPx, { fit: 'fill' });
+      if (rotateLeft) leftImageSharp = leftImageSharp.rotate(180);
+
+      let rightImageSharp = sharp(rightImgPath).resize(panelWidthPx, panelHeightPx, { fit: 'fill' });
+      if (rotateRight) rightImageSharp = rightImageSharp.rotate(180);
+
+      // Composite images side by side
+      await sharp({
+        create: {
+          width: paperWidthPx,
+          height: paperHeightPx,
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+        },
+      })
+        .composite([
+          { input: await leftImageSharp.toBuffer(), top: 0, left: 0 },
+          { input: await rightImageSharp.toBuffer(), top: 0, left: panelWidthPx },
+        ])
+        .png()
+        .toFile(outputFilename);
+
+      console.log(`Successfully created ${outputFilename}`);
+      return outputFilename;
+    } catch (error) {
+      console.error(`Error creating composite image ${outputFilename}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Creates the final PDF document from composite images
+   */
+  async createPdf(pdfPath: string, side1ImagePath: string, side2ImagePath: string): Promise<string> {
+    try {
+      console.log(`Creating PDF: ${pdfPath}`);
+      const pdfDoc = await PDFDocument.create();
+      const side1ImageBytes = await fsPromises.readFile(side1ImagePath);
+      const side2ImageBytes = await fsPromises.readFile(side2ImagePath);
+
+      let side1Image, side2Image;
+
+      // PDF page size in points (1 inch = 72 points)
+      const paperWidthPoints = 11 * 72;  // 792 points
+      const paperHeightPoints = 8.5 * 72; // 612 points
+
+      // Basic image type detection based on extension
+      if (side1ImagePath.toLowerCase().endsWith('.png')) {
+        side1Image = await pdfDoc.embedPng(side1ImageBytes);
+      } else if (side1ImagePath.toLowerCase().endsWith('.jpg') || side1ImagePath.toLowerCase().endsWith('.jpeg')) {
+        side1Image = await pdfDoc.embedJpg(side1ImageBytes);
+      } else {
+        throw new Error(`Unsupported image type for ${side1ImagePath}`);
+      }
+
+      if (side2ImagePath.toLowerCase().endsWith('.png')) {
+        side2Image = await pdfDoc.embedPng(side2ImageBytes);
+      } else if (side2ImagePath.toLowerCase().endsWith('.jpg') || side2ImagePath.toLowerCase().endsWith('.jpeg')) {
+        side2Image = await pdfDoc.embedJpg(side2ImageBytes);
+      } else {
+        throw new Error(`Unsupported image type for ${side2ImagePath}`);
+      }
+
+      const page1 = pdfDoc.addPage([paperWidthPoints, paperHeightPoints]);
+      page1.drawImage(side1Image, { x: 0, y: 0, width: paperWidthPoints, height: paperHeightPoints });
+
+      const page2 = pdfDoc.addPage([paperWidthPoints, paperHeightPoints]);
+      page2.drawImage(side2Image, { x: 0, y: 0, width: paperWidthPoints, height: paperHeightPoints });
+
+      const pdfBytes = await pdfDoc.save();
+      await fsPromises.writeFile(pdfPath, pdfBytes);
+      console.log(`Successfully created ${pdfPath}`);
+      return pdfPath;
+    } catch (error) {
+      console.error(`Error creating PDF ${pdfPath}:`, error);
+      throw error;
+    }
+  }
+
   @Post('generate-print-jpegs')
   async generatePrintJpegs(@Req() req: Request, @Res() res: Response) {
     try {
@@ -931,49 +1038,24 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
       const tempImage3 = await processImage(image3, `temp_${cardId}_3.jpg`);
       const tempImage4 = await processImage(image4, `temp_${cardId}_4.jpg`);
 
-      // Create composite images
-      const jpeg1Path = path.join(outputDir, `${cardId}_print_1.jpg`);
-      const jpeg2Path = path.join(outputDir, `${cardId}_print_2.jpg`);
+      // Map images to greeting card positions (existing mapping)
+      const imageFiles = {
+        front: tempImage1,     // page_1
+        back: tempImage4,      // page_4  
+        insideLeft: tempImage3, // page_3
+        insideRight: tempImage2 // page_2
+      };
 
-      // First JPEG: Image 4 and Image 1 side by side
-      await sharp({
-        create: {
-          width: 3300, // 11 inches * 300 DPI
-          height: 2550, // 8.5 inches * 300 DPI
-          channels: 4,
-          background: { r: 255, g: 255, b: 255, alpha: 1 },
-        },
-      })
-        .composite([
-          {
-            input: await sharp(tempImage4).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
-            top: 0,
-            left: 0
-          },
-          {
-            input: await sharp(tempImage1).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
-            top: 0,
-            left: 1650
-          },
-        ])
-        .jpeg({ quality: 90 })
-        .toFile(jpeg1Path);
+      // Create temporary composite files
+      const compositeSide1Path = path.join(outputDir, `temp_${cardId}_side1.png`);
+      const compositeSide2Path = path.join(outputDir, `temp_${cardId}_side2.png`);
 
-      // Second JPEG: Image 3 and Image 2 side by side
-      const compositeElements = [
-        {
-          input: await sharp(tempImage2).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
-          top: 0,
-          left: 0
-        },
-        {
-          input: await sharp(tempImage3).resize(1650, 2550, { fit: 'fill' }).toBuffer(),
-          top: 0,
-          left: 1650
-        },
-      ];
+      // Create composite images using new logic
+      console.log('[generate-print-jpegs] Creating composite images...');
+      await this.createCompositeImage(compositeSide1Path, imageFiles.back, imageFiles.front);
+      await this.createCompositeImage(compositeSide2Path, imageFiles.insideRight, imageFiles.insideLeft);
 
-      // Add gift card QR code and logo overlay if present
+      // Add gift card overlay to compositeSide2 if giftCardData exists
       if (giftCardData && giftCardData.qrCode) {
         try {
           console.log('[generate-print-jpegs] Adding gift card overlay to print:', giftCardData);
@@ -1012,7 +1094,6 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
           }
 
           if (qrBuffer) {
-
             // Create gift card overlay SVG with QR code, logo, and info
             let storeLogo = '';
             if (giftCardData.storeLogo) {
@@ -1076,14 +1157,17 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
             const overlayTop = 1800; // Higher up from bottom for better visibility
             const overlayLeft = 2200; // Right side of right panel
 
-            compositeElements.push({
-              input: giftCardOverlayBuffer,
-              top: overlayTop,
-              left: overlayLeft
-            });
+            await sharp(compositeSide2Path)
+              .composite([{
+                input: giftCardOverlayBuffer,
+                top: overlayTop,
+                left: overlayLeft
+              }])
+              .png()
+              .toFile(compositeSide2Path);
 
             console.log(`[generate-print-jpegs] Gift card overlay positioned at top: ${overlayTop}, left: ${overlayLeft}`);
-            console.log('[generate-print-jpegs] Gift card overlay with QR code and logo added successfully to print JPEG');
+            console.log('[generate-print-jpegs] Gift card overlay with QR code and logo added successfully to print composite');
           }
         } catch (giftCardError) {
           console.error('[generate-print-jpegs] Failed to add gift card overlay to print version:', giftCardError);
@@ -1094,60 +1178,31 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
         console.log('[generate-print-jpegs] Gift card data received:', giftCardData);
       }
 
-      // Add timestamp overlay to the print
-      try {
-        const timestampSvg = `<svg width="400" height="30" xmlns="http://www.w3.org/2000/svg">
-  <rect width="400" height="30" fill="rgba(255,255,255,0.8)" rx="5"/>
-  <text x="10" y="20" font-family="Arial, sans-serif" font-size="14" fill="#333">Printed: ${printTimestamp}</text>
-</svg>`;
+      // Create PDF using pdf-lib
+      const outputPdf = `${cardId}_print.pdf`;
+      const pdfPath = path.join(outputDir, outputPdf);
 
-        const timestampBuffer = Buffer.from(timestampSvg);
-
-        // Add timestamp to bottom right of the right page (image2)
-        compositeElements.push({
-          input: timestampBuffer,
-          top: 2500, // Bottom of the page
-          left: 2850  // Right side of right panel
-        });
-
-        console.log('[generate-print-jpegs] Timestamp added to print JPEG');
-      } catch (timestampError) {
-        console.warn('[generate-print-jpegs] Failed to add timestamp:', timestampError);
-      }
-
-      await sharp({
-        create: {
-          width: 3300, // 11 inches * 300 DPI
-          height: 2550, // 8.5 inches * 300 DPI
-          channels: 4,
-          background: { r: 255, g: 255, b: 255, alpha: 1 },
-        },
-      })
-        .composite(compositeElements)
-        .jpeg({ quality: 90 })
-        .toFile(jpeg2Path);
+      console.log('[generate-print-jpegs] Creating PDF from composite images...');
+      await this.createPdf(pdfPath, compositeSide1Path, compositeSide2Path);
 
       // Clean up temporary files
-      [tempImage1, tempImage2, tempImage3, tempImage4].forEach(tempPath => {
+      const tempFiles = [tempImage1, tempImage2, tempImage3, tempImage4, compositeSide1Path, compositeSide2Path];
+      tempFiles.forEach(tempPath => {
         if (fs.existsSync(tempPath)) {
           fs.unlinkSync(tempPath);
         }
       });
 
-      // Return download URLs
+      // Return PDF download URL
       const baseUrl = getBaseUrl();
-      const jpeg1Url = `${baseUrl}/downloads/print-jpegs/${cardId}_print_1.jpg`;
-      const jpeg2Url = `${baseUrl}/downloads/print-jpegs/${cardId}_print_2.jpg`;
+      const pdfUrl = `${baseUrl}/downloads/print-jpegs/${outputPdf}`;
 
-      console.log('[generate-print-jpegs] Successfully created JPEG files:', { jpeg1Url, jpeg2Url });
+      console.log('[generate-print-jpegs] Successfully created PDF file:', pdfUrl);
 
       return res.json({
         success: true,
-        message: 'Print JPEG files generated successfully',
-        files: {
-          jpeg1: jpeg1Url,
-          jpeg2: jpeg2Url
-        }
+        message: 'Print PDF file generated successfully',
+        pdfUrl: pdfUrl
       });
     } catch (error) {
       console.error('[generate-print-jpegs] Error:', error);
