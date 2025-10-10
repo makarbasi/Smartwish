@@ -49,6 +49,7 @@ type MyCard = {
   lastEdited: string;
   category?: string;
   status?: string;
+  originalDesignId?: string; // For templates, this is the saved design ID needed for unpublishing
 };
 
 type SavedDesign = {
@@ -77,6 +78,7 @@ type PublishedTemplate = {
   author?: string;
   created_at: string;
   updated_at: string;
+  original_saved_design_id?: string; // Link back to the saved design
 };
 
 type SavedDesignsResponse = {
@@ -157,6 +159,7 @@ const transformPublishedTemplate = (template: PublishedTemplate): MyCard => {
     lastEdited: "", // No date display for published cards
     category: template.category_name || "General",
     status: "published",
+    originalDesignId: template.original_saved_design_id, // Keep track of the original design ID for unpublishing
   };
 };
 
@@ -411,9 +414,16 @@ function MyCardsContent() {
     .map(transformPublishedSavedDesign);
 
   // Get user's published templates from the templates API (filtered by author_id)
-  const userPublishedTemplates: MyCard[] = (templatesResponse?.data || []).map(
-    transformPublishedTemplate
-  );
+  const userPublishedTemplates: MyCard[] = (templatesResponse?.data || []).map((template) => {
+    const transformed = transformPublishedTemplate(template);
+    console.log('📋 Transformed template:', {
+      id: transformed.id,
+      name: transformed.name,
+      originalDesignId: transformed.originalDesignId,
+      hasOriginalId: !!transformed.originalDesignId
+    });
+    return transformed;
+  });
 
   // Combine user's published designs with user's published templates
   // Remove duplicates based on ID (in case user's published design is also in templates)
@@ -514,12 +524,6 @@ function MyCardsContent() {
       const result = await postRequest(publishUrl, {}, session as any);
       console.log("✅ Publish result:", result);
 
-      showToast({
-        type: 'success',
-        title: 'Design published successfully!',
-        message: 'Your design is now live and published for everyone to see!',
-        duration: 1000
-      });
       fetchSavedDesigns();
       fetchPublishedTemplates();
     } catch (e: unknown) {
@@ -530,33 +534,68 @@ function MyCardsContent() {
   };
 
   // Unpublish design
-  const handleUnpublishDesign = async (designId: string) => {
+  const handleUnpublishDesign = async (card: MyCard) => {
     if (!session) return;
 
-    try {
-      const unpublishUrl = DynamicRouter(
-        "saved-designs",
-        `${designId}/unpublish`,
-        undefined,
-        false
-      );
-      console.log("📥 Unpublishing design:", designId, "URL:", unpublishUrl);
+    // Use originalDesignId if available (for templates), otherwise use the card id (for saved designs)
+    const designId = card.originalDesignId || card.id;
 
-      const result = await postRequest(unpublishUrl, {}, session as any);
+    console.log("📥 Unpublishing design:", {
+      cardId: card.id,
+      designId: designId,
+      isTemplate: !!card.originalDesignId
+    });
+
+    try {
+      // Use Next.js API route for better error handling
+      const response = await fetch(`/api/saved-designs/${designId}/unpublish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+
+        // If design not found, it might have been deleted - refresh the list
+        if (response.status === 404) {
+          console.warn("⚠️ Design not found - refreshing card list");
+          showToast({
+            type: 'warning',
+            title: 'Design not found',
+            message: 'This design no longer exists. Refreshing the list...',
+            duration: 3000
+          });
+          // Refresh both lists to update the UI
+          await Promise.all([
+            fetchSavedDesigns(),
+            fetchPublishedTemplates()
+          ]);
+          return;
+        }
+
+        throw new Error(error.error || 'Failed to unpublish design');
+      }
+
+      const result = await response.json();
       console.log("✅ Unpublish result:", result);
 
-      showToast({
-        type: 'success',
-        title: 'Design unpublished successfully!',
-        message: 'Your design has been unpublished and moved back to drafts.',
-        duration: 1000
-      });
-      fetchSavedDesigns();
-      fetchPublishedTemplates();
+      // Refresh both lists to update the UI
+      await Promise.all([
+        fetchSavedDesigns(),
+        fetchPublishedTemplates()
+      ]);
     } catch (e: unknown) {
       console.error("❌ Error unpublishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to unpublish design";
-      alert(msg);
+      showToast({
+        type: 'error',
+        title: 'Unpublish failed',
+        message: msg,
+        duration: 5000
+      });
     }
   };
 
@@ -1025,14 +1064,12 @@ function MyCardsContent() {
                                 <button
                                   onClick={(e) => {
                                     e.preventDefault();
-                                    // handleUnpublishDesign(c.id); // Temporarily disabled
+                                    handleUnpublishDesign(c);
                                     close();
                                   }}
-                                  disabled={true}
-                                  className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
-                                  title="Unpublish is temporarily disabled"
+                                  className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
                                 >
-                                  Unpublish (Disabled)
+                                  Unpublish
                                 </button>
                               ) : (
                                 <button
@@ -1276,14 +1313,12 @@ function MyCardsContent() {
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  // handleUnpublishDesign(c.id); // Temporarily disabled
+                                  handleUnpublishDesign(c);
                                   close();
                                 }}
-                                disabled={true}
-                                className="w-full text-left block rounded px-2 py-1.5 text-gray-400 cursor-not-allowed opacity-50"
-                                title="Unpublish is temporarily disabled"
+                                className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
                               >
-                                Unpublish (Disabled)
+                                Unpublish
                               </button>
                             )}
                           </MenuItem>

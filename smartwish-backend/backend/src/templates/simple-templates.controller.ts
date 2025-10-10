@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 
 @Controller('api/simple-templates')
 export class SimpleTemplatesController {
-  constructor(@InjectDataSource() private dataSource: DataSource) {}
+  constructor(@InjectDataSource() private dataSource: DataSource) { }
 
   @Get()
   async getAllTemplates() {
@@ -178,6 +178,7 @@ export class SimpleTemplatesController {
           t.title, 
           t.category_id, 
           t.author_id,
+          t.original_saved_design_id,
           t.description, 
           t.price, 
           t.language, 

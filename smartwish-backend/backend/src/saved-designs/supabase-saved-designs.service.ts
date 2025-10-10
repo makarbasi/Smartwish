@@ -35,11 +35,11 @@ export interface SavedDesign {
   searchKeywords?: string[];
   // Status field for future use
   status?:
-    | 'draft'
-    | 'published'
-    | 'archived'
-    | 'template_candidate'
-    | 'published_to_templates';
+  | 'draft'
+  | 'published'
+  | 'archived'
+  | 'template_candidate'
+  | 'published_to_templates';
   // New fields for sw_templates compatibility
   templateId?: string;
   slug?: string;
@@ -253,7 +253,7 @@ export class SupabaseSavedDesignsService {
       .from('saved_designs')
       .select('*')
       .eq('author_id', userId)
-      .in('status', ['draft', null]) // Only get draft designs (null for backward compatibility)
+      // Get all designs regardless of status - frontend will filter as needed
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -261,6 +261,7 @@ export class SupabaseSavedDesignsService {
       throw new Error('Failed to fetch designs');
     }
 
+    console.log(`getUserDesigns: Found ${data?.length || 0} designs for user ${userId}`);
     return data.map((record) => this.mapDatabaseRecordToSavedDesign(record));
   }
 
@@ -419,7 +420,7 @@ export class SupabaseSavedDesignsService {
       newMetadata.isFeatured = updates.isFeatured;
     if (updates.currentVersion)
       newMetadata.currentVersion = updates.currentVersion;
-    
+
     // Handle metadata updates (including gift card data)
     if (updates.metadata) {
       Object.assign(newMetadata, updates.metadata);
@@ -683,26 +684,96 @@ export class SupabaseSavedDesignsService {
     userId: string,
     designId: string,
   ): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log(`Unpublishing design ${designId} for user ${userId}`);
+
+    // First, let's check if the design exists at all (without RLS)
+    const { data: designCheck, error: checkError } = await this.supabase
+      .from('saved_designs')
+      .select('id, author_id, status, title')
+      .eq('id', designId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking design existence:', checkError);
+    }
+
+    if (!designCheck) {
+      // Check if it exists in templates instead
+      const { data: templateCheck } = await this.supabase
+        .from('sw_templates')
+        .select('id, original_saved_design_id, title, author_id')
+        .eq('id', designId)
+        .maybeSingle();
+
+      if (templateCheck) {
+        console.error(`Design ${designId} is a template, not a saved design. Use original_saved_design_id: ${templateCheck.original_saved_design_id}`);
+        return null;
+      }
+
+      console.error(`Design ${designId} does not exist in saved_designs table or sw_templates table`);
+      console.log(`💡 Hint: This design may have been deleted. Try refreshing the page.`);
+      return null;
+    }
+
+    console.log(`Design found:`, {
+      id: designCheck.id,
+      author_id: designCheck.author_id,
+      status: designCheck.status,
+      title: designCheck.title,
+      requestingUserId: userId,
+      authorIdMatch: designCheck.author_id === userId
+    });
+
+    if (designCheck.author_id !== userId) {
+      console.error(`User ${userId} is not the author of design ${designId}. Author is: ${designCheck.author_id}`);
+      return null;
+    }
+
+    // Check if design is actually published
+    const publishedStatuses = ['published', 'published_to_templates'];
+    if (!publishedStatuses.includes(designCheck.status)) {
+      console.warn(`Design ${designId} has status "${designCheck.status}", not a published status. Allowing unpublish anyway...`);
+    }
+
     // First revert status
     const reverted = await this.updateDesign(userId, designId, {
       status: 'draft',
       publishedAt: null as any,
       updatedAt: new Date(),
     });
+
+    if (!reverted) {
+      console.error(`Failed to update design ${designId} to draft status`);
+      return null;
+    }
+
+    console.log(`Design ${designId} status reverted to draft`);
+
     // Remove associated template(s)
     try {
-      if (this.supabase) {
-        const { error } = await this.supabase
-          .from('sw_templates')
-          .delete()
-          .eq('original_saved_design_id', designId);
-        if (error) {
-          console.error('unpublishDesign: failed to delete template', error);
-        }
+      console.log(`Deleting templates for design ${designId}...`);
+      const { data: deletedTemplates, error } = await this.supabase
+        .from('sw_templates')
+        .delete()
+        .eq('original_saved_design_id', designId)
+        .select();
+
+      if (error) {
+        console.error('unpublishDesign: failed to delete template', error);
+        // Don't throw - allow unpublish to succeed even if template deletion fails
+      } else {
+        console.log(`Successfully deleted ${deletedTemplates?.length || 0} template(s) for design ${designId}`);
       }
     } catch (e) {
       console.error('unpublishDesign: template cleanup error', e);
+      // Don't throw - allow unpublish to succeed even if template deletion fails
     }
+
+    console.log(`Successfully unpublished design ${designId}`);
     return reverted;
   }
 
@@ -873,7 +944,7 @@ export class SupabaseSavedDesignsService {
 
     // Now create unique copies of all images for this saved design
     console.log('Creating unique image copies for saved design...');
-    
+
     try {
       const imageFields = ['image_1', 'image_2', 'image_3', 'image_4', 'cover_image'];
       const updateData: any = {};
@@ -901,7 +972,7 @@ export class SupabaseSavedDesignsService {
       // Also copy images from design_data if present
       if (savedDesign.design_data && typeof savedDesign.design_data === 'object') {
         const designData = savedDesign.design_data as any;
-        
+
         if (designData.pages && Array.isArray(designData.pages)) {
           const updatedPages = await Promise.all(
             designData.pages.map(async (page: any, index: number) => {
@@ -919,7 +990,7 @@ export class SupabaseSavedDesignsService {
               return page;
             })
           );
-          
+
           updateData.design_data = {
             ...designData,
             pages: updatedPages
@@ -941,7 +1012,7 @@ export class SupabaseSavedDesignsService {
           // Continue anyway - the design was created, just with original template images
         } else {
           console.log('✅ Successfully updated saved design with unique image URLs');
-          
+
           // Fetch the updated design
           const { data: updatedDesign, error: refetchError } = await this.supabase
             .from('saved_designs')
@@ -1096,7 +1167,7 @@ export class SupabaseSavedDesignsService {
       current_version: metadata.currentVersion || '1.0.0',
       published_at: nowIso,
       is_user_generated: designRecord.is_user_generated ?? true,
-      original_saved_design_id: designRecord.original_saved_design_id || null,
+      original_saved_design_id: designId, // Link back to the saved design being promoted
       image_1: designRecord.image_1 || null,
       image_2: designRecord.image_2 || null,
       image_3: designRecord.image_3 || null,
@@ -1388,7 +1459,7 @@ export class SupabaseSavedDesignsService {
       const fileName = originalPath.split('/').pop() || 'image.png';
       const fileExtension = fileName.split('.').pop() || 'png';
       const baseFileName = fileName.replace(`.${fileExtension}`, '');
-      
+
       // Handle thumbnail case (pageIndex = -1) separately
       const pageIdentifier = pageIndex === -1 ? 'thumbnail' : `page${pageIndex + 1}`;
       const newFileName = `${baseFileName}_${pageIdentifier}_${timestamp}_${randomId}.${fileExtension}`;
@@ -1463,7 +1534,7 @@ export class SupabaseSavedDesignsService {
       // Extract the file path from the URL - handle both storage URLs and CDN URLs
       let imagePath = '';
       const bucketName = 'smartwish-assets';
-      
+
       if (supabaseUrl.includes('/storage/v1/object/public/')) {
         // Handle storage API URL format
         const storageIndex = supabaseUrl.indexOf('/storage/v1/object/public/');
@@ -1494,7 +1565,7 @@ export class SupabaseSavedDesignsService {
         if (parts.length !== 2) {
           throw new Error('Invalid data URL format');
         }
-        
+
         base64Data = parts[1];
         const mimeMatch = newImageData.match(/^data:([^;]+)/);
         if (mimeMatch) {
@@ -1514,7 +1585,7 @@ export class SupabaseSavedDesignsService {
 
       // Convert base64 to buffer using Node.js Buffer (not atob which is browser-only)
       const imageBuffer = Buffer.from(base64Data, 'base64');
-      
+
       console.log('📦 Buffer size:', imageBuffer.length, 'bytes');
 
       // Upload the new image content, replacing the existing file
@@ -1535,13 +1606,13 @@ export class SupabaseSavedDesignsService {
 
       console.log('✅ Image content updated successfully in Supabase Storage');
       console.log('📋 Upload data:', uploadData);
-      
+
       // Return the URL with a cache-busting parameter to force browser refresh
       const timestamp = Date.now();
-      const urlWithCacheBust = supabaseUrl.includes('?') 
-        ? `${supabaseUrl}&v=${timestamp}` 
+      const urlWithCacheBust = supabaseUrl.includes('?')
+        ? `${supabaseUrl}&v=${timestamp}`
         : `${supabaseUrl}?v=${timestamp}`;
-      
+
       console.log('🔗 Returning URL with cache bust:', urlWithCacheBust);
       return urlWithCacheBust;
     } catch (error) {
@@ -1568,10 +1639,10 @@ export class SupabaseSavedDesignsService {
       // Extract the base URL without cache-busting parameters for comparison
       const oldBaseUrl = oldUrl.split('?')[0];
       const newBaseUrl = newUrl.split('?')[0];
-      
+
       // If base URLs are the same, we're just updating cache-busting parameters
       const isVersionUpdate = oldBaseUrl === newBaseUrl;
-      
+
       if (isVersionUpdate) {
         console.log('🔄 This is a version update (cache-busting), updating all matching URLs');
       }
@@ -1582,7 +1653,7 @@ export class SupabaseSavedDesignsService {
       // Build the update query for each individual image column
       // Note: thumbnail is stored in cover_image column, so we don't include both
       const imageColumns = ['image_1', 'image_2', 'image_3', 'image_4', 'cover_image'];
-      
+
       for (const column of imageColumns) {
         let query = this.supabase
           .from('saved_designs')
@@ -1634,7 +1705,7 @@ export class SupabaseSavedDesignsService {
           if (design.metadata && design.metadata.imageUrls && Array.isArray(design.metadata.imageUrls)) {
             let updated = false;
             const updatedMetadata = { ...design.metadata };
-            
+
             updatedMetadata.imageUrls = design.metadata.imageUrls.map((url: string) => {
               if (isVersionUpdate && url && url.startsWith(oldBaseUrl)) {
                 updated = true;
@@ -1689,7 +1760,7 @@ export class SupabaseSavedDesignsService {
             let updated = false;
             const updatedMetadata = { ...design.metadata };
             const updatedDesignData = { ...design.metadata.designData };
-            
+
             updatedDesignData.pages = design.metadata.designData.pages.map((page: any) => {
               if (page.image) {
                 if (isVersionUpdate && page.image.startsWith(oldBaseUrl)) {
