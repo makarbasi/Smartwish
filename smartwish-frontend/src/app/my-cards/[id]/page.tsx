@@ -1868,21 +1868,78 @@ export default function CustomizeCardPage() {
           </div>
 
           {/* Mobile/Tablet Single Page View */}
-          <div className="xl:hidden relative">
+          <div className="xl:hidden relative px-4">
+            {/* Debug info - remove after testing */}
+            <div className="mb-2 p-2 bg-yellow-100 text-xs rounded">
+              <div>Card: {cd?.name || 'No name'}</div>
+              <div>Current Page: {currentPage + 1}/4</div>
+              <div>Has Image: {!!(pageImages[currentPage] || cd.pages[currentPage]) ? 'Yes' : 'No'}</div>
+              <div>Image URL: {(pageImages[currentPage] || cd.pages[currentPage])?.substring(0, 50)}...</div>
+            </div>
             <div
-              className="w-80 mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
+              className="w-full max-w-sm mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              <div className="w-full aspect-[640/989] relative">
-                <Image
-                  src={pageImages[currentPage] || cd.pages[currentPage]}
-                  alt={`Card Page ${currentPage + 1}`}
-                  width={320}
-                  height={494}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-full aspect-[640/989] relative bg-gray-100">
+                {pageImages[currentPage] || cd.pages[currentPage] ? (
+                  <Image
+                    src={pageImages[currentPage] || cd.pages[currentPage]}
+                    alt={`Card Page ${currentPage + 1}`}
+                    width={640}
+                    height={989}
+                    className="w-full h-full object-cover"
+                    priority
+                    unoptimized
+                    onError={(e) => {
+                      console.error('Failed to load image:', pageImages[currentPage] || cd.pages[currentPage]);
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                    <p className="text-gray-500">No image</p>
+                  </div>
+                )}
+
+                {/* Gift Card QR Code and Logo Overlay (Mobile) - Show on page 3 (index 2) */}
+                {currentPage === 2 && giftCardData && savedDesign?.status !== 'published' && (
+                  <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-gray-200 max-w-[85%]">
+                    <div className="flex flex-col items-center space-y-2">
+                      {/* QR Code and Logo side-by-side */}
+                      <div className="flex items-center space-x-3">
+                        {/* QR Code on left */}
+                        <div className="bg-white p-1.5 rounded-lg shadow-sm">
+                          <img
+                            src={giftCardData.qrCode}
+                            alt="Gift Card QR Code"
+                            className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+                          />
+                        </div>
+
+                        {/* Company Logo on right (same size as QR code) */}
+                        {giftCardData.storeLogo && (
+                          <div className="bg-white p-1.5 rounded-lg shadow-sm">
+                            <img
+                              src={giftCardData.storeLogo}
+                              alt={giftCardData.storeName}
+                              className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Company Name and Amount centered below */}
+                      <div className="text-center">
+                        <p className="text-xs sm:text-sm font-semibold text-gray-800">{giftCardData.storeName}</p>
+                        <p className="text-xs text-gray-600">${giftCardData.amount}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Edit icon - positioned but doesn't block swipes */}
                 <div
                   className="absolute top-3 right-3 z-30"
