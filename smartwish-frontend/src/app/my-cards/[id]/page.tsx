@@ -296,46 +296,115 @@ export default function CustomizeCardPage() {
 
   // Load gift card data - check both localStorage and saved design metadata
   useEffect(() => {
+    console.log('🎁 Initial gift card load effect running...', { cardId, hasSavedDesign: !!savedDesign });
+
     if (cardId) {
-      // First check localStorage for immediate availability
+      // First check localStorage for immediate availability (prioritize this)
       const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+      console.log('🎁 Checking localStorage for key:', `giftCard_${cardId}`);
+      console.log('🎁 localStorage value:', storedGiftData);
+
       if (storedGiftData) {
         const parsedData = JSON.parse(storedGiftData);
-        console.log('🎁 Loading gift card from localStorage:', parsedData);
+        console.log('🎁 ✅ USING GIFT CARD FROM LOCALSTORAGE (most recent):', parsedData);
         setGiftCardData(parsedData);
+        // Don't check metadata if localStorage has data - localStorage is more recent
+        return;
+      } else {
+        console.log('🎁 No gift card in localStorage, checking metadata...');
       }
 
-      // Also check saved design metadata for persistent storage
+      // Only check saved design metadata if localStorage is empty
       if (savedDesign?.metadata) {
         try {
           const metadata = typeof savedDesign.metadata === 'string'
             ? JSON.parse(savedDesign.metadata)
             : savedDesign.metadata;
+
+          console.log('🎁 Saved design metadata:', metadata);
+
           if (metadata.giftCard) {
-            console.log('🎁 Loading gift card from metadata:', metadata.giftCard);
+            console.log('🎁 Loading gift card from metadata (localStorage was empty):', metadata.giftCard);
             setGiftCardData(metadata.giftCard);
             // Update localStorage to sync with database
             localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(metadata.giftCard));
+          } else {
+            console.log('🎁 No gift card in metadata');
           }
         } catch (error) {
           console.warn('Failed to parse metadata for gift card data:', error);
         }
+      } else {
+        console.log('🎁 No saved design metadata available');
       }
     }
   }, [cardId, savedDesign]);
 
   // Check for showGift parameter and reload gift card data
+  // Also watch for URL changes to detect when returning from marketplace
   useEffect(() => {
     if (showGift && cardId) {
       console.log('🎁 showGift parameter detected, reloading gift card data');
+      console.log('🎁 Current URL:', window.location.href);
+      console.log('🎁 cardId:', cardId);
+
       const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+      console.log('🎁 localStorage key:', `giftCard_${cardId}`);
+      console.log('🎁 Raw localStorage data:', storedGiftData);
+
       if (storedGiftData) {
-        const parsedData = JSON.parse(storedGiftData);
-        console.log('🎁 Reloaded gift card:', parsedData);
-        setGiftCardData(parsedData);
+        try {
+          const parsedData = JSON.parse(storedGiftData);
+          console.log('🎁 Parsed gift card data:', parsedData);
+          console.log('🎁 Setting gift card data to state...');
+          setGiftCardData(parsedData);
+          console.log('🎁 Gift card data set successfully');
+        } catch (error) {
+          console.error('🎁 Error parsing gift card data:', error);
+        }
+      } else {
+        console.log('🎁 No gift card data found in localStorage');
       }
+    } else {
+      console.log('🎁 showGift check:', { showGift, cardId });
     }
-  }, [showGift, cardId]);
+  }, [showGift, cardId, searchParams]); // Add searchParams to re-run on URL changes
+
+  // Listen for popstate events (browser back/forward navigation)
+  useEffect(() => {
+    const handlePopState = () => {
+      if (cardId) {
+        console.log('🎁 Navigation detected, checking for gift card updates');
+        const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+        if (storedGiftData) {
+          const parsedData = JSON.parse(storedGiftData);
+          console.log('🎁 Updated gift card from navigation:', parsedData);
+          setGiftCardData(parsedData);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [cardId]);
+
+  // Listen for window focus to reload gift card when returning from marketplace
+  useEffect(() => {
+    const handleFocus = () => {
+      if (cardId && showGift) {
+        console.log('🎁 Window focus detected with showGift=true, reloading gift card');
+        const storedGiftData = localStorage.getItem(`giftCard_${cardId}`);
+        if (storedGiftData) {
+          const parsedData = JSON.parse(storedGiftData);
+          console.log('🎁 Updated gift card from focus:', parsedData);
+          setGiftCardData(parsedData);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [cardId, showGift]);
 
   // Auto-save gift card data to database metadata when it changes
   useEffect(() => {
