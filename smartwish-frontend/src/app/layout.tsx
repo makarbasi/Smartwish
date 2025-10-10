@@ -4,6 +4,7 @@ import "./globals.css";
 import AppChrome from "@/components/AppChrome";
 import AuthProvider from "@/components/AuthProvider";
 import RequireAuthModal from "@/components/RequireAuthModal";
+import NavigationProgress from "@/components/NavigationProgress";
 import { AuthModalProvider } from "@/contexts/AuthModalContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 
@@ -38,6 +39,7 @@ export default function RootLayout({
         suppressHydrationWarning={true}
       >
         <AuthProvider>
+          <NavigationProgress />
           <ToastProvider>
             <AuthModalProvider>
               <RequireAuthModal
