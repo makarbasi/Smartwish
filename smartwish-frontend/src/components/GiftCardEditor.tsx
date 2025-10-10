@@ -81,66 +81,70 @@ export default function GiftCardEditor({ open, onClose, templateName, templateIm
       <div className="fixed inset-0 overflow-hidden">
         <DialogPanel className="flex h-full w-full flex-col bg-white">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-            <div className="flex items-center gap-4">
-              <h1 className="text-lg font-semibold text-gray-900">
+          <div className="flex items-center justify-between border-b border-gray-200 px-2 sm:px-6 py-2 sm:py-4">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <h1 className="text-sm sm:text-lg font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-none">
                 Edit {templateName}
               </h1>
               {totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <span className="text-xs sm:text-sm text-gray-500 hidden sm:inline">
                     Page {currentPage + 1} of {totalPages}
                   </span>
-                  <div className="flex gap-1">
+                  <span className="text-xs text-gray-500 sm:hidden">
+                    {currentPage + 1}/{totalPages}
+                  </span>
+                  <div className="flex gap-0.5 sm:gap-1">
                     <button
                       onClick={() => goToPage(currentPage - 1)}
                       disabled={currentPage === 0}
-                      className="flex items-center justify-center rounded-md p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      className="flex items-center justify-center rounded-md p-0.5 sm:p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
                     >
-                      <ChevronLeftIcon className="h-5 w-5" />
+                      <ChevronLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                     <button
                       onClick={() => goToPage(currentPage + 1)}
                       disabled={currentPage === totalPages - 1}
-                      className="flex items-center justify-center rounded-md p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
+                      className="flex items-center justify-center rounded-md p-0.5 sm:p-1 text-gray-400 hover:text-gray-600 disabled:opacity-40"
                     >
-                      <ChevronRightIcon className="h-5 w-5" />
+                      <ChevronRightIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                   </div>
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 sm:gap-3">
               <button
                 onClick={handleFinish}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                className="rounded-md bg-indigo-600 px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-500"
               >
-                Save & Finish
+                <span className="hidden sm:inline">Save & Finish</span>
+                <span className="sm:hidden">Save</span>
               </button>
               <button
                 onClick={() => onClose(false)}
-                className="rounded-md p-1 text-gray-400 hover:text-gray-600"
+                className="rounded-md p-0.5 sm:p-1 text-gray-400 hover:text-gray-600"
               >
-                <XMarkIcon className="h-6 w-6" />
+                <XMarkIcon className="h-5 w-5 sm:h-6 sm:w-6" />
               </button>
             </div>
           </div>
 
           {/* Page Navigation (if multiple pages) */}
           {totalPages > 1 && (
-            <div className="border-b border-gray-200 px-6 py-3">
-              <div className="flex gap-2">
+            <div className="border-b border-gray-200 px-2 sm:px-6 py-2 sm:py-3 overflow-x-auto">
+              <div className="flex gap-1 sm:gap-2">
                 {templateImages.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => goToPage(index)}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                      index === currentPage
+                    className={`rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium whitespace-nowrap ${index === currentPage
                         ? 'bg-indigo-100 text-indigo-700'
                         : 'text-gray-500 hover:text-gray-700'
-                    }`}
+                      }`}
                   >
-                    Page {index + 1}
+                    <span className="hidden sm:inline">Page {index + 1}</span>
+                    <span className="sm:hidden">{index + 1}</span>
                   </button>
                 ))}
               </div>
@@ -148,9 +152,9 @@ export default function GiftCardEditor({ open, onClose, templateName, templateIm
           )}
 
           {/* Editor */}
-          <div className="flex-1 p-6">
+          <div className="flex-1 p-1 sm:p-4 md:p-6">
             {currentImage && (
-              <div className="h-full">
+              <div className="h-full w-full">
                 <DynamicPinturaEditor
                   {...editorConfig}
                   src={currentImage}
