@@ -5,6 +5,9 @@ import { useMemo, useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 
+// Force dynamic rendering to prevent prerendering errors
+export const dynamic = 'force-dynamic';
+
 // Types
 interface UserEvent {
   id: string;
@@ -48,7 +51,7 @@ function toDateStr(d: Date) {
 
 function iconForEvent(nameOrType: string) {
   const input = (nameOrType || '').toLowerCase()
-  
+
   // First check by event type (for API data)
   if (input === 'birthday') return { icon: '🎂', label: 'Birthday' }
   if (input === 'meeting') return { icon: '🤝', label: 'Meeting' }
@@ -56,7 +59,7 @@ function iconForEvent(nameOrType: string) {
   if (input === 'work') return { icon: '💼', label: 'Work' }
   if (input === 'holiday') return { icon: '🏖️', label: 'Holiday' }
   if (input === 'general') return { icon: '📅', label: 'General' }
-  
+
   // Then check by name content (for backward compatibility and custom events)
   if (input.includes('birth')) return { icon: '🎂', label: 'Birthday' }
   if (input.includes('anniv')) return { icon: '💍', label: 'Anniversary' }
@@ -77,7 +80,7 @@ function iconForEvent(nameOrType: string) {
   if (input.includes('music') || input.includes('concert')) return { icon: '🎵', label: 'Music' }
   if (input.includes('appointment')) return { icon: '📋', label: 'Appointment' }
   if (input.includes('reminder')) return { icon: '⏰', label: 'Reminder' }
-  
+
   // Default fallback
   return { icon: '📅', label: 'Event' }
 }
@@ -88,29 +91,29 @@ function generateMonthDays(base: Date, eventsMap: Record<string, BaseEvent[]>) {
   const first = new Date(year, month, 1)
   const startDay = (first.getDay() + 6) % 7 // Monday=0
   const start = new Date(year, month, 1 - startDay)
-  
+
   const res: { date: string; isCurrentMonth: boolean; isToday: boolean; events: BaseEvent[] }[] = []
-  
+
   // Generate 42 days (6 weeks) to fill the calendar grid
   for (let i = 0; i < 42; i++) {
     const d = new Date(start)
     d.setDate(start.getDate() + i)
     const ds = toDateStr(d)
-    res.push({ 
-      date: ds, 
-      isCurrentMonth: d.getMonth() === month, 
-      isToday: ds === toDateStr(new Date()), 
-      events: eventsMap[ds] || [] 
+    res.push({
+      date: ds,
+      isCurrentMonth: d.getMonth() === month,
+      isToday: ds === toDateStr(new Date()),
+      events: eventsMap[ds] || []
     })
   }
-  
+
   return res
 }
 
 // Event Actions Dropdown Component
-const EventActionsDropdown = ({ event, onEdit, onDelete }: { 
-  event: BaseEvent; 
-  onEdit: (event: BaseEvent) => void; 
+const EventActionsDropdown = ({ event, onEdit, onDelete }: {
+  event: BaseEvent;
+  onEdit: (event: BaseEvent) => void;
   onDelete: (event: BaseEvent) => void;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -127,12 +130,12 @@ const EventActionsDropdown = ({ event, onEdit, onDelete }: {
       >
         <EllipsisVerticalIcon className="w-4 h-4 text-gray-500" />
       </button>
-      
+
       {isOpen && (
         <>
           {/* Backdrop to close dropdown */}
-          <div 
-            className="fixed inset-0 z-10" 
+          <div
+            className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
           {/* Dropdown menu */}
@@ -167,16 +170,16 @@ const EventActionsDropdown = ({ event, onEdit, onDelete }: {
 };
 
 // Delete Confirmation Modal Component
-const DeleteConfirmationModal = ({ 
-  isOpen, 
-  onClose, 
-  onConfirm, 
+const DeleteConfirmationModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
   eventName,
-  isDeleting 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  onConfirm: () => void; 
+  isDeleting
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
   eventName: string;
   isDeleting: boolean;
 }) => {
@@ -201,14 +204,14 @@ const DeleteConfirmationModal = ({
           </div>
         </div>
         <div className="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3 rounded-b-lg">
-          <button 
+          <button
             onClick={onClose}
             disabled={isDeleting}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
           >
             Cancel
           </button>
-          <button 
+          <button
             onClick={onConfirm}
             disabled={isDeleting}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50"
@@ -259,7 +262,7 @@ export default function EventsPage() {
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, BaseEvent[]> = {}
-    
+
     // Only process events if user is signed in
     if (session && events.length > 0) {
       // Convert API events to BaseEvent format
@@ -305,7 +308,7 @@ export default function EventsPage() {
     try {
       const method = editingEventId ? 'PUT' : 'POST';
       const url = editingEventId ? `/api/events/${editingEventId}` : '/api/events';
-      
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -417,8 +420,8 @@ export default function EventsPage() {
                     <PlusIcon className="-ml-0.5 mr-2 h-4 w-4" /> Add Event
                   </button>
                 ) : (
-                  <button 
-                    disabled 
+                  <button
+                    disabled
                     className="inline-flex items-center rounded-md bg-gray-300 px-3 py-2 text-sm font-semibold text-gray-500 shadow-sm cursor-not-allowed"
                     title="Sign in to add events"
                   >
@@ -444,7 +447,7 @@ export default function EventsPage() {
                   </button>
                 </div>
               </div>
-              
+
               <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-500">
                 <span>{isAuthenticated ? 'Click dates to view details' : 'Sign in to manage events'}</span>
               </div>
@@ -452,7 +455,7 @@ export default function EventsPage() {
 
             <div className="shadow-sm ring-1 ring-black/5 lg:flex lg:flex-auto lg:flex-col rounded-lg overflow-hidden bg-white">
               <div className="grid grid-cols-7 gap-0 bg-gray-50 text-center text-xs/6 font-semibold text-gray-700 lg:flex-none">
-                {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d) => (
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
                   <div key={d} className="flex justify-center py-2 lg:py-3">{d}</div>
                 ))}
               </div>
@@ -463,18 +466,18 @@ export default function EventsPage() {
                       key={day.date}
                       className={`group relative px-1 py-2 lg:px-3 lg:py-4 min-h-[60px] lg:min-h-[96px] hover:bg-gray-50 focus:outline-none transition-colors duration-200 border-r border-b border-gray-100 ${!day.isCurrentMonth ? 'bg-gray-50' : 'text-gray-700'}`}
                     >
-                      <button 
+                      <button
                         onClick={() => {
                           if (day.isCurrentMonth && canEditEvents) {
                             setSelectedDate(day.date)
                             setSelectedEventsPage(0)
                           }
-                        }} 
+                        }}
                         className={`w-full h-full text-left flex flex-col items-start ${!canEditEvents ? 'cursor-default' : ''}`}
                         disabled={!day.isCurrentMonth || !canEditEvents}
                       >
-                        <time 
-                          dateTime={day.date || ''} 
+                        <time
+                          dateTime={day.date || ''}
                           className={`
                             relative inline-flex h-6 w-6 lg:h-8 lg:w-8 items-center justify-center rounded-full text-xs lg:text-sm font-medium transition-all duration-200 mb-1
                             ${day.isCurrentMonth ? (selectedDate === day.date ? 'bg-indigo-600 text-white font-semibold' : 'text-gray-900 hover:bg-gray-100') : 'text-gray-400'}
@@ -537,8 +540,8 @@ export default function EventsPage() {
                             <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
                             {ev.time && <div className="text-xs text-gray-500">{ev.time}</div>}
                           </div>
-                          <EventActionsDropdown 
-                            event={ev} 
+                          <EventActionsDropdown
+                            event={ev}
                             onEdit={handleEditEvent}
                             onDelete={handleDeleteClick}
                           />
@@ -547,8 +550,8 @@ export default function EventsPage() {
                     </ol>
                     {selectedEventsTotalPages > 1 && (
                       <div className="flex items-center justify-between text-sm">
-                        <button 
-                          onClick={() => setSelectedEventsPage(p => Math.max(0, p - 1))} 
+                        <button
+                          onClick={() => setSelectedEventsPage(p => Math.max(0, p - 1))}
                           disabled={selectedEventsPage === 0}
                           className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                         >
@@ -557,8 +560,8 @@ export default function EventsPage() {
                         <span className="text-gray-500">
                           {selectedEventsPage + 1} of {selectedEventsTotalPages} ({selectedEvents.length} events)
                         </span>
-                        <button 
-                          onClick={() => setSelectedEventsPage(p => Math.min(selectedEventsTotalPages - 1, p + 1))} 
+                        <button
+                          onClick={() => setSelectedEventsPage(p => Math.min(selectedEventsTotalPages - 1, p + 1))}
                           disabled={selectedEventsPage >= selectedEventsTotalPages - 1}
                           className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                         >
@@ -585,10 +588,10 @@ export default function EventsPage() {
                           <div className="text-lg">{iconForEvent(ev.event_type || ev.name).icon}</div>
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
-                            <div className="text-xs text-gray-500">{ev.datetime?.slice(0,10)}</div>
+                            <div className="text-xs text-gray-500">{ev.datetime?.slice(0, 10)}</div>
                           </div>
-                          <EventActionsDropdown 
-                            event={ev} 
+                          <EventActionsDropdown
+                            event={ev}
                             onEdit={handleEditEvent}
                             onDelete={handleDeleteClick}
                           />
@@ -597,8 +600,8 @@ export default function EventsPage() {
                     </ol>
                     {upcomingTotalPages > 1 && (
                       <div className="flex items-center justify-between text-sm">
-                        <button 
-                          onClick={() => setUpcomingPage(p => Math.max(0, p - 1))} 
+                        <button
+                          onClick={() => setUpcomingPage(p => Math.max(0, p - 1))}
                           disabled={upcomingPage === 0}
                           className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                         >
@@ -607,8 +610,8 @@ export default function EventsPage() {
                         <span className="text-gray-500">
                           {upcomingPage + 1} of {upcomingTotalPages}
                         </span>
-                        <button 
-                          onClick={() => setUpcomingPage(p => Math.min(upcomingTotalPages - 1, p + 1))} 
+                        <button
+                          onClick={() => setUpcomingPage(p => Math.min(upcomingTotalPages - 1, p + 1))}
                           disabled={upcomingPage >= upcomingTotalPages - 1}
                           className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                         >
@@ -641,8 +644,8 @@ export default function EventsPage() {
                           <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
                           {ev.time && <div className="text-xs text-gray-500">{ev.time}</div>}
                         </div>
-                        <EventActionsDropdown 
-                          event={ev} 
+                        <EventActionsDropdown
+                          event={ev}
                           onEdit={handleEditEvent}
                           onDelete={handleDeleteClick}
                         />
@@ -651,8 +654,8 @@ export default function EventsPage() {
                   </ol>
                   {selectedEventsTotalPages > 1 && (
                     <div className="flex items-center justify-between text-sm">
-                      <button 
-                        onClick={() => setSelectedEventsPage(p => Math.max(0, p - 1))} 
+                      <button
+                        onClick={() => setSelectedEventsPage(p => Math.max(0, p - 1))}
                         disabled={selectedEventsPage === 0}
                         className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                       >
@@ -661,8 +664,8 @@ export default function EventsPage() {
                       <span className="text-gray-500">
                         {selectedEventsPage + 1} of {selectedEventsTotalPages} ({selectedEvents.length} events)
                       </span>
-                      <button 
-                        onClick={() => setSelectedEventsPage(p => Math.min(selectedEventsTotalPages - 1, p + 1))} 
+                      <button
+                        onClick={() => setSelectedEventsPage(p => Math.min(selectedEventsTotalPages - 1, p + 1))}
                         disabled={selectedEventsPage >= selectedEventsTotalPages - 1}
                         className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                       >
@@ -689,10 +692,10 @@ export default function EventsPage() {
                         <div className="text-lg">{iconForEvent(ev.event_type || ev.name).icon}</div>
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900 text-sm">{ev.name}</div>
-                          <div className="text-xs text-gray-500">{ev.datetime?.slice(0,10)}</div>
+                          <div className="text-xs text-gray-500">{ev.datetime?.slice(0, 10)}</div>
                         </div>
-                        <EventActionsDropdown 
-                          event={ev} 
+                        <EventActionsDropdown
+                          event={ev}
                           onEdit={handleEditEvent}
                           onDelete={handleDeleteClick}
                         />
@@ -701,8 +704,8 @@ export default function EventsPage() {
                   </ol>
                   {upcomingTotalPages > 1 && (
                     <div className="flex items-center justify-between text-sm">
-                      <button 
-                        onClick={() => setUpcomingPage(p => Math.max(0, p - 1))} 
+                      <button
+                        onClick={() => setUpcomingPage(p => Math.max(0, p - 1))}
                         disabled={upcomingPage === 0}
                         className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                       >
@@ -711,8 +714,8 @@ export default function EventsPage() {
                       <span className="text-gray-500">
                         {upcomingPage + 1} of {upcomingTotalPages}
                       </span>
-                      <button 
-                        onClick={() => setUpcomingPage(p => Math.min(upcomingTotalPages - 1, p + 1))} 
+                      <button
+                        onClick={() => setUpcomingPage(p => Math.min(upcomingTotalPages - 1, p + 1))}
                         disabled={upcomingPage >= upcomingTotalPages - 1}
                         className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
                       >
@@ -771,33 +774,33 @@ export default function EventsPage() {
             <div className="px-6 py-4 space-y-4">
               <div>
                 <label htmlFor="event-name" className="block text-sm font-medium text-gray-700 mb-2">Event Name</label>
-                <input 
+                <input
                   id="event-name"
                   type="text"
-                  value={formName} 
-                  onChange={(e) => setFormName(e.target.value)} 
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2" 
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
                   placeholder="Enter event name"
                 />
               </div>
               <div>
                 <label htmlFor="event-date" className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                <input 
+                <input
                   id="event-date"
-                  type="date" 
-                  value={formDate} 
-                  onChange={(e) => setFormDate(e.target.value)} 
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2" 
+                  type="date"
+                  value={formDate}
+                  onChange={(e) => setFormDate(e.target.value)}
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
                 />
               </div>
               <div>
                 <label htmlFor="event-type" className="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
                 <div className="flex items-center gap-3">
                   <div className="text-2xl flex-shrink-0">{iconForEvent(formType === 'general' ? formName : formType).icon}</div>
-                  <select 
+                  <select
                     id="event-type"
-                    value={formType} 
-                    onChange={(e) => setFormType(e.target.value)} 
+                    value={formType}
+                    onChange={(e) => setFormType(e.target.value)}
                     className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2"
                   >
                     <option value="general">General</option>
@@ -826,20 +829,20 @@ export default function EventsPage() {
               </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 flex items-center justify-end gap-3 rounded-b-lg">
-              <button 
+              <button
                 onClick={() => {
                   setIsAddOpen(false);
                   setEditingEventId(null);
                   setFormName('');
                   setFormDate(toDateStr(new Date()));
                   setFormType('general');
-                }} 
+                }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handleSaveEvent} 
+              <button
+                onClick={handleSaveEvent}
                 className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               >
                 {editingEventId ? 'Update Event' : 'Save Event'}
