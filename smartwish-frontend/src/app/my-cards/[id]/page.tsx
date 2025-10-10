@@ -1733,28 +1733,33 @@ export default function CustomizeCardPage() {
                   {giftCardData && savedDesign?.status !== 'published' && (
                     <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200">
                       <div className="flex flex-col items-center space-y-3">
-                        {/* QR Code */}
-                        <div className="bg-white p-2 rounded-lg shadow-sm">
-                          <img
-                            src={giftCardData.qrCode}
-                            alt="Gift Card QR Code"
-                            className="w-24 h-24 object-contain"
-                          />
+                        {/* QR Code and Logo side-by-side */}
+                        <div className="flex items-center space-x-4">
+                          {/* QR Code on left */}
+                          <div className="bg-white p-2 rounded-lg shadow-sm">
+                            <img
+                              src={giftCardData.qrCode}
+                              alt="Gift Card QR Code"
+                              className="w-24 h-24 object-contain"
+                            />
+                          </div>
+
+                          {/* Company Logo on right (same size as QR code) */}
+                          {giftCardData.storeLogo && (
+                            <div className="bg-white p-2 rounded-lg shadow-sm">
+                              <img
+                                src={giftCardData.storeLogo}
+                                alt={giftCardData.storeName}
+                                className="w-24 h-24 object-contain"
+                              />
+                            </div>
+                          )}
                         </div>
 
-                        {/* Store Logo and Info */}
-                        <div className="flex items-center space-x-2">
-                          {giftCardData.storeLogo && (
-                            <img
-                              src={giftCardData.storeLogo}
-                              alt={giftCardData.storeName}
-                              className="w-8 h-8 object-contain rounded"
-                            />
-                          )}
-                          <div className="text-center">
-                            <p className="text-sm font-semibold text-gray-800">{giftCardData.storeName}</p>
-                            <p className="text-xs text-gray-600">${giftCardData.amount}</p>
-                          </div>
+                        {/* Company Name and Amount centered below */}
+                        <div className="text-center">
+                          <p className="text-sm font-semibold text-gray-800">{giftCardData.storeName}</p>
+                          <p className="text-xs text-gray-600">${giftCardData.amount}</p>
                         </div>
                       </div>
                     </div>
