@@ -1157,6 +1157,8 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
             const overlayTop = 1800; // Higher up from bottom for better visibility
             const overlayLeft = 2200; // Right side of right panel
 
+            // Create a temporary file with the overlay
+            const tempOverlayPath = path.join(outputDir, `temp_${cardId}_overlay.png`);
             await sharp(compositeSide2Path)
               .composite([{
                 input: giftCardOverlayBuffer,
@@ -1164,7 +1166,11 @@ Return ONLY a JSON array of relevant template IDs, ordered by relevance (most re
                 left: overlayLeft
               }])
               .png()
-              .toFile(compositeSide2Path);
+              .toFile(tempOverlayPath);
+
+            // Replace the original composite with the one that has the overlay
+            await fsPromises.unlink(compositeSide2Path);
+            await fsPromises.rename(tempOverlayPath, compositeSide2Path);
 
             console.log(`[generate-print-jpegs] Gift card overlay positioned at top: ${overlayTop}, left: ${overlayLeft}`);
             console.log('[generate-print-jpegs] Gift card overlay with QR code and logo added successfully to print composite');
