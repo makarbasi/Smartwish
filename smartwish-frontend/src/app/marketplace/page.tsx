@@ -84,7 +84,7 @@ function MarketplaceContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successData, setSuccessData] = useState<any>(null)
   const [activeFilter, setActiveFilter] = useState<string>('all')
-  
+
   // Check if we're in gift card integration mode
   const cardId = searchParams.get('cardId')
   const cardName = searchParams.get('cardName')
@@ -308,8 +308,8 @@ function MarketplaceContent() {
         <div className="flex gap-2">
           <button
             className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'all'
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
             onClick={() => filterProducts('all')}
           >
@@ -317,8 +317,8 @@ function MarketplaceContent() {
           </button>
           <button
             className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'merchant_card'
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
             onClick={() => filterProducts('merchant_card')}
           >
@@ -326,8 +326,8 @@ function MarketplaceContent() {
           </button>
           <button
             className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'charity'
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
             onClick={() => filterProducts('charity')}
           >
@@ -335,8 +335,8 @@ function MarketplaceContent() {
           </button>
           <button
             className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'prepaid_card'
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
             onClick={() => filterProducts('prepaid_card')}
           >
@@ -493,12 +493,12 @@ function CheckoutModal({
           },
           errorCorrectionLevel: 'H'
         })
-        
+
         // Check if we're in gift mode - integrate with card design
         const searchParams = new URLSearchParams(window.location.search)
         const cardId = searchParams.get('cardId')
         const isGiftMode = searchParams.get('mode') === 'gift'
-        
+
         if (isGiftMode && cardId) {
           // Store gift card data in localStorage for card integration
           const giftCardData = {
@@ -509,12 +509,12 @@ function CheckoutModal({
             redemptionLink: data.redemptionLink
           }
           localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
-          
-          // Navigate back to card editor with gift card integration
-          window.location.href = `/my-cards?cardId=${cardId}&showGift=true`
+
+          // Navigate back to my-cards page with animation trigger
+          window.location.href = `/my-cards?giftAdded=${cardId}`
           return
         }
-        
+
         // Normal flow - show modal
         setSuccessData(data)
         await generateQRCodeFromLink(data.redemptionLink)
