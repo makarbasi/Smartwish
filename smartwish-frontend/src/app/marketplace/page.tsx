@@ -158,10 +158,12 @@ function MarketplaceContent() {
     recognition.maxAlternatives = 1
     recognition.continuous = false
 
+    // Clear existing text when mic is clicked
+    setSearchTerm('')
     setIsVoiceRecording(true)
 
     recognition.onstart = () => {
-      console.log('🎤 Voice recognition started')
+      console.log('🎤 Voice recognition started - previous text cleared')
     }
 
     recognition.onresult = (event: any) => {

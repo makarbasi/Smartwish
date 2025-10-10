@@ -197,21 +197,20 @@ export default function HeroSearch(props: Props) {
     recognition.maxAlternatives = 1
     recognition.continuous = false
 
+    // Clear existing text when mic is clicked
+    setQ('')
     setRecording(true)
 
     recognition.onstart = () => {
-      console.log('🎤 Voice recognition started')
+      console.log('🎤 Voice recognition started - previous text cleared')
     }
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript
       console.log('🗣️ Voice input:', transcript)
 
-      // Add the transcript to the search query
-      setQ((prev) => {
-        const newQuery = prev ? `${prev} ${transcript}` : transcript
-        return newQuery.trim()
-      })
+      // Set the transcript as the new search query (replacing any previous text)
+      setQ(transcript.trim())
     }
 
     recognition.onerror = (event: any) => {
