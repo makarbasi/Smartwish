@@ -35,10 +35,10 @@ const STORE_NAME = 'pageImages';
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
+
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
-    
+
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -52,18 +52,18 @@ const storeImageInDB = async (key: string, imageFile: File): Promise<void> => {
   const db = await openDB();
   const transaction = db.transaction([STORE_NAME], 'readwrite');
   const store = transaction.objectStore(STORE_NAME);
-  
+
   await new Promise<void>((resolve, reject) => {
     const request = store.put({
       id: key,
       file: imageFile,
       timestamp: Date.now()
     });
-    
+
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
-  
+
   db.close();
 };
 
@@ -72,13 +72,13 @@ const getImageFromDB = async (key: string): Promise<File | null> => {
     const db = await openDB();
     const transaction = db.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
-    
+
     const result = await new Promise<any>((resolve, reject) => {
       const request = store.get(key);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    
+
     db.close();
     return result?.file || null;
   } catch (error) {
@@ -92,7 +92,7 @@ const cleanupOldSessionData = async (): Promise<void> => {
   const keysToRemove: string[] = [];
   const now = Date.now();
   const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-  
+
   for (let i = 0; i < sessionStorage.length; i++) {
     const key = sessionStorage.key(i);
     if (key?.startsWith('pixshop-page-') || key?.startsWith('pixshop-stack-')) {
@@ -107,28 +107,28 @@ const cleanupOldSessionData = async (): Promise<void> => {
       }
     }
   }
-  
+
   keysToRemove.forEach(key => {
     console.log(`🧹 Removing old session data: ${key}`);
     sessionStorage.removeItem(key);
   });
-  
+
   console.log(`🧹 Cleaned up ${keysToRemove.length} old session storage entries`);
 };
 
 // Synchronous fallback save for when async operations might be interrupted
 const synchronousFallbackSave = (
-  pageStorageKey: string, 
-  stackStorageKey: string, 
-  history: File[], 
-  historyIndex: number, 
-  currentImage: File | null, 
-  originalImage: File | null, 
-  pageIndex: number, 
+  pageStorageKey: string,
+  stackStorageKey: string,
+  history: File[],
+  historyIndex: number,
+  currentImage: File | null,
+  originalImage: File | null,
+  pageIndex: number,
   templateIdParam: string | null
 ): void => {
   if (typeof window === 'undefined' || !templateIdParam || !currentImage) return;
-  
+
   try {
     const pageState = {
       historyLength: history.length,
@@ -138,7 +138,7 @@ const synchronousFallbackSave = (
       pageIndex,
       synchronousSave: true
     };
-    
+
     // Only save basic state info without image data in synchronous mode
     sessionStorage.setItem(pageStorageKey, JSON.stringify(pageState));
     console.log(`⚡ Synchronous fallback save completed for page ${pageIndex}`);
@@ -177,6 +177,7 @@ const Spinner = () => (
 // External panels (from src/components/pixshop)
 import FilterPanel from '../../../../components/pixshop/FilterPanel';
 import AdjustmentPanel from '../../../../components/pixshop/AdjustmentPanel';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 
 // Icons
 const UndoIcon = ({ className }: { className?: string }) => (
@@ -226,6 +227,15 @@ const SlidersIcon = ({ className }: { className?: string }) => (
 const FilterIcon = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+  </svg>
+)
+
+const MicrophoneIcon = ({ className, isRecording }: { className?: string; isRecording?: boolean }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+    {isRecording && (
+      <circle cx="12" cy="12" r="8" className="animate-pulse" fill="currentColor" opacity="0.2" />
+    )}
   </svg>
 )
 
@@ -297,10 +307,10 @@ const PixshopPage: React.FC = () => {
   const returnToPintura = searchParams?.get('returnToPintura') === '1';
   const fromPintura = searchParams?.get('fromPintura') === '1';
   const isTemplateContext = cardParam === 'template-editor' || !!templateIdParam;
-  
+
   // Pixshop context for managing blob data
   const { setPixshopBlob, setSaveStatus } = usePixshop();
-  
+
   console.log('🎯 Pixshop page loading with params:', {
     cardParam,
     templateIdParam,
@@ -319,7 +329,7 @@ const PixshopPage: React.FC = () => {
   const router = useRouter();
   // Local copy of the design so we don't repeatedly depend on the SWR array lookups
   const [localDesign, setLocalDesign] = useState<SavedDesign | null>(null);
-  
+
   const [history, setHistory] = useState<File[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [prompt, setPrompt] = useState<string>('');
@@ -336,13 +346,20 @@ const PixshopPage: React.FC = () => {
   const [hasUserInteracted, setHasUserInteracted] = useState<boolean>(false);
   const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  
+
+  // Voice input for retouch tab
+  const { isRecording, isSupported, startRecording } = useVoiceInput({
+    onResult: (transcript) => {
+      setPrompt(transcript);
+    },
+  });
+
   // Reset interaction state when component mounts (reopening Pixshop)
   useEffect(() => {
     console.log('🔄 Pixshop component mounted - resetting interaction state');
     setHasUserInteracted(false);
   }, []);
-  
+
   // Create a unique storage key for this page
   const pageStorageKey = `pixshop-page-${templateIdParam}-${pageIndex}`;
   const stackStorageKey = `pixshop-stack-${templateIdParam}`;
@@ -358,10 +375,10 @@ const PixshopPage: React.FC = () => {
   // Save current page state using session manager for cross-route persistence
   const savePageState = useCallback(async () => {
     if (typeof window === 'undefined' || !templateIdParam) return;
-    
+
     try {
       const hasChanges = history.length > 1 || historyIndex > 0;
-      
+
       const pageData = {
         historyLength: history.length,
         historyIndex,
@@ -383,7 +400,7 @@ const PixshopPage: React.FC = () => {
 
       // Save to session manager (handles both sessionStorage and memory)
       sessionDataManager.savePageData(templateIdParam, pageIndex, pageData, imageBlob);
-      
+
       console.log(`💾 Saved page state via session manager for page ${pageIndex}:`, {
         hasChanges,
         historyLength: history.length,
@@ -397,10 +414,10 @@ const PixshopPage: React.FC = () => {
   // Restore page state using session manager
   const restorePageState = useCallback(async () => {
     if (typeof window === 'undefined' || !templateIdParam) return false;
-    
+
     try {
       const pageData = sessionDataManager.getPageData(templateIdParam, pageIndex);
-      
+
       if (!pageData) {
         console.log(`📂 No session data found for template ${templateIdParam}, page ${pageIndex}`);
         return false;
@@ -415,16 +432,16 @@ const PixshopPage: React.FC = () => {
       if (pageData.hasChanges && pageData.editedImageBlob) {
         // Convert blob back to File
         const restoredFile = blobToFile(
-          pageData.editedImageBlob, 
+          pageData.editedImageBlob,
           `restored-page-${pageIndex}-${Date.now()}.jpg`
         );
-        
+
         console.log(`✅ Restored image from session for page ${pageIndex}:`, {
           fileName: restoredFile.name,
           fileSize: restoredFile.size,
           fileType: restoredFile.type
         });
-        
+
         return restoredFile;
       }
 
@@ -439,7 +456,7 @@ const PixshopPage: React.FC = () => {
   useEffect(() => {
     if (fromPintura && typeof window !== 'undefined') {
       console.log('🎯 Pixshop: Checking for incoming Pintura state...');
-      
+
       try {
         const pinturaStateStr = sessionStorage.getItem('pinturaToPixshop');
         if (pinturaStateStr) {
@@ -483,37 +500,37 @@ const PixshopPage: React.FC = () => {
   useEffect(() => {
     // Skip if we've already loaded from Pintura state or if we already have history
     if (history.length > 0) return;
-    
+
     // First try to restore page state
     const loadImage = async () => {
       console.log(`🔄 Loading image for page ${pageIndex}...`);
-      
+
       // PRIORITY 1: Check for processed image from retouch flow
       if (typeof window !== 'undefined') {
         const retouchImageUrl = sessionStorage.getItem('retouchProcessedImage');
         const retouchTimestamp = sessionStorage.getItem('retouchProcessedImageTimestamp');
-        
+
         if (retouchImageUrl && retouchTimestamp) {
           const timestamp = parseInt(retouchTimestamp);
           const now = Date.now();
-          
+
           // Only use if processed within the last 10 seconds (fresh from retouch)
           if (now - timestamp < 10000) {
             try {
               console.log('🎨 Found fresh processed image from retouch button:', retouchImageUrl.substring(0, 50));
-              
+
               const response = await fetch(retouchImageUrl);
               const blob = await response.blob();
               const file = new File([blob], `retouch-processed-${Date.now()}.jpg`, { type: blob.type });
-              
+
               setHistory([file]);
               setHistoryIndex(0);
               setIsInitialLoad(false);
-              
+
               // Clean up session storage
               sessionStorage.removeItem('retouchProcessedImage');
               sessionStorage.removeItem('retouchProcessedImageTimestamp');
-              
+
               console.log('✅ Successfully loaded processed image from retouch');
               return;
             } catch (error) {
@@ -527,7 +544,7 @@ const PixshopPage: React.FC = () => {
           }
         }
       }
-      
+
       // PRIORITY 2: Try to restore from saved page state
       const restoredImage = await restorePageState();
       if (restoredImage) {
@@ -537,10 +554,10 @@ const PixshopPage: React.FC = () => {
         setIsInitialLoad(false);
         return;
       }
-      
+
       // PRIORITY 3: Proceed with normal loading
       console.log(`📥 No saved state found, loading original image for page ${pageIndex}`);
-      
+
       if (apiResponse?.data && effectiveDesignId) {
         const savedDesign = apiResponse.data.find((d) => d.id === effectiveDesignId);
         if (!savedDesign) {
@@ -576,7 +593,7 @@ const PixshopPage: React.FC = () => {
                         return; // Done via session storage
                       }
                     }
-                  } catch {}
+                  } catch { }
                 }
               }
               const resp = await fetch(`/api/templates/${templateIdParam}`);
@@ -620,7 +637,7 @@ const PixshopPage: React.FC = () => {
           } else {
             setError(`Card with ID ${effectiveDesignId} not found. Please check the URL or try refreshing the page.`);
           }
-          return;        
+          return;
         }
         // Cache locally for subsequent operations
         setLocalDesign(savedDesign);
@@ -642,7 +659,7 @@ const PixshopPage: React.FC = () => {
         }
       }
     };
-    
+
     // Call the async function
     loadImage();
   }, [apiResponse, effectiveDesignId, history.length, pageIndex, isTemplateContext, templateIdParam, templateNameParam, restorePageState]);
@@ -672,7 +689,7 @@ const PixshopPage: React.FC = () => {
   // Handle browser navigation (back button) as cancellation
   useEffect(() => {
     console.log('🔧 Setting up popstate handler for browser back button');
-    
+
     const handlePopState = async () => {
       console.log('🚫 Browser back button detected - saving state and cleaning up sessionStorage');
       // Save current state before leaving
@@ -691,24 +708,24 @@ const PixshopPage: React.FC = () => {
     // Also save state when page is about to unload
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       console.log('📤 Page unloading - saving current state');
-      
+
       // Try async save first, but don't wait for it
       savePageState().catch(error => {
         console.warn('⚠️ Async save failed during unload:', error);
       });
-      
+
       // Immediate synchronous fallback to ensure SOMETHING is saved
       synchronousFallbackSave(
-        pageStorageKey, 
-        stackStorageKey, 
-        history, 
-        historyIndex, 
-        currentImage, 
-        originalImage, 
-        pageIndex, 
+        pageStorageKey,
+        stackStorageKey,
+        history,
+        historyIndex,
+        currentImage,
+        originalImage,
+        pageIndex,
         templateIdParam
       );
-      
+
       // Don't prevent the user from leaving, just save what we can
       console.log('✅ Synchronous save completed during unload');
     };
@@ -721,16 +738,16 @@ const PixshopPage: React.FC = () => {
         savePageState().catch(error => {
           console.warn('⚠️ Async save failed on visibility change:', error);
         });
-        
+
         // Synchronous fallback
         synchronousFallbackSave(
-          pageStorageKey, 
-          stackStorageKey, 
-          history, 
-          historyIndex, 
-          currentImage, 
-          originalImage, 
-          pageIndex, 
+          pageStorageKey,
+          stackStorageKey,
+          history,
+          historyIndex,
+          currentImage,
+          originalImage,
+          pageIndex,
           templateIdParam
         );
       }
@@ -739,27 +756,27 @@ const PixshopPage: React.FC = () => {
     window.addEventListener('popstate', handlePopState);
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       console.log('🧹 Cleaning up navigation handlers and saving state');
-      
+
       // Try async save first
       savePageState().catch(error => {
         console.warn('⚠️ Async save failed during unmount:', error);
       });
-      
+
       // Immediate synchronous fallback
       synchronousFallbackSave(
-        pageStorageKey, 
-        stackStorageKey, 
-        history, 
-        historyIndex, 
-        currentImage, 
-        originalImage, 
-        pageIndex, 
+        pageStorageKey,
+        stackStorageKey,
+        history,
+        historyIndex,
+        currentImage,
+        originalImage,
+        pageIndex,
         templateIdParam
       );
-      
+
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -804,7 +821,7 @@ const PixshopPage: React.FC = () => {
       isAutoSaving,
       autoSaveStatus
     });
-    
+
     if (!currentImage || !session?.user?.id || isTemplateContext || isAutoSaving) {
       console.log('❌ Auto-save skipped:', {
         noImage: !currentImage,
@@ -830,16 +847,16 @@ const PixshopPage: React.FC = () => {
 
       // Get current saved design to find the existing Supabase URL for this page
       const savedDesign = apiResponse?.data?.find((d) => d.id === effectiveDesignId);
-      
+
       if (!savedDesign) {
         console.error('❌ Auto-save failed: Design not found');
         setAutoSaveStatus('error');
         return;
       }
-      
+
       // Get the existing Supabase URL for this page index
       const { url: existingSupabaseUrl } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
-      
+
       if (!existingSupabaseUrl) {
         console.error(`❌ Auto-save failed: No existing image found at page index ${pageIndex}`);
         setAutoSaveStatus('error');
@@ -847,7 +864,7 @@ const PixshopPage: React.FC = () => {
       }
 
       console.log('🔄 Auto-save: Updating Supabase image content...');
-      
+
       // Use the simplified update-images API to replace the Supabase image content
       const response = await fetch('/api/update-images', {
         method: 'POST',
@@ -868,7 +885,7 @@ const PixshopPage: React.FC = () => {
       }
 
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to auto-save image');
       }
@@ -889,7 +906,7 @@ const PixshopPage: React.FC = () => {
     } catch (err) {
       console.error('❌ Auto-save failed:', err);
       setAutoSaveStatus('error');
-      
+
       // Reset error status after 3 seconds
       setTimeout(() => {
         setAutoSaveStatus('idle');
@@ -904,7 +921,7 @@ const PixshopPage: React.FC = () => {
     newHistory.push(newImageFile);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
-    
+
     // Save page state when we add new image to history
     setTimeout(async () => {
       try {
@@ -1090,10 +1107,10 @@ const PixshopPage: React.FC = () => {
 
   const handleCancel = useCallback(() => {
     console.log('🚫 User canceled pixshop editing - returning without saving');
-    
+
     // Mark that user has interacted (clicked cancel)
     setHasUserInteracted(true);
-    
+
     // Clean up any potential sessionStorage data to prevent stale data issues
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('pixshopToPintura');
@@ -1103,7 +1120,7 @@ const PixshopPage: React.FC = () => {
       sessionStorage.removeItem(stackStorageKey);
       console.log('🧹 Cleaned up sessionStorage on cancel (including page state and global stack)');
     }
-    
+
     // Navigate back without saving any changes
     if (isTemplateContext) {
       // Template context: return to template editor
@@ -1130,7 +1147,7 @@ const PixshopPage: React.FC = () => {
       hasUserInteracted,
       fromPintura
     });
-    
+
     if (!currentImage) {
       setError('No image to save');
       return;
@@ -1148,27 +1165,27 @@ const PixshopPage: React.FC = () => {
     if (isTemplateContext) {
       console.log('📝 Template context detected - skipping database save');
       console.log('🔍 Template context details:', { cardParam, templateIdParam, isTemplateContext });
-      
+
       // Check if we came from Pintura (only check explicit URL parameter, not referrer)
       const returnToPintura = searchParams?.get('returnToPintura') === '1';
-      
+
       console.log('🔍 Return to Pintura check:', {
         returnToPinturaParam: searchParams?.get('returnToPintura'),
         willReturnToPintura: returnToPintura,
         hasUserInteracted,
         currentImageExists: !!currentImage
       });
-      
+
       if (returnToPintura) {
         console.log('🔄 Returning edited image to Pintura editor');
         try {
           setIsLoading(true);
-          
+
           // Store the edited image for Pintura to consume
           const dataUrl = await fileToDataURL(currentImage);
           console.log('🖼️ Converted edited image to data URL (size:', dataUrl.length, 'chars)');
           console.log('🖼️ Data URL starts with:', dataUrl.substring(0, 50));
-          
+
           // Log binary data details
           console.log('📊 Current image file details:', {
             name: currentImage.name,
@@ -1176,17 +1193,17 @@ const PixshopPage: React.FC = () => {
             type: currentImage.type,
             lastModified: currentImage.lastModified
           });
-          
+
           // Log blob data in chunks to avoid console truncation
           const chunkSize = 100;
           for (let i = 0; i < Math.min(500, dataUrl.length); i += chunkSize) {
-            console.log(`🔢 Binary chunk ${Math.floor(i/chunkSize)+1}:`, dataUrl.substring(i, i + chunkSize));
+            console.log(`🔢 Binary chunk ${Math.floor(i / chunkSize) + 1}:`, dataUrl.substring(i, i + chunkSize));
           }
-          
+
           // Create a blob URL for verification
           const blobUrl = URL.createObjectURL(currentImage);
           console.log('🌐 Created blob URL for verification:', blobUrl);
-          
+
           // Test if the data URL can be loaded as an image
           if (typeof window !== 'undefined') {
             const testImg = document.createElement('img');
@@ -1205,7 +1222,7 @@ const PixshopPage: React.FC = () => {
             };
             testImg.src = dataUrl;
           }
-          
+
           const pinturaPayload = {
             pageIndex,
             editedImage: dataUrl,
@@ -1216,7 +1233,7 @@ const PixshopPage: React.FC = () => {
             fileSize: currentImage.size,
             fileType: currentImage.type
           };
-          
+
           try {
             sessionStorage.setItem('pixshopToPintura', JSON.stringify(pinturaPayload));
             console.log('💾 Saved edited image for Pintura to consume');
@@ -1230,7 +1247,7 @@ const PixshopPage: React.FC = () => {
               fileSize: pinturaPayload.fileSize,
               fileType: pinturaPayload.fileType
             });
-            
+
             // Verify sessionStorage was written correctly
             const stored = sessionStorage.getItem('pixshopToPintura');
             if (stored) {
@@ -1244,7 +1261,7 @@ const PixshopPage: React.FC = () => {
           } catch (storageError) {
             console.warn('⚠️ Failed to save to sessionStorage:', storageError);
           }
-          
+
           // Navigate back to template editor (which will open Pintura with the edited image)
           const q = new URLSearchParams();
           if (templateIdParam) q.set('templateId', templateIdParam);
@@ -1258,29 +1275,29 @@ const PixshopPage: React.FC = () => {
         }
         return;
       }
-      
+
       // Regular template editor return (not from Pintura)
       try {
         setIsLoading(true);
-        
+
         // Get the complete global stack of changes
         const globalStack = getGlobalStack();
-        
+
         // Add current page to stack before saving
         if (currentImage) {
           const currentDataUrl = await fileToDataURL(currentImage);
           updateGlobalStack(pageIndex, currentDataUrl);
         }
-        
+
         // Get updated stack after adding current page
         const updatedStack = getGlobalStack();
-        
+
         console.log('📚 Saving complete stack to template editor:', {
           totalPages: Object.keys(updatedStack).length,
           pagesWithChanges: Object.keys(updatedStack).map(key => parseInt(key)),
           currentPage: pageIndex
         });
-        
+
         // Convert stack to format expected by template editor
         const stackPayload = {
           templateId: templateIdParam,
@@ -1288,14 +1305,14 @@ const PixshopPage: React.FC = () => {
           lastEditedPage: pageIndex,
           timestamp: Date.now()
         };
-        
+
         try {
           sessionStorage.setItem('pixshopTemplateEdit', JSON.stringify(stackPayload));
           console.log('💾 Saved complete page stack to sessionStorage for template editor');
         } catch (storageError) {
           console.warn('⚠️ Failed to save stack to sessionStorage:', storageError);
         }
-        
+
         const q = new URLSearchParams();
         if (templateIdParam) q.set('templateId', templateIdParam);
         if (templateNameParam) q.set('templateName', templateNameParam || '');
@@ -1309,7 +1326,7 @@ const PixshopPage: React.FC = () => {
       }
       return;
     }
-    
+
     // Non-template context: save through backend using the proper utility
     if (!effectiveDesignId) {
       setError('Missing design id');
@@ -1323,17 +1340,17 @@ const PixshopPage: React.FC = () => {
       setError('Internal error: Template context should not save to database');
       return;
     }
-    
+
     console.log('💾 Non-template context - proceeding with database save');
     console.log('🔍 Save context details:', { effectiveDesignId, cardParam, isTemplateContext });
-    
+
     try {
       setIsLoading(true);
       setError(null);
 
       // IMMEDIATE RETURN: Store the current blob in context for instant preview
       console.log('🚀 Storing image blob for immediate preview in context...');
-      
+
       // Convert blob to data URL for cross-page compatibility
       console.log('🔄 Converting blob to data URL for cross-page transfer...');
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -1342,9 +1359,9 @@ const PixshopPage: React.FC = () => {
         reader.onerror = reject;
         reader.readAsDataURL(currentImage);
       });
-      
+
       console.log('✅ Blob converted to data URL:', dataUrl.substring(0, 50) + '...');
-      
+
       // Store the data URL in context for instant preview
       const pixshopBlobData = {
         designId: effectiveDesignId,
@@ -1354,10 +1371,10 @@ const PixshopPage: React.FC = () => {
         timestamp: Date.now(),
         fromPixshop: true
       };
-      
+
       setPixshopBlob(pixshopBlobData);
       console.log('📸 Data URL stored in context, navigating back immediately...');
-      
+
       // Navigate back immediately with the blob for instant preview
       const timestamp = Date.now();
       router.push(`/my-cards/${cardParam}?openPintura=1&fromPixshop=1&pageIndex=${pageIndex}&timestamp=${timestamp}`);
@@ -1365,10 +1382,10 @@ const PixshopPage: React.FC = () => {
       // ASYNC SAVE: Continue save operation in background
       console.log('🔄 Starting async save in background...');
       setSaveStatus(true); // Mark as saving
-      
+
       // Don't await this - let it run in background
       saveInBackground();
-      
+
     } catch (err) {
       console.error('Save failed', err);
       setError(err instanceof Error ? err.message : 'Failed to save image');
@@ -1379,28 +1396,28 @@ const PixshopPage: React.FC = () => {
     async function saveInBackground() {
       try {
         console.log('🔄 Background save: Finding saved design...');
-        
+
         // Get current saved design to find the existing Supabase URL for this page
         const savedDesign = apiResponse?.data?.find((d) => d.id === effectiveDesignId);
-        
+
         if (!savedDesign) {
           console.error('❌ Background save failed: Design not found');
           return;
         }
-        
+
         // Get the existing Supabase URL for this page index
         const { url: existingSupabaseUrl } = getImageByIndexFromSavedDesign(savedDesign, pageIndex);
-        
+
         if (!existingSupabaseUrl) {
           console.error(`❌ Background save failed: No existing image found at page index ${pageIndex}`);
           return;
         }
 
         console.log('🔄 Background save: Optimizing and updating image in Supabase...');
-        
+
         // Optimize the image for faster upload
         const optimizedImage = await processImageForUpload(currentImage);
-        
+
         // Convert optimized image to base64 data URL for the API
         console.log('🔄 Converting optimized image to base64 for API...');
         const base64DataUrl = await new Promise<string>((resolve, reject) => {
@@ -1409,7 +1426,7 @@ const PixshopPage: React.FC = () => {
           reader.onerror = reject;
           reader.readAsDataURL(optimizedImage);
         });
-        
+
         // Create JSON payload for the API
         const updatePayload = {
           supabaseUrl: existingSupabaseUrl,
@@ -1419,7 +1436,7 @@ const PixshopPage: React.FC = () => {
         };
 
         console.log('🔄 Sending JSON payload to update-images API...');
-        
+
         // Use the existing update-images API with JSON payload
         const response = await fetch('/api/update-images', {
           method: 'POST',
@@ -1436,7 +1453,7 @@ const PixshopPage: React.FC = () => {
         }
 
         const result = await response.json();
-        
+
         if (!result.success) {
           throw new Error(result.error || 'Failed to update image');
         }
@@ -1555,76 +1572,76 @@ const PixshopPage: React.FC = () => {
     );
 
     return (
-  <div className="w-full mx-auto flex flex-col items-center gap-4 animate-fade-in pb-20">
+      <div className="w-full mx-auto flex flex-col items-center gap-4 animate-fade-in pb-20">
         {/* Top Action Buttons */}
         <div className="flex items-center justify-between gap-2 mb-2 w-full">
           <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              if (isTemplateContext) {
-                const q = new URLSearchParams();
-                if (templateIdParam) q.set('templateId', templateIdParam);
-                if (templateNameParam) q.set('templateName', templateNameParam);
-                q.set('fromPixshop', '1');
-                q.set('pageIndex', String(pageIndex));
-                router.push(`/my-cards/template-editor?${q.toString()}`);
-              } else {
-                router.push(`/my-cards/${cardParam}?openPintura=1&fromPixshop=1&pageIndex=${pageIndex}`);
-              }
-            }}
-            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
-            aria-label="Back to Pintura Editor"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-            </svg>
-          </button>
-
-          <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
-
-          <button
-            onClick={handleUndo}
-            disabled={!canUndo}
-            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
-            aria-label="Undo last action"
-          >
-            <UndoIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-          <button
-            onClick={handleRedo}
-            disabled={!canRedo}
-            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
-            aria-label="Redo last action"
-          >
-            <RedoIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-
-          <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
-
-          {canUndo && (
             <button
-              onMouseDown={() => setIsComparing(true)}
-              onMouseUp={() => setIsComparing(false)}
-              onMouseLeave={() => setIsComparing(false)}
-              onTouchStart={() => setIsComparing(true)}
-              onTouchEnd={() => setIsComparing(false)}
+              onClick={() => {
+                if (isTemplateContext) {
+                  const q = new URLSearchParams();
+                  if (templateIdParam) q.set('templateId', templateIdParam);
+                  if (templateNameParam) q.set('templateName', templateNameParam);
+                  q.set('fromPixshop', '1');
+                  q.set('pageIndex', String(pageIndex));
+                  router.push(`/my-cards/template-editor?${q.toString()}`);
+                } else {
+                  router.push(`/my-cards/${cardParam}?openPintura=1&fromPixshop=1&pageIndex=${pageIndex}`);
+                }
+              }}
               className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
-              aria-label="Press and hold to see original image"
+              aria-label="Back to Pintura Editor"
             >
-              <EyeIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+              </svg>
             </button>
-          )}
 
-          <button
-            onClick={handleReset}
-            disabled={!canUndo}
-            className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
-            aria-label="Reset to original image"
-          >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-          </button>
+            <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
+
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
+              aria-label="Undo last action"
+            >
+              <UndoIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
+              aria-label="Redo last action"
+            >
+              <RedoIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
+
+            <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
+
+            {canUndo && (
+              <button
+                onMouseDown={() => setIsComparing(true)}
+                onMouseUp={() => setIsComparing(false)}
+                onMouseLeave={() => setIsComparing(false)}
+                onTouchStart={() => setIsComparing(true)}
+                onTouchEnd={() => setIsComparing(false)}
+                className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 shadow-lg"
+                aria-label="Press and hold to see original image"
+              >
+                <EyeIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            )}
+
+            <button
+              onClick={handleReset}
+              disabled={!canUndo}
+              className="flex items-center justify-center bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-700 p-2 rounded-md transition-all duration-200 ease-in-out hover:bg-white hover:border-gray-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-100 shadow-lg"
+              aria-label="Reset to original image"
+            >
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+            </button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -1655,7 +1672,7 @@ const PixshopPage: React.FC = () => {
                 )}
               </div>
             )}
-            
+
             <div className="flex items-center gap-2">
               <button
                 onClick={handleSave}
@@ -1673,27 +1690,27 @@ const PixshopPage: React.FC = () => {
           </div>
         </div>
 
-  {/* Upload button removed as per request */}
+        {/* Upload button removed as per request */}
 
         <div className="flex justify-center w-full">
           <div className="relative inline-block shadow-lg rounded-xl overflow-hidden bg-white p-2 max-w-full">
-          {isLoading && (
-            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 animate-fade-in rounded-xl">
-              <Spinner />
-              <p className="text-gray-700">AI is working its magic...</p>
-            </div>
-          )}
+            {isLoading && (
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 animate-fade-in rounded-xl">
+                <Spinner />
+                <p className="text-gray-700">AI is working its magic...</p>
+              </div>
+            )}
 
-          {imageDisplay}
+            {imageDisplay}
 
-          {displayHotspot && !isLoading && activeTab === 'retouch' && (
-            <div
-              className="absolute rounded-full w-6 h-6 bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2 z-10"
-              style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px` }}
-            >
-              <div className="absolute inset-0 rounded-full w-6 h-6 animate-ping bg-blue-400"></div>
-            </div>
-          )}
+            {displayHotspot && !isLoading && activeTab === 'retouch' && (
+              <div
+                className="absolute rounded-full w-6 h-6 bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2 z-10"
+                style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px` }}
+              >
+                <div className="absolute inset-0 rounded-full w-6 h-6 animate-ping bg-blue-400"></div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1731,6 +1748,19 @@ const PixshopPage: React.FC = () => {
                 className="flex-1 bg-transparent placeholder-gray-400 text-gray-800 text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isLoading || !editHotspot}
               />
+              {isSupported && (
+                <button
+                  onClick={startRecording}
+                  disabled={isLoading || !editHotspot || isRecording}
+                  className={`p-2 rounded-md transition-all ${isRecording
+                      ? 'bg-red-100 text-red-600 animate-pulse'
+                      : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title={isRecording ? 'Listening...' : 'Voice input'}
+                >
+                  <MicrophoneIcon className="w-5 h-5" isRecording={isRecording} />
+                </button>
+              )}
               <button
                 onClick={handleGenerate}
                 className="flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-500 text-white p-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed"
