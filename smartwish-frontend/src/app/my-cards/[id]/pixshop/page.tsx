@@ -1738,36 +1738,36 @@ const PixshopPage: React.FC = () => {
         <div className="max-w-[1600px] mx-auto px-4 pt-3 pb-4 flex flex-col items-center gap-5">
           {/* Active panel / input ABOVE tool icons */}
           {activeTab === 'retouch' && (
-            <div className="flex items-center gap-3 bg-white/95 border border-gray-200 rounded-xl px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition w-full max-w-sm mx-auto">
+            <div className="flex items-center gap-2 bg-white/95 border border-gray-200 rounded-xl px-2 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition w-full max-w-xs sm:max-w-sm mx-auto">
               <input
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder={editHotspot ? 'Describe your edit...' : 'Click an area first'}
+                placeholder={editHotspot ? 'Describe edit...' : 'Click area first'}
                 aria-label="Retouch prompt"
-                className="flex-1 bg-transparent placeholder-gray-400 text-gray-800 text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex-1 min-w-0 bg-transparent placeholder-gray-400 text-gray-800 text-xs sm:text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isLoading || !editHotspot}
               />
               {isSupported && (
                 <button
                   onClick={startRecording}
                   disabled={isLoading || !editHotspot || isRecording}
-                  className={`p-2 rounded-md transition-all ${isRecording
-                      ? 'bg-red-100 text-red-600 animate-pulse'
-                      : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                  className={`p-1.5 rounded-md transition-all flex-shrink-0 ${isRecording
+                    ? 'bg-red-100 text-red-600 animate-pulse'
+                    : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                   title={isRecording ? 'Listening...' : 'Voice input'}
                 >
-                  <MicrophoneIcon className="w-5 h-5" isRecording={isRecording} />
+                  <MicrophoneIcon className="w-4 h-4 sm:w-5 sm:h-5" isRecording={isRecording} />
                 </button>
               )}
               <button
                 onClick={handleGenerate}
-                className="flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-500 text-white p-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-500 text-white p-1.5 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                 disabled={isLoading || !prompt.trim() || !editHotspot}
                 title="Apply edit"
               >
-                <CheckIcon className="w-5 h-5" />
+                <CheckIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
           )}

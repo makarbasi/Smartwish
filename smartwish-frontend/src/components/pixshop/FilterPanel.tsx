@@ -77,38 +77,38 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) =
       </div>
 
       {/* Text Input and Apply Button */}
-      <div className="flex justify-center">
-        <div className="flex items-center gap-3 bg-white/95 border border-gray-200 rounded-xl px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition">
+      <div className="flex justify-center px-2">
+        <div className="flex items-center gap-2 bg-white/95 border border-gray-200 rounded-xl px-2 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition w-full max-w-xs sm:max-w-md">
           <input
             type="text"
             value={customPrompt}
             onChange={handleCustomChange}
-            placeholder="Describe or tweak a filter prompt"
+            placeholder="Describe or tweak prompt"
             aria-label="Filter prompt"
-            className="w-64 md:w-80 bg-transparent placeholder-gray-400 text-gray-800 text-sm md:text-base focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 min-w-0 bg-transparent placeholder-gray-400 text-gray-800 text-xs sm:text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
           />
           {isSupported && (
             <button
               onClick={startRecording}
               disabled={isLoading || isRecording}
-              className={`p-2 rounded-md transition-all ${isRecording
-                  ? 'bg-red-100 text-red-600 animate-pulse'
-                  : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+              className={`p-1.5 rounded-md transition-all flex-shrink-0 ${isRecording
+                ? 'bg-red-100 text-red-600 animate-pulse'
+                : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               title={isRecording ? 'Listening...' : 'Voice input'}
             >
-              <MicrophoneIcon className="w-5 h-5" isRecording={isRecording} />
+              <MicrophoneIcon className="w-4 h-4 sm:w-5 sm:h-5" isRecording={isRecording} />
             </button>
           )}
           <button
             onClick={handleApply}
-            className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-3 py-1.5 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             disabled={isLoading || !activePrompt?.trim()}
             title="Apply Filter"
           >
             <CheckIcon className="w-4 h-4" />
-            <span className="hidden sm:inline text-sm">Apply</span>
+            <span className="hidden sm:inline text-xs sm:text-sm">Apply</span>
           </button>
         </div>
       </div>
