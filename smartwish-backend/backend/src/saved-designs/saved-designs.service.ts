@@ -46,10 +46,9 @@ export interface SavedDesign {
 
 @Injectable()
 export class SavedDesignsService {
-  private supabaseService: SupabaseSavedDesignsService;
-
-  constructor() {
-    this.supabaseService = new SupabaseSavedDesignsService();
+  constructor(
+    private readonly supabaseService: SupabaseSavedDesignsService,
+  ) {
     if (!this.supabaseService.isAvailable()) {
       throw new Error('Supabase is required for saved designs functionality. Please configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
     }
@@ -124,7 +123,7 @@ export class SavedDesignsService {
       const baseName = originalDesign.title || 'Design';
       duplicateTitle = `${baseName} - Copy`;
       let counter = 1;
-      
+
       while (existingDesigns.some(design => design.title === duplicateTitle)) {
         counter++;
         duplicateTitle = `${baseName} - Copy ${counter}`;
@@ -134,7 +133,7 @@ export class SavedDesignsService {
     // Copy images if they exist and create new URLs
     let copiedImageUrls: string[] = [];
     let copiedThumbnail: string | undefined;
-    
+
     try {
       // Copy thumbnail if it exists
       if (originalDesign.thumbnail) {
@@ -144,7 +143,7 @@ export class SavedDesignsService {
       // Copy image URLs if they exist
       if (originalDesign.imageUrls && originalDesign.imageUrls.length > 0) {
         copiedImageUrls = await Promise.all(
-          originalDesign.imageUrls.map(url => 
+          originalDesign.imageUrls.map(url =>
             this.supabaseService.copyImage(url, userId)
           )
         );
@@ -156,15 +155,15 @@ export class SavedDesignsService {
       copiedDesignData.pages = await Promise.all(
         copiedDesignData.pages.map(async (page: any) => {
           const img = page.image;
-            if (img && img.includes('supabase')) {
-              try {
-                const copiedImage = await this.supabaseService.copyImage(img, userId);
-                return { ...page, image: copiedImage };
-              } catch {
-                return page;
-              }
+          if (img && img.includes('supabase')) {
+            try {
+              const copiedImage = await this.supabaseService.copyImage(img, userId);
+              return { ...page, image: copiedImage };
+            } catch {
+              return page;
             }
-            return page;
+          }
+          return page;
         })
       );
 
@@ -173,7 +172,7 @@ export class SavedDesignsService {
         title: duplicateTitle,
         description: originalDesign.description || `Copy of ${originalDesign.title}`,
         category: originalDesign.category,
-  designData: copiedDesignData,
+        designData: copiedDesignData,
         thumbnail: copiedThumbnail,
         imageUrls: copiedImageUrls,
         imageTimestamp: Date.now(),
@@ -204,7 +203,7 @@ export class SavedDesignsService {
         title: duplicateTitle,
         description: originalDesign.description || `Copy of ${originalDesign.title}`,
         category: originalDesign.category,
-  designData: originalDesign.designData,
+        designData: originalDesign.designData,
         thumbnail: originalDesign.thumbnail,
         imageUrls: originalDesign.imageUrls,
         imageTimestamp: originalDesign.imageTimestamp,
@@ -244,8 +243,10 @@ export class SavedDesignsService {
   async publishDesign(
     userId: string,
     designId: string,
+    categoryId?: string,
+    description?: string,
   ): Promise<SavedDesign | null> {
-    return await this.supabaseService.publishDesign(userId, designId);
+    return await this.supabaseService.publishDesign(userId, designId, categoryId, description);
   }
 
   async publishDesignWithMetadata(

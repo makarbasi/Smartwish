@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, Fragment } from "react";
 import { useSearchParams } from "next/navigation";
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
-import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/react";
+import { Menu, MenuButton, MenuItems, MenuItem, Dialog, Transition } from "@headlessui/react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
@@ -12,6 +12,7 @@ import DeleteConfirmModal from "@/components/DeleteConfirmModal";
 import SendECardModal from "@/components/SendECardModal";
 import PrinterSelectionModal from "@/components/PrinterSelectionModal";
 import jsPDF from 'jspdf';
+import useSWR from "swr";
 import { useToast } from "@/contexts/ToastContext";
 import {
   DynamicRouter,
@@ -19,6 +20,9 @@ import {
   deleteRequest,
   postRequest,
 } from "@/utils/request_utils";
+
+// Fetcher for SWR
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 // Utility function to format relative time
 const formatRelativeTime = (dateString: string): string => {
@@ -311,6 +315,12 @@ function MyCardsContent() {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [cardToPrint, setCardToPrint] = useState<MyCard | null>(null);
 
+  // Publish modal state
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [cardToPublish, setCardToPublish] = useState<MyCard | null>(null);
+  const [publishCategory, setPublishCategory] = useState("");
+  const [publishDescription, setPublishDescription] = useState("");
+
   // Manual state management for data
   const [savedDesignsResponse, setSavedDesignsResponse] =
     useState<SavedDesignsResponse | null>(null);
@@ -320,6 +330,13 @@ function MyCardsContent() {
     null
   );
   const [savedDesignsLoading, setSavedDesignsLoading] = useState(false);
+
+  // Fetch categories for publish modal
+  const { data: categoriesResponse } = useSWR<{
+    success: boolean;
+    data: Array<{ id: string; name: string; display_name: string }>;
+  }>("/api/categories", fetcher);
+  const categories = categoriesResponse?.data || [];
 
   // Manual fetch function for saved designs
   const fetchSavedDesigns = async () => {
@@ -431,7 +448,11 @@ function MyCardsContent() {
     ...userPublishedCards,
     ...userPublishedTemplates.filter(
       (template) =>
-        !userPublishedCards.some((userCard) => userCard.id === template.id)
+        // Only include template if it's not already in userPublishedCards
+        // Use originalDesignId to match the saved_design that was promoted
+        !userPublishedCards.some((userCard) =>
+          userCard.id === template.originalDesignId || userCard.id === template.id
+        )
     ),
   ].sort((a, b) => {
     // Sort by last edited/updated date (newest first)
@@ -508,28 +529,62 @@ function MyCardsContent() {
     setDesignToDelete(null);
   };
 
-  // Publish design
-  const handlePublishDesign = async (designId: string) => {
-    if (!session) return;
+  // Open publish modal
+  const handlePublishClick = (card: MyCard) => {
+    setCardToPublish(card);
+    setPublishCategory(card.categoryId || "");
+    setPublishDescription("");
+    setPublishModalOpen(true);
+  };
+
+  // Publish design with metadata
+  const handlePublishDesign = async () => {
+    if (!session || !cardToPublish) return;
+
+    // Validate required fields
+    if (!publishCategory || !publishDescription.trim()) {
+      showToast({
+        type: 'error',
+        title: 'Missing Information',
+        message: 'Please select a card type and provide a description',
+        duration: 4000
+      });
+      return;
+    }
 
     try {
       const publishUrl = DynamicRouter(
         "saved-designs",
-        `${designId}/publish`,
+        `${cardToPublish.id}/publish`,
         undefined,
         false
       );
-      console.log("📤 Publishing design:", designId, "URL:", publishUrl);
+      console.log("📤 Publishing design:", cardToPublish.id, "URL:", publishUrl);
 
-      const result = await postRequest(publishUrl, {}, session as any);
+      const result = await postRequest(publishUrl, {
+        category_id: publishCategory,
+        description: publishDescription,
+      }, session as any);
+
       console.log("✅ Publish result:", result);
 
-      fetchSavedDesigns();
-      fetchPublishedTemplates();
+      // Close modal and reset
+      setPublishModalOpen(false);
+      setCardToPublish(null);
+      setPublishCategory("");
+      setPublishDescription("");
+
+      // Refresh data
+      await Promise.all([fetchSavedDesigns(), fetchPublishedTemplates()]);
     } catch (e: unknown) {
       console.error("❌ Error publishing design:", e);
       const msg = e instanceof Error ? e.message : "Failed to publish design";
-      alert(msg);
+      showToast({
+        type: 'error',
+        title: 'Publish Failed',
+        message: msg,
+        duration: 5000
+      });
     }
   };
 
@@ -1075,7 +1130,7 @@ function MyCardsContent() {
                                 <button
                                   onClick={(e) => {
                                     e.preventDefault();
-                                    handlePublishDesign(c.id);
+                                    handlePublishClick(c);
                                     close();
                                   }}
                                   className="w-full text-left block rounded px-2 py-1.5 text-gray-700 hover:bg-gray-50"
@@ -1377,6 +1432,125 @@ function MyCardsContent() {
           pdfBlob={pdfBlob}
           cardName={cardToPrint?.name || ""}
         />
+
+        {/* Publish Modal */}
+        <Transition appear show={publishModalOpen} as={Fragment}>
+          <Dialog
+            as="div"
+            className="relative z-50"
+            onClose={() => setPublishModalOpen(false)}
+          >
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black bg-opacity-25" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-gray-900 mb-4"
+                    >
+                      Publish Card to Store
+                    </Dialog.Title>
+
+                    <div className="mt-2 space-y-4">
+                      <p className="text-sm text-gray-500">
+                        Please provide details about your card so others can find it.
+                      </p>
+
+                      {/* Card Type/Category */}
+                      <div>
+                        <label
+                          htmlFor="publish-category"
+                          className="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                          Card Type <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          id="publish-category"
+                          value={publishCategory}
+                          onChange={(e) => setPublishCategory(e.target.value)}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          <option value="">Select a card type...</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.display_name || cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Description */}
+                      <div>
+                        <label
+                          htmlFor="publish-description"
+                          className="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                          Description <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          id="publish-description"
+                          value={publishDescription}
+                          onChange={(e) => setPublishDescription(e.target.value)}
+                          placeholder="Describe your card (e.g., 'A beautiful birthday card with colorful balloons, perfect for celebrating a special day')"
+                          rows={4}
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          This helps people find your card when searching
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex gap-3 justify-end">
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                        onClick={() => {
+                          setPublishModalOpen(false);
+                          setCardToPublish(null);
+                          setPublishCategory("");
+                          setPublishDescription("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={handlePublishDesign}
+                        disabled={
+                          !publishCategory || !publishDescription.trim()
+                        }
+                      >
+                        Publish to Store
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
       </div>
     </main>
   );

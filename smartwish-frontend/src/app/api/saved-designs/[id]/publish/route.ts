@@ -16,9 +16,11 @@ export async function POST(
 
     const accessToken = (session.user as { access_token?: string }).access_token;
     const { id } = await params;
+    const body = await request.json().catch(() => ({})); // Get body data (category_id, description)
 
     console.log('Publish API - User ID:', session.user.id);
     console.log('Publish API - Design ID:', id);
+    console.log('Publish API - Body:', body);
     console.log('Publish API - Session user object:', JSON.stringify(session.user, null, 2));
     console.log('Publish API - Access Token exists:', !!accessToken);
     console.log('Publish API - Access Token (first 20 chars):', accessToken ? accessToken.substring(0, 20) + '...' : 'NO TOKEN');
@@ -31,6 +33,7 @@ export async function POST(
         'Authorization': `Bearer ${accessToken || ''}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(body), // Forward category_id and description
     });
 
     if (!response.ok) {

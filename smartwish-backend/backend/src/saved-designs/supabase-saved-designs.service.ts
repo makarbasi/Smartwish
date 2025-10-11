@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v5 as uuidv5 } from 'uuid';
 import { GeminiEmbeddingService } from '../services/gemini-embedding.service';
@@ -67,7 +67,7 @@ export class SupabaseSavedDesignsService {
   private supabase: SupabaseClient;
 
   constructor(
-    @Optional() private readonly embeddingService?: GeminiEmbeddingService,
+    private readonly embeddingService: GeminiEmbeddingService,
   ) {
     const supabaseUrl = process.env.SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -601,12 +601,26 @@ export class SupabaseSavedDesignsService {
   async publishDesign(
     userId: string,
     designId: string,
+    categoryId?: string,
+    description?: string,
   ): Promise<SavedDesign | null> {
-    const updated = await this.updateDesign(userId, designId, {
+    const updateData: any = {
       status: 'published',
       publishedAt: new Date(),
       updatedAt: new Date(),
-    });
+    };
+
+    // Add category_id and description if provided
+    if (categoryId) {
+      updateData.category_id = categoryId;
+    }
+    if (description) {
+      updateData.description = description;
+    }
+
+    console.log('📤 publishDesign - Updating design with:', updateData);
+
+    const updated = await this.updateDesign(userId, designId, updateData);
     if (updated) {
       try {
         await this.ensureTemplateForSavedDesign(updated.id, userId);
@@ -1233,15 +1247,29 @@ export class SupabaseSavedDesignsService {
     }
 
     // 5.5. Generate and store embedding for the new template
+    console.log(`[promoteToTemplate] Embedding service available: ${!!this.embeddingService}`);
     if (this.embeddingService) {
       try {
         console.log(`[promoteToTemplate] Generating embedding for template ${templateRow.id}...`);
+        console.log(`[promoteToTemplate] Template data:`, {
+          id: templateRow.id,
+          title: templateRow.title,
+          description: templateRow.description,
+          category_id: templateRow.category_id,
+          category: templateRow.sw_categories
+        });
+
         const semanticDescription = this.embeddingService.generateSemanticDescription({
           ...templateRow,
           category_name: templateRow.sw_categories?.name,
           category_display_name: templateRow.sw_categories?.display_name,
         });
+
+        console.log(`[promoteToTemplate] Semantic description generated:`, semanticDescription);
+
         const embedding = await this.embeddingService.generateEmbedding(semanticDescription);
+
+        console.log(`[promoteToTemplate] Embedding generated, length: ${embedding?.length}`);
 
         // Update template with embedding
         const { error: embeddingError } = await this.supabase
@@ -1256,12 +1284,15 @@ export class SupabaseSavedDesignsService {
         if (embeddingError) {
           console.error('[promoteToTemplate] Failed to store embedding:', embeddingError);
         } else {
-          console.log(`[promoteToTemplate] Embedding generated and stored for template ${templateRow.id}`);
+          console.log(`[promoteToTemplate] ✅ Embedding generated and stored for template ${templateRow.id}`);
         }
       } catch (embeddingError) {
-        console.error('[promoteToTemplate] Failed to generate embedding:', embeddingError);
+        console.error('[promoteToTemplate] ❌ Failed to generate embedding:', embeddingError);
+        console.error('[promoteToTemplate] Error details:', embeddingError.message, embeddingError.stack);
         // Continue without embedding - it's not critical to fail the whole operation
       }
+    } else {
+      console.warn('[promoteToTemplate] ⚠️ Embedding service not available - skipping embedding generation');
     }
 
     // 6. Update saved_design metadata & status with templateId reference
