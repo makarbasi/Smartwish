@@ -4,7 +4,8 @@
 */
 
 import React, { useState } from 'react';
-import { CheckIcon } from './icons';
+import { CheckIcon, MicrophoneIcon } from './icons';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 
 interface AdjustmentPanelProps {
   onApplyAdjustment: (prompt: string) => void;
@@ -14,6 +15,13 @@ interface AdjustmentPanelProps {
 const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ onApplyAdjustment, isLoading }) => {
   const [selectedPresetPrompt, setSelectedPresetPrompt] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
+
+  const { isRecording, isSupported, startRecording } = useVoiceInput({
+    onResult: (transcript) => {
+      setCustomPrompt(transcript);
+      setSelectedPresetPrompt(null);
+    },
+  });
 
   const presets = [
     {
@@ -133,6 +141,19 @@ const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ onApplyAdjustment, is
             className="w-64 md:w-80 bg-transparent placeholder-gray-400 text-gray-800 text-sm md:text-base focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
           />
+          {isSupported && (
+            <button
+              onClick={startRecording}
+              disabled={isLoading || isRecording}
+              className={`p-2 rounded-md transition-all ${isRecording
+                  ? 'bg-red-100 text-red-600 animate-pulse'
+                  : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={isRecording ? 'Listening...' : 'Voice input'}
+            >
+              <MicrophoneIcon className="w-5 h-5" isRecording={isRecording} />
+            </button>
+          )}
           <button
             onClick={handleApply}
             className="flex items-center gap-2 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-medium px-4 py-2 rounded-md shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner transition disabled:opacity-50 disabled:cursor-not-allowed"
