@@ -69,6 +69,7 @@ export class AppController {
     private readonly sharingService: SharingService,
     private readonly storageService: SupabaseStorageService,
     private readonly templatesService: SupabaseTemplatesEnhancedService,
+    private readonly savedDesignsService: SavedDesignsService,
   ) {
     console.log('AppController instantiated');
   }
@@ -1066,8 +1067,7 @@ export class AppController {
       console.log('[search-designs] Received query:', query);
 
       // Load published designs from database (Supabase) or file fallback
-      const designsService = new SavedDesignsService();
-      const designs = await designsService.getPublishedDesigns();
+      const designs = await this.savedDesignsService.getPublishedDesigns();
 
       console.log(
         '[search-designs] Loaded published designs count:',
