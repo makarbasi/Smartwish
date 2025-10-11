@@ -29,7 +29,6 @@ type Item = {
 
 const items: Item[] = [
   { href: "/event", label: "Event", icon: CalendarDaysIcon },
-  { href: "/marketplace", label: "Market", icon: ShoppingBagIcon },
   { href: "/my-cards", label: "Designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
   { href: "/partners", label: "Partners", icon: BuildingStorefrontIcon },
@@ -150,11 +149,10 @@ export default function Sidebar() {
                 <Link
                   href={it.href}
                   title={it.label}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-md ring-1 transition-colors ${
-                    active
-                      ? "bg-gray-100 text-gray-900 ring-gray-200"
-                      : "text-gray-600 ring-transparent hover:bg-gray-50 hover:text-gray-900 hover:ring-gray-200"
-                  }`}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-md ring-1 transition-colors ${active
+                    ? "bg-gray-100 text-gray-900 ring-gray-200"
+                    : "text-gray-600 ring-transparent hover:bg-gray-50 hover:text-gray-900 hover:ring-gray-200"
+                    }`}
                 >
                   <Icon className="h-5 w-5" />
                 </Link>
@@ -313,29 +311,7 @@ export default function Sidebar() {
 
         {/* Bottom Navigation */}
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200">
-          <div className="grid grid-cols-6 py-2 justify-center place-items-center">
-            <Link
-              href="/marketplace"
-              className="flex flex-col items-center py-2 px-1"
-            >
-              <ShoppingBagIcon className="w-6 h-6 text-gray-600" />
-              <span className="text-xs text-gray-600 mt-1">Market</span>
-            </Link>
-            <Link
-              href="/event"
-              className="flex flex-col items-center py-2 px-1"
-            >
-              <CalendarDaysIcon className="w-6 h-6 text-gray-600" />
-              <span className="text-xs text-gray-600 mt-1">Event</span>
-            </Link>
-            <Link
-              href="/templates"
-              className="flex flex-col items-center py-2 px-1"
-            >
-              <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-                <PlusIcon className="w-5 h-5 text-white" />
-              </div>
-            </Link>
+          <div className="grid grid-cols-5 py-2 justify-center place-items-center">
             <Link
               href="/my-cards"
               className="flex flex-col items-center py-2 px-1"
@@ -349,6 +325,21 @@ export default function Sidebar() {
             >
               <UserGroupIcon className="w-6 h-6 text-gray-600" />
               <span className="text-xs text-gray-600 mt-1">Contacts</span>
+            </Link>
+            <Link
+              href="/templates"
+              className="flex flex-col items-center py-2 px-1"
+            >
+              <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
+                <PlusIcon className="w-5 h-5 text-white" />
+              </div>
+            </Link>
+            <Link
+              href="/event"
+              className="flex flex-col items-center py-2 px-1"
+            >
+              <CalendarDaysIcon className="w-6 h-6 text-gray-600" />
+              <span className="text-xs text-gray-600 mt-1">Event</span>
             </Link>
             <Link
               href="/partners"
