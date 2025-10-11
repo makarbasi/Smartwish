@@ -35,7 +35,7 @@ export class SimpleTemplatesController {
           t.updated_at,
           c.name as category_name,
           c.display_name as category_display_name,
-          COALESCE(u.name, 'SmartWish') as author
+          COALESCE(u.name, u.email, 'Unknown Author') as author
         FROM sw_templates t
         LEFT JOIN sw_categories c ON t.category_id = c.id
         LEFT JOIN users u ON t.author_id = u.id
@@ -309,7 +309,7 @@ export class SimpleTemplatesController {
           t.updated_at,
           c.name as category_name,
           c.display_name as category_display_name,
-          COALESCE(u.name, 'SmartWish') as author
+          COALESCE(u.name, u.email, 'Unknown Author') as author
         FROM sw_templates t
         LEFT JOIN sw_categories c ON t.category_id = c.id
         LEFT JOIN users u ON t.author_id = u.id

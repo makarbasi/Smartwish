@@ -287,7 +287,7 @@ export class SavedDesignsController {
   @Post(':id/publish')
   async publishDesign(
     @Param('id') designId: string,
-    @Body() body: { category_id?: string; description?: string },
+    @Body() body: { title?: string; category_id?: string; description?: string },
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ) {
@@ -298,12 +298,14 @@ export class SavedDesignsController {
       }
 
       console.log('📤 Publish - Design ID:', designId);
+      console.log('📤 Publish - Title:', body.title);
       console.log('📤 Publish - Category:', body.category_id);
       console.log('📤 Publish - Description:', body.description);
 
       const publishedDesign = await this.savedDesignsService.publishDesign(
         userId,
         designId,
+        body.title,
         body.category_id,
         body.description,
       );
