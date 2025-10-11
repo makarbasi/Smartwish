@@ -318,6 +318,7 @@ function MyCardsContent() {
   // Publish modal state
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [cardToPublish, setCardToPublish] = useState<MyCard | null>(null);
+  const [publishTitle, setPublishTitle] = useState("");
   const [publishCategory, setPublishCategory] = useState("");
   const [publishDescription, setPublishDescription] = useState("");
 
@@ -532,6 +533,7 @@ function MyCardsContent() {
   // Open publish modal
   const handlePublishClick = (card: MyCard) => {
     setCardToPublish(card);
+    setPublishTitle(card.name || "");
     setPublishCategory(card.categoryId || "");
     setPublishDescription("");
     setPublishModalOpen(true);
@@ -542,11 +544,11 @@ function MyCardsContent() {
     if (!session || !cardToPublish) return;
 
     // Validate required fields
-    if (!publishCategory || !publishDescription.trim()) {
+    if (!publishTitle.trim() || !publishCategory || !publishDescription.trim()) {
       showToast({
         type: 'error',
         title: 'Missing Information',
-        message: 'Please select a card type and provide a description',
+        message: 'Please provide a title, select a card type, and add a description',
         duration: 4000
       });
       return;
@@ -562,6 +564,7 @@ function MyCardsContent() {
       console.log("📤 Publishing design:", cardToPublish.id, "URL:", publishUrl);
 
       const result = await postRequest(publishUrl, {
+        title: publishTitle,
         category_id: publishCategory,
         description: publishDescription,
       }, session as any);
@@ -571,6 +574,7 @@ function MyCardsContent() {
       // Close modal and reset
       setPublishModalOpen(false);
       setCardToPublish(null);
+      setPublishTitle("");
       setPublishCategory("");
       setPublishDescription("");
 
@@ -1449,7 +1453,7 @@ function MyCardsContent() {
               leaveFrom="opacity-100"
               leaveTo="opacity-0"
             >
-              <div className="fixed inset-0 bg-black bg-opacity-25" />
+              <div className="fixed inset-0 bg-black/50" />
             </Transition.Child>
 
             <div className="fixed inset-0 overflow-y-auto">
@@ -1475,6 +1479,24 @@ function MyCardsContent() {
                       <p className="text-sm text-gray-500">
                         Please provide details about your card so others can find it.
                       </p>
+
+                      {/* Card Title */}
+                      <div>
+                        <label
+                          htmlFor="publish-title"
+                          className="block text-sm font-medium text-gray-700 mb-1"
+                        >
+                          Card Title <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="publish-title"
+                          value={publishTitle}
+                          onChange={(e) => setPublishTitle(e.target.value)}
+                          placeholder="e.g., Colorful Birthday Celebration"
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
 
                       {/* Card Type/Category */}
                       <div>
@@ -1528,6 +1550,7 @@ function MyCardsContent() {
                         onClick={() => {
                           setPublishModalOpen(false);
                           setCardToPublish(null);
+                          setPublishTitle("");
                           setPublishCategory("");
                           setPublishDescription("");
                         }}
@@ -1539,7 +1562,7 @@ function MyCardsContent() {
                         className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={handlePublishDesign}
                         disabled={
-                          !publishCategory || !publishDescription.trim()
+                          !publishTitle.trim() || !publishCategory || !publishDescription.trim()
                         }
                       >
                         Publish to Store

@@ -475,6 +475,10 @@ export class TemplatesEnhancedController {
         sw_categories (
           name,
           display_name
+        ),
+        users!author_id (
+          name,
+          email
         )
       `)
       .eq('status', 'published')
@@ -554,14 +558,30 @@ export class TemplatesEnhancedController {
         ? filteredResults.slice(0, filters.limit)
         : filteredResults;
 
-      const totalTime = Date.now() - startTime;
-      console.log(`[Hybrid Search] Completed in ${totalTime}ms - ${results.length} results`);
+      // Transform user data to author field
+      const resultsWithAuthor = results.map(result => {
+        const userData = Array.isArray(result.users) ? result.users[0] : result.users;
+        return {
+          ...result,
+          author: userData?.name || userData?.email || 'Unknown Author'
+        };
+      });
 
-      return results;
+      const totalTime = Date.now() - startTime;
+      console.log(`[Hybrid Search] Completed in ${totalTime}ms - ${resultsWithAuthor.length} results`);
+
+      return resultsWithAuthor;
     } catch (geminiError) {
       console.error('[Stage 2: Gemini AI] Failed:', geminiError);
-      // Fallback: return top embedding candidates
-      return candidates.slice(0, filters?.limit || 10);
+      // Fallback: return top embedding candidates with author field
+      const fallbackResults = candidates.slice(0, filters?.limit || 10);
+      return fallbackResults.map(result => {
+        const userData = Array.isArray(result.users) ? result.users[0] : result.users;
+        return {
+          ...result,
+          author: userData?.name || userData?.email || 'Unknown Author'
+        };
+      });
     }
   }
 

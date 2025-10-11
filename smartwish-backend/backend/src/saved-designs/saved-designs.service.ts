@@ -243,10 +243,11 @@ export class SavedDesignsService {
   async publishDesign(
     userId: string,
     designId: string,
+    title?: string,
     categoryId?: string,
     description?: string,
   ): Promise<SavedDesign | null> {
-    return await this.supabaseService.publishDesign(userId, designId, categoryId, description);
+    return await this.supabaseService.publishDesign(userId, designId, title, categoryId, description);
   }
 
   async publishDesignWithMetadata(

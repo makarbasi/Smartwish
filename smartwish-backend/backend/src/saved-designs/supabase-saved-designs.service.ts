@@ -601,6 +601,7 @@ export class SupabaseSavedDesignsService {
   async publishDesign(
     userId: string,
     designId: string,
+    title?: string,
     categoryId?: string,
     description?: string,
   ): Promise<SavedDesign | null> {
@@ -610,7 +611,10 @@ export class SupabaseSavedDesignsService {
       updatedAt: new Date(),
     };
 
-    // Add category_id and description if provided
+    // Add title, category_id and description if provided
+    if (title) {
+      updateData.title = title;
+    }
     if (categoryId) {
       updateData.category_id = categoryId;
     }
