@@ -35,6 +35,7 @@ interface ECard {
         image2?: string;
         image3?: string;
         image4?: string;
+        metadata?: any;
     } | null;
 }
 
@@ -95,7 +96,7 @@ export default function ECardViewer() {
             eCard.cardData.image3,
             eCard.cardData.image4,
         ].filter(Boolean) as string[];
-        
+
         // If no direct images, try to get from designData pages
         if (directImages.length === 0 && eCard.cardData.designData?.pages) {
             const pageImages = eCard.cardData.designData.pages
@@ -109,6 +110,9 @@ export default function ECardViewer() {
 
     const cardImages = getCardImages();
     const totalPages = cardImages.length;
+
+    // Extract gift card data from metadata
+    const giftCardData = eCard?.cardData?.metadata?.giftCard || null;
 
     const nextPage = () => {
         if (isFlipping) return;
@@ -247,6 +251,42 @@ export default function ECardViewer() {
                                         <p className="text-gray-500">No image available</p>
                                     </div>
                                 )}
+
+                                {/* Gift Card QR Code and Logo Overlay - Show on page 3 (index 2) */}
+                                {currentPage === 2 && giftCardData && (
+                                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200 z-10">
+                                        <div className="flex flex-col items-center space-y-3">
+                                            {/* QR Code and Logo side-by-side */}
+                                            <div className="flex items-center space-x-4">
+                                                {/* QR Code on left */}
+                                                <div className="bg-white p-2 rounded-lg shadow-sm">
+                                                    <img
+                                                        src={giftCardData.qrCode}
+                                                        alt="Gift Card QR Code"
+                                                        className="w-24 h-24 object-contain"
+                                                    />
+                                                </div>
+
+                                                {/* Company Logo on right (same size as QR code) */}
+                                                {giftCardData.storeLogo && (
+                                                    <div className="bg-white p-2 rounded-lg shadow-sm">
+                                                        <img
+                                                            src={giftCardData.storeLogo}
+                                                            alt={giftCardData.storeName}
+                                                            className="w-24 h-24 object-contain"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Company Name and Amount centered below */}
+                                            <div className="text-center">
+                                                <p className="text-sm font-semibold text-gray-800">{giftCardData.storeName}</p>
+                                                <p className="text-xs text-gray-600">${giftCardData.amount}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Page Indicator */}
@@ -331,6 +371,23 @@ export default function ECardViewer() {
                                         <p className="text-gray-900">{totalPages} pages</p>
                                     </div>
                                 )}
+
+                                {giftCardData && (
+                                    <div className="p-3 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                                            </svg>
+                                            <p className="text-sm font-semibold text-green-800">Gift Card Included</p>
+                                        </div>
+                                        <p className="text-xs text-green-700">
+                                            {giftCardData.storeName} - ${giftCardData.amount}
+                                        </p>
+                                        <p className="text-xs text-green-600 mt-1">
+                                            View on page 3 for details
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="border-t border-gray-200 mt-6 pt-6">
@@ -356,12 +413,12 @@ export default function ECardViewer() {
                     <div className="text-center">
                         <div className="flex items-center justify-center gap-2 mb-4">
                             <Image
-                                 src="/resources/logo/logo-full.png"
-                                 alt="SmartWish"
-                                 width={240}
-                                 height={80}
-                                 className="h-20 w-auto"
-                             />
+                                src="/resources/logo/logo-full.png"
+                                alt="SmartWish"
+                                width={240}
+                                height={80}
+                                className="h-20 w-auto"
+                            />
                         </div>
                         <p className="text-sm text-gray-500">
                             Creating beautiful digital experiences, one card at a time.
