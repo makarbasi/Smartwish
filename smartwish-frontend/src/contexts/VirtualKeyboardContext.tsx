@@ -1,6 +1,7 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 
 interface VirtualKeyboardContextType {
   isKeyboardVisible: boolean
@@ -23,6 +24,7 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
   const [currentInputRef, setCurrentInputRef] = useState<HTMLInputElement | HTMLTextAreaElement | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [inputType, setInputType] = useState<'text' | 'email' | 'tel' | 'number' | 'password'>('text')
+  const pathname = usePathname()
 
   const showKeyboard = useCallback(
     (
@@ -45,10 +47,59 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
     setInputType('text')
   }, [])
 
+  // Hide keyboard when route changes
+  useEffect(() => {
+    hideKeyboard()
+  }, [pathname, hideKeyboard])
+
+  // Hide keyboard when clicking outside
+  useEffect(() => {
+    if (!isKeyboardVisible) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      
+      // Don't hide if clicking on the keyboard itself
+      if (target.closest('.hg-theme-default') || target.closest('.virtual-keyboard-container')) {
+        return
+      }
+
+      // Don't hide if clicking on the current input
+      if (currentInputRef && target === currentInputRef) {
+        return
+      }
+
+      // Don't hide if clicking on any input or textarea
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return
+      }
+
+      // Hide keyboard for any other clicks
+      hideKeyboard()
+    }
+
+    // Add slight delay to avoid immediate closing when opening
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('touchstart', handleClickOutside as any)
+    }, 100)
+
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside as any)
+    }
+  }, [isKeyboardVisible, currentInputRef, hideKeyboard])
+
   const updateInputValue = useCallback(
     (value: string) => {
-      setInputValue(value)
-      if (currentInputRef) {
+      // Only update if value actually changed
+      setInputValue((prev) => {
+        if (prev === value) return prev
+        return value
+      })
+      
+      if (currentInputRef && currentInputRef.value !== value) {
         // Update the actual input element
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
           window.HTMLInputElement.prototype,

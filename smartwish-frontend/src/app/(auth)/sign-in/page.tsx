@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { VirtualInput } from "@/components/VirtualInput";
 
 function SignInForm() {
   const [email, setEmail] = useState("");
@@ -81,7 +82,7 @@ function SignInForm() {
                   Email address
                 </label>
                 <div className="mt-2">
-                  <input
+                  <VirtualInput
                     id="email"
                     name="email"
                     type="email"
@@ -102,7 +103,7 @@ function SignInForm() {
                   Password
                 </label>
                 <div className="mt-2">
-                  <input
+                  <VirtualInput
                     id="password"
                     name="password"
                     type="password"
