@@ -85,3 +85,48 @@ body {
 .gift-card-svg {
     filter: drop-shadow(0 25px 50px rgba(99, 102, 241, 0.4)) drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
 }
+
+/* Fix input field text visibility - ensure text is always visible */
+input[type="text"]:not([readonly]),
+input[type="email"]:not([readonly]),
+input[type="password"]:not([readonly]),
+input[type="tel"]:not([readonly]),
+input[type="number"]:not([readonly]),
+input[type="search"]:not([readonly]),
+textarea:not([readonly]) {
+    color: #111827 !important; /* Force visible dark text */
+    -webkit-text-fill-color: #111827 !important; /* Override Safari autofill */
+}
+
+/* Ensure input value displays fully */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="number"],
+input[type="search"] {
+    min-width: 0 !important; /* Critical for flex inputs */
+    overflow: visible !important; /* Show all characters */
+    text-overflow: clip !important; /* Don't use ellipsis */
+}
+
+/* Fix for inputs inside flex containers - ensure they can grow */
+.flex input[type="text"],
+.flex input[type="email"],
+.flex input[type="password"],
+.flex input[type="search"],
+.flex-1 input[type="text"],
+.flex-1 input[type="email"],
+.flex-1 input[type="password"],
+.flex-1 input[type="search"] {
+    min-width: 0 !important;
+    flex: 1 1 0% !important; /* Allow flex growth */
+    width: 0 !important; /* Force flex to control width */
+}
+
+/* Ensure placeholder is visible */
+input::placeholder,
+textarea::placeholder {
+    color: #9ca3af !important;
+    opacity: 1 !important;
+}
