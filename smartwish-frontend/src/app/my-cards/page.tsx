@@ -11,6 +11,7 @@ import { useSession } from "next-auth/react";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal";
 import SendECardModal from "@/components/SendECardModal";
 import PrinterSelectionModal from "@/components/PrinterSelectionModal";
+import CardPaymentModal from "@/components/CardPaymentModal";
 import jsPDF from 'jspdf';
 import useSWR from "swr";
 import { useToast } from "@/contexts/ToastContext";
@@ -228,6 +229,10 @@ function MyCardsContent() {
   const [sendingECard, setSendingECard] = useState(false);
   const [giftCardData, setGiftCardData] = useState<any>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  
+  // Payment modal state
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ card: MyCard; action: 'send' | 'print'; email?: string; message?: string } | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [showGiftAnimation, setShowGiftAnimation] = useState(false);
   const [animatingCardId, setAnimatingCardId] = useState<string | null>(null);
@@ -697,18 +702,42 @@ function MyCardsContent() {
 
   // Promote removed: publishing now also creates template; use Unpublish to revert.
 
-  // Handle sending E-Card
+  // Handle sending E-Card - Show payment modal first
   const handleSendECard = (card: MyCard) => {
+    console.log('💳 Opening payment modal for send e-card:', card.id);
+    setPendingAction({ card, action: 'send' });
+    setPaymentModalOpen(true);
+  };
+  
+  // Execute send e-card after payment
+  const executeSendECard = () => {
+    if (!pendingAction || pendingAction.action !== 'send') return;
+    
+    console.log('📧 Payment successful, showing e-card modal');
     setCardToSend({
-      id: card.id,
-      name: card.name,
-      thumbnail: card.thumbnail,
+      id: pendingAction.card.id,
+      name: pendingAction.card.name,
+      thumbnail: pendingAction.card.thumbnail,
     });
     setECardModalOpen(true);
+    setPaymentModalOpen(false);
+    setPendingAction(null);
   };
 
-  // Handle print card
+  // Handle print card - Show payment modal first
   const handlePrint = async (card: MyCard) => {
+    console.log('💳 Opening payment modal for print:', card.id);
+    setPendingAction({ card, action: 'print' });
+    setPaymentModalOpen(true);
+  };
+  
+  // Execute print after payment
+  const executePrint = async () => {
+    if (!pendingAction || pendingAction.action !== 'print') return;
+    
+    const card = pendingAction.card;
+    console.log('🖨️ Payment successful, proceeding with print');
+    
     setIsPrinting(true);
     try {
       // Get the card data to extract image URLs
@@ -716,6 +745,8 @@ function MyCardsContent() {
       if (!savedDesign) {
         alert('Card data not found');
         setIsPrinting(false);
+        setPaymentModalOpen(false);
+        setPendingAction(null);
         return;
       }
 
@@ -816,6 +847,8 @@ function MyCardsContent() {
         setPrinterModalOpen(true);
         console.log('Printer modal opened successfully');
         setIsPrinting(false);
+        setPaymentModalOpen(false);
+        setPendingAction(null);
 
       } else {
         throw new Error(result.message || 'Failed to generate print files');
@@ -824,6 +857,8 @@ function MyCardsContent() {
       console.error('Print error:', error);
       alert('Failed to generate print files. Please try again.');
       setIsPrinting(false);
+      setPaymentModalOpen(false);
+      setPendingAction(null);
     }
   };
 
@@ -1436,6 +1471,27 @@ function MyCardsContent() {
           pdfBlob={pdfBlob}
           cardName={cardToPrint?.name || ""}
         />
+
+        {/* Payment Modal */}
+        {pendingAction && (
+          <CardPaymentModal
+            isOpen={paymentModalOpen}
+            onClose={() => {
+              setPaymentModalOpen(false);
+              setPendingAction(null);
+            }}
+            onPaymentSuccess={() => {
+              if (pendingAction.action === 'print') {
+                executePrint();
+              } else if (pendingAction.action === 'send') {
+                executeSendECard();
+              }
+            }}
+            cardId={pendingAction.card.id}
+            cardName={pendingAction.card.name}
+            action={pendingAction.action}
+          />
+        )}
 
         {/* Publish Modal */}
         <Transition appear show={publishModalOpen} as={Fragment}>

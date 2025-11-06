@@ -90,8 +90,17 @@ export default function VirtualKeyboard() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[9999] bg-gray-100 shadow-2xl border-t-2 border-gray-300">
-      <div className="max-w-5xl mx-auto px-2 py-3">
+    <>
+      {/* Semi-transparent backdrop - clicking it closes the keyboard */}
+      <div 
+        className="fixed inset-0 z-[9998] bg-black/20 backdrop-blur-[2px]"
+        onClick={hideKeyboard}
+        style={{ cursor: 'default' }}
+      />
+      
+      {/* Keyboard */}
+      <div className="virtual-keyboard-container fixed inset-x-0 bottom-0 z-[9999] bg-gray-100 shadow-2xl border-t-2 border-gray-300">
+        <div className="max-w-5xl mx-auto px-2 py-3">
         <Keyboard
           keyboardRef={(r: any) => (keyboardRef.current = r)}
           onChange={onChange}
@@ -113,6 +122,7 @@ export default function VirtualKeyboard() {
             }
           }}
         />
+      </div>
       </div>
 
       <style jsx global>{`
@@ -187,7 +197,7 @@ export default function VirtualKeyboard() {
           overflow: hidden;
         }
       `}</style>
-    </div>
+    </>
   )
 }
 
