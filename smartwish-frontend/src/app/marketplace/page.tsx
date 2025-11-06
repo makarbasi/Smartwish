@@ -4,6 +4,14 @@ import { useMemo, useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import QRCode from 'qrcode'
+import { VirtualInput } from '@/components/VirtualInput'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+
+// Initialize Stripe
+const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+console.log('🔑 Stripe Publishable Key:', stripePublishableKey ? 'Loaded ✅' : 'Missing ❌')
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
 
 // Types
 type Product = {
@@ -84,6 +92,19 @@ function MarketplaceContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successData, setSuccessData] = useState<any>(null)
   const [activeFilter, setActiveFilter] = useState<string>('all')
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentAction, setPaymentAction] = useState<'print' | 'send' | null>(null)
+
+  // Debug logging for state changes
+  useEffect(() => {
+    console.log('🔵 MarketplaceContent State:', {
+      showCheckoutModal,
+      showPaymentModal,
+      paymentAction,
+      hasSuccessData: !!successData,
+      hasQrCode: !!qrCodeDataUrl
+    })
+  }, [showCheckoutModal, showPaymentModal, paymentAction, successData, qrCodeDataUrl])
 
   // Check if we're in gift card integration mode
   const cardId = searchParams.get('cardId')
@@ -263,7 +284,7 @@ function MarketplaceContent() {
         <div className="mx-auto max-w-3xl">
           <div className="relative">
             <div className="flex items-center gap-1 sm:gap-2 rounded-2xl bg-white/95 p-1.5 sm:p-2 shadow-sm ring-1 ring-gray-300 backdrop-blur transition focus-within:ring-indigo-400">
-              <input
+              <VirtualInput
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -379,6 +400,17 @@ function MarketplaceContent() {
         setErrorMessage={setErrorMessage}
         qrCodeDataUrl={qrCodeDataUrl}
         setQrCodeDataUrl={setQrCodeDataUrl}
+        setShowPaymentModal={setShowPaymentModal}
+        setPaymentAction={setPaymentAction}
+      />
+
+      {/* Payment Modal */}
+      <PaymentModal
+        showPaymentModal={showPaymentModal}
+        setShowPaymentModal={setShowPaymentModal}
+        paymentAction={paymentAction}
+        successData={successData}
+        qrCodeDataUrl={qrCodeDataUrl}
       />
     </main>
   )
@@ -414,9 +446,18 @@ function CheckoutModal({
   errorMessage,
   setErrorMessage,
   qrCodeDataUrl,
-  setQrCodeDataUrl
+  setQrCodeDataUrl,
+  setShowPaymentModal,
+  setPaymentAction
 }: any) {
   const [currentSelectedProduct, setCurrentSelectedProduct] = useState<Product | null>(null)
+
+  console.log('🟢 CheckoutModal Props:', {
+    showCheckoutModal,
+    hasSetShowPaymentModal: typeof setShowPaymentModal === 'function',
+    hasSetPaymentAction: typeof setPaymentAction === 'function',
+    hasSuccessData: !!successData
+  })
 
   useEffect(() => {
     const handleShowCheckout = () => setShowCheckoutModal(true)
@@ -485,6 +526,8 @@ function CheckoutModal({
       const data = await response.json()
 
       if (response.ok && data.success) {
+        console.log('✅ Gift Card Generated Successfully:', data)
+
         // Generate QR code from the redemption link
         const qrCodeUrl = await QRCode.toDataURL(data.redemptionLink, {
           width: 200,
@@ -496,12 +539,15 @@ function CheckoutModal({
           errorCorrectionLevel: 'H'
         })
 
+        console.log('✅ QR Code Generated')
+
         // Check if we're in gift mode - integrate with card design
         const searchParams = new URLSearchParams(window.location.search)
         const cardId = searchParams.get('cardId')
         const isGiftMode = searchParams.get('mode') === 'gift'
 
         if (isGiftMode && cardId) {
+          console.log('🎁 Gift Mode - Redirecting to my-cards')
           // Store gift card data in localStorage for card integration
           const giftCardData = {
             qrCode: qrCodeUrl,
@@ -518,10 +564,13 @@ function CheckoutModal({
         }
 
         // Normal flow - show modal
+        console.log('📝 Setting Success Data:', data)
         setSuccessData(data)
         await generateQRCodeFromLink(data.redemptionLink)
         setGiftCardAmount('')
+        console.log('✅ Success flow complete - Print/Send buttons should be visible')
       } else {
+        console.error('❌ Gift Card Generation Failed:', data)
         setErrorMessage('Failed to generate gift card: ' + (data.error || 'Unknown error'))
       }
     } catch (error) {
@@ -598,7 +647,7 @@ function CheckoutModal({
                 {/* Amount Input */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Gift Card Amount ($)</label>
-                  <input
+                  <VirtualInput
                     type="number"
                     value={giftCardAmount}
                     onChange={(e) => setGiftCardAmount(e.target.value)}
@@ -693,6 +742,40 @@ function CheckoutModal({
                     </div>
                   </div>
                 </div>
+
+                {/* Action Buttons */}
+                <div className="mt-6 space-y-3">
+                  {console.log('🟡 Rendering Action Buttons - setShowPaymentModal:', typeof setShowPaymentModal)}
+                  <button
+                    onClick={() => {
+                      console.log('🖨️ Print Card button clicked!')
+                      console.log('📊 Success Data:', successData)
+                      console.log('📞 Calling setPaymentAction with: print')
+                      console.log('📞 Calling setShowPaymentModal with: true')
+                      setPaymentAction('print')
+                      setShowPaymentModal(true)
+                      console.log('✅ State setters called - payment modal should show')
+                    }}
+                    className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-500 transition-colors flex items-center justify-center"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    Print Card
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPaymentAction('send')
+                      setShowPaymentModal(true)
+                    }}
+                    className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-500 transition-colors flex items-center justify-center"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    Send E-Card
+                  </button>
+                </div>
               </>
             )}
 
@@ -711,6 +794,562 @@ function CheckoutModal({
           <div className="border-t border-gray-200 px-6 py-4 flex justify-end">
             <button onClick={closeCheckout} className="text-gray-400 hover:text-gray-600 px-4 py-2 text-sm font-medium">
               Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Payment Modal Component (Wrapper with Stripe Elements)
+function PaymentModal({
+  showPaymentModal,
+  setShowPaymentModal,
+  paymentAction,
+  successData,
+  qrCodeDataUrl
+}: any) {
+  console.log('💳 PaymentModal render:', {
+    showPaymentModal,
+    paymentAction,
+    hasSuccessData: !!successData,
+    hasStripePromise: !!stripePromise
+  })
+
+  if (!showPaymentModal) return null
+
+  if (!stripePromise) {
+    console.error('❌ Stripe not initialized! Check NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY')
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-white rounded-lg p-6 max-w-md">
+          <h3 className="text-lg font-bold text-red-600 mb-2">Payment System Error</h3>
+          <p className="text-gray-700">Stripe is not configured. Please check your environment variables.</p>
+          <button
+            onClick={() => setShowPaymentModal(false)}
+            className="mt-4 bg-gray-600 text-white px-4 py-2 rounded"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <Elements stripe={stripePromise}>
+      <PaymentModalContent
+        showPaymentModal={showPaymentModal}
+        setShowPaymentModal={setShowPaymentModal}
+        paymentAction={paymentAction}
+        successData={successData}
+        qrCodeDataUrl={qrCodeDataUrl}
+      />
+    </Elements>
+  )
+}
+
+// Inner Payment Modal Component with Stripe Hooks
+function PaymentModalContent({
+  showPaymentModal,
+  setShowPaymentModal,
+  paymentAction,
+  successData,
+  qrCodeDataUrl
+}: any) {
+  const stripe = useStripe()
+  const elements = useElements()
+
+  const [cardholderName, setCardholderName] = useState('')
+  const [paymentQRCode, setPaymentQRCode] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [paymentComplete, setPaymentComplete] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [paymentSessionId] = useState(() => `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
+  const [recipientEmail, setRecipientEmail] = useState('')
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const checkPaymentIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    if (showPaymentModal && successData) {
+      // Create Stripe payment intent
+      createPaymentIntent()
+      // Generate QR code for payment
+      generatePaymentQRCode()
+    }
+
+    return () => {
+      if (checkPaymentIntervalRef.current) {
+        clearInterval(checkPaymentIntervalRef.current)
+      }
+    }
+  }, [showPaymentModal, successData])
+
+  const createPaymentIntent = async () => {
+    try {
+      const response = await fetch('/api/stripe/create-payment-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: successData?.amount || 0,
+          currency: 'usd',
+          metadata: {
+            productName: successData?.productName || '',
+            paymentAction: paymentAction,
+            sessionId: paymentSessionId,
+          },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.clientSecret) {
+        setClientSecret(data.clientSecret)
+      } else {
+        setPaymentError(data.error || 'Failed to initialize payment')
+      }
+    } catch (error) {
+      console.error('Error creating payment intent:', error)
+      setPaymentError('Failed to initialize payment')
+    }
+  }
+
+  const generatePaymentQRCode = async () => {
+    try {
+      // Create a payment URL with session ID
+      const paymentUrl = `${window.location.origin}/payment?session=${paymentSessionId}&amount=${successData?.amount || 0}&product=${encodeURIComponent(successData?.productName || '')}`
+
+      const qrCode = await QRCode.toDataURL(paymentUrl, {
+        width: 250,
+        margin: 2,
+        color: {
+          dark: '#1e40af',
+          light: '#ffffff'
+        },
+        errorCorrectionLevel: 'H'
+      })
+      setPaymentQRCode(qrCode)
+    } catch (error) {
+      console.error('Error generating payment QR code:', error)
+    }
+  }
+
+  // Simulate checking for mobile payment completion
+  const startPaymentMonitoring = () => {
+    if (checkPaymentIntervalRef.current) {
+      clearInterval(checkPaymentIntervalRef.current)
+    }
+
+    // Check localStorage every 2 seconds for payment completion
+    checkPaymentIntervalRef.current = setInterval(() => {
+      const paymentStatus = localStorage.getItem(`payment_${paymentSessionId}`)
+      if (paymentStatus === 'completed') {
+        handlePaymentSuccess()
+        if (checkPaymentIntervalRef.current) {
+          clearInterval(checkPaymentIntervalRef.current)
+        }
+      }
+    }, 2000)
+  }
+
+  const validatePaymentForm = () => {
+    if (!stripe || !elements) {
+      setPaymentError('Payment system not initialized')
+      return false
+    }
+    if (!cardholderName || cardholderName.length < 3) {
+      setPaymentError('Please enter cardholder name')
+      return false
+    }
+    if (paymentAction === 'send' && (!recipientEmail || !recipientEmail.includes('@'))) {
+      setPaymentError('Please enter a valid recipient email')
+      return false
+    }
+    if (!clientSecret) {
+      setPaymentError('Payment not initialized. Please try again.')
+      return false
+    }
+    return true
+  }
+
+  const processPayment = async () => {
+    if (!validatePaymentForm()) {
+      return
+    }
+
+    setIsProcessing(true)
+    setPaymentError(null)
+
+    try {
+      const cardElement = elements!.getElement(CardElement)
+
+      if (!cardElement) {
+        throw new Error('Card element not found')
+      }
+
+      // Confirm the payment with Stripe
+      const { error, paymentIntent } = await stripe!.confirmCardPayment(clientSecret!, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: cardholderName,
+          },
+        },
+      })
+
+      if (error) {
+        console.error('Payment error:', error)
+        setPaymentError(error.message || 'Payment failed')
+        setIsProcessing(false)
+      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+        console.log('✅ Payment successful:', paymentIntent.id)
+        handlePaymentSuccess()
+      }
+    } catch (error: any) {
+      console.error('Payment processing error:', error)
+      setPaymentError(error.message || 'Payment failed. Please try again.')
+      setIsProcessing(false)
+    }
+  }
+
+  const handlePaymentSuccess = () => {
+    setIsProcessing(false)
+    setPaymentComplete(true)
+
+    // Execute action after payment
+    setTimeout(() => {
+      if (paymentAction === 'print') {
+        handlePrint()
+      } else if (paymentAction === 'send') {
+        handleSendECard()
+      }
+    }, 1500)
+  }
+
+  const handlePrint = () => {
+    // Create a printable version of the card
+    const printWindow = window.open('', '_blank')
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Print Gift Card</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                background: #f3f4f6;
+              }
+              .card-container {
+                background: white;
+                border-radius: 16px;
+                padding: 40px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                text-align: center;
+                max-width: 500px;
+              }
+              .card-header {
+                font-size: 28px;
+                font-weight: bold;
+                color: #1f2937;
+                margin-bottom: 20px;
+              }
+              .card-amount {
+                font-size: 48px;
+                font-weight: bold;
+                color: #4f46e5;
+                margin: 20px 0;
+              }
+              .qr-code {
+                margin: 30px 0;
+              }
+              .qr-code img {
+                border: 4px solid #e5e7eb;
+                border-radius: 8px;
+              }
+              .instructions {
+                color: #6b7280;
+                font-size: 14px;
+                line-height: 1.6;
+                margin-top: 20px;
+              }
+              @media print {
+                body {
+                  background: white;
+                }
+                .no-print {
+                  display: none;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="card-container">
+              <div class="card-header">${successData?.productName || 'Gift Card'}</div>
+              <div class="card-amount">$${successData?.amount || 0}</div>
+              <div class="qr-code">
+                <img src="${qrCodeDataUrl}" alt="Gift Card QR Code" />
+              </div>
+              <div class="instructions">
+                <p><strong>How to redeem:</strong></p>
+                <p>Scan the QR code above or visit the link to redeem your gift card.</p>
+                <p style="word-break: break-all; font-size: 12px; margin-top: 15px;">
+                  ${successData?.redemptionLink || ''}
+                </p>
+              </div>
+            </div>
+            <script>
+              window.onload = () => {
+                setTimeout(() => {
+                  window.print();
+                }, 500);
+              }
+            </script>
+          </body>
+        </html>
+      `)
+      printWindow.document.close()
+    }
+
+    // Close modals after a delay
+    setTimeout(() => {
+      closePaymentModal()
+    }, 2000)
+  }
+
+  const handleSendECard = async () => {
+    try {
+      // In a real application, you would send the email via an API
+      console.log('Sending e-card to:', recipientEmail)
+      console.log('Gift card data:', successData)
+
+      // Simulate email sending
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      alert(`E-Card successfully sent to ${recipientEmail}!`)
+
+      // Close modals after a delay
+      setTimeout(() => {
+        closePaymentModal()
+      }, 2000)
+    } catch (error) {
+      console.error('Error sending e-card:', error)
+      setPaymentError('Failed to send e-card. Please try again.')
+      setIsProcessing(false)
+      setPaymentComplete(false)
+    }
+  }
+
+  const closePaymentModal = () => {
+    setShowPaymentModal(false)
+    setCardholderName('')
+    setRecipientEmail('')
+    setPaymentQRCode('')
+    setIsProcessing(false)
+    setPaymentComplete(false)
+    setPaymentError(null)
+    setClientSecret(null)
+    if (checkPaymentIntervalRef.current) {
+      clearInterval(checkPaymentIntervalRef.current)
+    }
+  }
+
+  // Stripe CardElement styling
+  const CARD_ELEMENT_OPTIONS = {
+    style: {
+      base: {
+        fontSize: '16px',
+        color: '#424770',
+        '::placeholder': {
+          color: '#aab7c4',
+        },
+      },
+      invalid: {
+        color: '#9e2146',
+      },
+    },
+  }
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closePaymentModal}></div>
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          {/* Header */}
+          <div className="border-b border-gray-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {paymentComplete ? 'Payment Successful!' : 'Complete Payment'}
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {paymentComplete
+                ? `Processing your ${paymentAction === 'print' ? 'print' : 'e-card'}...`
+                : `Pay $${successData?.amount || 0} to ${paymentAction === 'print' ? 'print your card' : 'send e-card'}`}
+            </p>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 p-6">
+            {paymentComplete ? (
+              <div className="text-center py-8">
+                <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Payment Successful!</h3>
+                <p className="text-gray-600">
+                  {paymentAction === 'print' ? 'Preparing your card for printing...' : 'Sending your e-card...'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Left Side - Card Information */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Card Information</h3>
+
+                  <div className="space-y-4">
+                    {/* Stripe Card Element */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Card Details</label>
+                      <div className="w-full px-3 py-3 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500">
+                        <CardElement options={CARD_ELEMENT_OPTIONS} />
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Secured by Stripe. Your card details are never stored on our servers.
+                      </p>
+                    </div>
+
+                    {/* Cardholder Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cardholder Name</label>
+                      <VirtualInput
+                        type="text"
+                        value={cardholderName}
+                        onChange={(e) => setCardholderName(e.target.value.toUpperCase())}
+                        placeholder="JOHN DOE"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Recipient Email (for e-cards) */}
+                    {paymentAction === 'send' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Email</label>
+                        <VirtualInput
+                          type="email"
+                          value={recipientEmail}
+                          onChange={(e) => setRecipientEmail(e.target.value)}
+                          placeholder="recipient@example.com"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    )}
+
+                    {/* Pay Button */}
+                    <button
+                      onClick={processPayment}
+                      disabled={isProcessing}
+                      className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-indigo-500 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Processing Payment...
+                        </>
+                      ) : (
+                        <>Pay ${successData?.amount || 0}</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Side - QR Code for Mobile Payment */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Or Pay with Mobile</h3>
+
+                  <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-6 text-center">
+                    <div className="mb-4">
+                      {paymentQRCode && (
+                        <img
+                          src={paymentQRCode}
+                          alt="Payment QR Code"
+                          className="mx-auto rounded-lg shadow-sm"
+                        />
+                      )}
+                    </div>
+
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <p className="font-medium">Scan to pay on your phone</p>
+                      <p className="text-xs text-gray-500">
+                        1. Scan QR code with your phone<br />
+                        2. Complete payment on mobile<br />
+                        3. Kiosk will automatically proceed
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={startPaymentMonitoring}
+                      className="mt-4 text-xs text-indigo-600 hover:text-indigo-500 font-medium"
+                    >
+                      Waiting for mobile payment...
+                    </button>
+                  </div>
+
+                  {/* Payment Summary */}
+                  <div className="mt-6 bg-gray-50 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Payment Summary</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Product</span>
+                        <span className="font-medium text-gray-900">{successData?.productName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Amount</span>
+                        <span className="font-medium text-gray-900">${successData?.amount}</span>
+                      </div>
+                      <div className="flex justify-between pt-2 border-t border-gray-200">
+                        <span className="font-semibold text-gray-900">Total</span>
+                        <span className="font-semibold text-gray-900">${successData?.amount}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {paymentError && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <svg className="inline-block w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                {paymentError}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-gray-200 px-6 py-4 flex justify-between items-center">
+            <div className="flex items-center text-xs text-gray-500">
+              <svg className="w-4 h-4 mr-1 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+              </svg>
+              Secure Payment
+            </div>
+            <button
+              onClick={closePaymentModal}
+              className="text-gray-400 hover:text-gray-600 px-4 py-2 text-sm font-medium"
+              disabled={isProcessing}
+            >
+              Cancel
             </button>
           </div>
         </div>
