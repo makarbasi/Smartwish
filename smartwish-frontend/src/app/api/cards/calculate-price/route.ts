@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { cardId } = body
+    const { cardId, giftCardAmount: providedGiftCardAmount } = body
+
+    console.log('💰 Calculate Price - Request:', { cardId, providedGiftCardAmount })
 
     if (!cardId) {
       return NextResponse.json(
@@ -12,31 +14,58 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Fetch card data from saved-designs API
-    const cardResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/saved-designs/${cardId}`, {
-      headers: {
-        'Authorization': request.headers.get('authorization') || '',
-      },
-    })
+    // Try to fetch card data from saved-designs API
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001'
+    console.log('💰 Backend URL:', backendUrl)
+    
+    const cardUrl = `${backendUrl}/api/saved-designs/${cardId}`
+    console.log('💰 Fetching card from:', cardUrl)
 
-    if (!cardResponse.ok) {
-      return NextResponse.json(
-        { error: 'Card not found' },
-        { status: 404 }
-      )
+    let cardData = null
+    let cardPrice = 2.99 // Default price if we can't fetch from database
+
+    try {
+      const cardResponse = await fetch(cardUrl, {
+        headers: {
+          'Authorization': request.headers.get('authorization') || '',
+        },
+      })
+
+      console.log('💰 Card fetch response status:', cardResponse.status)
+
+      if (cardResponse.ok) {
+        cardData = await cardResponse.json()
+        console.log('💰 Card data received:', { 
+          id: cardData.id, 
+          title: cardData.title,
+          price: cardData.price,
+          hasMetadata: !!cardData.metadata
+        })
+        
+        // Get card price from database (default to 2.99 if not set)
+        cardPrice = parseFloat(cardData.price || 2.99)
+      } else {
+        console.warn('💰 Card not found in database, using default price')
+      }
+    } catch (fetchError) {
+      console.error('💰 Error fetching card:', fetchError)
+      console.log('💰 Using default price instead')
     }
-
-    const cardData = await cardResponse.json()
-
-    // Get card price from database (default to 0 if not set)
-    const cardPrice = parseFloat(cardData.price || 0)
 
     // Check if card has a gift card attached
     let giftCardAmount = 0
     
-    // Try to get gift card amount from metadata or localStorage will be checked client-side
-    if (cardData.metadata?.giftCard?.amount) {
+    // Priority 1: Use provided gift card amount from request
+    if (providedGiftCardAmount && !isNaN(parseFloat(providedGiftCardAmount))) {
+      giftCardAmount = parseFloat(providedGiftCardAmount)
+      console.log('💰 Using provided gift card amount:', giftCardAmount)
+    }
+    // Priority 2: Try to get gift card amount from metadata
+    else if (cardData?.metadata?.giftCard?.amount) {
       giftCardAmount = parseFloat(cardData.metadata.giftCard.amount)
+      console.log('💰 Using gift card from metadata:', giftCardAmount)
+    } else {
+      console.log('💰 No gift card attached')
     }
 
     // Calculate subtotal
@@ -48,11 +77,11 @@ export async function POST(request: NextRequest) {
     // Calculate total
     const total = subtotal + processingFee
 
-    console.log('💰 Price Calculation:', {
+    console.log('💰 Price Calculation Result:', {
       cardId,
-      cardPrice,
-      giftCardAmount,
-      subtotal,
+      cardPrice: cardPrice.toFixed(2),
+      giftCardAmount: giftCardAmount.toFixed(2),
+      subtotal: subtotal.toFixed(2),
       processingFee: processingFee.toFixed(2),
       total: total.toFixed(2)
     })
@@ -81,11 +110,43 @@ export async function POST(request: NextRequest) {
       }
     })
   } catch (error: any) {
-    console.error('Error calculating price:', error)
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('❌ Error calculating price:', error)
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    })
+    
+    // Return a default pricing even if calculation fails
+    // This ensures the modal can still show and users can proceed
+    const defaultPrice = 2.99
+    const defaultSubtotal = defaultPrice
+    const defaultFee = defaultSubtotal * 0.05
+    const defaultTotal = defaultSubtotal + defaultFee
+    
+    console.log('💰 Returning default pricing due to error')
+    
+    return NextResponse.json({
+      success: true,
+      cardPrice: parseFloat(defaultPrice.toFixed(2)),
+      giftCardAmount: 0,
+      subtotal: parseFloat(defaultSubtotal.toFixed(2)),
+      processingFee: parseFloat(defaultFee.toFixed(2)),
+      total: parseFloat(defaultTotal.toFixed(2)),
+      currency: 'USD',
+      breakdown: {
+        cardPrice: {
+          label: 'Greeting Card',
+          amount: parseFloat(defaultPrice.toFixed(2))
+        },
+        giftCardAmount: null,
+        processingFee: {
+          label: 'Processing Fee (5%)',
+          amount: parseFloat(defaultFee.toFixed(2))
+        }
+      },
+      warning: 'Using default pricing due to calculation error'
+    })
   }
 }
 

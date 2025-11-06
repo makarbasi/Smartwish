@@ -178,6 +178,8 @@ function CardPaymentModalContent({
       console.log('💰 Fetching price for card:', cardId, 'Gift card amount:', giftCardAmount)
 
       // Fetch price calculation
+      console.log('💰 Fetching price calculation for:', { cardId, giftCardAmount })
+      
       const priceResponse = await fetch('/api/cards/calculate-price', {
         method: 'POST',
         headers: {
@@ -189,12 +191,20 @@ function CardPaymentModalContent({
         })
       })
 
+      console.log('💰 Price response status:', priceResponse.status)
+
       if (!priceResponse.ok) {
-        throw new Error('Failed to calculate price')
+        const errorText = await priceResponse.text()
+        console.error('💰 Price calculation failed:', errorText)
+        throw new Error(`Failed to calculate price: ${errorText}`)
       }
 
       const priceResult = await priceResponse.json()
       console.log('💰 Price calculation result:', priceResult)
+      
+      if (priceResult.warning) {
+        console.warn('⚠️ Price calculation warning:', priceResult.warning)
+      }
 
       // If total is 0, no payment needed
       if (priceResult.total === 0) {
