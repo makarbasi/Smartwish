@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { useUserProfile } from '@/hooks/useUserProfile'
 import React from 'react'
+import { VirtualInput } from '@/components/VirtualInput'
 
 /**
  * Minimal Sidebar placeholder used on the settings page.
@@ -377,7 +378,7 @@ export default function SettingsPage() {
                       Full name
                     </label>
                     <div className="mt-2">
-                      <input
+                      <VirtualInput
                         id="full-name"
                         name="full-name"
                         type="text"
@@ -395,7 +396,7 @@ export default function SettingsPage() {
                       Phone number
                     </label>
                     <div className="mt-2">
-                      <input
+                      <VirtualInput
                         id="phone"
                         name="phone"
                         type="tel"
@@ -414,7 +415,7 @@ export default function SettingsPage() {
                     <div className="mt-3 space-y-3">
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white ring-1 ring-gray-200 text-[#1877F2]"><FacebookIcon className="h-5 w-5" /></span>
-                        <input
+                        <VirtualInput
                           value={formData.socialMedia.facebook}
                           onChange={(e) => setFormData(prev => ({ ...prev, socialMedia: { ...prev.socialMedia, facebook: e.target.value } }))}
                           placeholder="Facebook profile URL or @handle"
@@ -423,7 +424,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white ring-1 ring-gray-200 text-[#E4405F]"><InstagramIcon className="h-5 w-5" /></span>
-                        <input
+                        <VirtualInput
                           value={formData.socialMedia.instagram}
                           onChange={(e) => setFormData(prev => ({ ...prev, socialMedia: { ...prev.socialMedia, instagram: e.target.value } }))}
                           placeholder="Instagram profile URL or @handle"
@@ -432,7 +433,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white ring-1 ring-gray-200 text-black"><TikTokIcon className="h-5 w-5" /></span>
-                        <input
+                        <VirtualInput
                           value={formData.socialMedia.tiktok}
                           onChange={(e) => setFormData(prev => ({ ...prev, socialMedia: { ...prev.socialMedia, tiktok: e.target.value } }))}
                           placeholder="TikTok profile URL or @handle"
@@ -441,7 +442,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#FFFC00] ring-1 ring-gray-200 text-black"><SnapchatIcon className="h-5 w-5" /></span>
-                        <input
+                        <VirtualInput
                           value={formData.socialMedia.snapchat}
                           onChange={(e) => setFormData(prev => ({ ...prev, socialMedia: { ...prev.socialMedia, snapchat: e.target.value } }))}
                           placeholder="Snapchat profile URL or @handle"
@@ -450,7 +451,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-white ring-1 ring-gray-200 text-[#25D366]">📱</span>
-                        <input
+                        <VirtualInput
                           value={formData.socialMedia.whatsapp}
                           onChange={(e) => setFormData(prev => ({ ...prev, socialMedia: { ...prev.socialMedia, whatsapp: e.target.value } }))}
                           placeholder="WhatsApp number or @handle"
@@ -475,7 +476,7 @@ export default function SettingsPage() {
                         ))}
                       </div>
                       <div className="mt-3 flex gap-2">
-                        <input
+                        <VirtualInput
                           value={interestInput}
                           onChange={(e) => setInterestInput(e.target.value)}
                           onKeyDown={handleInterestKey}
@@ -505,7 +506,7 @@ export default function SettingsPage() {
                         ))}
                       </div>
                       <div className="mt-3 flex gap-2">
-                        <input
+                        <VirtualInput
                           value={hobbyInput}
                           onChange={(e) => setHobbyInput(e.target.value)}
                           onKeyDown={handleHobbyKey}
@@ -553,7 +554,7 @@ export default function SettingsPage() {
                       Current password
                     </label>
                     <div className="mt-2">
-                      <input
+                      <VirtualInput
                         id="current-password"
                         name="current_password"
                         type="password"
@@ -571,7 +572,7 @@ export default function SettingsPage() {
                       New password
                     </label>
                     <div className="mt-2">
-                      <input
+                      <VirtualInput
                         id="new-password"
                         name="new_password"
                         type="password"
@@ -591,7 +592,7 @@ export default function SettingsPage() {
                       Confirm password
                     </label>
                     <div className="mt-2">
-                      <input
+                      <VirtualInput
                         id="confirm-password"
                         name="confirm_password"
                         type="password"

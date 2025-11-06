@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, FormEvent } from 'react'
 import useSWR from 'swr'
+import { VirtualInput } from '@/components/VirtualInput'
 
 const quickActions = [
   'Design for me',
@@ -251,7 +252,7 @@ export default function HeroSearch(props: Props) {
         className={`flex items-center gap-1 sm:gap-2 rounded-2xl bg-white/95 p-1.5 sm:p-2 shadow-sm ring-1 ring-gray-300 backdrop-blur transition focus-within:ring-indigo-400 ${open ? 'ring-indigo-400 shadow-md' : ''
           }`}
       >
-        <input
+        <VirtualInput
           value={q}
           onFocus={() => setOpen(true)}
           onChange={(e) => setQ(e.target.value)}
