@@ -106,6 +106,8 @@ function CardPaymentModalContent({
   useEffect(() => {
     if (priceData && priceData.total > 0) {
       generatePaymentQRCode()
+      // Automatically start monitoring for mobile payments
+      startPaymentMonitoring()
     }
   }, [priceData])
 
@@ -137,15 +139,37 @@ function CardPaymentModalContent({
 
     console.log('👀 Starting payment monitoring for session:', paymentSessionId)
 
-    // Check localStorage every 2 seconds for payment completion
-    checkPaymentIntervalRef.current = setInterval(() => {
-      const paymentStatus = localStorage.getItem(`payment_${paymentSessionId}`)
-      if (paymentStatus === 'completed') {
-        console.log('✅ Mobile payment completed!')
-        handlePaymentSuccess()
-        if (checkPaymentIntervalRef.current) {
-          clearInterval(checkPaymentIntervalRef.current)
+    // Check backend API every 2 seconds for payment completion
+    checkPaymentIntervalRef.current = setInterval(async () => {
+      try {
+        // First check localStorage (for same-device payments)
+        const localPaymentStatus = localStorage.getItem(`payment_${paymentSessionId}`)
+        if (localPaymentStatus === 'completed') {
+          console.log('✅ Mobile payment completed (localStorage)!')
+          handlePaymentSuccess()
+          if (checkPaymentIntervalRef.current) {
+            clearInterval(checkPaymentIntervalRef.current)
+          }
+          return
         }
+
+        // Then check backend API (for cross-device payments)
+        const response = await fetch(`/api/payment-status?session=${paymentSessionId}`)
+        if (response.ok) {
+          const data = await response.json()
+          console.log('📡 Payment status from backend:', data.status)
+          
+          if (data.status === 'completed') {
+            console.log('✅ Mobile payment completed (backend API)!')
+            handlePaymentSuccess()
+            if (checkPaymentIntervalRef.current) {
+              clearInterval(checkPaymentIntervalRef.current)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking payment status:', error)
+        // Continue monitoring even if there's an error
       }
     }, 2000)
   }
@@ -479,12 +503,12 @@ function CardPaymentModalContent({
                         </p>
                       </div>
 
-                      <button
-                        onClick={startPaymentMonitoring}
-                        className="mt-4 text-xs text-indigo-600 hover:text-indigo-500 font-medium"
-                      >
-                        👀 Monitoring for payment...
-                      </button>
+                      <div className="mt-4 flex items-center justify-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs text-gray-600 font-medium">
+                          Monitoring for payment...
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>

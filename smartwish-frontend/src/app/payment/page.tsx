@@ -117,9 +117,26 @@ function PaymentForm() {
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
         console.log('✅ Payment successful:', paymentIntent.id)
         
-        // Mark payment as completed in localStorage for kiosk
+        // Mark payment as completed in localStorage (for same-device scenarios)
         if (sessionId) {
           localStorage.setItem(`payment_${sessionId}`, 'completed')
+          
+          // Notify backend so kiosk can detect payment
+          try {
+            console.log('📡 Notifying backend of payment completion:', sessionId)
+            await fetch('/api/payment-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionId: sessionId,
+                status: 'completed'
+              })
+            })
+            console.log('✅ Backend notified successfully')
+          } catch (notifyError) {
+            console.error('❌ Failed to notify backend:', notifyError)
+            // Continue anyway, localStorage might work if same device
+          }
         }
         
         setIsProcessing(false)
