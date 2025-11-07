@@ -1,0 +1,35 @@
+========================================
+SmartWish Payment System - Environment Variables
+========================================
+
+Add these to your .env.local file:
+
+# ----------------------------------------
+# Supabase Configuration
+# ----------------------------------------
+# Get these from: https://app.supabase.com → Project Settings → API
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-public-key-here
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+
+# ----------------------------------------
+# Stripe Configuration
+# ----------------------------------------
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_your-publishable-key-here
+STRIPE_SECRET_KEY=sk_live_your-secret-key-here
+STRIPE_WEBHOOK_SECRET=whsec_your-webhook-secret-here
+
+# ----------------------------------------
+# App Configuration
+# ----------------------------------------
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+========================================
+IMPORTANT SECURITY NOTES:
+========================================
+- NEVER commit .env.local to Git
+- Keep SUPABASE_SERVICE_ROLE_KEY secret
+- STRIPE_SECRET_KEY is for server-side only
+- Update URLs for production deployment
+
+
