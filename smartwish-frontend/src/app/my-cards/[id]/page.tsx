@@ -1714,7 +1714,7 @@ export default function CustomizeCardPage() {
         {/* Gift Card Panel - Above Card */}
         <div className="absolute top-0 left-0 right-0 z-10 px-4 pt-20 sm:pt-4">
           <div className="max-w-5xl mx-auto">
-            <MarketplaceGiftCarousel cardId={cardId} />
+            <MarketplaceGiftCarousel cardId={cardId} giftCardData={giftCardData} />
           </div>
         </div>
 

@@ -48,6 +48,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'testflight.tremendous.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
 };
