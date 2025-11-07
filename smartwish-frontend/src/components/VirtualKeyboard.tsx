@@ -4,9 +4,13 @@ import React, { useRef, useEffect } from 'react'
 import Keyboard from 'react-simple-keyboard'
 import 'react-simple-keyboard/build/css/index.css'
 import { useVirtualKeyboard } from '@/contexts/VirtualKeyboardContext'
+import { useDeviceMode } from '@/contexts/DeviceModeContext'
+import { usePathname } from 'next/navigation'
 
 export default function VirtualKeyboard() {
   const { isKeyboardVisible, inputValue, inputType, updateInputValue, hideKeyboard } = useVirtualKeyboard()
+  const { isKiosk } = useDeviceMode()
+  const pathname = usePathname()
   const keyboardRef = useRef<any>(null)
   const isUpdatingFromKeyboard = useRef(false)
 
@@ -94,8 +98,25 @@ export default function VirtualKeyboard() {
     }
   }
 
+  // Check if we're on login page (only login, not signup/forgot-password)
+  const isLoginPage = pathname?.includes('/sign-in')
+
+  // Show keyboard if: Kiosk mode OR on login page (need keyboard to login as kiosk)
+  const shouldShowKeyboard = isKiosk || isLoginPage
+
+  if (!shouldShowKeyboard) {
+    console.log('[VirtualKeyboard] Not in Kiosk mode and not on login page - keyboard disabled')
+    return null
+  }
+
   if (!isKeyboardVisible) {
     return null
+  }
+
+  if (isLoginPage && !isKiosk) {
+    console.log('[VirtualKeyboard] Rendering keyboard - Login page')
+  } else {
+    console.log('[VirtualKeyboard] Rendering keyboard - Kiosk mode active')
   }
 
   return (
