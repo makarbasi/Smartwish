@@ -8,15 +8,24 @@ import { useVirtualKeyboard } from '@/contexts/VirtualKeyboardContext'
 export default function VirtualKeyboard() {
   const { isKeyboardVisible, inputValue, inputType, updateInputValue, hideKeyboard } = useVirtualKeyboard()
   const keyboardRef = useRef<any>(null)
+  const isUpdatingFromKeyboard = useRef(false)
 
+  // Sync keyboard display with input value (only when not typing)
   useEffect(() => {
-    if (keyboardRef.current && isKeyboardVisible) {
+    if (keyboardRef.current && isKeyboardVisible && !isUpdatingFromKeyboard.current) {
+      console.log('[VirtualKeyboard] Syncing keyboard display with value:', inputValue)
       keyboardRef.current.setInput(inputValue)
     }
   }, [inputValue, isKeyboardVisible])
 
   const onChange = (input: string) => {
+    console.log('[VirtualKeyboard] onChange triggered, input:', input)
+    isUpdatingFromKeyboard.current = true
     updateInputValue(input)
+    // Reset flag after a short delay
+    setTimeout(() => {
+      isUpdatingFromKeyboard.current = false
+    }, 50)
   }
 
   const onKeyPress = (button: string) => {
@@ -93,7 +102,7 @@ export default function VirtualKeyboard() {
     <>
       {/* Semi-transparent backdrop - clicking it closes the keyboard */}
       <div 
-        className="fixed inset-0 z-[9998] bg-black/20 backdrop-blur-[2px]"
+        className="fixed inset-0 z-[9998] bg-black/10"
         onClick={hideKeyboard}
         style={{ cursor: 'default' }}
       />

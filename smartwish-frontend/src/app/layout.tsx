@@ -9,7 +9,9 @@ import NavigationProgress from "@/components/NavigationProgress";
 import { AuthModalProvider } from "@/contexts/AuthModalContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { VirtualKeyboardProvider } from "@/contexts/VirtualKeyboardContext";
+import { DeviceModeProvider } from "@/contexts/DeviceModeContext";
 import VirtualKeyboard from "@/components/VirtualKeyboard";
+import DeviceModeLogger from "@/components/DeviceModeLogger";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,18 +53,21 @@ export default function RootLayout({
           <Suspense fallback={null}>
             <NavigationProgress />
           </Suspense>
-          <ToastProvider>
-            <AuthModalProvider>
-              <VirtualKeyboardProvider>
-                <RequireAuthModal
-                  protectedPaths={["/contacts", "/my-cards", "/event"]}
-                >
-                  <AppChrome>{children}</AppChrome>
-                </RequireAuthModal>
-                <VirtualKeyboard />
-              </VirtualKeyboardProvider>
-            </AuthModalProvider>
-          </ToastProvider>
+          <DeviceModeProvider>
+            <DeviceModeLogger />
+            <ToastProvider>
+              <AuthModalProvider>
+                <VirtualKeyboardProvider>
+                  <RequireAuthModal
+                    protectedPaths={["/contacts", "/my-cards", "/event"]}
+                  >
+                    <AppChrome>{children}</AppChrome>
+                  </RequireAuthModal>
+                  <VirtualKeyboard />
+                </VirtualKeyboardProvider>
+              </AuthModalProvider>
+            </ToastProvider>
+          </DeviceModeProvider>
         </AuthProvider>
       </body>
     </html>

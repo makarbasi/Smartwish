@@ -93,13 +93,14 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
 
   const updateInputValue = useCallback(
     (value: string) => {
-      // Only update if value actually changed
-      setInputValue((prev) => {
-        if (prev === value) return prev
-        return value
-      })
+      console.log('[VirtualKeyboard] updateInputValue called with:', value)
       
-      if (currentInputRef && currentInputRef.value !== value) {
+      // Update context state
+      setInputValue(value)
+      
+      if (currentInputRef) {
+        console.log('[VirtualKeyboard] Updating input element, current value:', currentInputRef.value, '-> new value:', value)
+        
         // Update the actual input element
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
           window.HTMLInputElement.prototype,
@@ -119,6 +120,7 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
         // Trigger React's onChange event
         const event = new Event('input', { bubbles: true })
         currentInputRef.dispatchEvent(event)
+        console.log('[VirtualKeyboard] Input event dispatched')
       }
     },
     [currentInputRef]

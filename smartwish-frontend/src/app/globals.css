@@ -111,17 +111,17 @@ input[type="search"] {
 }
 
 /* Fix for inputs inside flex containers - ensure they can grow */
-.flex input[type="text"],
-.flex input[type="email"],
-.flex input[type="password"],
-.flex input[type="search"],
-.flex-1 input[type="text"],
-.flex-1 input[type="email"],
-.flex-1 input[type="password"],
-.flex-1 input[type="search"] {
+/* Only apply to DIRECT children of flex containers, not all descendents */
+.flex > input[type="text"],
+.flex > input[type="email"],
+.flex > input[type="password"],
+.flex > input[type="search"],
+.flex-1 > input[type="text"],
+.flex-1 > input[type="email"],
+.flex-1 > input[type="password"],
+.flex-1 > input[type="search"] {
     min-width: 0 !important;
     flex: 1 1 0% !important; /* Allow flex growth */
-    width: 0 !important; /* Force flex to control width */
 }
 
 /* Ensure placeholder is visible */

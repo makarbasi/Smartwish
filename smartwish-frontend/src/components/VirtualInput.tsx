@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { useVirtualKeyboard } from '@/contexts/VirtualKeyboardContext'
 
 interface VirtualInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -10,22 +10,21 @@ interface VirtualInputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 export function VirtualInput({ value, onChange, type = 'text', ...props }: VirtualInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const { showKeyboard, currentInputRef, updateInputValue } = useVirtualKeyboard()
+  const { showKeyboard, currentInputRef } = useVirtualKeyboard()
+  const [lastSyncedValue, setLastSyncedValue] = useState(value)
 
   const handleFocus = () => {
     if (inputRef.current) {
       const inputType = (type as 'text' | 'email' | 'tel' | 'number' | 'password') || 'text'
       showKeyboard(inputRef.current, value, inputType)
+      setLastSyncedValue(value)
     }
   }
 
-  // Sync keyboard value with input value when this is the active input
+  // Update local state when value changes from parent
   useEffect(() => {
-    if (currentInputRef === inputRef.current && inputRef.current) {
-      // Update keyboard's internal value when the input value changes
-      updateInputValue(value)
-    }
-  }, [value, currentInputRef, updateInputValue])
+    setLastSyncedValue(value)
+  }, [value])
 
   // Scroll to input when it becomes active in keyboard
   useEffect(() => {
@@ -55,21 +54,20 @@ interface VirtualTextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
 
 export function VirtualTextarea({ value, onChange, ...props }: VirtualTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { showKeyboard, currentInputRef, updateInputValue } = useVirtualKeyboard()
+  const { showKeyboard, currentInputRef } = useVirtualKeyboard()
+  const [lastSyncedValue, setLastSyncedValue] = useState(value)
 
   const handleFocus = () => {
     if (textareaRef.current) {
       showKeyboard(textareaRef.current, value, 'text')
+      setLastSyncedValue(value)
     }
   }
 
-  // Sync keyboard value with textarea value when this is the active input
+  // Update local state when value changes from parent
   useEffect(() => {
-    if (currentInputRef === textareaRef.current && textareaRef.current) {
-      // Update keyboard's internal value when the textarea value changes
-      updateInputValue(value)
-    }
-  }, [value, currentInputRef, updateInputValue])
+    setLastSyncedValue(value)
+  }, [value])
 
   // Scroll to textarea when it becomes active in keyboard
   useEffect(() => {
