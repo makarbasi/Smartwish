@@ -29,9 +29,12 @@ import HTMLFlipBook from "react-pageflip";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import SendECardModal from "@/components/SendECardModal";
+import PrinterSelectionModal from "@/components/PrinterSelectionModal";
+import CardPaymentModal from "@/components/CardPaymentModal";
 import useSWR from "swr";
 import { saveSavedDesignWithImages } from "@/utils/savedDesignUtils";
 import { useSession } from "next-auth/react";
+import { useDeviceMode } from "@/contexts/DeviceModeContext";
 
 type SavedDesign = {
   id: string;
@@ -194,6 +197,7 @@ const transformSavedDesignToCard = (savedDesign: SavedDesign): CardData => {
 
 export default function CustomizeCardPage() {
   const { data: session, status } = useSession();
+  const { isKiosk } = useDeviceMode();
   const params = useParams();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -245,6 +249,13 @@ export default function CustomizeCardPage() {
   // Send E-card functionality state
   const [showSendModal, setShowSendModal] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  // Payment and printing state
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ card: { id: string; name: string }; action: 'print' | 'send' } | null>(null);
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // Swipe functionality state
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -798,7 +809,31 @@ export default function CustomizeCardPage() {
     }
   };
 
-  // Send E-card function
+  // Handle sending E-Card - Show payment modal first
+  const handleSendECard = () => {
+    if (!cardData) {
+      alert("No card data available");
+      return;
+    }
+    console.log('💳 Opening payment modal for send e-card:', cardData.id);
+    setPendingAction({ 
+      card: { id: cardData.id, name: cardData.name }, 
+      action: 'send' 
+    });
+    setPaymentModalOpen(true);
+  };
+  
+  // Execute send e-card after payment
+  const executeSendECard = () => {
+    if (!pendingAction || pendingAction.action !== 'send') return;
+    
+    console.log('📧 Payment successful, showing e-card modal');
+    setShowSendModal(true);
+    setPaymentModalOpen(false);
+    setPendingAction(null);
+  };
+
+  // Handle sending the actual e-card (called from modal)
   const handleSendEcard = async (email: string, message: string) => {
     if (!cardData) {
       throw new Error("No card data available");
@@ -829,7 +864,6 @@ export default function CustomizeCardPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        // Show specific error message from API
         const errorMessage = result.error || "Failed to send e-card";
         setSaveMessage(`❌ ${errorMessage}`);
         setTimeout(() => setSaveMessage(""), 5000);
@@ -840,10 +874,124 @@ export default function CustomizeCardPage() {
       setTimeout(() => setSaveMessage(""), 3000);
     } catch (error) {
       console.error("❌ Send e-card failed:", error);
-      // Don't throw the error again since we already handled it
       return;
     } finally {
       setIsSendingEmail(false);
+    }
+  };
+
+  // Handle print card - Show payment modal first
+  const handlePrint = () => {
+    if (!cardData) {
+      alert("No card data available");
+      return;
+    }
+    console.log('💳 Opening payment modal for print:', cardData.id);
+    setPendingAction({ 
+      card: { id: cardData.id, name: cardData.name }, 
+      action: 'print' 
+    });
+    setPaymentModalOpen(true);
+  };
+  
+  // Execute print after payment
+  const executePrint = async () => {
+    if (!pendingAction || pendingAction.action !== 'print') return;
+    
+    if (!cardData) return;
+    
+    console.log('🖨️ Payment successful, proceeding with print');
+    
+    setIsPrinting(true);
+    try {
+      // Extract image URLs from current state
+      const image1 = pageImages[0];
+      const image2 = pageImages[1];
+      const image3 = pageImages[2];
+      const image4 = pageImages[3];
+
+      if (!image1 || !image2 || !image3 || !image4) {
+        alert('All four card images are required for printing');
+        setIsPrinting(false);
+        return;
+      }
+
+      console.log('Generating print JPEG files for card:', cardData.id);
+
+      // Check localStorage for gift card data
+      let giftCardData = null;
+      const localGiftData = localStorage.getItem(`giftCard_${cardData.id}`);
+      if (localGiftData) {
+        try {
+          giftCardData = JSON.parse(localGiftData);
+          console.log('🔍 Print Debug - Using gift card data from localStorage:', giftCardData);
+        } catch (error) {
+          console.warn('Failed to parse localStorage gift card data:', error);
+        }
+      }
+
+      // Prepare request payload
+      const requestPayload = {
+        cardId: cardData.id,
+        image1,
+        image2,
+        image3,
+        image4,
+        giftCardData,
+      };
+      console.log('🔍 Print Debug - Request payload to backend:', requestPayload);
+
+      // Call the backend API to generate JPEG files
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/generate-print-jpegs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate print files');
+      }
+
+      const result = await response.json();
+      console.log('Backend API response:', result);
+
+      if (result.success) {
+        console.log('PDF generated successfully, downloading...');
+        console.log('PDF URL:', result.pdfUrl);
+
+        // Download the PDF blob directly from the backend
+        const pdfResponse = await fetch(result.pdfUrl);
+        if (!pdfResponse.ok) {
+          throw new Error('Failed to download PDF from backend');
+        }
+
+        const pdfBlob = await pdfResponse.blob();
+        console.log('PDF blob downloaded successfully, size:', pdfBlob.size, 'bytes');
+
+        // Validate PDF blob
+        if (!pdfBlob || pdfBlob.size === 0) {
+          throw new Error('Downloaded PDF blob is empty or invalid');
+        }
+
+        // Set state and open printer selection modal
+        setPdfBlob(pdfBlob);
+        setPrinterModalOpen(true);
+        console.log('Printer modal opened successfully');
+        setIsPrinting(false);
+        setPaymentModalOpen(false);
+        setPendingAction(null);
+
+      } else {
+        throw new Error(result.message || 'Failed to generate print files');
+      }
+    } catch (error) {
+      console.error('Print error:', error);
+      alert('Failed to generate print files. Please try again.');
+      setIsPrinting(false);
+      setPaymentModalOpen(false);
+      setPendingAction(null);
     }
   };
 
@@ -1165,7 +1313,7 @@ export default function CustomizeCardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className={`min-h-screen bg-gray-100 ${isKiosk ? 'pb-24' : ''}`}>
       {/* Header - Sticky */}
       <div className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm backdrop-blur-sm bg-white/95">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1515,7 +1663,7 @@ export default function CustomizeCardPage() {
 
           {/* Send E-card Button */}
           <button
-            onClick={() => setShowSendModal(true)}
+            onClick={handleSendECard}
             className="p-1.5 sm:p-2 rounded-full text-blue-600 hover:bg-blue-50 transition-all duration-200 touch-manipulation"
             title="Send E-card"
           >
@@ -2027,6 +2175,78 @@ export default function CustomizeCardPage() {
         message="Are you sure you want to revert all changes? This will restore the original card state and cannot be undone."
         confirmText="Revert Changes"
         confirmButtonType="warning"
+      />
+
+      {/* Kiosk Mode - Bottom Action Buttons */}
+      {isKiosk && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-2xl z-40">
+          <div className="max-w-4xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex gap-4 justify-center">
+              {/* Print Button */}
+              <button
+                onClick={handlePrint}
+                disabled={isPrinting}
+                className="flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-indigo-600 text-white rounded-xl font-semibold text-lg shadow-lg hover:bg-indigo-700 active:scale-95 transition-all duration-200 touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isPrinting ? (
+                  <>
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Preparing...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    <span>Print Card</span>
+                  </>
+                )}
+              </button>
+
+              {/* Send E-card Button */}
+              <button
+                onClick={handleSendECard}
+                className="flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-blue-600 text-white rounded-xl font-semibold text-lg shadow-lg hover:bg-blue-700 active:scale-95 transition-all duration-200 touch-manipulation"
+              >
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span>Send E-card</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {pendingAction && (
+        <CardPaymentModal
+          isOpen={paymentModalOpen}
+          onClose={() => {
+            setPaymentModalOpen(false);
+            setPendingAction(null);
+          }}
+          onPaymentSuccess={() => {
+            if (pendingAction.action === 'print') {
+              executePrint();
+            } else if (pendingAction.action === 'send') {
+              executeSendECard();
+            }
+          }}
+          cardId={pendingAction.card.id}
+          cardName={pendingAction.card.name}
+          action={pendingAction.action}
+        />
+      )}
+
+      {/* Printer Selection Modal */}
+      <PrinterSelectionModal
+        isOpen={printerModalOpen}
+        onClose={() => {
+          setPrinterModalOpen(false);
+          setPdfBlob(null);
+        }}
+        pdfBlob={pdfBlob}
       />
 
       <style jsx global>{`
