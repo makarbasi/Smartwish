@@ -1317,8 +1317,21 @@ export default function CustomizeCardPage() {
       {/* Header - Sticky */}
       <div className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm backdrop-blur-sm bg-white/95">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Mobile Header */}
-          <div className="lg:hidden">
+          {/* Kiosk Mode - Simple Back Button Only */}
+          {isKiosk ? (
+            <div className="py-3 flex items-center">
+              <Link
+                href="/templates"
+                className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeftIcon className="h-5 w-5" />
+                <span className="font-medium">Back to Templates</span>
+              </Link>
+            </div>
+          ) : (
+            <>
+              {/* Mobile Header */}
+              <div className="lg:hidden">
             <div className="flex items-center justify-between py-3">
               {/* Left - Back Button */}
               <Link
@@ -1628,70 +1641,74 @@ export default function CustomizeCardPage() {
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex relative min-h-[calc(100vh-64px)] lg:min-h-[calc(100vh-72px)]">
-        {/* Floating Toolbar */}
-        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-20 flex items-center gap-1 sm:gap-2 bg-white rounded-full shadow-lg px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-200 backdrop-blur-sm bg-white/95">
-          {/* Save Button */}
-          <button
-            onClick={handleSave}
-            disabled={isSaving || !hasUnsavedChanges}
-            className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${hasUnsavedChanges
-              ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md"
-              : "bg-gray-100 text-gray-400 cursor-not-allowed"
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-            title={hasUnsavedChanges ? "Save Changes" : "No changes to save"}
-          >
-            {isSaving ? (
-              <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 border-t-current rounded-full animate-spin" />
-            ) : (
-              <FaRegSave className="h-4 w-4 sm:h-5 sm:w-5" />
-            )}
-          </button>
+        {/* Floating Toolbar - Hidden in Kiosk Mode */}
+        {!isKiosk && (
+          <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-20 flex items-center gap-1 sm:gap-2 bg-white rounded-full shadow-lg px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-200 backdrop-blur-sm bg-white/95">
+            {/* Save Button */}
+            <button
+              onClick={handleSave}
+              disabled={isSaving || !hasUnsavedChanges}
+              className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${hasUnsavedChanges
+                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={hasUnsavedChanges ? "Save Changes" : "No changes to save"}
+            >
+              {isSaving ? (
+                <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 border-t-current rounded-full animate-spin" />
+              ) : (
+                <FaRegSave className="h-4 w-4 sm:h-5 sm:w-5" />
+              )}
+            </button>
 
-          {/* Save As Button */}
-          <button
-            onClick={handleSaveAs}
-            className="p-1.5 sm:p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-all duration-200 touch-manipulation"
-            title="Save As New Card"
-          >
-            <DocumentDuplicateIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-          </button>
+            {/* Save As Button */}
+            <button
+              onClick={handleSaveAs}
+              className="p-1.5 sm:p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-all duration-200 touch-manipulation"
+              title="Save As New Card"
+            >
+              <DocumentDuplicateIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
 
-          {/* Send E-card Button */}
-          <button
-            onClick={handleSendECard}
-            className="p-1.5 sm:p-2 rounded-full text-blue-600 hover:bg-blue-50 transition-all duration-200 touch-manipulation"
-            title="Send E-card"
-          >
-            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </button>
+            {/* Send E-card Button */}
+            <button
+              onClick={handleSendECard}
+              className="p-1.5 sm:p-2 rounded-full text-blue-600 hover:bg-blue-50 transition-all duration-200 touch-manipulation"
+              title="Send E-card"
+            >
+              <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </button>
 
-          {/* Undo Button */}
-          <button
-            onClick={handleUndo}
-            disabled={undoStack.length === 0}
-            className="p-1.5 sm:p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed touch-manipulation"
-            title="Undo Last Change"
-          >
-            <ArrowUturnLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-          </button>
+            {/* Undo Button */}
+            <button
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              className="p-1.5 sm:p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed touch-manipulation"
+              title="Undo Last Change"
+            >
+              <ArrowUturnLeftIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
 
-          {/* Revert Button */}
-          <button
-            onClick={handleRevert}
-            disabled={!hasUnsavedChanges}
-            className="p-1.5 sm:p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed touch-manipulation"
-            title="Revert to Original"
-          >
-            <ArrowPathIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-          </button>
-        </div>
+            {/* Revert Button */}
+            <button
+              onClick={handleRevert}
+              disabled={!hasUnsavedChanges}
+              className="p-1.5 sm:p-2 rounded-full text-gray-600 hover:bg-gray-100 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed touch-manipulation"
+              title="Revert to Original"
+            >
+              <ArrowPathIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
+          </div>
+        )}
 
         {/* Center - Card Editor */}
         <div
