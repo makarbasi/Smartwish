@@ -92,6 +92,10 @@ export class SavedDesignsService {
     return await this.supabaseService.getPublicDesignById(designId);
   }
 
+  async getPublicCardPrice(cardId: string): Promise<SavedDesign | null> {
+    return await this.supabaseService.getPublicDesignById(cardId);
+  }
+
   async updateDesign(
     userId: string,
     designId: string,

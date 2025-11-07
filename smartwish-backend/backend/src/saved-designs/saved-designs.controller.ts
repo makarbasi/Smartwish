@@ -14,6 +14,7 @@ import { Request, Response } from 'express';
 import { SavedDesignsService, SavedDesign } from './saved-designs.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
+import { CalculatePriceDto, PriceBreakdown } from './calculate-price.dto';
 
 interface AuthenticatedRequest extends Request {
   user?: { id: string; email: string };
@@ -22,7 +23,135 @@ interface AuthenticatedRequest extends Request {
 @Controller('saved-designs')
 @UseGuards(JwtAuthGuard)
 export class SavedDesignsController {
-  constructor(private readonly savedDesignsService: SavedDesignsService) { }
+  constructor(private readonly savedDesignsService: SavedDesignsService) {
+    console.log('🚀 SavedDesignsController initialized');
+  }
+
+  /**
+   * Calculate price for a card
+   * ✅ Moved from frontend to backend for security
+   */
+  @Post('calculate-price')
+  async calculatePrice(
+    @Body() priceDto: CalculatePriceDto,
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    try {
+      const userId = req.user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      console.log('💰 Calculate Price Request:', {
+        userId,
+        cardId: priceDto.cardId,
+        giftCardAmount: priceDto.giftCardAmount || 0,
+      });
+
+      // Validate input
+      if (!priceDto.cardId) {
+        return res.status(400).json({ error: 'Card ID is required' });
+      }
+
+      // Fetch card from database
+      const card = await this.savedDesignsService.getDesignById(
+        userId,
+        priceDto.cardId,
+      );
+
+      if (!card) {
+        console.error('❌ Card not found or user does not own card');
+        return res.status(404).json({ error: 'Card not found' });
+      }
+
+      // Get card price from database
+      let cardPrice = 0;
+      
+      if (card.price !== null && card.price !== undefined) {
+        const parsedPrice = parseFloat(card.price.toString());
+        if (parsedPrice >= 0) {
+          cardPrice = parsedPrice;
+          console.log('✅ Using database price:', cardPrice);
+        } else {
+          console.warn('⚠️ Invalid price (negative):', parsedPrice);
+          return res.status(400).json({ error: 'Invalid card price in database' });
+        }
+      } else {
+        console.warn('⚠️ Card price is null/undefined, using 0');
+        cardPrice = 0;
+      }
+      
+      // ✅ If price is 0, set minimum price to prevent free cards
+      const MINIMUM_CARD_PRICE = 0.01;
+      if (cardPrice < MINIMUM_CARD_PRICE) {
+        console.warn(`⚠️ Card price ${cardPrice} is below minimum, setting to ${MINIMUM_CARD_PRICE}`);
+        cardPrice = MINIMUM_CARD_PRICE;
+      }
+
+      // Get gift card amount and validate
+      let giftCardAmount = priceDto.giftCardAmount || 0;
+      
+      // ✅ FIX: Validate gift card amount
+      if (giftCardAmount < 0) {
+        console.error('❌ Invalid gift card amount (negative):', giftCardAmount);
+        return res.status(400).json({ error: 'Gift card amount cannot be negative' });
+      }
+      
+      // ✅ FIX: Validate gift card amount is reasonable (prevent abuse)
+      const MAX_GIFT_CARD = 1000; // $1,000 max
+      if (giftCardAmount > MAX_GIFT_CARD) {
+        console.error('❌ Gift card amount exceeds maximum:', giftCardAmount);
+        return res.status(400).json({ error: `Gift card amount cannot exceed $${MAX_GIFT_CARD}` });
+      }
+
+      // Calculate pricing
+      const subtotal = cardPrice + giftCardAmount;
+      const processingFee = subtotal * 0.05; // 5% processing fee
+      const total = subtotal + processingFee;
+      
+      // ✅ FIX: Validate final total is reasonable
+      if (total > 10000) {
+        console.error('❌ Total amount exceeds maximum:', total);
+        return res.status(400).json({ error: 'Total amount exceeds maximum allowed ($10,000)' });
+      }
+
+      const priceBreakdown: PriceBreakdown = {
+        cardId: priceDto.cardId,
+        cardPrice: parseFloat(cardPrice.toFixed(2)),
+        giftCardAmount: parseFloat(giftCardAmount.toFixed(2)),
+        subtotal: parseFloat(subtotal.toFixed(2)),
+        processingFee: parseFloat(processingFee.toFixed(2)),
+        total: parseFloat(total.toFixed(2)),
+        currency: 'USD',
+        breakdown: {
+          cardPrice: {
+            label: 'Greeting Card',
+            amount: parseFloat(cardPrice.toFixed(2)),
+          },
+          giftCardAmount:
+            giftCardAmount > 0
+              ? {
+                  label: 'Gift Card',
+                  amount: parseFloat(giftCardAmount.toFixed(2)),
+                }
+              : null,
+          processingFee: {
+            label: 'Processing Fee (5%)',
+            amount: parseFloat(processingFee.toFixed(2)),
+          },
+        },
+      };
+
+      console.log('✅ Price calculation complete:', priceBreakdown);
+      res.json({ success: true, ...priceBreakdown });
+    } catch (error: any) {
+      console.error('❌ Error calculating price:', error);
+      res
+        .status(500)
+        .json({ error: 'Failed to calculate price', details: error.message });
+    }
+  }
 
   @Post()
   async saveDesign(
@@ -31,11 +160,33 @@ export class SavedDesignsController {
     @Res() res: Response,
   ) {
     try {
+      console.log('===========================================');
+      console.log('📝 POST /api/saved-designs CALLED (Saving design)');
+      console.log('JWT User ID:', req.user?.id);
+      console.log('JWT User Email:', req.user?.email);
+      console.log('Design Title:', designData.title);
+      console.log('Design Price:', designData.price);
+      console.log('===========================================');
+      
       const userId = req.user?.id?.toString();
-      if (!userId) return res.status(401).json({ message: 'User not authenticated' });
+      if (!userId) {
+        console.log('❌ No userId in JWT, returning 401');
+        return res.status(401).json({ message: 'User not authenticated' });
+      }
+      
+      console.log('💾 Saving design with author_id:', userId);
       const savedDesign = await this.savedDesignsService.saveDesign(userId, designData);
+      
+      console.log('✅ Design saved successfully:');
+      console.log('  - ID:', savedDesign.id);
+      console.log('  - Title:', savedDesign.title);
+      console.log('  - Price:', savedDesign.price);
+      console.log('  - Author ID:', userId);
+      console.log('===========================================');
+      
       res.json(savedDesign);
     } catch (e) {
+      console.error('❌ Failed to save design:', e);
       res.status(500).json({ message: 'Failed to save design', error: (e as any)?.message });
     }
   }
@@ -66,6 +217,56 @@ export class SavedDesignsController {
     }
   }
 
+  @Get('public/:id/price')
+  @UseGuards() // Override - no auth guard for this public endpoint!
+  async getCardPrice(
+    @Param('id') cardId: string,
+    @Res() res: Response,
+  ) {
+    try {
+      console.log('===========================================');
+      console.log('🎯 PUBLIC PRICE ENDPOINT CALLED');
+      console.log('Card ID:', cardId);
+      console.log('Full URL path: /api/saved-designs/public/' + cardId + '/price');
+      console.log('===========================================');
+      
+      // Public endpoint - no auth required, just returns price info
+      const card = await this.savedDesignsService.getPublicCardPrice(cardId);
+      
+      if (!card) {
+        console.log('❌ Card not found in database!');
+        console.log('===========================================');
+        return res.status(404).json({ message: 'Card not found' });
+      }
+
+      console.log('✅ Card found in database:');
+      console.log('  - ID:', card.id);
+      console.log('  - Title:', card.title);
+      console.log('  - Price (raw):', card.price);
+      console.log('  - Price (type):', typeof card.price);
+      console.log('  - Price (parsed):', parseFloat(card.price as any));
+      console.log('===========================================');
+
+      // Return only non-sensitive data needed for pricing
+      const response = {
+        id: card.id,
+        title: card.title,
+        price: card.price,
+        hasGiftCard: !!(card as any).metadata?.giftCard,
+        giftCardAmount: (card as any).metadata?.giftCard?.amount || 0
+      };
+      
+      console.log('📤 Sending response:', JSON.stringify(response, null, 2));
+      console.log('===========================================');
+      
+      res.json(response);
+    } catch (e) {
+      console.error('❌ ERROR in public price endpoint:', e);
+      console.log('===========================================');
+      res.status(500).json({ message: 'Failed to fetch card price', error: (e as any)?.message });
+    }
+  }
+
   @Get(':id')
   async getDesignById(
     @Param('id') designId: string,
@@ -73,18 +274,45 @@ export class SavedDesignsController {
     @Res() res: Response,
   ) {
     try {
+      console.log('===========================================');
+      console.log('🎯 GET /api/saved-designs/:id CALLED');
+      console.log('Design ID:', designId);
+      console.log('JWT User ID:', req.user?.id);
+      console.log('JWT User Email:', req.user?.email);
+      console.log('Authorization Header:', req.headers.authorization ? 'Present' : 'Missing');
+      console.log('===========================================');
+      
       const userId = req.user?.id?.toString();
       if (!userId) {
+        console.log('❌ User not authenticated');
         return res.status(401).json({ message: 'User not authenticated' });
       }
 
+      console.log('🔍 Querying database:');
+      console.log('  WHERE id = ', designId);
+      console.log('  AND author_id = ', userId);
+      
       const design = await this.savedDesignsService.getDesignById(
         userId,
         designId,
       );
+      
       if (!design) {
+        console.log('❌ Design not found - author_id mismatch!');
+        console.log('   Either:');
+        console.log('   1. Card does not exist');
+        console.log('   2. Card exists but author_id != ', userId);
+        console.log('===========================================');
         return res.status(404).json({ message: 'Design not found' });
       }
+
+      console.log('✅ Design found:');
+      console.log('  - ID:', design.id);
+      console.log('  - Title:', design.title);
+      console.log('  - Price:', design.price);
+      console.log('  - Price type:', typeof design.price);
+      console.log('  - Author ID matches JWT: ✅');
+      console.log('===========================================');
 
       res.json(design);
     } catch (error) {

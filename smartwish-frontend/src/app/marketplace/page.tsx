@@ -745,7 +745,6 @@ function CheckoutModal({
 
                 {/* Action Buttons */}
                 <div className="mt-6 space-y-3">
-                  {console.log('🟡 Rendering Action Buttons - setShowPaymentModal:', typeof setShowPaymentModal)}
                   <button
                     onClick={() => {
                       console.log('🖨️ Print Card button clicked!')

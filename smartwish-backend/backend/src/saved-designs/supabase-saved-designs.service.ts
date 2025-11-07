@@ -198,7 +198,7 @@ export class SupabaseSavedDesignsService {
         title: designData.title,
         description: designData.description,
         category_id: designData.categoryId, // Use categoryId if provided
-        price: designData.price || 0,
+        price: designData.price !== null && designData.price !== undefined ? parseFloat(designData.price.toString()) : 0,
         language: designData.language || 'en',
         region: designData.region || 'US',
         status: designData.status || 'draft',
@@ -296,6 +296,8 @@ export class SupabaseSavedDesignsService {
       throw new Error('Supabase not configured');
     }
 
+    console.log('🔍 Supabase Service - Fetching design:', designId);
+
     const { data, error } = await this.supabase
       .from('saved_designs')
       .select('*')
@@ -303,11 +305,28 @@ export class SupabaseSavedDesignsService {
       .single();
 
     if (error) {
-      console.error('Error fetching public design from Supabase:', error);
+      console.error('❌ Supabase query error:', error);
       return null;
     }
 
-    return this.mapDatabaseRecordToSavedDesign(data);
+    if (!data) {
+      console.error('❌ No data returned from Supabase');
+      return null;
+    }
+
+    console.log('✅ Raw data from Supabase:');
+    console.log('  - ID:', data.id);
+    console.log('  - Title:', data.title);
+    console.log('  - Price (raw from DB):', data.price);
+    console.log('  - Price (type):', typeof data.price);
+
+    const mapped = this.mapDatabaseRecordToSavedDesign(data);
+    
+    console.log('✅ After mapping:');
+    console.log('  - Price (mapped):', mapped.price);
+    console.log('  - Price (type):', typeof mapped.price);
+
+    return mapped;
   }
 
   async updateDesign(
@@ -871,7 +890,7 @@ export class SupabaseSavedDesignsService {
       imageTimestamp: metadata.imageTimestamp,
       author: metadata.author || 'User',
       upload_time: record.created_at,
-      price: record.price || 0,
+      price: record.price !== null && record.price !== undefined ? parseFloat(record.price) : 0,
       language: record.language || 'en',
       region: record.region || 'US',
       popularity: record.popularity || 0,
