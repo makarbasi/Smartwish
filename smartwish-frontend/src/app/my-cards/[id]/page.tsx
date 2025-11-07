@@ -31,6 +31,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import SendECardModal from "@/components/SendECardModal";
 import PrinterSelectionModal from "@/components/PrinterSelectionModal";
 import CardPaymentModal from "@/components/CardPaymentModal";
+import MarketplaceGiftCarousel from "@/components/MarketplaceGiftCarousel";
 import useSWR from "swr";
 import { saveSavedDesignWithImages } from "@/utils/savedDesignUtils";
 import { useSession } from "next-auth/react";
@@ -816,17 +817,17 @@ export default function CustomizeCardPage() {
       return;
     }
     console.log('💳 Opening payment modal for send e-card:', cardData.id);
-    setPendingAction({ 
-      card: { id: cardData.id, name: cardData.name }, 
-      action: 'send' 
+    setPendingAction({
+      card: { id: cardData.id, name: cardData.name },
+      action: 'send'
     });
     setPaymentModalOpen(true);
   };
-  
+
   // Execute send e-card after payment
   const executeSendECard = () => {
     if (!pendingAction || pendingAction.action !== 'send') return;
-    
+
     console.log('📧 Payment successful, showing e-card modal');
     setShowSendModal(true);
     setPaymentModalOpen(false);
@@ -887,21 +888,21 @@ export default function CustomizeCardPage() {
       return;
     }
     console.log('💳 Opening payment modal for print:', cardData.id);
-    setPendingAction({ 
-      card: { id: cardData.id, name: cardData.name }, 
-      action: 'print' 
+    setPendingAction({
+      card: { id: cardData.id, name: cardData.name },
+      action: 'print'
     });
     setPaymentModalOpen(true);
   };
-  
+
   // Execute print after payment
   const executePrint = async () => {
     if (!pendingAction || pendingAction.action !== 'print') return;
-    
+
     if (!cardData) return;
-    
+
     console.log('🖨️ Payment successful, proceeding with print');
-    
+
     setIsPrinting(true);
     try {
       // Extract image URLs from current state
@@ -1332,254 +1333,115 @@ export default function CustomizeCardPage() {
             <>
               {/* Mobile Header */}
               <div className="lg:hidden">
-            <div className="flex items-center justify-between py-3">
-              {/* Left - Back Button */}
-              <Link
-                href="/my-cards"
-                className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ArrowLeftIcon className="h-4 w-4" />
-                <span className="font-medium text-sm">Back</span>
-              </Link>
-
-              {/* Center - Title (when not editing) */}
-              {!isEditingName && (
-                <div className="flex-1 mx-4 text-center min-w-0">
-                  <div className="flex items-center justify-center gap-2">
-                    <h1 className="text-lg font-semibold text-gray-900 truncate">
-                      {editedName || cd.name}
-                    </h1>
-                    <button
-                      onClick={handleStartEditingName}
-                      className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                      title="Edit name"
-                    >
-                      <PencilIcon className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Center - Edit Input (when editing) */}
-              {isEditingName && (
-                <div className="flex-1 mx-3 flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={editedName}
-                    onChange={(e) => setEditedName(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    onBlur={handleSaveName}
-                    className="flex-1 text-lg font-semibold text-gray-900 bg-gray-50 border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    autoFocus
-                    placeholder="Card name..."
-                  />
-                  <button
-                    onClick={handleSaveName}
-                    className="p-1 text-green-600 hover:text-green-700"
-                    title="Save"
+                <div className="flex items-center justify-between py-3">
+                  {/* Left - Back Button */}
+                  <Link
+                    href="/my-cards"
+                    className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
                   >
-                    <CheckIcon className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={handleCancelNameEdit}
-                    className="p-1 text-gray-500 hover:text-gray-700"
-                    title="Cancel"
-                  >
-                    <XMarkIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
+                    <ArrowLeftIcon className="h-4 w-4" />
+                    <span className="font-medium text-sm">Back</span>
+                  </Link>
 
-              {/* Right - Status Indicators */}
-              <div className="flex items-center gap-2">
-                {/* Save Status */}
-                {saveMessage && (
-                  <div
-                    className={`px-2 py-1 rounded-md text-xs font-medium ${saveMessage.includes("Failed")
-                      ? "bg-red-50 text-red-600 border border-red-200"
-                      : "bg-green-50 text-green-600 border border-green-200"
-                      }`}
-                  >
-                    {saveMessage.includes("Failed") ? "⚠" : "✓"}
-                  </div>
-                )}
+                  {/* Center - Title (when not editing) */}
+                  {!isEditingName && (
+                    <div className="flex-1 mx-4 text-center min-w-0">
+                      <div className="flex items-center justify-center gap-2">
+                        <h1 className="text-lg font-semibold text-gray-900 truncate">
+                          {editedName || cd.name}
+                        </h1>
+                        <button
+                          onClick={handleStartEditingName}
+                          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="Edit name"
+                        >
+                          <PencilIcon className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
-                {/* Unsaved Changes */}
-                {hasUnsavedChanges && !saveMessage && (
-                  <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md">
-                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-                    <span className="text-xs text-amber-700 font-medium">
-                      Unsaved
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Category Row - Mobile */}
-            <div className="pb-4 hidden">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Category
-              </label>
-              <Listbox value={selectedCategory} onChange={handleCategoryChange}>
-                <div className="relative">
-                  <ListboxButton className="relative w-full cursor-pointer rounded-lg bg-gray-50 py-3 pl-3 pr-10 text-left text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border border-gray-200 hover:bg-gray-100 transition-colors">
-                    <span className="block truncate font-medium">
-                      {selectedCategory?.name || "Select a category"}
-                    </span>
-                    <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                      <ChevronUpDownIcon
-                        className="h-5 w-5 text-gray-400"
-                        aria-hidden="true"
+                  {/* Center - Edit Input (when editing) */}
+                  {isEditingName && (
+                    <div className="flex-1 mx-3 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={editedName}
+                        onChange={(e) => setEditedName(e.target.value)}
+                        onKeyDown={handleKeyPress}
+                        onBlur={handleSaveName}
+                        className="flex-1 text-lg font-semibold text-gray-900 bg-gray-50 border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        autoFocus
+                        placeholder="Card name..."
                       />
-                    </span>
-                  </ListboxButton>
-
-                  <ListboxOptions className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none">
-                    {categories.map((category) => (
-                      <ListboxOption
-                        key={category.id}
-                        className={({ focus }) =>
-                          `relative cursor-pointer select-none py-3 pl-10 pr-4 ${focus
-                            ? "bg-indigo-100 text-indigo-900"
-                            : "text-gray-900"
-                          }`
-                        }
-                        value={category}
+                      <button
+                        onClick={handleSaveName}
+                        className="p-1 text-green-600 hover:text-green-700"
+                        title="Save"
                       >
-                        {({ selected }) => (
-                          <>
-                            <span
-                              className={`block truncate ${selected ? "font-semibold" : "font-normal"
-                                }`}
-                            >
-                              {category.name}
-                            </span>
-                            {selected ? (
-                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-indigo-600">
-                                <CheckIcon
-                                  className="h-5 w-5"
-                                  aria-hidden="true"
-                                />
-                              </span>
-                            ) : null}
-                          </>
-                        )}
-                      </ListboxOption>
-                    ))}
-                    {categories.length === 0 && (
-                      <div className="relative cursor-default select-none py-3 px-4 text-gray-700">
-                        Loading categories...
+                        <CheckIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={handleCancelNameEdit}
+                        className="p-1 text-gray-500 hover:text-gray-700"
+                        title="Cancel"
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Right - Status Indicators */}
+                  <div className="flex items-center gap-2">
+                    {/* Save Status */}
+                    {saveMessage && (
+                      <div
+                        className={`px-2 py-1 rounded-md text-xs font-medium ${saveMessage.includes("Failed")
+                          ? "bg-red-50 text-red-600 border border-red-200"
+                          : "bg-green-50 text-green-600 border border-green-200"
+                          }`}
+                      >
+                        {saveMessage.includes("Failed") ? "⚠" : "✓"}
                       </div>
                     )}
-                  </ListboxOptions>
+
+                    {/* Unsaved Changes */}
+                    {hasUnsavedChanges && !saveMessage && (
+                      <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md">
+                        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                        <span className="text-xs text-amber-700 font-medium">
+                          Unsaved
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </Listbox>
-            </div>
-          </div>
 
-          {/* Desktop Header */}
-          <div className="hidden lg:block">
-            <div className="flex items-center justify-between py-4">
-              {/* Left Section */}
-              <div className="flex items-center gap-6">
-                <Link
-                  href="/my-cards"
-                  className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  <ArrowLeftIcon className="h-4 w-4" />
-                  <span className="font-medium">Back to Cards</span>
-                </Link>
-
-                <div className="h-5 w-px bg-gray-300" />
-
-                {/* Title Section */}
-                {isEditingName ? (
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="text"
-                      value={editedName}
-                      onChange={(e) => setEditedName(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      onBlur={handleSaveName}
-                      className="text-xl font-bold text-gray-900 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 max-w-md"
-                      autoFocus
-                      placeholder="Enter card name..."
-                    />
-                    <button
-                      onClick={handleSaveName}
-                      className="p-1.5 text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 rounded border border-green-200"
-                      title="Save name"
-                    >
-                      <CheckIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={handleCancelNameEdit}
-                      className="p-1.5 text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200"
-                      title="Cancel"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-xl font-bold text-gray-900">
-                      {editedName || cd.name}
-                    </h1>
-                    <button
-                      onClick={handleStartEditingName}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                      title="Edit name"
-                    >
-                      <PencilIcon className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Center Section - Meta Info */}
-              <div className="flex items-center gap-6 text-sm text-gray-500">
-                <span>Created {new Date(cd.createdAt).toLocaleDateString()}</span>
-                {selectedCategory && (
-                  <>
-                    <span>•</span>
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
-                      {selectedCategory.name}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              {/* Right Section */}
-              <div className="flex items-center gap-4">
-                {/* Category Selector */}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700">
-                    Category:
-                  </span>
-                  <Listbox
-                    value={selectedCategory}
-                    onChange={handleCategoryChange}
-                  >
+                {/* Category Row - Mobile */}
+                <div className="pb-4 hidden">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category
+                  </label>
+                  <Listbox value={selectedCategory} onChange={handleCategoryChange}>
                     <div className="relative">
-                      <ListboxButton className="relative cursor-pointer rounded-lg bg-gray-50 border border-gray-200 py-1.5 pl-3 pr-8 text-left text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 hover:bg-gray-100 transition-colors min-w-[160px]">
-                        <span className="block truncate font-medium text-gray-900">
-                          {selectedCategory?.name || "Select category"}
+                      <ListboxButton className="relative w-full cursor-pointer rounded-lg bg-gray-50 py-3 pl-3 pr-10 text-left text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border border-gray-200 hover:bg-gray-100 transition-colors">
+                        <span className="block truncate font-medium">
+                          {selectedCategory?.name || "Select a category"}
                         </span>
                         <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                           <ChevronUpDownIcon
-                            className="h-4 w-4 text-gray-400"
+                            className="h-5 w-5 text-gray-400"
                             aria-hidden="true"
                           />
                         </span>
                       </ListboxButton>
 
-                      <ListboxOptions className="absolute z-50 mt-1 max-h-60 w-full min-w-[200px] overflow-auto rounded-lg bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm">
+                      <ListboxOptions className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none">
                         {categories.map((category) => (
                           <ListboxOption
                             key={category.id}
                             className={({ focus }) =>
-                              `relative cursor-pointer select-none py-2 pl-8 pr-4 ${focus
+                              `relative cursor-pointer select-none py-3 pl-10 pr-4 ${focus
                                 ? "bg-indigo-100 text-indigo-900"
                                 : "text-gray-900"
                               }`
@@ -1595,9 +1457,9 @@ export default function CustomizeCardPage() {
                                   {category.name}
                                 </span>
                                 {selected ? (
-                                  <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-indigo-600">
+                                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-indigo-600">
                                     <CheckIcon
-                                      className="h-4 w-4"
+                                      className="h-5 w-5"
                                       aria-hidden="true"
                                     />
                                   </span>
@@ -1607,7 +1469,7 @@ export default function CustomizeCardPage() {
                           </ListboxOption>
                         ))}
                         {categories.length === 0 && (
-                          <div className="relative cursor-default select-none py-2 px-4 text-gray-700">
+                          <div className="relative cursor-default select-none py-3 px-4 text-gray-700">
                             Loading categories...
                           </div>
                         )}
@@ -1615,32 +1477,171 @@ export default function CustomizeCardPage() {
                     </div>
                   </Listbox>
                 </div>
-
-                {/* Status Messages */}
-                {/* Unsaved Changes Indicator */}
-                {hasUnsavedChanges && !saveMessage && (
-                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
-                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-                    <span className="text-sm text-amber-700 font-medium">
-                      Unsaved
-                    </span>
-                  </div>
-                )}
-
-                {/* Save Status Message */}
-                {saveMessage && (
-                  <div
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${saveMessage.includes("Failed")
-                      ? "bg-red-50 text-red-700 border border-red-200"
-                      : "bg-green-50 text-green-700 border border-green-200"
-                      }`}
-                  >
-                    {saveMessage.includes("Failed") ? "⚠ " : "✓ "}{saveMessage}
-                  </div>
-                )}
               </div>
-            </div>
-          </div>
+
+              {/* Desktop Header */}
+              <div className="hidden lg:block">
+                <div className="flex items-center justify-between py-4">
+                  {/* Left Section */}
+                  <div className="flex items-center gap-6">
+                    <Link
+                      href="/my-cards"
+                      className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+                    >
+                      <ArrowLeftIcon className="h-4 w-4" />
+                      <span className="font-medium">Back to Cards</span>
+                    </Link>
+
+                    <div className="h-5 w-px bg-gray-300" />
+
+                    {/* Title Section */}
+                    {isEditingName ? (
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="text"
+                          value={editedName}
+                          onChange={(e) => setEditedName(e.target.value)}
+                          onKeyDown={handleKeyPress}
+                          onBlur={handleSaveName}
+                          className="text-xl font-bold text-gray-900 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 max-w-md"
+                          autoFocus
+                          placeholder="Enter card name..."
+                        />
+                        <button
+                          onClick={handleSaveName}
+                          className="p-1.5 text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 rounded border border-green-200"
+                          title="Save name"
+                        >
+                          <CheckIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={handleCancelNameEdit}
+                          className="p-1.5 text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200"
+                          title="Cancel"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <h1 className="text-xl font-bold text-gray-900">
+                          {editedName || cd.name}
+                        </h1>
+                        <button
+                          onClick={handleStartEditingName}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="Edit name"
+                        >
+                          <PencilIcon className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Center Section - Meta Info */}
+                  <div className="flex items-center gap-6 text-sm text-gray-500">
+                    <span>Created {new Date(cd.createdAt).toLocaleDateString()}</span>
+                    {selectedCategory && (
+                      <>
+                        <span>•</span>
+                        <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                          {selectedCategory.name}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right Section */}
+                  <div className="flex items-center gap-4">
+                    {/* Category Selector */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        Category:
+                      </span>
+                      <Listbox
+                        value={selectedCategory}
+                        onChange={handleCategoryChange}
+                      >
+                        <div className="relative">
+                          <ListboxButton className="relative cursor-pointer rounded-lg bg-gray-50 border border-gray-200 py-1.5 pl-3 pr-8 text-left text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 hover:bg-gray-100 transition-colors min-w-[160px]">
+                            <span className="block truncate font-medium text-gray-900">
+                              {selectedCategory?.name || "Select category"}
+                            </span>
+                            <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                              <ChevronUpDownIcon
+                                className="h-4 w-4 text-gray-400"
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </ListboxButton>
+
+                          <ListboxOptions className="absolute z-50 mt-1 max-h-60 w-full min-w-[200px] overflow-auto rounded-lg bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm">
+                            {categories.map((category) => (
+                              <ListboxOption
+                                key={category.id}
+                                className={({ focus }) =>
+                                  `relative cursor-pointer select-none py-2 pl-8 pr-4 ${focus
+                                    ? "bg-indigo-100 text-indigo-900"
+                                    : "text-gray-900"
+                                  }`
+                                }
+                                value={category}
+                              >
+                                {({ selected }) => (
+                                  <>
+                                    <span
+                                      className={`block truncate ${selected ? "font-semibold" : "font-normal"
+                                        }`}
+                                    >
+                                      {category.name}
+                                    </span>
+                                    {selected ? (
+                                      <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-indigo-600">
+                                        <CheckIcon
+                                          className="h-4 w-4"
+                                          aria-hidden="true"
+                                        />
+                                      </span>
+                                    ) : null}
+                                  </>
+                                )}
+                              </ListboxOption>
+                            ))}
+                            {categories.length === 0 && (
+                              <div className="relative cursor-default select-none py-2 px-4 text-gray-700">
+                                Loading categories...
+                              </div>
+                            )}
+                          </ListboxOptions>
+                        </div>
+                      </Listbox>
+                    </div>
+
+                    {/* Status Messages */}
+                    {/* Unsaved Changes Indicator */}
+                    {hasUnsavedChanges && !saveMessage && (
+                      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+                        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                        <span className="text-sm text-amber-700 font-medium">
+                          Unsaved
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Save Status Message */}
+                    {saveMessage && (
+                      <div
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium ${saveMessage.includes("Failed")
+                          ? "bg-red-50 text-red-700 border border-red-200"
+                          : "bg-green-50 text-green-700 border border-green-200"
+                          }`}
+                      >
+                        {saveMessage.includes("Failed") ? "⚠ " : "✓ "}{saveMessage}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -1710,9 +1711,16 @@ export default function CustomizeCardPage() {
           </div>
         )}
 
+        {/* Gift Card Panel - Above Card */}
+        <div className="absolute top-0 left-0 right-0 z-10 px-4 pt-20 sm:pt-4">
+          <div className="max-w-5xl mx-auto">
+            <MarketplaceGiftCarousel cardId={cardId} />
+          </div>
+        </div>
+
         {/* Center - Card Editor */}
         <div
-          className={`flex-1 flex items-center justify-center min-h-[calc(100vh-200px)] py-4 lg:py-8 transition-all duration-300 px-4`}
+          className={`flex-1 flex items-center justify-center min-h-[calc(100vh-200px)] py-4 lg:py-8 transition-all duration-300 px-4 pt-48 sm:pt-44`}
         >
           {/* Previous Page Button */}
           <button

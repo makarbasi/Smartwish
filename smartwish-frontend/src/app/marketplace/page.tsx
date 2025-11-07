@@ -543,24 +543,34 @@ function CheckoutModal({
 
         // Check if we're in gift mode - integrate with card design
         const searchParams = new URLSearchParams(window.location.search)
-        const cardId = searchParams.get('cardId')
-        const isGiftMode = searchParams.get('mode') === 'gift'
+        const returnTo = searchParams.get('returnTo')
 
-        if (isGiftMode && cardId) {
-          console.log('🎁 Gift Mode - Redirecting to my-cards')
-          // Store gift card data in localStorage for card integration
-          const giftCardData = {
-            qrCode: qrCodeUrl,
-            storeLogo: currentSelectedProduct.image || '',
-            storeName: currentSelectedProduct.name,
-            amount: amount,
-            redemptionLink: data.redemptionLink
+        if (returnTo) {
+          console.log('🎁 Return Mode Detected - Saving gift card and redirecting:', returnTo)
+
+          // Extract cardId from returnTo URL (e.g., /my-cards/abc123?showGift=true)
+          const cardIdMatch = returnTo.match(/\/my-cards\/([^?]+)/)
+          const cardId = cardIdMatch ? cardIdMatch[1] : null
+
+          if (cardId) {
+            // Store gift card data in localStorage for card integration
+            const giftCardData = {
+              qrCode: qrCodeUrl,
+              storeLogo: currentSelectedProduct.image || '',
+              storeName: currentSelectedProduct.name,
+              amount: amount,
+              redemptionLink: data.redemptionLink,
+              orderId: data.giftCard?.order_id,
+              rewardId: data.giftCard?.reward_id,
+              generatedAt: new Date().toISOString()
+            }
+            localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
+            console.log('✅ Gift card saved to localStorage for card:', cardId)
+
+            // Navigate back to the card editor
+            window.location.href = returnTo
+            return
           }
-          localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
-
-          // Navigate back to my-cards page with animation trigger
-          window.location.href = `/my-cards?giftAdded=${cardId}`
-          return
         }
 
         // Normal flow - show modal
