@@ -6,9 +6,12 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 // POST /api/templates/[id]/copy - Copy a template to user's saved designs
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await dynamic API `params` per Next.js 15 requirements
+    const { params } = context;
+    const { id } = await params;
     const session = await auth();
 
     if (!session?.user?.id) {
@@ -19,13 +22,13 @@ export async function POST(
       .access_token;
     const body = await request.json();
 
-    console.log("Copy API - Template ID:", params.id);
+    console.log("Copy API - Template ID:", id);
     console.log("Copy API - Request body:", body);
     console.log("Copy API - API Base URL:", API_BASE_URL);
     console.log("Copy API - Access Token exists:", !!accessToken);
 
     // First, get the template data
-    const templateUrl = `${API_BASE_URL}/templates-enhanced/templates/${params.id}`;
+    const templateUrl = `${API_BASE_URL}/templates-enhanced/templates/${id}`;
     console.log("Copy API - Fetching template from:", templateUrl);
 
     const templateResponse = await fetch(templateUrl, {
@@ -165,7 +168,11 @@ export async function POST(
         pages: finalImages.map((image: string, index: number) => ({
           header: `Page ${index + 1}`,
           image: image,
-          text: "",
+          // Populate page 2 text from template `message` if available
+          text:
+            index === 1
+              ? (template.message || template.card_message || template.text || "")
+              : "",
           footer: "",
         })),
         editedPages: body.editedImages

@@ -135,7 +135,6 @@ function TemplatesPageContent() {
 
   const [page, setPage] = useState<number>(initialPage);
   const [selectedCategory, setSelectedCategory] = useState<string>(category);
-  const [likesStatus, setLikesStatus] = useState<Record<string, boolean>>({});
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const router = useRouter();
   const pathname = usePathname();
@@ -190,29 +189,7 @@ function TemplatesPageContent() {
     return apiResponse.data.map(transformApiTemplate);
   }, [apiResponse]);
 
-  // Fetch like status for all templates when user is authenticated
-  useEffect(() => {
-    const fetchLikeStatus = async () => {
-      if (!session || status !== 'authenticated' || products.length === 0) {
-        return;
-      }
-
-      try {
-        const templateIds = products.map(p => p.id).join(',');
-        const response = await fetch(`/api/templates/likes/batch-status?ids=${templateIds}`);
-        
-        if (response.ok) {
-          const data = await response.json();
-          setLikesStatus(data.likesStatus || {});
-          console.log('✅ Fetched like status for templates:', data.likesStatus);
-        }
-      } catch (error) {
-        console.error('❌ Error fetching like status:', error);
-      }
-    };
-
-    fetchLikeStatus();
-  }, [session, status, products]);
+  // Removed: batch like-status fetch (template likes are not used)
 
   const pageSize = 9;
   const totalPages = Math.max(1, Math.ceil(products.length / pageSize));
@@ -223,14 +200,13 @@ function TemplatesPageContent() {
     // Merge like status with products
     return sliced.map(product => ({
       ...product,
-      isLiked: likesStatus[product.id] || false,
+      isLiked: false,
       likes: likeCounts[product.id] !== undefined ? likeCounts[product.id] : product.likes,
     }));
-  }, [products, safePage, likesStatus, likeCounts]);
+  }, [products, safePage, likeCounts]);
 
   // Handler for when a like is updated
-  const handleLikeUpdate = useCallback((templateId: string, isLiked: boolean, newLikesCount: number) => {
-    setLikesStatus(prev => ({ ...prev, [templateId]: isLiked }));
+  const handleLikeUpdate = useCallback((templateId: string, _isLiked: boolean, newLikesCount: number) => {
     setLikeCounts(prev => ({ ...prev, [templateId]: newLikesCount }));
   }, []);
 
