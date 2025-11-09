@@ -5,7 +5,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -15,7 +15,7 @@ export async function POST(
     }
 
     const accessToken = (session.user as any).access_token;
-    const designId = params.id;
+    const { id: designId } = await params;
 
     const response = await fetch(`${API_BASE_URL}/api/saved-designs/${designId}/like`, {
       method: 'POST',
@@ -47,7 +47,7 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -57,7 +57,7 @@ export async function DELETE(
     }
 
     const accessToken = (session.user as any).access_token;
-    const designId = params.id;
+    const { id: designId } = await params;
 
     const response = await fetch(`${API_BASE_URL}/api/saved-designs/${designId}/like`, {
       method: 'DELETE',

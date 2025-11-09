@@ -38,18 +38,38 @@ export default function TemplateCard({ template, index, onPreview, onAuthRequire
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    console.log('❤️ Like button clicked (currently disabled - uses ratings system)')
-    
-    // DISABLED: Like functionality not implemented
-    // The system uses template ratings (1-5 stars) instead of simple likes
-    // Popularity field is calculated from average ratings: avg_rating * 20
-    // Displayed likes are derived from popularity: popularity / 5
-    
-    // if (!session || status !== 'authenticated') {
-    //   console.log('🚫 User not authenticated, showing auth modal')
-    //   onAuthRequired()
-    //   return
-    // }
+    if (isUpdating) return
+
+    try {
+      setIsUpdating(true)
+
+      // Optimistic UI update for immediate gratification
+      const optimistic = likesCount + 1
+      setLikesCount(optimistic)
+      setIsLiked(true)
+      onLikeUpdate?.(template.id, true, optimistic)
+
+      // Fire-and-forget background update to the backend
+      const res = await fetch(`/api/templates/${template.id}/increment-popularity`, {
+        method: 'PATCH',
+      })
+
+      // If backend returns a value, sync to it; otherwise keep optimistic
+      if (res.ok) {
+        const data = await res.json()
+        if (typeof data?.popularity === 'number') {
+          setLikesCount(data.popularity)
+          onLikeUpdate?.(template.id, true, data.popularity)
+        }
+      } else {
+        const text = await res.text()
+        console.error('Failed to increment popularity (keeping optimistic):', res.status, text)
+      }
+    } catch (err) {
+      console.error('Error incrementing popularity (keeping optimistic):', err)
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
   const handleCardClick = (e: React.MouseEvent) => {
