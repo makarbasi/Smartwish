@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid";
 import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import HTMLFlipBook from "react-pageflip";
 
@@ -45,6 +46,9 @@ export default function TemplatePreviewModal({
     !!product
   );
   const [currentPage, setCurrentPage] = useState(0);
+  const [likesCount, setLikesCount] = useState<number>(product?.likes ?? 0);
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [isLiked, setIsLiked] = useState<boolean>(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flipBookRef = useRef<any>(null);
@@ -59,6 +63,14 @@ export default function TemplatePreviewModal({
       }
     }
   }, [open]);
+
+  // Sync local likes state when a new product is loaded
+  useEffect(() => {
+    if (product) {
+      setLikesCount(product.likes ?? 0);
+      setIsLiked(false);
+    }
+  }, [product]);
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -142,6 +154,46 @@ export default function TemplatePreviewModal({
       behavior: "smooth",
     });
     setCurrentPage(pageIndex);
+  };
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isUpdating || !product) return;
+
+    try {
+      setIsUpdating(true);
+
+      // Optimistic UI update
+      const optimistic = likesCount + 1;
+      setLikesCount(optimistic);
+      setIsLiked(true);
+
+      // Background update to backend
+      const res = await fetch(`/api/templates/${product.id}/increment-popularity`, {
+        method: "PATCH",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data?.popularity === "number") {
+          setLikesCount(data.popularity);
+        }
+      } else {
+        const text = await res.text();
+        console.error(
+          "Failed to increment popularity in preview (keeping optimistic):",
+          res.status,
+          text
+        );
+      }
+    } catch (err) {
+      console.error(
+        "Error incrementing popularity in preview (keeping optimistic):",
+        err
+      );
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   return (
@@ -424,16 +476,22 @@ export default function TemplatePreviewModal({
             </button>
             <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
               <button
-                className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 hover:bg-gray-200 touch-auto"
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 touch-auto transition-all ${
+                  isLiked
+                    ? "bg-rose-500 text-white hover:bg-rose-600"
+                    : "bg-gray-100 text-gray-900 hover:bg-gray-200"
+                } ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
                 style={{ pointerEvents: "auto" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  console.log("❤️ Like button clicked!");
-                  // Handle like action - could implement later
-                }}
+                onClick={handleLike}
+                disabled={isUpdating}
+                aria-label="Like template"
               >
-                <HeartIcon className="h-4 w-4 text-rose-500" />
-                {product.likes.toLocaleString()}
+                {isLiked ? (
+                  <HeartIconSolid className="h-4 w-4 text-white" />
+                ) : (
+                  <HeartIcon className="h-4 w-4 text-rose-500" />
+                )}
+                <span className="text-xs">{likesCount.toLocaleString()}</span>
               </button>
             </div>
             <div className="mt-4 text-xs text-gray-500">
