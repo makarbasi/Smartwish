@@ -78,6 +78,7 @@ export type TemplateCard = {
   category_id?: string;
   category_name?: string;
   category_display_name?: string;
+  isLiked?: boolean;
 };
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -95,8 +96,8 @@ function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
     id: apiTemplate.id,
     name: apiTemplate.title,
     price: formattedPrice,
-    rating: Math.min(5, Math.max(1, Math.round(apiTemplate.popularity / 20))), // Convert popularity to 1-5 rating
-    reviewCount: Math.floor(apiTemplate.num_downloads / 10), // Estimate reviews from downloads
+    rating: Math.min(5, Math.max(1, Math.round(apiTemplate.popularity / 20))),
+    reviewCount: Math.floor(apiTemplate.num_downloads / 10),
     imageSrc: apiTemplate.image_1,
     imageAlt: `${apiTemplate.title} template`,
     publisher: {
@@ -107,7 +108,7 @@ function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
     category_id: apiTemplate.category_id,
     category_name: apiTemplate.category_name,
     category_display_name: apiTemplate.category_display_name,
-    likes: Math.floor(apiTemplate.num_downloads / 10), // Estimate likes from downloads
+    likes: apiTemplate.popularity,
     pages: [
       apiTemplate.image_1,
       apiTemplate.image_2,
@@ -134,6 +135,8 @@ function TemplatesPageContent() {
 
   const [page, setPage] = useState<number>(initialPage);
   const [selectedCategory, setSelectedCategory] = useState<string>(category);
+  const [likesStatus, setLikesStatus] = useState<Record<string, boolean>>({});
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const router = useRouter();
   const pathname = usePathname();
   const { authModalOpen, openAuthModal, closeAuthModal, setRedirectUrl } = useAuthModal();
@@ -187,13 +190,49 @@ function TemplatesPageContent() {
     return apiResponse.data.map(transformApiTemplate);
   }, [apiResponse]);
 
+  // Fetch like status for all templates when user is authenticated
+  useEffect(() => {
+    const fetchLikeStatus = async () => {
+      if (!session || status !== 'authenticated' || products.length === 0) {
+        return;
+      }
+
+      try {
+        const templateIds = products.map(p => p.id).join(',');
+        const response = await fetch(`/api/templates/likes/batch-status?ids=${templateIds}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setLikesStatus(data.likesStatus || {});
+          console.log('✅ Fetched like status for templates:', data.likesStatus);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching like status:', error);
+      }
+    };
+
+    fetchLikeStatus();
+  }, [session, status, products]);
+
   const pageSize = 9;
   const totalPages = Math.max(1, Math.ceil(products.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const pagedProducts = useMemo(() => {
     const start = (safePage - 1) * pageSize;
-    return products.slice(start, start + pageSize);
-  }, [products, safePage]);
+    const sliced = products.slice(start, start + pageSize);
+    // Merge like status with products
+    return sliced.map(product => ({
+      ...product,
+      isLiked: likesStatus[product.id] || false,
+      likes: likeCounts[product.id] !== undefined ? likeCounts[product.id] : product.likes,
+    }));
+  }, [products, safePage, likesStatus, likeCounts]);
+
+  // Handler for when a like is updated
+  const handleLikeUpdate = useCallback((templateId: string, isLiked: boolean, newLikesCount: number) => {
+    setLikesStatus(prev => ({ ...prev, [templateId]: isLiked }));
+    setLikeCounts(prev => ({ ...prev, [templateId]: newLikesCount }));
+  }, []);
 
   useEffect(() => {
     setPage(initialPage);
@@ -384,6 +423,7 @@ function TemplatesPageContent() {
                     index={index}
                     onPreview={handlePreviewTemplate}
                     onAuthRequired={handleAuthRequired}
+                    onLikeUpdate={handleLikeUpdate}
                   />
                 ))}
               </div>

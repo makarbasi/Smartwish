@@ -9,7 +9,7 @@ export class SimpleTemplatesController {
   @Get()
   async getAllTemplates() {
     try {
-      // Use raw SQL to get templates - we know this works from our earlier testing
+      // Use raw SQL to get templates - popularity column already tracks likes/ratings
       const templates = await this.dataSource.query(`
         SELECT 
           t.id, 
