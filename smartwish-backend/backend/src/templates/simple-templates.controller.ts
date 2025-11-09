@@ -1,10 +1,38 @@
-import { Controller, Get, Put, Post, Param, Body } from '@nestjs/common';
+import { Controller, Get, Put, Post, Param, Body, Patch } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 @Controller('api/simple-templates')
 export class SimpleTemplatesController {
   constructor(@InjectDataSource() private dataSource: DataSource) { }
+
+  @Patch(':id/increment-popularity')
+  async incrementPopularity(@Param('id') templateId: string) {
+    try {
+      // Increment popularity by 1
+      await this.dataSource.query(
+        `UPDATE sw_templates SET popularity = popularity + 1 WHERE id = $1`,
+        [templateId]
+      );
+
+      // Get updated popularity
+      const result = await this.dataSource.query(
+        `SELECT popularity FROM sw_templates WHERE id = $1`,
+        [templateId]
+      );
+
+      return {
+        success: true,
+        popularity: result[0]?.popularity || 0,
+      };
+    } catch (error) {
+      console.error('Error incrementing popularity:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
 
   @Get()
   async getAllTemplates() {
