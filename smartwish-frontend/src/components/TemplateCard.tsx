@@ -1,8 +1,10 @@
 "use client"
 
 import Image from 'next/image'
+import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { HeartIcon, EllipsisHorizontalIcon, MagnifyingGlassIcon, FlagIcon } from '@heroicons/react/24/outline'
+import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 
 type TemplateCard = {
@@ -17,6 +19,7 @@ type TemplateCard = {
   downloads: number
   likes: number
   pages?: string[]
+  isLiked?: boolean
 }
 
 interface TemplateCardProps {
@@ -24,21 +27,29 @@ interface TemplateCardProps {
   index: number
   onPreview: (template: TemplateCard) => void
   onAuthRequired: () => void
+  onLikeUpdate?: (templateId: string, isLiked: boolean, newLikesCount: number) => void
 }
 
-export default function TemplateCard({ template, index, onPreview, onAuthRequired }: TemplateCardProps) {
+export default function TemplateCard({ template, index, onPreview, onAuthRequired, onLikeUpdate }: TemplateCardProps) {
   const { data: session, status } = useSession()
-  const productHref = '/product/template'
+  const [isLiked, setIsLiked] = useState(template.isLiked || false)
+  const [likesCount, setLikesCount] = useState(template.likes)
+  const [isUpdating, setIsUpdating] = useState(false)
 
-  const handleLike = (e: React.MouseEvent) => {
+  const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    console.log('❤️ Like button clicked. Auth state:', { session: !!session, status })
-    if (!session || status !== 'authenticated') {
-      console.log('🚫 User not authenticated, showing auth modal')
-      onAuthRequired()
-      return
-    }
-    console.log('✅ User authenticated, liking template:', template.name)
+    console.log('❤️ Like button clicked (currently disabled - uses ratings system)')
+    
+    // DISABLED: Like functionality not implemented
+    // The system uses template ratings (1-5 stars) instead of simple likes
+    // Popularity field is calculated from average ratings: avg_rating * 20
+    // Displayed likes are derived from popularity: popularity / 5
+    
+    // if (!session || status !== 'authenticated') {
+    //   console.log('🚫 User not authenticated, showing auth modal')
+    //   onAuthRequired()
+    //   return
+    // }
   }
 
   const handleCardClick = (e: React.MouseEvent) => {
@@ -74,11 +85,20 @@ export default function TemplateCard({ template, index, onPreview, onAuthRequire
         </div>
         <div className="absolute right-3 top-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
           <button 
-            className="inline-flex items-center gap-1 rounded-lg bg-black/80 px-2.5 py-1.5 text-white shadow-sm hover:bg-black" 
+            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 shadow-sm transition-all ${
+              isLiked 
+                ? 'bg-red-500 hover:bg-red-600' 
+                : 'bg-black/80 hover:bg-black'
+            } text-white ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={handleLike}
+            disabled={isUpdating}
           >
-            <HeartIcon className="h-4 w-4 text-white drop-shadow" />
-            <span className="text-xs">{template.likes.toLocaleString()}</span>
+            {isLiked ? (
+              <HeartIconSolid className="h-4 w-4 text-white drop-shadow" />
+            ) : (
+              <HeartIcon className="h-4 w-4 text-white drop-shadow" />
+            )}
+            <span className="text-xs">{likesCount.toLocaleString()}</span>
           </button>
           <Menu as="div" className="relative inline-block text-left">
             <MenuButton className="inline-flex items-center justify-center rounded-lg bg-black/80 p-1.5 text-white shadow-sm hover:bg-black" onClick={(e) => e.stopPropagation()}>
