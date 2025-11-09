@@ -7,6 +7,7 @@ export interface Template {
   title: string;
   category_id: string;
   description?: string;
+  message?: string | null;
   author_id?: string;
   price: number;
   language: string;
@@ -92,7 +93,7 @@ export class SupabaseTemplatesEnhancedService {
   // Category operations
   async getAllCategories(): Promise<Category[]> {
     if (!this.supabase) return [];
-    
+
     const { data, error } = await this.supabase
       .from('sw_categories')
       .select('*')
@@ -109,7 +110,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async getCategoryById(id: string): Promise<Category | null> {
     if (!this.supabase) return null;
-    
+
     const { data, error } = await this.supabase
       .from('sw_categories')
       .select('*')
@@ -126,7 +127,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async createCategory(category: Omit<Category, 'created_at' | 'updated_at'>): Promise<Category | null> {
     if (!this.supabase) return null;
-    
+
     const { data, error } = await this.supabase
       .from('sw_categories')
       .insert(category)
@@ -143,7 +144,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async updateCategory(id: string, updates: Partial<Category>): Promise<Category | null> {
     if (!this.supabase) return null;
-    
+
     const { data, error } = await this.supabase
       .from('sw_categories')
       .update(updates)
@@ -161,7 +162,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async deleteCategory(id: string): Promise<boolean> {
     if (!this.supabase) return false;
-    
+
     const { error } = await this.supabase
       .from('sw_categories')
       .delete()
@@ -178,7 +179,7 @@ export class SupabaseTemplatesEnhancedService {
   // Template operations
   async getAllTemplates(): Promise<Template[]> {
     if (!this.supabase) return [];
-    
+
     const { data, error } = await this.supabase
       .from('sw_templates')
       .select(`
@@ -198,7 +199,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async getTemplatesByCategory(categoryId: string): Promise<Template[]> {
     if (!this.supabase) return [];
-    
+
     const { data, error } = await this.supabase
       .from('sw_templates')
       .select(`
@@ -219,7 +220,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async getTemplateById(id: string): Promise<Template | null> {
     if (!this.supabase) return null;
-    
+
     const { data, error } = await this.supabase
       .from('sw_templates')
       .select(`
@@ -239,7 +240,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async getTemplateWithPages(id: string): Promise<{ template: Template; pages: TemplatePage[] } | null> {
     if (!this.supabase) return null;
-    
+
     const [templateResult, pagesResult] = await Promise.all([
       this.getTemplateById(id),
       this.getTemplatePages(id)
@@ -255,7 +256,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async createTemplate(template: Omit<Template, 'created_at' | 'updated_at'>): Promise<Template | null> {
     if (!this.supabase) return null;
-    
+
     const { data, error } = await this.supabase
       .from('sw_templates')
       .insert(template)
@@ -272,7 +273,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async updateTemplate(id: string, updates: Partial<Template>): Promise<Template | null> {
     if (!this.supabase) return null;
-    
+
     const { data, error } = await this.supabase
       .from('sw_templates')
       .update(updates)
@@ -290,7 +291,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async deleteTemplate(id: string): Promise<boolean> {
     if (!this.supabase) return false;
-    
+
     const { error } = await this.supabase
       .from('sw_templates')
       .delete()
@@ -307,7 +308,7 @@ export class SupabaseTemplatesEnhancedService {
   // Template pages operations
   async getTemplatePages(templateId: string): Promise<TemplatePage[]> {
     if (!this.supabase) return [];
-    
+
     const { data, error } = await this.supabase
       .from('sw_template_pages')
       .select('*')
@@ -324,7 +325,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async createTemplatePage(page: Omit<TemplatePage, 'id' | 'created_at' | 'updated_at'>): Promise<TemplatePage | null> {
     if (!this.supabase) return null;
-    
+
     const { data, error } = await this.supabase
       .from('sw_template_pages')
       .insert(page)
@@ -342,7 +343,7 @@ export class SupabaseTemplatesEnhancedService {
   // Keywords operations
   async getTemplateKeywords(templateId: string): Promise<string[]> {
     if (!this.supabase) return [];
-    
+
     const { data, error } = await this.supabase
       .from('sw_template_keywords')
       .select('keyword')
@@ -358,7 +359,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async addTemplateKeywords(templateId: string, keywords: string[]): Promise<boolean> {
     if (!this.supabase) return false;
-    
+
     const keywordData = keywords.map(keyword => ({
       template_id: templateId,
       keyword: keyword.toLowerCase().trim()
@@ -379,7 +380,7 @@ export class SupabaseTemplatesEnhancedService {
   // Tags operations
   async getAllTags(): Promise<Tag[]> {
     if (!this.supabase) return [];
-    
+
     const { data, error } = await this.supabase
       .from('sw_tags')
       .select('*')
@@ -395,7 +396,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async getTemplateTags(templateId: string): Promise<Tag[]> {
     if (!this.supabase) return [];
-    
+
     const { data, error } = await this.supabase
       .from('sw_template_tags')
       .select(`
@@ -427,7 +428,7 @@ export class SupabaseTemplatesEnhancedService {
     offset?: number;
   } = {}): Promise<SearchResult[]> {
     if (!this.supabase) return [];
-    
+
     let queryBuilder = this.supabase
       .from('sw_templates')
       .select(`
@@ -474,11 +475,11 @@ export class SupabaseTemplatesEnhancedService {
 
     // Process results and calculate relevance scores
     const results: SearchResult[] = [];
-    
+
     for (const template of data || []) {
       const relevanceScore = this.calculateRelevanceScore(query, template);
       const matchedFields = this.getMatchedFields(query, template);
-      
+
       if (relevanceScore > 0) {
         results.push({
           template,
@@ -505,7 +506,7 @@ export class SupabaseTemplatesEnhancedService {
     limit?: number;
   } = {}): Promise<Template[]> {
     if (!this.supabase) return [];
-    
+
     let queryBuilder = this.supabase
       .from('sw_templates')
       .select(`
@@ -608,7 +609,7 @@ export class SupabaseTemplatesEnhancedService {
   // Utility methods
   async getTemplatesCount(): Promise<number> {
     if (!this.supabase) return 0;
-    
+
     const { count, error } = await this.supabase
       .from('sw_templates')
       .select('*', { count: 'exact', head: true })
@@ -624,7 +625,7 @@ export class SupabaseTemplatesEnhancedService {
 
   async getCategoriesCount(): Promise<number> {
     if (!this.supabase) return 0;
-    
+
     const { count, error } = await this.supabase
       .from('sw_categories')
       .select('*', { count: 'exact', head: true })
