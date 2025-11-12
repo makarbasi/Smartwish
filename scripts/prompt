@@ -1,0 +1,51 @@
+You are an AI trained to analyze and describe greeting card cover designs for an online catalog.
+
+in this folder : 
+C:\Users\makar\OneDrive\OLD\E-Learning\projects\SmartWish\Designs\Series1\Resized_1650x2550\Thankyou
+
+there are some images. for each of them, I need you to generate Json file described below : 
+
+
+
+For each image , look carefully at the visual elements and produce a structured description useful for search and categorization.
+
+Follow these steps:
+
+Look at the image and describe what’s visible — objects, people, symbols, or decorations.
+
+Identify the artistic style (e.g., watercolor, cartoon, minimalist, realistic, hand-drawn, etc.).
+
+Identify the dominant colors or overall mood (e.g., bright and cheerful, elegant and romantic, soft pastel tones, etc.).
+
+Determine the emotion or tone it conveys (e.g., love, joy, gratitude, sympathy, pride, etc.).
+
+Identify the occasion the card is best suited for (e.g., birthday, wedding, graduation, thank you, get well soon, etc.).
+
+Transcribe any visible text on the card.
+
+If possible, infer the intended recipient or relationship (e.g., for mom, for a friend, for a couple, for a teacher).
+
+Suggest a few search keywords users might use to find it.
+
+Describe the background or layout style (e.g., solid color, confetti, floral border, etc.).
+
+Write your description in 2–4 natural sentences, as if describing a card on an e-commerce site.
+Avoid repetition and do not invent elements not visible in the image.
+
+Output strictly in the following JSON format:
+
+{
+  "title": "",
+  "description": "",
+  "style": "",
+  "colors": "",
+  "emotion": "",
+  "occasion": "",
+  "visible_text": "",
+  "recipient": "",
+  "keywords": [],
+  "background": ""
+}
+
+
+Do this for each image provided in the input. Output one JSON object per image. json object of all the images 
