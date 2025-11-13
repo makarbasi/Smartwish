@@ -184,6 +184,12 @@ function TemplatesPageContent() {
     isLoading,
   } = useSWR<ApiResponse>(apiUrl, fetcher);
 
+  // Detect API route error responses (status 500 returns a JSON with `error` key)
+  const apiRouteError = useMemo(() => {
+    const maybeError = (apiResponse as any)?.error;
+    return typeof maybeError === 'string' && maybeError.length > 0;
+  }, [apiResponse]);
+
   const products = useMemo(() => {
     if (!apiResponse?.data) return [];
     return apiResponse.data.map(transformApiTemplate);
@@ -381,7 +387,7 @@ function TemplatesPageContent() {
                   <TemplateCardSkeleton key={`skeleton-${i}`} />
                 ))}
             </div>
-          ) : error ? (
+          ) : (error || apiRouteError) ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
               Failed to load templates. Please try again later.
             </div>
