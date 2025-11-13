@@ -10,8 +10,8 @@ export interface SemanticSearchResult {
 
 @Injectable()
 export class SemanticSearchService {
-  private supabase: SupabaseClient;
-  private genAI: GoogleGenerativeAI;
+  private supabase: SupabaseClient | null;
+  private genAI: GoogleGenerativeAI | null;
   private embeddingModel: any;
 
   constructor() {

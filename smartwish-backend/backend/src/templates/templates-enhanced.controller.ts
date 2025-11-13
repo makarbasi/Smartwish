@@ -497,7 +497,7 @@ export class TemplatesEnhancedController {
 
     // Enrich results with category and author information
     const enrichedResults = await Promise.all(
-      searchResults.map(async (result) => {
+      searchResults.map(async (result: any) => {
         try {
           // Fetch category info
           const { data: category } = await supabase
