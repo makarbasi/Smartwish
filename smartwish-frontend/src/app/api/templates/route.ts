@@ -53,7 +53,24 @@ export async function GET(request: NextRequest) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    const data = await response.json()
+    // Safely parse upstream response as JSON
+    const contentType = response.headers.get('content-type') || ''
+    let data: any
+    if (contentType.includes('application/json')) {
+      try {
+        data = await response.json()
+      } catch (e) {
+        // Upstream returned invalid JSON
+        const text = await response.text().catch(() => '')
+        console.error('Upstream templates API returned invalid JSON. Sample:', text?.slice(0, 200))
+        throw new Error('Invalid JSON from upstream templates API')
+      }
+    } else {
+      // Non-JSON response; log sample and fail gracefully
+      const text = await response.text().catch(() => '')
+      console.error('Upstream templates API returned non-JSON response. Sample:', text?.slice(0, 200))
+      throw new Error('Non-JSON response from upstream templates API')
+    }
 
     // Backend now handles all filtering, no need for client-side filtering
     return NextResponse.json(data)

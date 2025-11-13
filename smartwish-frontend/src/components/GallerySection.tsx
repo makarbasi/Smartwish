@@ -86,8 +86,28 @@ export default function GallerySection({ chips }: GallerySectionProps) {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
   });
+  // Fallback: fetch without author filter if primary returns empty
+  const paramsNoAuthor = new URLSearchParams();
+  if (selectedCategoryId) {
+    paramsNoAuthor.set('category_id', selectedCategoryId);
+  }
+  paramsNoAuthor.set('limit', '4');
+  const templatesUrlNoAuthor = `/api/templates?${paramsNoAuthor.toString()}`;
 
-  const templates = apiResponse?.data || [];
+  const {
+    data: fallbackResponse,
+    error: fallbackError,
+    isLoading: isFallbackLoading,
+  } = useSWR<ApiResponse>(templatesUrlNoAuthor, fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
+
+  const primaryTemplates = apiResponse?.data || [];
+  const fallbackTemplates = fallbackResponse?.data || [];
+  const effectiveTemplates = primaryTemplates.length > 0 ? primaryTemplates : fallbackTemplates;
+  const loading = (isLoading || isFallbackLoading) && effectiveTemplates.length === 0;
+  const showError = (error && !primaryTemplates.length && !fallbackTemplates.length) && !loading && !!fallbackError;
 
   // Handle template click - navigate to templates page and open the clicked template
   const handleTemplateClick = (template: Template) => {
@@ -151,7 +171,7 @@ export default function GallerySection({ chips }: GallerySectionProps) {
 
       {/* Grid */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {isLoading ? (
+        {loading ? (
           // Skeleton loading - exact same layout
           Array(4)
             .fill(0)
@@ -167,14 +187,14 @@ export default function GallerySection({ chips }: GallerySectionProps) {
                 </div>
               </div>
             ))
-        ) : error ? (
+        ) : showError ? (
           // Error state
           <div className="col-span-full text-center text-red-600 py-8">
             Failed to load templates
           </div>
         ) : (
           // Template data
-          templates.slice(0, 4).map((template, idx) => {
+          effectiveTemplates.slice(0, 4).map((template, idx) => {
             const imageSrc =
               template.image_1 && template.image_1.trim() !== ""
                 ? template.image_1
