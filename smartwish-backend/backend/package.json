@@ -27,6 +27,7 @@
     "generate-embeddings": "ts-node src/scripts/generate-embeddings.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
