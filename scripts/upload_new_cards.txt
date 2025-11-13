@@ -1,0 +1,8 @@
+# Fix filenames first
+python scripts/fix_all_filenames.py --fix
+
+# Upload cards (they'll use vector type automatically!)
+python scripts/update_single_category.py FallGreetingCardBundlePDF
+python scripts/update_single_category.py Congratulations
+python scripts/update_single_category.py BirthdayCardsBasic
+# ... etc

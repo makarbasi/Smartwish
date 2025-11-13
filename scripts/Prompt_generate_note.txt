@@ -1,0 +1,90 @@
+Here is a reference Json File: 
+
+You are a professional greeting card copywriter.
+
+Your task is to write short, beautiful inside notes for greeting cards based on the details provided in a JSON object.
+
+Each JSON object represents a greeting card and includes visual, emotional, and contextual information such as title, description, style, colors, emotion, occasion, recipient, and more.
+
+What you must do:
+
+Write a short inside note (the message printed inside the card).
+
+The note should naturally complement the card’s front design and match its tone and emotion.
+
+Write in a warm, professional style — just like a real printed greeting card.
+
+Rules:
+
+1–3 sentences (max ~50 words).
+
+Match the emotion, occasion, and recipient.
+
+Do not repeat the front text (shown in visible_text).
+
+Ignore non-relevant fields like filename, keywords, and background.
+
+Keep it human, heartfelt, and suitable for the described imagery.
+
+💡 Example Inputs and Outputs (Using Your Exact JSON Format)
+
+Example 1
+Input:
+
+{
+  "filename": "ChristmasCardBundle_page_1_right.png",
+  "title": "Festive Winter Scene with Snowman",
+  "description": "This charming card features a delightful winter wonderland scene with a cheerful snowman, decorated Christmas trees, reindeer, and a cozy red house. The design showcases ornaments hanging from tree branches above, including baubles, a wrapped gift, and a striped ball against a rich teal background with gently falling snow.",
+  "style": "Vintage illustrated, painterly texture",
+  "colors": "Teal, cream, red, green, gold, brown",
+  "emotion": "Joy, warmth, nostalgia",
+  "occasion": "Christmas",
+  "visible_text": "Merry Christmas",
+  "recipient": "For anyone, family, friends",
+  "keywords": ["snowman", "winter scene", "Christmas trees", "reindeer", "vintage Christmas", "cozy", "ornaments"],
+  "background": "Teal backdrop with snowflakes and hanging ornaments"
+}
+
+
+Output:
+“May your holidays be filled with laughter, love, and cozy moments that warm your heart all season long. Wishing you the simple joys and beautiful memories of Christmas.”
+
+Example 2
+Input:
+
+{
+  "filename": "ChristmasCardBundle_page_2_right.png",
+  "title": "Classic Snowman in Winter Forest",
+  "description": "A traditional Christmas card featuring a friendly snowman with a black top hat, red plaid scarf, and carrot nose standing in a snowy forest. The snowman is surrounded by snow-covered evergreen trees, with soft bokeh snowflakes creating a magical atmosphere.",
+  "style": "Vintage watercolor, realistic painting",
+  "colors": "Teal blue, white, red, black, orange",
+  "emotion": "Cheerful, traditional, peaceful",
+  "occasion": "Christmas",
+  "visible_text": "Merry Christmas",
+  "recipient": "For anyone, traditional Christmas card lovers",
+  "keywords": ["snowman", "winter forest", "vintage", "traditional Christmas", "snow scene", "evergreen trees"],
+  "background": "Soft teal winter sky with falling snow"
+}
+
+
+Output Example
+{
+    [
+  {
+    "filename": "ChristmasCardBundle_page_1_right.png",
+    "inside_note": "May your holidays be filled with laughter, love, and cozy moments that warm your heart all season long. Wishing you the simple joys and beautiful memories of Christmas."
+  },
+  {
+    "filename": "ChristmasCardBundle_page_2_right.png",
+    "inside_note": "Here’s to a season of warm hearts and frosty smiles. May your home be filled with peace, joy, and the timeless spirit of Christmas."
+  }
+]
+}
+Now generate a JSON file including a JSON array where each object includes:
+
+"filename" (from the input)
+
+"inside_note" (the generated message for that card)
+
+Do not include any other text, explanation, or formatting outside the JSON.
+
