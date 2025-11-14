@@ -8,13 +8,23 @@ import { useDeviceMode } from '@/contexts/DeviceModeContext'
 import { usePathname } from 'next/navigation'
 
 export default function VirtualKeyboard() {
-  const { isKeyboardVisible, inputValue, inputType, updateInputValue, hideKeyboard } = useVirtualKeyboard()
+  const { isKeyboardVisible, inputValue, inputType, updateInputValue, hideKeyboard, currentInputRef } = useVirtualKeyboard()
   const { isKiosk } = useDeviceMode()
   const pathname = usePathname()
   const keyboardRef = useRef<any>(null)
   const isUpdatingFromKeyboard = useRef(false)
+  const [layoutName, setLayoutName] = React.useState('default')
+  const [capsLock, setCapsLock] = React.useState(false)
 
   console.log('🎹 [VirtualKeyboard] Component rendering...', { isKeyboardVisible, isKiosk })
+
+  // Reset layout when keyboard is hidden or input type changes
+  useEffect(() => {
+    if (!isKeyboardVisible) {
+      setLayoutName('default')
+      setCapsLock(false)
+    }
+  }, [isKeyboardVisible, inputType])
 
   // Sync keyboard display with input value (only when not typing)
   useEffect(() => {
@@ -35,9 +45,54 @@ export default function VirtualKeyboard() {
   }
 
   const onKeyPress = (button: string) => {
-    if (button === '{enter}') {
-      // Optionally close keyboard on Enter
+    console.log('[VirtualKeyboard] Button pressed:', button)
+    
+    if (button === '{shift}') {
+      // Toggle shift - temporary uppercase
+      const newLayoutName = layoutName === 'default' ? 'shift' : 'default'
+      setLayoutName(newLayoutName)
+      console.log('[VirtualKeyboard] Shift toggled, new layout:', newLayoutName)
+    } else if (button === '{lock}') {
+      // Toggle caps lock - persistent uppercase
+      setCapsLock(!capsLock)
+      const newLayoutName = !capsLock ? 'shift' : 'default'
+      setLayoutName(newLayoutName)
+      console.log('[VirtualKeyboard] Caps lock toggled:', !capsLock, 'new layout:', newLayoutName)
+    } else if (button === '{close}') {
+      hideKeyboard()
+    } else if (button === '{enter}') {
+      // On /templates page, submit the form (trigger search)
+      if (pathname?.includes('/templates')) {
+        console.log('[VirtualKeyboard] Enter pressed on templates page - submitting form')
+        if (currentInputRef) {
+          // Find the parent form and submit it
+          const form = currentInputRef.closest('form')
+          if (form) {
+            console.log('[VirtualKeyboard] Found form, submitting...')
+            form.requestSubmit()
+            hideKeyboard()
+          } else {
+            console.log('[VirtualKeyboard] No form found, dispatching Enter key event')
+            // Fallback: dispatch Enter key event on the input
+            const event = new KeyboardEvent('keydown', {
+              key: 'Enter',
+              code: 'Enter',
+              keyCode: 13,
+              which: 13,
+              bubbles: true,
+              cancelable: true
+            })
+            currentInputRef.dispatchEvent(event)
+          }
+        }
+      }
+      // On other pages, just close keyboard
       // hideKeyboard()
+    } else {
+      // After typing a character, if shift was pressed (not caps lock), go back to default
+      if (layoutName === 'shift' && !capsLock) {
+        setLayoutName('default')
+      }
     }
   }
 
@@ -140,12 +195,17 @@ export default function VirtualKeyboard() {
           onChange={onChange}
           onKeyPress={onKeyPress}
           layout={getLayout()}
+          layoutName={layoutName}
           display={getDisplay()}
           theme="hg-theme-default hg-layout-default kiosk-keyboard"
           buttonTheme={[
             {
               class: 'hg-close-button',
               buttons: '{close}',
+            },
+            {
+              class: capsLock ? 'hg-caps-active' : '',
+              buttons: '{lock}',
             },
           ]}
           onRender={() => {
@@ -205,6 +265,12 @@ export default function VirtualKeyboard() {
 
         .kiosk-keyboard .hg-close-button:active {
           background: #dc2626 !important;
+        }
+
+        .kiosk-keyboard .hg-caps-active {
+          background: #10b981 !important;
+          color: white !important;
+          border-color: #059669 !important;
         }
 
         /* Larger space bar */

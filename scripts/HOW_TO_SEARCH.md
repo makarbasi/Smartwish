@@ -253,3 +253,5 @@ Just run the script, type what you want, and get results! 🎉
 
 **Questions?** See `SEARCH_GUIDE.md` for more details.
 
+
+

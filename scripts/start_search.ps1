@@ -35,3 +35,5 @@ python scripts/search_cards.py
 Write-Host ""
 Write-Host "Search session ended. Goodbye! 👋" -ForegroundColor Cyan
 
+
+
