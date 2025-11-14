@@ -18,3 +18,5 @@ $env:GOOGLE_API_KEY = $API_KEY
 # Run the search script
 python scripts/search_cards.py
 
+
+

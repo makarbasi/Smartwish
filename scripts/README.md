@@ -358,3 +358,5 @@ Search by meaning, discover by similarity, and find the perfect card every time.
 
 **Questions?** Check `SEARCH_GUIDE.md` for detailed instructions!
 
+
+

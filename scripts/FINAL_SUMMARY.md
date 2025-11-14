@@ -283,3 +283,5 @@ Then start typing your searches!
 
 Type your first search and see the magic happen! ✨
 
+
+
