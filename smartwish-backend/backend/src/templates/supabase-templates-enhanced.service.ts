@@ -549,19 +549,129 @@ export class SupabaseTemplatesEnhancedService {
       queryBuilder = queryBuilder.or(`title.ilike.%${options.query}%,description.ilike.%${options.query}%`);
     }
 
-    // Apply limit
-    if (options.limit) {
-      queryBuilder = queryBuilder.limit(options.limit);
-    }
-
-    const { data, error } = await queryBuilder.order('published_at', { ascending: false });
+    // Fetch ALL matching templates (we'll sort them ourselves)
+    const { data, error } = await queryBuilder;
 
     if (error) {
       console.error('Error searching templates with filters:', error);
       return [];
     }
 
-    return data || [];
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    // If a specific category is filtered, just sort by score
+    if (options.categoryId) {
+      const sorted = this.sortByWeightedScore(data);
+      return options.limit ? sorted.slice(0, options.limit) : sorted;
+    }
+
+    // Smart diversified sorting: Top 3 overall, then best from each category
+    const diversified = this.diversifiedSort(data);
+    
+    // Apply limit after diversified sorting
+    return options.limit ? diversified.slice(0, options.limit) : diversified;
+  }
+
+  // Calculate weighted score based on popularity and downloads
+  private calculateWeightedScore(template: any): number {
+    const popularity = template.popularity || 0;
+    const downloads = template.num_downloads || 0;
+    
+    // Weight: 60% downloads, 40% popularity
+    // Downloads are typically larger numbers, so we normalize them
+    const normalizedDownloads = Math.log10(downloads + 1); // Log scale to prevent domination
+    const normalizedPopularity = popularity;
+    
+    return (normalizedDownloads * 0.6) + (normalizedPopularity * 0.4);
+  }
+
+  // Simple sort by weighted score
+  private sortByWeightedScore(templates: any[]): any[] {
+    return [...templates].sort((a, b) => {
+      const scoreA = this.calculateWeightedScore(a);
+      const scoreB = this.calculateWeightedScore(b);
+      
+      // If scores are equal, use published date as tiebreaker
+      if (scoreB === scoreA) {
+        return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+      }
+      
+      return scoreB - scoreA;
+    });
+  }
+
+  // Diversified sorting: Top 3 overall, then best from each category
+  private diversifiedSort(templates: any[]): any[] {
+    console.log(`\n🎯 [Diversified Sort] Processing ${templates.length} templates`);
+    
+    // Step 1: Calculate scores for all templates
+    const templatesWithScores = templates.map(t => ({
+      ...t,
+      _score: this.calculateWeightedScore(t)
+    }));
+
+    // Step 2: Sort all by score
+    const sortedByScore = templatesWithScores.sort((a, b) => {
+      if (b._score === a._score) {
+        return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+      }
+      return b._score - a._score;
+    });
+
+    // Step 3: Take top 3 overall
+    const top3 = sortedByScore.slice(0, 3);
+    const top3Categories = new Set(top3.map(t => t.category_id));
+    const top3Ids = new Set(top3.map(t => t.id));
+    
+    console.log(`✅ Top 3 templates selected:`, top3.map(t => ({
+      title: t.title,
+      category: t.sw_categories?.name || t.category_id,
+      score: t._score.toFixed(2),
+      downloads: t.num_downloads,
+      popularity: t.popularity
+    })));
+
+    // Step 4: Get remaining templates not in top 3
+    const remaining = sortedByScore.filter(t => !top3Ids.has(t.id));
+
+    // Step 5: Group remaining by category
+    const byCategory = new Map<string, any[]>();
+    remaining.forEach(template => {
+      const catId = template.category_id;
+      if (!byCategory.has(catId)) {
+        byCategory.set(catId, []);
+      }
+      byCategory.get(catId)!.push(template);
+    });
+
+    // Step 6: Get best from each category (prioritize categories not in top 3)
+    const diversified: any[] = [...top3];
+    const processedCategories = new Set(top3Categories);
+
+    // First, add best from categories NOT in top 3
+    Array.from(byCategory.entries()).forEach(([categoryId, categoryTemplates]) => {
+      if (!processedCategories.has(categoryId) && categoryTemplates.length > 0) {
+        const best = categoryTemplates[0]; // Already sorted by score
+        diversified.push(best);
+        processedCategories.add(categoryId);
+        console.log(`  ➕ Added from category ${best.sw_categories?.name}: ${best.title} (score: ${best._score.toFixed(2)})`);
+      }
+    });
+
+    // Then, continue with remaining templates from already-seen categories
+    Array.from(byCategory.entries()).forEach(([categoryId, categoryTemplates]) => {
+      if (processedCategories.has(categoryId)) {
+        // Add remaining templates from this category
+        diversified.push(...categoryTemplates);
+      }
+    });
+
+    console.log(`🎨 [Diversified Sort] Final order: ${diversified.length} templates with ${processedCategories.size} different categories`);
+
+    // Remove the temporary _score field
+    return diversified.map(({ _score, ...template }) => template);
   }
 
   private calculateRelevanceScore(query: string, template: any): number {
