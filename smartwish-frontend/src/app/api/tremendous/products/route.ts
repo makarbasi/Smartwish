@@ -4,7 +4,7 @@ export async function GET() {
   try {
     // Tremendous API configuration
     const API_KEY = process.env.TREMENDOUS_API_KEY
-    const BASE_URL = "https://testflight.tremendous.com/api/v2"
+    const BASE_URL = process.env.TREMENDOUS_BASE_URL || "https://www.tremendous.com/api/v2"
 
     if (!API_KEY) {
       console.error("❌ TREMENDOUS_API_KEY not found in environment variables")
