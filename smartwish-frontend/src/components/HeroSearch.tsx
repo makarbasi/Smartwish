@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, FormEvent } from 'react'
 import useSWR from 'swr'
 import { VirtualInput } from '@/components/VirtualInput'
+import { useDeviceMode } from '@/contexts/DeviceModeContext'
 
 const quickActions = [
   'Design for me',
@@ -33,6 +34,7 @@ type Props = {
 export default function HeroSearch(props: Props) {
   const router = useRouter()
   const pathname = usePathname()
+  const { isKiosk } = useDeviceMode()
   const [q, setQ] = useState(props.initialQuery ?? '')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -300,92 +302,216 @@ export default function HeroSearch(props: Props) {
       </form>
 
       {open && props.categories && props.categories.length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-gray-200">
-          {/* lightweight filters - only show for templates */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Category Filter */}
-            <select
-              aria-label="Category"
-              value={category}
-              onChange={(e) => {
-                const newCategory = e.target.value
-                setCategory(newCategory)
-                // Immediately navigate with the new filter
-                navigateWithCurrentState({ category: newCategory })
-              }}
-              className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
-            >
-              <option value="">All Categories</option>
-              {props.categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-            {/* Only show region/language filters for templates, not marketplace */}
-            {!pathname?.startsWith('/marketplace') && (
-              <>
-                <select
-                  aria-label="Region"
-                  value={region}
-                  onChange={(e) => {
-                    const newRegion = e.target.value
-                    setRegion(newRegion)
-                    // Immediately navigate with the new filter
-                    navigateWithCurrentState({ region: newRegion })
-                  }}
-                  className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
-                >
-                  {availableRegions.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Language"
-                  value={language}
-                  onChange={(e) => {
-                    const newLanguage = e.target.value
-                    setLanguage(newLanguage)
-                    // Immediately navigate with the new filter
-                    navigateWithCurrentState({ language: newLanguage })
-                  }}
-                  className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
-                >
-                  {availableLanguages.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Author"
-                  value={author}
-                  onChange={(e) => {
-                    const newAuthor = e.target.value
-                    setAuthor(newAuthor)
-                    // Immediately navigate with the new filter
-                    navigateWithCurrentState({ author: newAuthor })
-                  }}
-                  className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
-                >
-                  {availableAuthors.map((a) => (
-                    <option key={a} value={a}>
-                      {a}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
+        isKiosk ? (
+          // KIOSK MODE - Modern App Design
+          <div className="absolute left-0 right-0 top-full z-20 mt-3">
+            <div className="rounded-3xl bg-gradient-to-br from-indigo-50 via-white to-purple-50 shadow-2xl ring-2 ring-indigo-100 p-6 backdrop-blur-sm">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                Filter Templates
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {/* Category Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    Category
+                  </label>
+                  <select
+                    value={category}
+                    onChange={(e) => {
+                      const newCategory = e.target.value
+                      setCategory(newCategory)
+                      navigateWithCurrentState({ category: newCategory })
+                    }}
+                    className="w-full rounded-xl bg-white px-4 py-3.5 text-base font-semibold text-gray-800 shadow-lg ring-2 ring-indigo-200 hover:ring-indigo-400 focus:outline-none focus:ring-indigo-500 transition-all cursor-pointer"
+                  >
+                    <option value="">All Categories</option>
+                    {props.categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Region Filter */}
+                {!pathname?.startsWith('/marketplace') && (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1.5 block flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Region
+                    </label>
+                    <select
+                      value={region}
+                      onChange={(e) => {
+                        const newRegion = e.target.value
+                        setRegion(newRegion)
+                        navigateWithCurrentState({ region: newRegion })
+                      }}
+                      className="w-full rounded-xl bg-white px-4 py-3.5 text-base font-semibold text-gray-800 shadow-lg ring-2 ring-green-200 hover:ring-green-400 focus:outline-none focus:ring-green-500 transition-all cursor-pointer"
+                    >
+                      {availableRegions.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Language Filter */}
+                {!pathname?.startsWith('/marketplace') && (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1.5 block flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                      </svg>
+                      Language
+                    </label>
+                    <select
+                      value={language}
+                      onChange={(e) => {
+                        const newLanguage = e.target.value
+                        setLanguage(newLanguage)
+                        navigateWithCurrentState({ language: newLanguage })
+                      }}
+                      className="w-full rounded-xl bg-white px-4 py-3.5 text-base font-semibold text-gray-800 shadow-lg ring-2 ring-blue-200 hover:ring-blue-400 focus:outline-none focus:ring-blue-500 transition-all cursor-pointer"
+                    >
+                      {availableLanguages.map((l) => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Author Filter */}
+                {!pathname?.startsWith('/marketplace') && (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 mb-1.5 block flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      Author
+                    </label>
+                    <select
+                      value={author}
+                      onChange={(e) => {
+                        const newAuthor = e.target.value
+                        setAuthor(newAuthor)
+                        navigateWithCurrentState({ author: newAuthor })
+                      }}
+                      className="w-full rounded-xl bg-white px-4 py-3.5 text-base font-semibold text-gray-800 shadow-lg ring-2 ring-purple-200 hover:ring-purple-400 focus:outline-none focus:ring-purple-500 transition-all cursor-pointer"
+                    >
+                      {availableAuthors.map((a) => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div 
+                onClick={() => {
+                  // Clear all filters
+                  setCategory('')
+                  setRegion('Any region')
+                  setLanguage('Any language')
+                  setAuthor('Any author')
+                  // Navigate with cleared filters
+                  navigateWithCurrentState({ 
+                    category: '', 
+                    region: 'Any region', 
+                    language: 'Any language', 
+                    author: 'Any author' 
+                  })
+                }}
+                className="flex items-center justify-center gap-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-xl px-4 py-2.5 cursor-pointer hover:bg-indigo-100 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear Filters
+              </div>
+            </div>
           </div>
-          <div className="mt-3 text-center text-xs text-gray-500">
-            {pathname?.startsWith('/marketplace')
-              ? 'Select category to filter gift cards. Press Enter to search with text.'
-              : 'Filters apply immediately. Press Enter to search with text.'
-            }
+        ) : (
+          // REGULAR MODE - Compact Design
+          <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-gray-200">
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                aria-label="Category"
+                value={category}
+                onChange={(e) => {
+                  const newCategory = e.target.value
+                  setCategory(newCategory)
+                  navigateWithCurrentState({ category: newCategory })
+                }}
+                className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
+              >
+                <option value="">All Categories</option>
+                {props.categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+              {!pathname?.startsWith('/marketplace') && (
+                <>
+                  <select
+                    aria-label="Region"
+                    value={region}
+                    onChange={(e) => {
+                      const newRegion = e.target.value
+                      setRegion(newRegion)
+                      navigateWithCurrentState({ region: newRegion })
+                    }}
+                    className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
+                  >
+                    {availableRegions.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Language"
+                    value={language}
+                    onChange={(e) => {
+                      const newLanguage = e.target.value
+                      setLanguage(newLanguage)
+                      navigateWithCurrentState({ language: newLanguage })
+                    }}
+                    className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
+                  >
+                    {availableLanguages.map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Author"
+                    value={author}
+                    onChange={(e) => {
+                      const newAuthor = e.target.value
+                      setAuthor(newAuthor)
+                      navigateWithCurrentState({ author: newAuthor })
+                    }}
+                    className="rounded-full bg-gray-50 px-3 py-1.5 text-xs text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100 focus:outline-none"
+                  >
+                    {availableAuthors.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </div>
+            <div className="mt-3 text-center text-xs text-gray-500">
+              {pathname?.startsWith('/marketplace')
+                ? 'Select category to filter gift cards. Press Enter to search with text.'
+                : 'Filters apply immediately. Press Enter to search with text.'
+              }
+            </div>
           </div>
-        </div>
+        )
       )}
     </div>
   )
