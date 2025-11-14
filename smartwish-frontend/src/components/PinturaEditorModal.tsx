@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { usePixshop } from "@/contexts/PixshopContext";
+import { useDeviceMode } from "@/contexts/DeviceModeContext";
 // Removed WarningDialog import - now using direct redirect
 import {
   setPlugins,
@@ -38,43 +39,53 @@ setPlugins(
 );
 
 // Create custom editor defaults WITHOUT crop and WITHOUT frame
-const createEditorDefaults = (handleOpenPixshop: () => void) => ({
-  utils: ["finetune", "filter", "annotate", "sticker", "retouch"], // explicitly exclude 'crop' and 'frame'
-  imageReader: createDefaultImageReader(),
-  imageWriter: createDefaultImageWriter(),
-  shapePreprocessor: createDefaultShapePreprocessor(),
-  ...plugin_finetune_defaults,
-  ...plugin_filter_defaults,
-  ...markup_editor_defaults,
-  // Add default stickers
-  stickers: [
-    [
-      "Emoji",
-      ["🎉", "🎂", "🎈", "🎁", "❤️", "😊", "😍", "🥳", "✨", "🌟", "⭐", "💫"],
+const createEditorDefaults = (handleOpenPixshop: () => void, isKiosk: boolean = false) => {
+  // Base utils - conditionally exclude retouch in kiosk mode
+  const baseUtils = ["finetune", "filter", "annotate", "sticker"];
+  const utils = isKiosk ? baseUtils : [...baseUtils, "retouch"];
+  
+  console.log('🎨 Creating Pintura editor defaults:', { isKiosk, utils });
+  
+  return {
+    utils, // conditionally include retouch based on kiosk mode
+    imageReader: createDefaultImageReader(),
+    imageWriter: createDefaultImageWriter(),
+    shapePreprocessor: createDefaultShapePreprocessor(),
+    ...plugin_finetune_defaults,
+    ...plugin_filter_defaults,
+    ...markup_editor_defaults,
+    // Add default stickers
+    stickers: [
+      [
+        "Emoji",
+        ["🎉", "🎂", "🎈", "🎁", "❤️", "😊", "😍", "🥳", "✨", "🌟", "⭐", "💫"],
+      ],
+      [
+        "Hearts",
+        ["💝", "💖", "💕", "💗", "💘", "💞", "💌", "🧡", "💛", "💚", "💙", "💜"],
+      ],
+      [
+        "Celebration",
+        ["🎊", "🎉", "🥳", "🎈", "🎁", "🎂", "🍰", "🧁", "🎪", "🎭", "🎨", "🎵"],
+      ],
     ],
-    [
-      "Hearts",
-      ["💝", "💖", "💕", "💗", "💘", "💞", "💌", "🧡", "💛", "💚", "💙", "💜"],
-    ],
-    [
-      "Celebration",
-      ["🎊", "🎉", "🥳", "🎈", "🎁", "🎂", "🍰", "🧁", "🎪", "🎭", "🎨", "🎵"],
-    ],
-  ],
-  // Add retouch tools configuration
-  retouchTools: [],
-  retouchShapeControls: createMarkupEditorShapeStyleControls(),
+    // Add retouch tools configuration (only if not kiosk)
+    ...(isKiosk ? {} : {
+      retouchTools: [],
+      retouchShapeControls: createMarkupEditorShapeStyleControls(),
+    }),
 
-  locale: {
-    ...locale_en_gb,
-    ...plugin_finetune_locale_en_gb,
-    ...plugin_filter_locale_en_gb,
-    ...plugin_annotate_locale_en_gb,
-    ...plugin_sticker_locale_en_gb,
-    ...plugin_retouch_locale_en_gb,
-    ...markup_editor_locale_en_gb,
-  },
-});
+    locale: {
+      ...locale_en_gb,
+      ...plugin_finetune_locale_en_gb,
+      ...plugin_filter_locale_en_gb,
+      ...plugin_annotate_locale_en_gb,
+      ...plugin_sticker_locale_en_gb,
+      ...(isKiosk ? {} : plugin_retouch_locale_en_gb),
+      ...markup_editor_locale_en_gb,
+    },
+  };
+};
 
 // Dynamic import for the editor modal
 const PinturaEditorModalComponent = dynamic(
@@ -101,6 +112,10 @@ export default function PinturaEditorModal({
 }: PinturaEditorModalProps) {
   // Pixshop context for getting blob data
   const { getBlobForDesign, currentBlob, isSaving, saveError, clearPixshopBlob } = usePixshop();
+  
+  // Device mode context for kiosk detection
+  const { deviceMode } = useDeviceMode();
+  const isKiosk = deviceMode === 'kiosk';
   
   // Use state to manage the current image source so we can update it dynamically
   const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
@@ -733,6 +748,14 @@ export default function PinturaEditorModal({
   // Setup retouch button interception and upload button injection
   useEffect(() => {
     if (!isVisible) return;
+    
+    // Skip retouch interception in kiosk mode since retouch tool is disabled
+    if (isKiosk) {
+      console.log('🚫 Kiosk mode - skipping retouch button interception');
+      // Still add upload button
+      setTimeout(() => addUploadButton(), 100);
+      return;
+    }
 
     let observer: MutationObserver | null = null;
 
@@ -832,7 +855,7 @@ export default function PinturaEditorModal({
         button.removeAttribute('data-pixshop-intercepted');
       });
     };
-  }, [isVisible, handleRetouchClick]);
+  }, [isVisible, isKiosk, handleRetouchClick]);
 
   const handleLoad = (res: unknown) => {
     console.log("📷 Load editor image:", res);
@@ -848,13 +871,15 @@ export default function PinturaEditorModal({
         (window as any).pinturaEditorInstance = editor;
       }
       
-      // PRIMARY METHOD: Listen for retouch tool selection using v8 API
+      // PRIMARY METHOD: Listen for retouch tool selection using v8 API (only in non-kiosk mode)
       if (typeof editor.on === 'function') {
         editor.on('selectutil', (utilId: string) => {
           console.log(`🔧 Pintura tool selected: ${utilId}`);
-          if (utilId === 'retouch') {
+          if (utilId === 'retouch' && !isKiosk) {
             console.log('🎨 Retouch tool activated - auto-saving current state');
             handleRetouchToolActivated();
+          } else if (utilId === 'retouch' && isKiosk) {
+            console.log('🚫 Retouch tool not available in kiosk mode');
           }
         });
         
@@ -963,7 +988,7 @@ export default function PinturaEditorModal({
 
   console.log("🎨 Editor IS visible, rendering PinturaEditorModal");
 
-  const editorDefaults = createEditorDefaults(() => {}); // No longer needed
+  const editorDefaults = createEditorDefaults(() => {}, isKiosk); // Pass isKiosk flag
 
   console.log("🎯 About to render PinturaEditorModalComponent with src:", {
     src: currentImageSrc?.substring(0, 100),
@@ -981,12 +1006,14 @@ export default function PinturaEditorModal({
       onLoad={handleLoad}
       onHide={handleHide}
       onProcess={handleProcess}
-      // Pintura v8 event handlers for retouch detection
+      // Pintura v8 event handlers for retouch detection (only in non-kiosk mode)
       onSelectUtil={(utilId: string) => {
         console.log(`🔧 Pintura onSelectUtil: ${utilId}`);
-        if (utilId === 'retouch') {
+        if (utilId === 'retouch' && !isKiosk) {
           console.log('🎨 Retouch selected via onSelectUtil prop');
           handleRetouchToolActivated();
+        } else if (utilId === 'retouch' && isKiosk) {
+          console.log('🚫 Retouch not available in kiosk mode');
         }
       }}
       onReady={() => {
