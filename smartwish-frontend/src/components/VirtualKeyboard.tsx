@@ -14,6 +14,8 @@ export default function VirtualKeyboard() {
   const keyboardRef = useRef<any>(null)
   const isUpdatingFromKeyboard = useRef(false)
 
+  console.log('🎹 [VirtualKeyboard] Component rendering...', { isKeyboardVisible, isKiosk })
+
   // Sync keyboard display with input value (only when not typing)
   useEffect(() => {
     if (keyboardRef.current && isKeyboardVisible && !isUpdatingFromKeyboard.current) {
@@ -104,8 +106,17 @@ export default function VirtualKeyboard() {
   // Show keyboard if: Kiosk mode OR on login page (need keyboard to login as kiosk)
   const shouldShowKeyboard = isKiosk || isLoginPage
 
+  // Debug logging
+  console.log('[VirtualKeyboard] Debug Info:', {
+    pathname,
+    isLoginPage,
+    isKiosk,
+    shouldShowKeyboard,
+    isKeyboardVisible
+  })
+
   if (!shouldShowKeyboard) {
-    console.log('[VirtualKeyboard] Not in Kiosk mode and not on login page - keyboard disabled')
+    console.log('[VirtualKeyboard] ❌ Keyboard disabled - Not in Kiosk mode and not on login page')
     return null
   }
 
@@ -121,13 +132,6 @@ export default function VirtualKeyboard() {
 
   return (
     <>
-      {/* Semi-transparent backdrop - clicking it closes the keyboard */}
-      <div 
-        className="fixed inset-0 z-[9998] bg-black/10"
-        onClick={hideKeyboard}
-        style={{ cursor: 'default' }}
-      />
-      
       {/* Keyboard */}
       <div className="virtual-keyboard-container fixed inset-x-0 bottom-0 z-[9999] bg-gray-100 shadow-2xl border-t-2 border-gray-300">
         <div className="max-w-5xl mx-auto px-2 py-3">

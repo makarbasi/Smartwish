@@ -21,8 +21,15 @@ export function DeviceModeProvider({ children }: { children: ReactNode }) {
     // Check if user is logged in as kiosk account
     const userEmail = session?.user?.email
     
+    console.log('🔍 [DeviceMode] Session check:', {
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      userEmail: userEmail || 'not logged in',
+      isKiosk: userEmail === 'kiosk@smartwish.us'
+    })
+    
     if (userEmail === 'kiosk@smartwish.us') {
-      console.log('🖥️ [DeviceMode] Detected KIOSK mode - user:', userEmail)
+      console.log('🖥️ [DeviceMode] ✅ KIOSK MODE ACTIVATED - user:', userEmail)
       return 'kiosk'
     }
 
