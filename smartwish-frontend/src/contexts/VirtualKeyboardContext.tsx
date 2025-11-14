@@ -32,10 +32,16 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
       value: string,
       type: 'text' | 'email' | 'tel' | 'number' | 'password' = 'text'
     ) => {
+      console.log('⌨️ [VirtualKeyboardContext] showKeyboard called!', { 
+        value, 
+        type,
+        refType: ref instanceof HTMLInputElement ? 'input' : 'textarea'
+      })
       setCurrentInputRef(ref)
       setInputValue(value)
       setInputType(type)
       setIsKeyboardVisible(true)
+      console.log('✅ [VirtualKeyboardContext] Keyboard visibility set to TRUE')
     },
     []
   )

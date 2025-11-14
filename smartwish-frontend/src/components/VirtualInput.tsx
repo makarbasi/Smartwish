@@ -8,16 +8,30 @@ interface VirtualInputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
 }
 
-export function VirtualInput({ value, onChange, type = 'text', ...props }: VirtualInputProps) {
+export function VirtualInput({ value, onChange, type = 'text', onFocus, ...props }: VirtualInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const { showKeyboard, currentInputRef } = useVirtualKeyboard()
   const [lastSyncedValue, setLastSyncedValue] = useState(value)
 
-  const handleFocus = () => {
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    console.log('🎯 [VirtualInput] handleFocus called', { 
+      hasInputRef: !!inputRef.current,
+      value,
+      type 
+    })
+    
+    // Call the virtual keyboard handler
     if (inputRef.current) {
       const inputType = (type as 'text' | 'email' | 'tel' | 'number' | 'password') || 'text'
+      console.log('📞 [VirtualInput] Calling showKeyboard with type:', inputType)
       showKeyboard(inputRef.current, value, inputType)
       setLastSyncedValue(value)
+    }
+    
+    // Also call the parent's onFocus handler if provided
+    if (onFocus) {
+      console.log('📞 [VirtualInput] Also calling parent onFocus handler')
+      onFocus(e)
     }
   }
 
@@ -52,15 +66,21 @@ interface VirtualTextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
 }
 
-export function VirtualTextarea({ value, onChange, ...props }: VirtualTextareaProps) {
+export function VirtualTextarea({ value, onChange, onFocus, ...props }: VirtualTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { showKeyboard, currentInputRef } = useVirtualKeyboard()
   const [lastSyncedValue, setLastSyncedValue] = useState(value)
 
-  const handleFocus = () => {
+  const handleFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    // Call the virtual keyboard handler
     if (textareaRef.current) {
       showKeyboard(textareaRef.current, value, 'text')
       setLastSyncedValue(value)
+    }
+    
+    // Also call the parent's onFocus handler if provided
+    if (onFocus) {
+      onFocus(e)
     }
   }
 
