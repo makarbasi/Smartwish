@@ -727,8 +727,201 @@ function MyCardsContent() {
   // Handle print card - Show payment modal first
   const handlePrint = async (card: MyCard) => {
     console.log('💳 Opening payment modal for print:', card.id);
+    // TEMPORARY: Skip payment modal during development
     setPendingAction({ card, action: 'print' });
-    setPaymentModalOpen(true);
+    // setPaymentModalOpen(true); // Commented out for development
+    
+    // Call executePrint directly without payment
+    await executePrintDirect(card);
+  };
+  
+  // Direct print execution without payment (for development)
+  const executePrintDirect = async (card: MyCard) => {
+    console.log('🖨️ DEV MODE: Printing without payment');
+    
+    setIsPrinting(true);
+    try {
+      // Get the card data to extract image URLs
+      const savedDesign = savedDesignsResponse?.data?.find(d => d.id === card.id);
+      if (!savedDesign) {
+        alert('Card data not found');
+        setIsPrinting(false);
+        return;
+      }
+
+      // Extract image URLs
+      const image1 = savedDesign.image1;
+      const image2 = savedDesign.image2;
+      const image3 = savedDesign.image3;
+      const image4 = savedDesign.image4;
+
+      if (!image1 || !image2 || !image3 || !image4) {
+        alert('All four card images are required for printing');
+        setIsPrinting(false);
+        return;
+      }
+
+      console.log('Generating print JPEG files for card:', card.id);
+      console.log('🔍 Print Debug - Full saved design object:', savedDesign);
+      console.log('🔍 Print Debug - Saved design metadata:', savedDesign.metadata);
+      console.log('🔍 Print Debug - Metadata type:', typeof savedDesign.metadata);
+
+      // Extract gift card data from metadata if present
+      let giftCardData = null;
+      if (savedDesign.metadata) {
+        try {
+          const metadata = typeof savedDesign.metadata === 'string'
+            ? JSON.parse(savedDesign.metadata)
+            : savedDesign.metadata;
+          console.log('🔍 Print Debug - Parsed metadata:', metadata);
+          console.log('🔍 Print Debug - Metadata keys:', Object.keys(metadata || {}));
+          giftCardData = metadata.giftCard || metadata.giftCardData || null;
+          console.log('🔍 Print Debug - Extracted gift card data:', giftCardData);
+        } catch (error) {
+          console.warn('Failed to parse metadata for gift card data:', error);
+        }
+      } else {
+        console.log('🔍 Print Debug - No metadata found in saved design');
+      }
+
+      // Also check localStorage as fallback
+      const localGiftData = localStorage.getItem(`giftCard_${card.id}`);
+      if (localGiftData && !giftCardData) {
+        try {
+          giftCardData = JSON.parse(localGiftData);
+          console.log('🔍 Print Debug - Using gift card data from localStorage:', giftCardData);
+        } catch (error) {
+          console.warn('Failed to parse localStorage gift card data:', error);
+        }
+      }
+
+      // Prepare request payload
+      const requestPayload = {
+        cardId: card.id,
+        image1,
+        image2,
+        image3,
+        image4,
+        giftCardData,
+      };
+      console.log('🔍 Print Debug - Request payload to backend:', requestPayload);
+
+      // Call the backend API to generate JPEG files
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/generate-print-jpegs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate print files');
+      }
+
+      const result = await response.json();
+      console.log('Backend API response:', result);
+
+      if (result.success) {
+        console.log('PDF generated successfully, downloading...');
+        console.log('PDF URL:', result.pdfUrl);
+
+        // Download the PDF blob directly from the backend
+        const pdfResponse = await fetch(result.pdfUrl);
+        if (!pdfResponse.ok) {
+          throw new Error('Failed to download PDF from backend');
+        }
+
+        const pdfBlob = await pdfResponse.blob();
+        console.log('PDF blob downloaded successfully, size:', pdfBlob.size, 'bytes');
+
+        // Validate PDF blob
+        if (!pdfBlob || pdfBlob.size === 0) {
+          throw new Error('Downloaded PDF blob is empty or invalid');
+        }
+
+        // Set state and auto-print to default EPSON printer
+        setPdfBlob(pdfBlob);
+        setCardToPrint(card);
+        // Skip printer modal - auto-print to EPSON
+        console.log('Auto-printing to default EPSON printer');
+        await autoPrintToEpson(pdfBlob, card.name);
+        setIsPrinting(false);
+
+      } else {
+        throw new Error(result.message || 'Failed to generate print files');
+      }
+    } catch (error) {
+      console.error('Print error:', error);
+      alert('Failed to generate print files. Please try again.');
+      setIsPrinting(false);
+    }
+  };
+  
+  // Auto-print to default EPSON printer (for development)
+  const autoPrintToEpson = async (pdfBlob: Blob, cardName: string) => {
+    const defaultPrinter = 'EPSONC5F6AA (ET-15000 Series)';
+    console.log(`🖨️ Auto-printing to: ${defaultPrinter}`);
+    
+    try {
+      // Create a URL for the PDF blob
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      
+      // Create a hidden iframe for printing
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = pdfUrl;
+      document.body.appendChild(iframe);
+      
+      iframe.onload = () => {
+        try {
+          // Trigger print dialog from the iframe
+          iframe.contentWindow?.print();
+          
+          console.log(`✅ Print dialog opened for ${defaultPrinter}`);
+          
+          // Clean up resources after a delay
+          setTimeout(() => {
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
+            URL.revokeObjectURL(pdfUrl);
+          }, 30000); // 30 seconds delay to allow printing
+        } catch (printErr) {
+          console.warn('Iframe print failed, falling back to download:', printErr);
+          // Fallback: create download link
+          const downloadLink = document.createElement('a');
+          downloadLink.href = pdfUrl;
+          downloadLink.download = `${cardName}_print.pdf`;
+          downloadLink.click();
+          
+          // Clean up
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(pdfUrl);
+          
+          alert('Print dialog was not available. PDF has been downloaded instead.');
+        }
+      };
+      
+      iframe.onerror = () => {
+        console.error('Failed to load PDF in iframe');
+        // Fallback: create download link
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pdfUrl;
+        downloadLink.download = `${cardName}_print.pdf`;
+        downloadLink.click();
+        
+        // Clean up
+        document.body.removeChild(iframe);
+        URL.revokeObjectURL(pdfUrl);
+        
+        alert('Failed to load PDF for printing. PDF has been downloaded instead.');
+      };
+      
+    } catch (err) {
+      console.error('Auto-print error:', err);
+      alert('Failed to print. Please try again.');
+    }
   };
   
   // Execute print after payment
@@ -841,11 +1034,12 @@ function MyCardsContent() {
           throw new Error('Downloaded PDF blob is empty or invalid');
         }
 
-        // Set state and open printer selection modal
+        // Set state and auto-print to default EPSON printer
         setPdfBlob(pdfBlob);
         setCardToPrint(card);
-        setPrinterModalOpen(true);
-        console.log('Printer modal opened successfully');
+        // Skip printer modal - auto-print to EPSON
+        console.log('Auto-printing to default EPSON printer');
+        await autoPrintToEpson(pdfBlob, card.name);
         setIsPrinting(false);
         setPaymentModalOpen(false);
         setPendingAction(null);
