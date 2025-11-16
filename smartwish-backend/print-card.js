@@ -13,7 +13,8 @@ export function getPrintJobStatus() {
   return printJobStatus;
 }
 
-const imageFiles = {
+// Image files - will be set dynamically based on job directory
+let imageFiles = {
   front: 'downloads/flipbook/page_1.png', // Front cover
   back: 'downloads/flipbook/page_4.png', // Back cover
   insideLeft: 'downloads/flipbook/page_3.png', // Inside Left page
@@ -27,21 +28,93 @@ const imageFiles = {
 //   insideRight: 'image4.png', // Inside Right page
 // };
 const outputPdf = 'greeting_card.pdf';
-// const PRINTER_NAME = 'HP Envy 6100e series [HPIECD37C]'; // <<< --- Your working printer name
-// const PRINTER_NAME = 'Microsoft Print to PDF';
-// Target dimensions (based on 8.5x11 paper, folded to 5.5x8.5 panels)
-const panelWidthPx = 1650; // 5.5 inches * 300 DPI
-const panelHeightPx = 2550; // 8.5 inches * 300 DPI
-const paperWidthPx = panelWidthPx * 2; // 3300px (11 inches)
-const paperHeightPx = panelHeightPx; // 2550px (8.5 inches)
+const DPI = 300; // High quality printing at 300 DPI
 
-// PDF page size in points (1 inch = 72 points)
-const paperWidthPoints = 11 * 72; // 792
-const paperHeightPoints = 8.5 * 72; // 612
+// === PAPER SIZE CONFIGURATIONS ===
+// Function to get paper configuration based on selected size
+function getPaperConfig(paperSize = 'custom') {
+  // Card content is always 8" × 6" (two 4×6 panels side by side)
+  const CARD_WIDTH_INCHES = 8;
+  const CARD_HEIGHT_INCHES = 6;
+  
+  const panelWidthPx = 4 * DPI; // 4 inches * 300 DPI = 1200px
+  const panelHeightPx = 6 * DPI; // 6 inches * 300 DPI = 1800px
+  const cardContentWidthPx = CARD_WIDTH_INCHES * DPI; // 2400px
+  const cardContentHeightPx = CARD_HEIGHT_INCHES * DPI; // 1800px
+  
+  if (paperSize === 'letter') {
+    // LETTER SIZE: 8.5" × 11" (landscape: 11" × 8.5")
+    // Standard size with FULL auto-duplex support!
+    const LETTER_WIDTH = 11;    // inches (landscape)
+    const LETTER_HEIGHT = 8.5;  // inches (landscape)
+    
+    return {
+      name: 'Letter',
+      paperWidthPx: Math.round(LETTER_WIDTH * DPI),      // 3300px
+      paperHeightPx: Math.round(LETTER_HEIGHT * DPI),    // 2550px
+      paperWidthPoints: LETTER_WIDTH * 72,               // 792 points
+      paperHeightPoints: LETTER_HEIGHT * 72,             // 612 points
+      panelWidthPx,
+      panelHeightPx,
+      cardContentWidthPx,
+      cardContentHeightPx,
+      // Center the 8×6 card on Letter paper
+      horizontalOffsetPx: Math.round((LETTER_WIDTH - CARD_WIDTH_INCHES) / 2 * DPI), // 1.5" margins = 450px
+      verticalOffsetPx: Math.round((LETTER_HEIGHT - CARD_HEIGHT_INCHES) / 2 * DPI), // 1.25" margins = 375px
+      supportsDuplex: true,
+      description: '11" × 8.5" landscape (standard US Letter size)',
+      trimRequired: false,
+    };
+  } else if (paperSize === 'half-letter') {
+    // HALF LETTER (STATEMENT): 5.5" × 8.5" (landscape: 8.5" × 5.5")
+    // Standard size with auto-duplex support!
+    // Card content is 8" × 6" - slightly larger than paper height (6" > 5.5")
+    // Will need slight trimming or content will be cut off at top/bottom
+    const HALF_LETTER_WIDTH = 8.5;  // inches (landscape)
+    const HALF_LETTER_HEIGHT = 5.5; // inches (landscape)
+    
+    return {
+      name: 'Half Letter',
+      paperWidthPx: Math.round(HALF_LETTER_WIDTH * DPI),   // 2550px
+      paperHeightPx: Math.round(HALF_LETTER_HEIGHT * DPI), // 1650px
+      paperWidthPoints: HALF_LETTER_WIDTH * 72,            // 612 points
+      paperHeightPoints: HALF_LETTER_HEIGHT * 72,          // 396 points
+      panelWidthPx,
+      panelHeightPx,
+      cardContentWidthPx,
+      cardContentHeightPx,
+      // Center the 8×6 card on Half Letter paper (will overflow height by 0.5")
+      horizontalOffsetPx: Math.round((HALF_LETTER_WIDTH - CARD_WIDTH_INCHES) / 2 * DPI), // 0.25" margins = 75px
+      verticalOffsetPx: Math.round((HALF_LETTER_HEIGHT - CARD_HEIGHT_INCHES) / 2 * DPI), // -0.25" (will be negative/cut off)
+      supportsDuplex: true,
+      description: '8.5" × 5.5" landscape (Half Letter/Statement)',
+      trimRequired: true,
+      trimNote: 'Card is 6" tall but paper is 5.5" - top/bottom will be trimmed 0.25" each',
+    };
+  } else {
+    // CUSTOM 8×6: Exact card size, NO auto-duplex
+    return {
+      name: 'Custom 8×6',
+      paperWidthPx: cardContentWidthPx,  // 2400px
+      paperHeightPx: cardContentHeightPx, // 1800px
+      paperWidthPoints: CARD_WIDTH_INCHES * 72,  // 576 points
+      paperHeightPoints: CARD_HEIGHT_INCHES * 72, // 432 points
+      panelWidthPx,
+      panelHeightPx,
+      cardContentWidthPx,
+      cardContentHeightPx,
+      horizontalOffsetPx: 0,
+      verticalOffsetPx: 0,
+      supportsDuplex: false,
+      description: '8" × 6" landscape (custom size)',
+      trimRequired: false,
+    };
+  }
+}
 // --- End Configuration ---
 
-// --- Image Compositing Function (Keep as before) ---
-async function createCompositeImage(outputFilename, leftImgPath, rightImgPath, rotateLeft = false, rotateRight = false) {
+// --- Image Compositing Function ---
+async function createCompositeImage(outputFilename, leftImgPath, rightImgPath, config, rotateLeft = false, rotateRight = false) {
   try {
     console.log(`Creating composite image: ${outputFilename}`);
 
@@ -51,27 +124,31 @@ async function createCompositeImage(outputFilename, leftImgPath, rightImgPath, r
 
     console.log(` -> Left Image (${path.basename(leftImgPath)}): ${leftMeta.width}x${leftMeta.height}`);
     console.log(` -> Right Image (${path.basename(rightImgPath)}): ${rightMeta.width}x${rightMeta.height}`);
-    console.log(` -> Resizing to Panel Size: ${panelWidthPx}x${panelHeightPx}`);
+    console.log(` -> Resizing to Panel Size: ${config.panelWidthPx}x${config.panelHeightPx}`);
 
     // Prepare and transform images
-    let leftImageSharp = sharp(leftImgPath).resize(panelWidthPx, panelHeightPx, { fit: 'fill' });
+    let leftImageSharp = sharp(leftImgPath).resize(config.panelWidthPx, config.panelHeightPx, { fit: 'fill' });
     if (rotateLeft) leftImageSharp = leftImageSharp.rotate(180);
 
-    let rightImageSharp = sharp(rightImgPath).resize(panelWidthPx, panelHeightPx, { fit: 'fill' });
+    let rightImageSharp = sharp(rightImgPath).resize(config.panelWidthPx, config.panelHeightPx, { fit: 'fill' });
     if (rotateRight) rightImageSharp = rightImageSharp.rotate(180);
 
-    // Composite images side by side
+    // Composite images side by side, with offsets for centering on larger paper
+    const leftX = config.horizontalOffsetPx;
+    const rightX = config.horizontalOffsetPx + config.panelWidthPx;
+    const topY = config.verticalOffsetPx;
+
     await sharp({
       create: {
-        width: paperWidthPx,
-        height: paperHeightPx,
+        width: config.paperWidthPx,
+        height: config.paperHeightPx,
         channels: 4,
         background: { r: 255, g: 255, b: 255, alpha: 1 },
       },
     })
       .composite([
-        { input: await leftImageSharp.toBuffer(), top: 0, left: 0 },
-        { input: await rightImageSharp.toBuffer(), top: 0, left: panelWidthPx },
+        { input: await leftImageSharp.toBuffer(), top: topY, left: leftX },
+        { input: await rightImageSharp.toBuffer(), top: topY, left: rightX },
       ])
       .png()
       .toFile(outputFilename);
@@ -84,8 +161,8 @@ async function createCompositeImage(outputFilename, leftImgPath, rightImgPath, r
   }
 }
 
-// --- PDF Creation Function (Keep as before) ---
-async function createPdf(pdfPath, side1ImagePath, side2ImagePath) {
+// --- PDF Creation Function ---
+async function createPdf(pdfPath, side1ImagePath, side2ImagePath, config) {
   try {
     console.log(`Creating PDF: ${pdfPath}`);
     const pdfDoc = await PDFDocument.create();
@@ -110,11 +187,11 @@ async function createPdf(pdfPath, side1ImagePath, side2ImagePath) {
         throw new Error(`Unsupported image type for ${side2ImagePath}`);
     }
 
-    const page1 = pdfDoc.addPage([paperWidthPoints, paperHeightPoints]);
-    page1.drawImage(side1Image, { x: 0, y: 0, width: paperWidthPoints, height: paperHeightPoints });
+    const page1 = pdfDoc.addPage([config.paperWidthPoints, config.paperHeightPoints]);
+    page1.drawImage(side1Image, { x: 0, y: 0, width: config.paperWidthPoints, height: config.paperHeightPoints });
 
-    const page2 = pdfDoc.addPage([paperWidthPoints, paperHeightPoints]);
-    page2.drawImage(side2Image, { x: 0, y: 0, width: paperWidthPoints, height: paperHeightPoints });
+    const page2 = pdfDoc.addPage([config.paperWidthPoints, config.paperHeightPoints]);
+    page2.drawImage(side2Image, { x: 0, y: 0, width: config.paperWidthPoints, height: config.paperHeightPoints });
 
     const pdfBytes = await pdfDoc.save();
     await fs.writeFile(pdfPath, pdfBytes);
@@ -126,7 +203,7 @@ async function createPdf(pdfPath, side1ImagePath, side2ImagePath) {
 }
 
 // --- Printing Function (Using pdf-to-printer) ---
-async function printPdfWithPdfToPrinter(pdfFilePath, printerName) {
+async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
     const absolutePdfPath = path.resolve(pdfFilePath); // Good practice to use absolute path
 
     if (!printerName || printerName.trim() === '') {
@@ -148,59 +225,150 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName) {
         console.log(`Verified PDF exists: ${absolutePdfPath}`);
 
         // Optional: List printers for confirmation/debugging
-        console.log("\n--- Checking Printers with pdf-to-printer ---");
-        const printers = await getPrinters();
-        console.log(printers)
-        console.log("Available Printers Found:");
+        // Note: getPrinters() can be unreliable on some Windows systems, so we skip it
+        console.log("\n--- Skipping printer verification (known to cause issues) ---");
+        console.log(`Will attempt to print to: "${printerName}"`);
+        console.log("If printer name is incorrect, the print will fail or go to default printer.");
         
-        let foundPrinter = false;
-        printers.forEach(p => {
-            console.log(` - "${p.name}"`);
-            if (p.name === printerName) {
-                foundPrinter = true;
+        // Uncomment below if you want to try printer verification (may cause errors):
+        /*
+        try {
+            console.log("\n--- Checking Printers with pdf-to-printer ---");
+            const printers = await getPrinters();
+            console.log("Available Printers Found:");
+            
+            let foundPrinter = false;
+            if (printers && Array.isArray(printers)) {
+                printers.forEach(p => {
+                    console.log(` - "${p.name}"`);
+                    if (p.name === printerName) {
+                        foundPrinter = true;
+                    }
+                });
             }
-        });
-        if (!foundPrinter) {
-             console.warn(`⚠️ Warning: Specified printer "${printerName}" not found in the list above. Printing might fail or go to default.`);
-             console.warn(`   Ensure the PRINTER_NAME constant matches one of the listed printers exactly.`);
-        } else {
-             console.log(`Printer "${printerName}" confirmed in list.`);
+            if (!foundPrinter) {
+                 console.warn(`⚠️ Warning: Specified printer "${printerName}" not found in the list above.`);
+            } else {
+                 console.log(`Printer "${printerName}" confirmed in list.`);
+            }
+        } catch (printerCheckError) {
+            console.warn("⚠️ Could not verify printers (this is OK, will try to print anyway):", printerCheckError.message);
         }
+        */
         console.log("--- End Printer Check ---");
 
 
         // --- Prepare options for pdf-to-printer ---
-        // It's crucial that OS defaults are set correctly for duplex/borderless
         const printOptions = {
             printer: printerName,
-            // Add pdf-to-printer specific options here if needed (check its docs)
-            // Common ones might relate to scaling, copies, orientation, but often
-            // relying on OS defaults for duplex/borderless is necessary.
-            // Example (check pdf-to-printer docs if these are valid):
-            // scale: "noscale",
-            // orientation: "landscape",
-            // duplex: "DuplexTumble" // Or "DuplexNoTumble" - depends on printer & lib
+            // Note: pdf-to-printer has limited options support
+            // Most settings must be configured in Windows printer preferences
         };
-
-        console.warn("\n M A N D A T O R Y : ");
-        console.warn("=======================================================================================");
-        console.warn(" Ensure printer defaults are set correctly in Windows 'Printing Preferences':");
-        console.warn("   1. Paper Size: Letter (8.5 x 11 in)");
-        console.warn("   2. Orientation: Landscape");
-        console.warn("   3. Two-Sided Printing: ON / Duplex");
-        console.warn("   4. Duplex Type: Flip on Short Edge (or 'Tablet', 'Top Binding')");
-        console.warn("   5. Borderless Printing: ON (Select the 8.5x11 Borderless option if available)");
-        console.warn("   6. Scaling: None / Actual Size / 100%");
-        console.warn("=======================================================================================");
-        console.log(`\nAttempting to print ${absolutePdfPath} to "${printerName}" using pdf-to-printer...`);
-        console.log("Using options:", printOptions);
+        
+        console.warn("\n═══════════════════════════════════════════════════════════════════════════════════");
+        console.warn(`  🖨️  EPSON ET-15000 PRINT SETTINGS - ${config.name.toUpperCase()}`);
+        console.warn("═══════════════════════════════════════════════════════════════════════════════════");
+        console.warn("  PDF SETTINGS:");
+        console.warn(`    ✓ Paper Size: ${config.description}`);
+        console.warn("    ✓ Resolution: 300 DPI (High Quality)");
+        console.warn("    ✓ Layout: Two 4x6 panels side-by-side (8\" × 6\" card content)");
+        console.warn("    ✓ Folded card: 4 × 6 inches");
+        console.warn("    ✓ Printer: " + printerName);
+        console.warn("");
+        
+        if (config.supportsDuplex) {
+          console.warn("  ✅ DUPLEX SUPPORT:");
+          console.warn(`    • ${config.name} is a STANDARD size - supports AUTO-DUPLEX!`);
+          console.warn("    • Printer will automatically flip and print both sides");
+          console.warn("    • One card per print job (front + back automatically)");
+          console.warn("");
+        } else {
+          console.warn("  ⚠️  DUPLEX LIMITATION:");
+          console.warn(`    • ${config.name} is a CUSTOM size - does NOT support auto-duplex`);
+          console.warn("    • You will get 2 SEPARATE pages printed");
+          console.warn("    • Page 1: Back + Front");
+          console.warn("    • Page 2: Inside Right + Inside Left");
+          console.warn("    • Manually glue/tape them back-to-back if needed");
+          console.warn("");
+        }
+        
+        console.warn("  📋 WINDOWS PRINTER PREFERENCES:");
+        if (config.name === 'Letter') {
+          console.warn("    1. Paper Size: Letter (8.5 × 11 inches) - SELECT FROM DROPDOWN");
+          console.warn("    2. Orientation: LANDSCAPE (11\" wide × 8.5\" tall)");
+          console.warn("    3. Duplex: ON / Two-Sided Printing (flip on SHORT edge)");
+        } else if (config.name === 'Half Letter') {
+          console.warn("    1. Paper Size: Statement or Half Letter (5.5 × 8.5 inches) - SELECT FROM DROPDOWN");
+          console.warn("    2. Orientation: LANDSCAPE (8.5\" wide × 5.5\" tall)");
+          console.warn("    3. Duplex: ON / Two-Sided Printing (flip on SHORT edge)");
+        } else {
+          console.warn("    1. Paper Size: Create custom 8 × 6 inches (User Defined)");
+          console.warn("    2. Orientation: LANDSCAPE (8\" wide × 6\" tall)");
+          console.warn("    3. Duplex: OFF (not supported for custom 8×6 size)");
+        }
+        console.warn("    4. Paper Type: Heavyweight/Premium Matte");
+        console.warn("    5. Print Quality: BEST / HIGHEST / Maximum");
+        console.warn("    6. Borderless: ON (recommended for cards)");
+        console.warn("");
+        console.warn("  📐 HOW TO LOAD PAPER:");
+        if (config.name === 'Letter') {
+          console.warn("    • Use standard US Letter paper (8.5 × 11 inches) or heavyweight cardstock");
+          console.warn("    • Place in LANDSCAPE orientation (11\" wide at top)");
+          console.warn("    • Printer will auto-duplex - just load and go!");
+          console.warn("    • Card will be centered with 1.5\" margins on sides");
+        } else if (config.name === 'Half Letter') {
+          console.warn("    • Use Half Letter/Statement paper (5.5 × 8.5 inches) or heavyweight cardstock");
+          console.warn("    • Place in LANDSCAPE orientation (8.5\" wide at top)");
+          console.warn("    • Printer will auto-duplex - just load and go!");
+          console.warn("    • Card will be centered with 0.25\" side margins");
+          console.warn("    • ⚠️  Note: Card (6\" tall) is slightly taller than paper (5.5\")");
+          console.warn("    • Top/bottom will be trimmed by 0.25\" each automatically");
+        } else {
+          console.warn("    • Use 8 × 6 inch heavyweight cardstock");
+          console.warn("    • Place in LANDSCAPE orientation (8\" wide at top)");
+          console.warn("    • No centering needed - exact size");
+        }
+        console.warn("");
+        if (config.name === 'Custom 8×6') {
+          console.warn("  🔧 TO CREATE CUSTOM 8×6 SIZE IN WINDOWS:");
+          console.warn("    • Control Panel → Devices and Printers");
+          console.warn("    • Right-click 'EPSONC5F6AA (ET-15000 Series)'");
+          console.warn("    • 'Printing Preferences' → Main/Paper tab");
+          console.warn("    • Paper Size → 'User Defined' at bottom of list");
+          console.warn("    • Set Width: 8.00 inches, Height: 6.00 inches");
+          console.warn("");
+        }
+        console.warn("═══════════════════════════════════════════════════════════════════════════════════");
+        console.log(`\n🚀 Attempting to print ${absolutePdfPath} to "${printerName}" using pdf-to-printer...`);
+        console.log("Using options:", JSON.stringify(printOptions, null, 2));
 
 
         // --- Print the file ---
-        //await print(absolutePdfPath, printOptions);
-        await print(absolutePdfPath, { printer: printerName });
-        console.log("✅ Print job successfully sent via pdf-to-printer!");
-        console.log("   Check the printer physically or the Windows Print Queue for job status.");
+        try {
+            await print(absolutePdfPath, printOptions);
+            console.log("✅ Print job successfully sent via pdf-to-printer!");
+            console.log(`   📄 Paper: ${config.name} (${config.description})`);
+            console.log("   🎴 Card: 4 × 6 inches when folded");
+            console.log("   🎨 Quality: 300 DPI High Resolution");
+            if (config.supportsDuplex) {
+              console.log("   ✅ Result: ONE double-sided card (auto-duplex)");
+            } else {
+              console.log("   ⚠️  Result: 2 SEPARATE pages (no duplex on custom size)");
+            }
+            console.log("   📊 Check the printer physically or Windows Print Queue for job status.");
+            console.log("");
+            if (!config.supportsDuplex) {
+              console.log("   💡 TIP: For one double-sided card:");
+              console.log("      • You'll get 2 sheets printed separately");
+              console.log("      • Manually align and glue/tape them back-to-back");
+            }
+        } catch (printError) {
+            console.error("❌ Print with options failed, trying with basic options...");
+            console.error("Error details:", printError.message);
+            // Fallback: Try without advanced options if printer doesn't support them
+            await print(absolutePdfPath, { printer: printerName });
+            console.log("⚠️  Printed with basic options. Please verify print settings manually.");
+        }
 
     } catch (err) {
         console.error(`❌ Printing failed using pdf-to-printer for "${printerName}":`, err);
@@ -217,9 +385,28 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName) {
 }
 
 // --- Main Application Logic ---
-export async function main(printerName) {
+export async function main(printerName, paperSize = 'custom', timestamp = null) {
   const compositeSide1 = 'temp_side1.png';
   const compositeSide2 = 'temp_side2.png';
+
+  // If timestamp is provided, use timestamped filenames to avoid file locking
+  if (timestamp) {
+    console.log(`Using timestamped files: ${timestamp}`);
+    imageFiles = {
+      front: `downloads/flipbook/page_1_${timestamp}.png`,
+      back: `downloads/flipbook/page_4_${timestamp}.png`,
+      insideLeft: `downloads/flipbook/page_3_${timestamp}.png`,
+      insideRight: `downloads/flipbook/page_2_${timestamp}.png`,
+    };
+    console.log('Updated image file paths:', imageFiles);
+  }
+
+  // Get paper configuration
+  const config = getPaperConfig(paperSize);
+  console.log(`\n📐 Paper Configuration: ${config.name}`);
+  console.log(`   Size: ${config.description}`);
+  console.log(`   Auto-Duplex: ${config.supportsDuplex ? '✅ Supported' : '❌ Not Supported'}`);
+  console.log(`   Trim Required: ${config.trimRequired ? '✂️ Yes' : '✅ No'}\n`);
 
   try {
     // Validate inputs
@@ -234,14 +421,14 @@ export async function main(printerName) {
     }
 
     // Create composite images
-    await createCompositeImage(compositeSide1, imageFiles.back, imageFiles.front);
-    await createCompositeImage(compositeSide2, imageFiles.insideRight, imageFiles.insideLeft, false, false);
+    await createCompositeImage(compositeSide1, imageFiles.back, imageFiles.front, config);
+    await createCompositeImage(compositeSide2, imageFiles.insideRight, imageFiles.insideLeft, config, false, false);
 
     // Create PDF
-    await createPdf(outputPdf, compositeSide1, compositeSide2);
+    await createPdf(outputPdf, compositeSide1, compositeSide2, config);
 
     // Print PDF using pdf-to-printer with the specified printer
-    await printPdfWithPdfToPrinter('greeting_card.pdf', printerName);
+    await printPdfWithPdfToPrinter('greeting_card.pdf', printerName, config);
    printJobStatus = 'done';
   } catch (error) {
     printJobStatus = 'error';

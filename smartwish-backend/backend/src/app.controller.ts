@@ -27,7 +27,10 @@ import { SupabaseStorageService } from './saved-designs/supabase-storage.service
 import { SavedDesignsService } from './saved-designs/saved-designs.service';
 import { SupabaseTemplatesEnhancedService } from './templates/supabase-templates-enhanced.service';
 
-const downloadsDir = path.join(__dirname, '../../downloads');
+// After TypeScript compilation, __dirname will be in dist/backend/src/
+// So we need to go up 4 levels to reach smartwish-backend root
+const downloadsDir = path.join(__dirname, '../../../../downloads');
+console.log('Downloads directory:', downloadsDir);
 if (!fs.existsSync(downloadsDir)) {
   fs.mkdirSync(downloadsDir, { recursive: true });
 }
@@ -412,7 +415,7 @@ export class AppController {
   @Post('print-pc')
   async printPC(@Req() req: Request, @Res() res: Response) {
     try {
-      const { images, printerName } = req.body;
+      const { images, printerName, paperSize } = req.body;
       const flipbookDir = path.join(downloadsDir, 'flipbook');
       if (!fs.existsSync(flipbookDir)) {
         fs.mkdirSync(flipbookDir, { recursive: true });
@@ -423,14 +426,20 @@ export class AppController {
       if (!printerName) {
         return res.status(400).json({ message: 'Printer name is required' });
       }
+      const selectedPaperSize = paperSize || 'custom'; // Default to 'custom' if not specified
+      
+      // Use timestamp in filenames to avoid file locking conflicts
+      const timestamp = Date.now();
+      
       console.log(
-        `PC Print request received for ${images.length} images to printer: ${printerName}`,
+        `PC Print request received for ${images.length} images to printer: ${printerName}, paper size: ${selectedPaperSize}`,
       );
-      // Save images to flipbook directory
-      const savedPaths = [];
+      
+      // Save images with unique timestamped names
+      const savedPaths: string[] = [];
       for (let i = 0; i < images.length; i++) {
         const imageData = images[i];
-        const fileName = `page_${i + 1}.png`;
+        const fileName = `page_${i + 1}_${timestamp}.png`;
         const filePath = path.join(flipbookDir, fileName);
         // Convert base64 to buffer and save
         const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
@@ -441,11 +450,46 @@ export class AppController {
       }
       // Call the print function with the specified printer
       try {
-        // Use require instead of import to avoid TypeScript issues
-        const printCardModule = require('../../print-card.js');
-        await printCardModule.main(printerName);
+        // Use absolute path to print-card.js to avoid issues after TypeScript compilation
+        // From dist/backend/src, we need to go up to smartwish-backend root
+        const printCardPath = path.join(__dirname, '../../../../print-card.js');
+        const smartwishBackendRoot = path.join(__dirname, '../../../..');
+        
+        console.log('Loading print-card module from:', printCardPath);
+        console.log('Current working directory:', process.cwd());
+        console.log('Changing to smartwish-backend root:', smartwishBackendRoot);
+        
+        // Save current working directory
+        const originalCwd = process.cwd();
+        
+        // Change to smartwish-backend root so relative paths in print-card.js work
+        process.chdir(smartwishBackendRoot);
+        console.log('Working directory changed to:', process.cwd());
+        
+        const printCardModule = require(printCardPath);
+        // Pass timestamp so print-card.js knows which files to use
+        await printCardModule.main(printerName, selectedPaperSize, timestamp);
+        
+        // Restore original working directory
+        process.chdir(originalCwd);
+        console.log('Working directory restored to:', process.cwd());
+        
+        // Clean up timestamped files after successful print (async, don't wait)
+        setTimeout(() => {
+          try {
+            for (const filePath of savedPaths) {
+              if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                console.log(`Cleaned up: ${filePath}`);
+              }
+            }
+          } catch (cleanupError) {
+            console.warn(`Could not clean up files:`, cleanupError.message);
+          }
+        }, 5000); // Wait 5 seconds before cleanup to ensure files are released
       } catch (importError) {
         console.error('Error importing print-card module:', importError);
+        console.error('Attempted path:', path.join(__dirname, '../../../../print-card.js'));
         throw new Error('Failed to load printing module');
       }
       res.json({
