@@ -257,6 +257,7 @@ export default function CustomizeCardPage() {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [paperSize, setPaperSize] = useState<'custom' | 'letter' | 'half-letter'>('custom'); // Default to custom 8x6
 
   // Swipe functionality state
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -919,75 +920,12 @@ export default function CustomizeCardPage() {
         return;
       }
 
-      console.log('Generating print JPEG files for card:', cardData.id);
-
-      // Check localStorage for gift card data
-      let giftCardData = null;
-      const localGiftData = localStorage.getItem(`giftCard_${cardData.id}`);
-      if (localGiftData) {
-        try {
-          giftCardData = JSON.parse(localGiftData);
-          console.log('🔍 Print Debug - Using gift card data from localStorage:', giftCardData);
-        } catch (error) {
-          console.warn('Failed to parse localStorage gift card data:', error);
-        }
-      }
-
-      // Prepare request payload
-      const requestPayload = {
-        cardId: cardData.id,
-        image1,
-        image2,
-        image3,
-        image4,
-        giftCardData,
-      };
-      console.log('🔍 Print Debug - Request payload to backend:', requestPayload);
-
-      // Call the backend API to generate JPEG files
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/generate-print-jpegs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate print files');
-      }
-
-      const result = await response.json();
-      console.log('Backend API response:', result);
-
-      if (result.success) {
-        console.log('PDF generated successfully, downloading...');
-        console.log('PDF URL:', result.pdfUrl);
-
-        // Download the PDF blob directly from the backend
-        const pdfResponse = await fetch(result.pdfUrl);
-        if (!pdfResponse.ok) {
-          throw new Error('Failed to download PDF from backend');
-        }
-
-        const pdfBlob = await pdfResponse.blob();
-        console.log('PDF blob downloaded successfully, size:', pdfBlob.size, 'bytes');
-
-        // Validate PDF blob
-        if (!pdfBlob || pdfBlob.size === 0) {
-          throw new Error('Downloaded PDF blob is empty or invalid');
-        }
-
-        // Set state and auto-print to default EPSON printer
-        setPdfBlob(pdfBlob);
-        // Skip printer modal - auto-print to EPSON
-        console.log('Auto-printing to default EPSON printer');
-        await autoPrintToEpson(pdfBlob, cardData.name);
-        setIsPrinting(false);
-
-      } else {
-        throw new Error(result.message || 'Failed to generate print files');
-      }
+      console.log('Printing directly to EPSON printer via backend...');
+      
+      // Send images directly to backend printer - no PDF generation needed
+      // The backend will handle compositing and printing automatically
+      await autoPrintToEpson(image1, image2, image3, image4);
+      setIsPrinting(false);
     } catch (error) {
       console.error('Print error:', error);
       alert('Failed to generate print files. Please try again.');
@@ -995,70 +933,61 @@ export default function CustomizeCardPage() {
     }
   };
   
-  // Auto-print to default EPSON printer (for development)
-  const autoPrintToEpson = async (pdfBlob: Blob, cardName: string) => {
+  // Auto-print to default EPSON printer (for development) - Direct backend printing
+  const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string) => {
     const defaultPrinter = 'EPSONC5F6AA (ET-15000 Series)';
-    console.log(`🖨️ Auto-printing to: ${defaultPrinter}`);
+    console.log(`🖨️ Auto-printing to: ${defaultPrinter} (Direct backend print - NO popup)`);
     
     try {
-      // Create a URL for the PDF blob
-      const pdfUrl = URL.createObjectURL(pdfBlob);
+      // Convert image URLs to base64
+      console.log('Converting images to base64 for backend printing...');
+      const imageBase64Array = await Promise.all([
+        fetchImageAsBase64(image1),
+        fetchImageAsBase64(image2),
+        fetchImageAsBase64(image3),
+        fetchImageAsBase64(image4)
+      ]);
       
-      // Create a hidden iframe for printing
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = pdfUrl;
-      document.body.appendChild(iframe);
+      console.log('Images converted, sending to backend printer...');
       
-      iframe.onload = () => {
-        try {
-          // Trigger print dialog from the iframe
-          iframe.contentWindow?.print();
-          
-          console.log(`✅ Print dialog opened for ${defaultPrinter}`);
-          
-          // Clean up resources after a delay
-          setTimeout(() => {
-            if (document.body.contains(iframe)) {
-              document.body.removeChild(iframe);
-            }
-            URL.revokeObjectURL(pdfUrl);
-          }, 30000); // 30 seconds delay to allow printing
-        } catch (printErr) {
-          console.warn('Iframe print failed, falling back to download:', printErr);
-          // Fallback: create download link
-          const downloadLink = document.createElement('a');
-          downloadLink.href = pdfUrl;
-          downloadLink.download = `${cardName}_print.pdf`;
-          downloadLink.click();
-          
-          // Clean up
-          document.body.removeChild(iframe);
-          URL.revokeObjectURL(pdfUrl);
-          
-          alert('Print dialog was not available. PDF has been downloaded instead.');
-        }
-      };
+      // Send to backend /print-pc endpoint
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          images: imageBase64Array,
+          printerName: defaultPrinter,
+          paperSize: paperSize // Include paper size selection
+        }),
+      });
       
-      iframe.onerror = () => {
-        console.error('Failed to load PDF in iframe');
-        // Fallback: create download link
-        const downloadLink = document.createElement('a');
-        downloadLink.href = pdfUrl;
-        downloadLink.download = `${cardName}_print.pdf`;
-        downloadLink.click();
-        
-        // Clean up
-        document.body.removeChild(iframe);
-        URL.revokeObjectURL(pdfUrl);
-        
-        alert('Failed to load PDF for printing. PDF has been downloaded instead.');
-      };
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to send print job');
+      }
+      
+      const result = await response.json();
+      console.log('✅ Print job sent successfully!', result);
+      alert(`Print job sent to ${defaultPrinter}!\nCheck your printer for output.`);
       
     } catch (err) {
       console.error('Auto-print error:', err);
-      alert('Failed to print. Please try again.');
+      alert(`Failed to print: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
+  };
+  
+  // Helper function to fetch image and convert to base64
+  const fetchImageAsBase64 = async (imageUrl: string): Promise<string> => {
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   };
 
   // Execute print after payment
@@ -1083,77 +1012,14 @@ export default function CustomizeCardPage() {
         return;
       }
 
-      console.log('Generating print JPEG files for card:', cardData.id);
-
-      // Check localStorage for gift card data
-      let giftCardData = null;
-      const localGiftData = localStorage.getItem(`giftCard_${cardData.id}`);
-      if (localGiftData) {
-        try {
-          giftCardData = JSON.parse(localGiftData);
-          console.log('🔍 Print Debug - Using gift card data from localStorage:', giftCardData);
-        } catch (error) {
-          console.warn('Failed to parse localStorage gift card data:', error);
-        }
-      }
-
-      // Prepare request payload
-      const requestPayload = {
-        cardId: cardData.id,
-        image1,
-        image2,
-        image3,
-        image4,
-        giftCardData,
-      };
-      console.log('🔍 Print Debug - Request payload to backend:', requestPayload);
-
-      // Call the backend API to generate JPEG files
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/generate-print-jpegs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate print files');
-      }
-
-      const result = await response.json();
-      console.log('Backend API response:', result);
-
-      if (result.success) {
-        console.log('PDF generated successfully, downloading...');
-        console.log('PDF URL:', result.pdfUrl);
-
-        // Download the PDF blob directly from the backend
-        const pdfResponse = await fetch(result.pdfUrl);
-        if (!pdfResponse.ok) {
-          throw new Error('Failed to download PDF from backend');
-        }
-
-        const pdfBlob = await pdfResponse.blob();
-        console.log('PDF blob downloaded successfully, size:', pdfBlob.size, 'bytes');
-
-        // Validate PDF blob
-        if (!pdfBlob || pdfBlob.size === 0) {
-          throw new Error('Downloaded PDF blob is empty or invalid');
-        }
-
-        // Set state and auto-print to default EPSON printer
-        setPdfBlob(pdfBlob);
-        // Skip printer modal - auto-print to EPSON
-        console.log('Auto-printing to default EPSON printer');
-        await autoPrintToEpson(pdfBlob, cardData.name);
-        setIsPrinting(false);
-        setPaymentModalOpen(false);
-        setPendingAction(null);
-
-      } else {
-        throw new Error(result.message || 'Failed to generate print files');
-      }
+      console.log('Printing directly to EPSON printer via backend...');
+      
+      // Send images directly to backend printer - no PDF generation needed
+      // The backend will handle compositing and printing automatically
+      await autoPrintToEpson(image1, image2, image3, image4);
+      setIsPrinting(false);
+      setPaymentModalOpen(false);
+      setPendingAction(null);
     } catch (error) {
       console.error('Print error:', error);
       alert('Failed to generate print files. Please try again.');
