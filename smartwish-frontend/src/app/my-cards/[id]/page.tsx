@@ -197,6 +197,15 @@ const transformSavedDesignToCard = (savedDesign: SavedDesign): CardData => {
 };
 
 export default function CustomizeCardPage() {
+  const componentMountTime = useRef(performance.now());
+
+  useEffect(() => {
+    console.log(`⏱️ [EDITOR] Component mounted at ${componentMountTime.current.toFixed(1)}ms`);
+    return () => {
+      console.log(`⏱️ [EDITOR] Component unmounting`);
+    };
+  }, []);
+
   const { data: session, status } = useSession();
   const { isKiosk } = useDeviceMode();
   const params = useParams();
@@ -212,6 +221,7 @@ export default function CustomizeCardPage() {
 
   console.log('🔍 Parent page pathname:', pathname);
   console.log('🔍 isPixshopRoute:', isPixshopRoute);
+  console.log(`⏱️ [EDITOR] Current time: ${performance.now().toFixed(1)}ms, card ID: ${cardId}`);
 
   // Editing state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -289,9 +299,79 @@ export default function CustomizeCardPage() {
     return false;
   });
 
-  // Fetch all saved designs and find the specific one (only if not on pixshop route)
-  const shouldFetch = !isPixshopRoute;
-  console.log('🔍 Should fetch saved designs:', shouldFetch);
+  // Check if we're in template mode (temporary ID from templates page)
+  const mode = searchParams.get('mode');
+  const isTemplateMode = mode === 'template' || (cardId && cardId.startsWith('temp-'));
+
+  // State for template mode
+  const [templateData, setTemplateData] = useState<any>(null);
+  const [realSavedDesignId, setRealSavedDesignId] = useState<string | null>(null);
+  const [savingInBackground, setSavingInBackground] = useState(isTemplateMode);
+
+  // Load template data from sessionStorage if in template mode
+  useEffect(() => {
+    if (isTemplateMode && cardId) {
+      const loadStart = performance.now();
+      console.log(`⏱️ [EDITOR] Loading template data from sessionStorage at ${loadStart.toFixed(1)}ms`);
+
+      const stored = sessionStorage.getItem(`pendingTemplate_${cardId}`);
+      if (stored) {
+        const parseStart = performance.now();
+        const data = JSON.parse(stored);
+        const parseEnd = performance.now();
+        console.log(`⏱️ [EDITOR] Parsed template data in ${(parseEnd - parseStart).toFixed(1)}ms`);
+        console.log('📋 Loaded template data from sessionStorage:', data);
+        setTemplateData(data);
+        const loadEnd = performance.now();
+        console.log(`⏱️ [EDITOR] Total template load time: ${(loadEnd - loadStart).toFixed(1)}ms`);
+      } else {
+        console.warn(`⚠️ [EDITOR] No template data found in sessionStorage for ${cardId}`);
+      }
+    }
+  }, [isTemplateMode, cardId]);
+
+  // Listen for background save completion
+  useEffect(() => {
+    if (!isTemplateMode || !cardId) return;
+
+    const handleTemplateSaved = (event: CustomEvent) => {
+      const { tempId, savedDesignId, savedDesign } = event.detail;
+      if (tempId === cardId) {
+        console.log('✅ Background save completed, transitioning to saved design:', savedDesignId);
+        setRealSavedDesignId(savedDesignId);
+        setSavingInBackground(false);
+
+        // Clean up sessionStorage
+        sessionStorage.removeItem(`pendingTemplate_${tempId}`);
+        sessionStorage.removeItem(`tempIdMap_${tempId}`);
+
+        // Update URL without reload
+        window.history.replaceState(null, '', `/my-cards/${savedDesignId}`);
+      }
+    };
+
+    const handleTemplateSaveFailed = (event: CustomEvent) => {
+      const { tempId, error } = event.detail;
+      if (tempId === cardId) {
+        console.error('❌ Background save failed:', error);
+        setSavingInBackground(false);
+        // Show error to user
+        alert(`Failed to save design: ${error}. Your work is preserved in the editor.`);
+      }
+    };
+
+    window.addEventListener('templateSaved', handleTemplateSaved as EventListener);
+    window.addEventListener('templateSaveFailed', handleTemplateSaveFailed as EventListener);
+
+    return () => {
+      window.removeEventListener('templateSaved', handleTemplateSaved as EventListener);
+      window.removeEventListener('templateSaveFailed', handleTemplateSaveFailed as EventListener);
+    };
+  }, [isTemplateMode, cardId]);
+
+  // Fetch all saved designs and find the specific one (only if not in template mode or pixshop route)
+  const shouldFetch = !isPixshopRoute && !isTemplateMode;
+  console.log('🔍 Should fetch saved designs:', shouldFetch, { isTemplateMode, isPixshopRoute });
 
   const {
     data: apiResponse,
@@ -312,16 +392,43 @@ export default function CustomizeCardPage() {
   }
 
   const cardData = useMemo(() => {
-    if (!apiResponse?.data || !cardId) return null;
+    const memoStart = performance.now();
+    console.log(`⏱️ [EDITOR] cardData useMemo triggered at ${memoStart.toFixed(1)}ms`);
+
+    // If in template mode, use template data
+    if (isTemplateMode && templateData) {
+      const result = {
+        id: templateData.id,
+        name: templateData.name,
+        createdAt: new Date().toISOString(),
+        pages: templateData.pages || [],
+        categoryId: templateData.categoryId,
+        categoryName: templateData.categoryName,
+      };
+      const memoEnd = performance.now();
+      console.log(`⏱️ [EDITOR] cardData created from template in ${(memoEnd - memoStart).toFixed(1)}ms`);
+      console.log(`✅ [EDITOR] Card data ready with ${result.pages.length} pages`);
+      return result;
+    }
+
+    // Otherwise use saved design data
+    if (!apiResponse?.data || !cardId) {
+      console.log(`⚠️ [EDITOR] cardData null: apiResponse=${!!apiResponse}, cardId=${cardId}`);
+      return null;
+    }
     const savedDesign = apiResponse.data.find((d) => d.id === cardId);
-    return savedDesign ? transformSavedDesignToCard(savedDesign) : null;
-  }, [apiResponse, cardId]);
+    const result = savedDesign ? transformSavedDesignToCard(savedDesign) : null;
+    const memoEnd = performance.now();
+    console.log(`⏱️ [EDITOR] cardData created from API in ${(memoEnd - memoStart).toFixed(1)}ms`);
+    return result;
+  }, [apiResponse, cardId, isTemplateMode, templateData]);
 
   // Get the saved design data to access status field
   const savedDesign = useMemo(() => {
+    if (isTemplateMode) return null; // No saved design yet in template mode
     if (!apiResponse?.data || !cardId) return null;
     return apiResponse.data.find((d) => d.id === cardId) || null;
-  }, [apiResponse, cardId]);
+  }, [apiResponse, cardId, isTemplateMode]);
 
   // Load gift card data - check both localStorage and saved design metadata
   useEffect(() => {
@@ -911,11 +1018,11 @@ export default function CustomizeCardPage() {
       action: 'print'
     });
     // setPaymentModalOpen(true); // Commented out for development
-    
+
     // Call executePrint directly without payment
     executePrintDirect();
   };
-  
+
   // Direct print execution without payment (for development)
   const executePrintDirect = async () => {
     if (!cardData) return;
@@ -937,7 +1044,7 @@ export default function CustomizeCardPage() {
       }
 
       console.log('Printing directly to EPSON printer via backend...');
-      
+
       // Send images directly to backend printer - no PDF generation needed
       // The backend will handle compositing and printing automatically
       await autoPrintToEpson(image1, image2, image3, image4);
@@ -948,12 +1055,12 @@ export default function CustomizeCardPage() {
       setIsPrinting(false);
     }
   };
-  
+
   // Auto-print to default EPSON printer (for development) - Direct backend printing
   const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string) => {
     const defaultPrinter = 'EPSONC5F6AA (ET-15000 Series)';
     console.log(`🖨️ Auto-printing to: ${defaultPrinter} (Direct backend print - NO popup)`);
-    
+
     try {
       // Convert image URLs to base64
       console.log('Converting images to base64 for backend printing...');
@@ -963,9 +1070,9 @@ export default function CustomizeCardPage() {
         fetchImageAsBase64(image3),
         fetchImageAsBase64(image4)
       ]);
-      
+
       console.log('Images converted, sending to backend printer...');
-      
+
       // Send to backend /print-pc endpoint
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
@@ -978,22 +1085,22 @@ export default function CustomizeCardPage() {
           paperSize: paperSize // Include paper size selection
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to send print job');
       }
-      
+
       const result = await response.json();
       console.log('✅ Print job sent successfully!', result);
       alert(`Print job sent to ${defaultPrinter}!\nCheck your printer for output.`);
-      
+
     } catch (err) {
       console.error('Auto-print error:', err);
       alert(`Failed to print: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
-  
+
   // Helper function to fetch image and convert to base64
   const fetchImageAsBase64 = async (imageUrl: string): Promise<string> => {
     const response = await fetch(imageUrl);
@@ -1029,7 +1136,7 @@ export default function CustomizeCardPage() {
       }
 
       console.log('Printing directly to EPSON printer via backend...');
-      
+
       // Send images directly to backend printer - no PDF generation needed
       // The backend will handle compositing and printing automatically
       await autoPrintToEpson(image1, image2, image3, image4);
@@ -1057,6 +1164,21 @@ export default function CustomizeCardPage() {
       return;
     }
 
+    // If in template mode and still saving in background, wait for it
+    if (isTemplateMode && savingInBackground) {
+      alert("Design is being saved to your library. Please wait a moment...");
+      return;
+    }
+
+    // Use real saved design ID if we have it
+    const actualCardId = realSavedDesignId || cardData.id;
+
+    // If still in template mode without real ID, can't save updates yet
+    if (isTemplateMode && !realSavedDesignId) {
+      alert("Design is still being prepared. Please wait a moment before saving changes.");
+      return;
+    }
+
     setIsSaving(true);
     setSaveMessage("");
 
@@ -1068,12 +1190,13 @@ export default function CustomizeCardPage() {
       console.log("🖼️ Cover image (first):", pageImages[0]);
       const userId = String(session.user.id);
       console.log("🆔 Using user ID:", userId);
+      console.log("🆔 Actual card ID:", actualCardId);
 
-      const result = await saveSavedDesignWithImages(cardData.id, pageImages, {
+      const result = await saveSavedDesignWithImages(actualCardId, pageImages, {
         action: "update",
         title: finalName,
         userId,
-        designId: `updated_${cardData.id}_${Date.now()}`,
+        designId: `updated_${actualCardId}_${Date.now()}`,
         categoryId: selectedCategory?.id,
         categoryName: selectedCategory?.name,
         giftCardData: giftCardData,
@@ -1168,7 +1291,8 @@ export default function CustomizeCardPage() {
     );
   }
 
-  if (isLoading) {
+  // Skip loading state if in template mode with data
+  if (!isTemplateMode && isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -1180,7 +1304,7 @@ export default function CustomizeCardPage() {
   }
 
   // Show loading state if we don't have card data yet (even if API call completed)
-  if (!cardData && !error) {
+  if (!cardData && !error && !isTemplateMode) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -1216,6 +1340,8 @@ export default function CustomizeCardPage() {
 
   // From here onward cardData is guaranteed non-null
   const cd = cardData!;
+
+  console.log(`⏱️ [EDITOR] Rendering main UI at ${performance.now().toFixed(1)}ms with card:`, cd.name);
 
   // Function to handle editing a specific page
   const handleEditPage = async (pageIndex: number) => {
@@ -1375,7 +1501,7 @@ export default function CustomizeCardPage() {
                 className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <ArrowLeftIcon className="h-5 w-5" />
-                <span className="font-medium">Back to Templates</span>
+                <span className="font-medium">Back to Designs</span>
               </Link>
             </div>
           ) : (
@@ -1442,6 +1568,16 @@ export default function CustomizeCardPage() {
 
                   {/* Right - Status Indicators */}
                   <div className="flex items-center gap-2">
+                    {/* Background Saving Indicator */}
+                    {savingInBackground && (
+                      <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1 rounded-md">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600" />
+                        <span className="text-xs text-blue-700 font-medium">
+                          Saving to library...
+                        </span>
+                      </div>
+                    )}
+
                     {/* Save Status */}
                     {saveMessage && (
                       <div
@@ -1455,7 +1591,7 @@ export default function CustomizeCardPage() {
                     )}
 
                     {/* Unsaved Changes */}
-                    {hasUnsavedChanges && !saveMessage && (
+                    {hasUnsavedChanges && !saveMessage && !savingInBackground && (
                       <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md">
                         <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
                         <span className="text-xs text-amber-700 font-medium">
