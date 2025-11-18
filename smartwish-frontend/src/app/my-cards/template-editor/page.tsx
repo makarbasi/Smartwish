@@ -112,17 +112,17 @@ function TemplateEditorContent() {
   // Fetch categories
   const fetcher = async (url: string) => {
     const res = await fetch(url);
-    
+
     // Check for authentication errors
     if (res.status === 401 || res.status === 403) {
       handleAuthError('/my-cards');
       throw new Error('Authentication required');
     }
-    
+
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
-    
+
     return res.json();
   };
   const { data: categoriesResponse } = useSWR<CategoriesResponse>(
@@ -202,22 +202,22 @@ function TemplateEditorContent() {
               handleAuthError('/templates');
               return;
             }
-            
+
             console.error("Failed to fetch template, status:", response.status);
             throw new Error(`Failed to fetch template: ${response.status}`);
           }
         } catch (error) {
           console.error("Error fetching template:", error);
-          
+
           // Check if it's an authentication error
-          if (error instanceof Error && 
-              (error.message.includes("Unauthorized") || 
-               error.message.includes("401") || 
-               error.message.includes("403"))) {
+          if (error instanceof Error &&
+            (error.message.includes("Unauthorized") ||
+              error.message.includes("401") ||
+              error.message.includes("403"))) {
             handleAuthError('/templates');
             return;
           }
-          
+
           alert(
             "Failed to load template data. Please try again or select a different template."
           );
@@ -240,11 +240,11 @@ function TemplateEditorContent() {
   // Consume Pixshop return payload (single page edit) if present
   useEffect(() => {
     if (!templateData) return;
-    
+
     // Check if returning from pixshop to reopen Pintura
     const returnToPintura = searchParams?.get('returnToPintura') === '1';
     const pageIndexFromUrl = searchParams?.get('pageIndex');
-    
+
     if (returnToPintura && pageIndexFromUrl !== null) {
       try {
         const pinturaPayload = sessionStorage.getItem('pixshopToPintura');
@@ -259,16 +259,16 @@ function TemplateEditorContent() {
             fileType: payload.fileType,
             dataPrefix: payload.editedImage?.substring(0, 50) || 'none'
           });
-          
+
           // Log binary data chunks for verification
           if (payload.editedImage) {
             const chunkSize = 100;
             console.log('🔢 Received binary data verification:');
             for (let i = 0; i < Math.min(300, payload.editedImage.length); i += chunkSize) {
-              console.log(`   Chunk ${Math.floor(i/chunkSize)+1}:`, payload.editedImage.substring(i, i + chunkSize));
+              console.log(`   Chunk ${Math.floor(i / chunkSize) + 1}:`, payload.editedImage.substring(i, i + chunkSize));
             }
           }
-          
+
           if (payload && payload.editedImage && payload.templateId === templateData.id) {
             const idx = Number(payload.pageIndex) || 0;
             if (idx >= 0 && idx < pageImages.length) {
@@ -280,21 +280,21 @@ function TemplateEditorContent() {
                 parsedIdx: idx,
                 currentPageImages: pageImages.length
               });
-              
+
               console.log('🚫 IMPORTANT: Pixshop blob will NOT update main card - only Pintura can do that');
               console.log('🎯 Blob will be passed to Pintura for user confirmation');
-              
+
               // REMOVED: Direct pageImages update - this was the problem!
               // Pixshop should NEVER directly update the card
               // The blob will be handled by PinturaEditorModal's pending system
-              
+
               // Just reopen Pintura - the PinturaEditorModal will handle the pending blob
               setTimeout(() => {
                 console.log('⏰ Opening Pintura - blob will be handled by PinturaEditorModal');
                 console.log('� Pintura will show blob as pending until user clicks Done');
                 setEditingPageIndex(idx);
                 setEditorVisible(true);
-                
+
                 // Debug: Check if sessionStorage still has the data after opening
                 setTimeout(() => {
                   const checkData = sessionStorage.getItem('pixshopToPintura');
@@ -304,16 +304,16 @@ function TemplateEditorContent() {
                   });
                 }, 50);
               }, 200);
-              
+
               // DON'T clean up sessionStorage here - let PinturaEditorModal handle it
               // sessionStorage.removeItem('pixshopToPintura'); // REMOVED - PinturaEditorModal will clean up
-              
+
               // Remove the returnToPintura param from URL
               const newUrl = new URL(window.location.href);
               newUrl.searchParams.delete('returnToPintura');
               newUrl.searchParams.delete('pageIndex');
               window.history.replaceState({}, '', newUrl.toString());
-              
+
               return; // Don't process regular pixshop payload
             }
           }
@@ -322,7 +322,7 @@ function TemplateEditorContent() {
         console.error('Failed to process Pintura return payload', e);
       }
     }
-    
+
     // Regular pixshop return payload processing
     try {
       const payloadRaw = sessionStorage.getItem('pixshopTemplateEdit');
@@ -347,15 +347,13 @@ function TemplateEditorContent() {
   // Define callback functions before early returns
   const handleFlipNext = useCallback(() => {
     console.log(
-      `Template Editor - handleFlipNext called - current page: ${currentPage}, screen width: ${
-        typeof window !== "undefined" ? window.innerWidth : "unknown"
+      `Template Editor - handleFlipNext called - current page: ${currentPage}, screen width: ${typeof window !== "undefined" ? window.innerWidth : "unknown"
       }`
     );
     if (typeof window !== "undefined" && window.innerWidth < 1280) {
       if (currentPage < 3) {
         console.log(
-          `Template Editor - Mobile: Moving from page ${currentPage} to ${
-            currentPage + 1
+          `Template Editor - Mobile: Moving from page ${currentPage} to ${currentPage + 1
           }`
         );
         setCurrentPage(currentPage + 1);
@@ -369,15 +367,13 @@ function TemplateEditorContent() {
 
   const handleFlipPrev = useCallback(() => {
     console.log(
-      `Template Editor - handleFlipPrev called - current page: ${currentPage}, screen width: ${
-        typeof window !== "undefined" ? window.innerWidth : "unknown"
+      `Template Editor - handleFlipPrev called - current page: ${currentPage}, screen width: ${typeof window !== "undefined" ? window.innerWidth : "unknown"
       }`
     );
     if (typeof window !== "undefined" && window.innerWidth < 1280) {
       if (currentPage > 0) {
         console.log(
-          `Template Editor - Mobile: Moving from page ${currentPage} to ${
-            currentPage - 1
+          `Template Editor - Mobile: Moving from page ${currentPage} to ${currentPage - 1
           }`
         );
         setCurrentPage(currentPage - 1);
@@ -412,7 +408,7 @@ function TemplateEditorContent() {
 
       // Restore all pages with changes
       const pagesWithChanges = sessionDataManager.getAllPagesWithChanges(templateId);
-      
+
       // Update pageImages with restored data
       const updatedImages = [...pageImages];
       let hasAnyChanges = false;
@@ -424,9 +420,9 @@ function TemplateEditorContent() {
           reader.onload = () => {
             const dataUrl = reader.result as string;
             updatedImages[pageData.pageIndex] = dataUrl;
-            
+
             console.log(`✅ Restored page ${pageData.pageIndex} from session`);
-            
+
             // Update state after all restorations
             setPageImages([...updatedImages]);
             setHasUnsavedChanges(true);
@@ -568,7 +564,7 @@ function TemplateEditorContent() {
         selectedCategory?.id || templateData.categoryId || "None"
       );
       console.log("�📸 Current page images:", pageImages);
-  const userId = String(session.user.id);
+      const userId = String(session.user.id);
 
       // Copy the template to saved designs with updated metadata and images
       const selectedCategoryId =
@@ -636,7 +632,7 @@ function TemplateEditorContent() {
         type: img?.startsWith('data:') ? 'data URL' : img?.startsWith('blob:') ? 'blob URL' : 'regular URL',
         prefix: img?.substring(0, 50) || 'undefined'
       })));
-      
+
       const hasImageChanges = pageImages.some(
         (img, index) => img !== templateData.pages[index]
       );
@@ -701,7 +697,7 @@ function TemplateEditorContent() {
           handleAuthError('/my-cards');
           return;
         }
-        
+
         const errorText = await response.text();
         let errorData;
         try {
@@ -736,16 +732,16 @@ function TemplateEditorContent() {
             "Failed to update with edited images, but copy was successful:",
             updateError
           );
-          
+
           // Check if it's an authentication error during image update
-          if (updateError instanceof Error && 
-              (updateError.message.includes("Unauthorized") || 
-               updateError.message.includes("401") || 
-               updateError.message.includes("403"))) {
+          if (updateError instanceof Error &&
+            (updateError.message.includes("Unauthorized") ||
+              updateError.message.includes("401") ||
+              updateError.message.includes("403"))) {
             handleAuthError('/my-cards');
             return;
           }
-          
+
           // Continue anyway since the basic copy worked
         }
       }
@@ -769,16 +765,16 @@ function TemplateEditorContent() {
       }, 1500);
     } catch (error) {
       console.error("❌ Save failed:", error);
-      
+
       // Check if it's an authentication error
-      if (error instanceof Error && 
-          (error.message.includes("Unauthorized") || 
-           error.message.includes("401") || 
-           error.message.includes("403"))) {
+      if (error instanceof Error &&
+        (error.message.includes("Unauthorized") ||
+          error.message.includes("401") ||
+          error.message.includes("403"))) {
         handleAuthError('/my-cards');
         return;
       }
-      
+
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
       setSaveMessage(`Failed to save template: ${errorMessage}`);
@@ -831,7 +827,7 @@ function TemplateEditorContent() {
           handleAuthError('/my-cards');
           throw new Error('Authentication required');
         }
-        
+
         throw new Error(
           `Failed to fetch image: ${response.status} ${response.statusText}`
         );
@@ -1086,10 +1082,9 @@ function TemplateEditorContent() {
                       <ListboxOption
                         key={category.id}
                         className={({ focus }) =>
-                          `relative cursor-pointer select-none py-3 pl-10 pr-4 ${
-                            focus
-                              ? "bg-indigo-100 text-indigo-900"
-                              : "text-gray-900"
+                          `relative cursor-pointer select-none py-3 pl-10 pr-4 ${focus
+                            ? "bg-indigo-100 text-indigo-900"
+                            : "text-gray-900"
                           }`
                         }
                         value={category}
@@ -1097,9 +1092,8 @@ function TemplateEditorContent() {
                         {({ selected }) => (
                           <>
                             <span
-                              className={`block truncate ${
-                                selected ? "font-semibold" : "font-normal"
-                              }`}
+                              className={`block truncate ${selected ? "font-semibold" : "font-normal"
+                                }`}
                             >
                               {category.name}
                             </span>
@@ -1136,7 +1130,7 @@ function TemplateEditorContent() {
                   className="inline-flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors flex-shrink-0"
                 >
                   <ArrowLeftIcon className="h-5 w-5" />
-                  <span>Back to Templates</span>
+                  <span>Back to Designs</span>
                 </Link>
 
                 <div className="h-6 w-px bg-gray-300 flex-shrink-0" />
@@ -1222,10 +1216,9 @@ function TemplateEditorContent() {
                         <ListboxOption
                           key={category.id}
                           className={({ focus }) =>
-                            `relative cursor-pointer select-none py-2 pl-10 pr-4 ${
-                              focus
-                                ? "bg-indigo-100 text-indigo-900"
-                                : "text-gray-900"
+                            `relative cursor-pointer select-none py-2 pl-10 pr-4 ${focus
+                              ? "bg-indigo-100 text-indigo-900"
+                              : "text-gray-900"
                             }`
                           }
                           value={category}
@@ -1233,9 +1226,8 @@ function TemplateEditorContent() {
                           {({ selected }) => (
                             <>
                               <span
-                                className={`block truncate ${
-                                  selected ? "font-semibold" : "font-normal"
-                                }`}
+                                className={`block truncate ${selected ? "font-semibold" : "font-normal"
+                                  }`}
                               >
                                 {category.name}
                               </span>
@@ -1278,11 +1270,10 @@ function TemplateEditorContent() {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${
-              hasUnsavedChanges
+            className={`p-1.5 sm:p-2 rounded-full transition-all duration-200 ${hasUnsavedChanges
                 ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             title="Save to My Cards"
           >
             {isSaving ? (

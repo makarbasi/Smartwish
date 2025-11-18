@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const getNow = () =>
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
 
 // POST /api/templates/[id]/copy - Copy a template to user's saved designs
 export async function POST(
@@ -47,7 +51,9 @@ export async function POST(
         }
       : null;
 
+    let templateFetchDurationMs: number | null = null;
     if (!template) {
+      const templateFetchStart = getNow();
       // First, get the template data
       const templateUrl = `${API_BASE_URL}/templates-enhanced/templates/${id}`;
       console.log("Copy API - Fetching template from:", templateUrl);
@@ -80,6 +86,12 @@ export async function POST(
       }
 
       const templateResult = await templateResponse.json();
+      templateFetchDurationMs = getNow() - templateFetchStart;
+      console.log(
+        `⏱️ Copy API - Template fetch duration: ${templateFetchDurationMs.toFixed(
+          1
+        )}ms`
+      );
 
       // Handle backend response structure
       if (!templateResult.success || !templateResult.data) {
@@ -92,38 +104,18 @@ export async function POST(
       template = templateResult.data;
     }
 
-    // Get user's existing designs to check for duplicate names
-    const designsResponse = await fetch(`${API_BASE_URL}/saved-designs`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken || ""}`,
-      },
-    });
-
-    let existingDesigns = [];
-    if (designsResponse.ok) {
-      existingDesigns = await designsResponse.json();
-    }
-
-    // Generate unique name
+    // Generate unique name using timestamp instead of fetching all designs
     const baseName = body.title || template.title || "Template";
     let copyName = baseName;
-    let counter = 0;
 
     // Only add "Copy" suffix if no custom title provided
     if (!body.title) {
-      copyName = `${baseName} - Copy`;
-      counter = 1;
-
-      while (
-        existingDesigns.some(
-          (design: { title: string }) => design.title === copyName
-        )
-      ) {
-        counter++;
-        copyName = `${baseName} - Copy ${counter}`;
-      }
+      // Use timestamp to ensure uniqueness without needing to fetch all designs
+      const timestamp = Date.now();
+      copyName = `${baseName} - Copy ${timestamp}`;
+      console.log(`✅ Generated unique name using timestamp: ${copyName}`);
+    } else {
+      console.log(`✅ Using provided custom title: ${copyName}`);
     }
 
     console.log("Template data structure:", template);
@@ -237,6 +229,7 @@ export async function POST(
     );
 
     // Save the design to user's saved designs
+    const saveDesignStart = getNow();
     const saveResponse = await fetch(`${API_BASE_URL}/saved-designs`, {
       method: "POST",
       headers: {
@@ -245,6 +238,11 @@ export async function POST(
       },
       body: JSON.stringify(designData),
     });
+    console.log(
+      `⏱️ Copy API - Save design duration: ${(
+        getNow() - saveDesignStart
+      ).toFixed(1)}ms`
+    );
 
     if (!saveResponse.ok) {
       const errorText = await saveResponse.text();
@@ -253,6 +251,20 @@ export async function POST(
     }
 
     const savedDesign = await saveResponse.json();
+    console.log(
+      "⏱️ Copy API - Timing summary",
+      JSON.stringify(
+        {
+          templateFetchMs: templateFetchDurationMs
+            ? Number(templateFetchDurationMs.toFixed(1))
+            : "skipped",
+          savedDesignsFetchMs: "skipped (using timestamp)",
+          saveDesignMs: Number((getNow() - saveDesignStart).toFixed(1)),
+        },
+        null,
+        2
+      )
+    );
 
     return NextResponse.json({
       success: true,

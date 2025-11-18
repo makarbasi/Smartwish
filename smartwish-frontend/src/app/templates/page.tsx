@@ -332,60 +332,109 @@ function TemplatesPageContent() {
         return;
       }
 
-      console.log("✅ User is authenticated, copying template to my-cards");
+      console.log("✅ User is authenticated, opening editor immediately");
 
-      try {
-        console.log("🎨 Copying template to user's saved designs");
-        console.log("🔍 Template product data:", product);
-        console.log("🔍 Template ID:", product.id);
+      const flowStart = performance.now();
+      console.log(`⏱️ [FLOW] Starting at ${flowStart.toFixed(1)}ms`);
 
-        // First, copy the template to user's saved designs
-        const copyPayload = {
-          title: product.name,
-          categoryId: product.category_id || '1', // Default to general category if not available
-          categoryName: product.category_display_name || product.category_name || 'General',
-          templateMeta: product.metadata
-            ? {
-                ...product.metadata,
-                id: product.id,
-                title: product.metadata.title || product.name,
-              }
-            : undefined,
-          fallbackImages: product.pages,
-        };
+      // Generate a temporary ID for optimistic navigation
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const idGenTime = performance.now();
+      console.log(`⏱️ [FLOW] Temp ID generated in ${(idGenTime - flowStart).toFixed(1)}ms`);
+      
+      // Store template data in sessionStorage for immediate editor access
+      const templateData = {
+        id: tempId,
+        templateId: product.id,
+        name: product.name,
+        pages: product.pages || [],
+        categoryId: product.category_id || '1',
+        categoryName: product.category_display_name || product.category_name || 'General',
+        metadata: product.metadata,
+        isTemporary: true, // Flag to indicate this is not yet saved
+      };
+      
+      sessionStorage.setItem(`pendingTemplate_${tempId}`, JSON.stringify(templateData));
+      const storageTime = performance.now();
+      console.log(`⏱️ [FLOW] Data stored in sessionStorage in ${(storageTime - idGenTime).toFixed(1)}ms`);
+      
+      console.log("📝 Navigating to editor with temp ID:", tempId);
+      
+      // Navigate immediately to editor
+      const navStart = performance.now();
+      router.push(`/my-cards/${tempId}?mode=template`);
+      const navEnd = performance.now();
+      console.log(`⏱️ [FLOW] Navigation initiated in ${(navEnd - navStart).toFixed(1)}ms`);
+      console.log(`⏱️ [FLOW] Total time to navigation: ${(navEnd - flowStart).toFixed(1)}ms`);
 
-        const copyResponse = await fetch(`/api/templates/${product.id}/copy`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(copyPayload),
+      // Start background save (fire and forget)
+      console.log("🎨 Starting background copy to saved designs...");
+      
+      const copyPayload = {
+        title: product.name,
+        categoryId: product.category_id || '1',
+        categoryName: product.category_display_name || product.category_name || 'General',
+        templateMeta: product.metadata
+          ? {
+              ...product.metadata,
+              id: product.id,
+              title: product.metadata.title || product.name,
+            }
+          : undefined,
+        fallbackImages: product.pages,
+      };
+
+      const copyStart =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+
+      fetch(`/api/templates/${product.id}/copy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(copyPayload),
+      })
+        .then(async (response) => {
+          const copyEnd =
+            typeof performance !== "undefined" && typeof performance.now === "function"
+              ? performance.now()
+              : Date.now();
+          console.log(
+            `⏱️ Background copy duration: ${(copyEnd - copyStart).toFixed(1)}ms`
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to copy template (${response.status})`);
+          }
+
+          const savedDesignResult = await response.json();
+          console.log("✅ Background copy completed:", savedDesignResult);
+
+          if (savedDesignResult.success && savedDesignResult.data) {
+            const savedDesignId = savedDesignResult.data.id;
+            
+            // Store the mapping from temp ID to real ID
+            sessionStorage.setItem(`tempIdMap_${tempId}`, savedDesignId);
+            
+            // Notify the editor that save is complete
+            window.dispatchEvent(new CustomEvent('templateSaved', {
+              detail: { tempId, savedDesignId, savedDesign: savedDesignResult.data }
+            }));
+            
+            console.log("📢 Dispatched templateSaved event");
+          }
+        })
+        .catch((error) => {
+          console.error("❌ Background copy failed:", error);
+          // Notify editor of failure
+          window.dispatchEvent(new CustomEvent('templateSaveFailed', {
+            detail: { tempId, error: error.message }
+          }));
         });
-
-        if (!copyResponse.ok) {
-          const errorData = await copyResponse.json().catch(() => ({}));
-          throw new Error(errorData.error || `Failed to copy template (${copyResponse.status})`);
-        }
-
-        const savedDesignResult = await copyResponse.json();
-        console.log("✅ Template copied successfully:", savedDesignResult);
-
-        if (!savedDesignResult.success || !savedDesignResult.data) {
-          throw new Error(savedDesignResult.error || 'Failed to get saved design data');
-        }
-
-        const savedDesignId = savedDesignResult.data.id;
-        console.log("📝 Redirecting to saved design:", savedDesignId);
-
-        // Now redirect to the saved design's edit page
-        router.push(`/my-cards/${savedDesignId}`);
-
-      } catch (error) {
-        console.error("❌ Error copying template:", error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        alert(`Failed to copy template: ${errorMessage}`);
-      }
     },
     [session, status, openAuthModal, setRedirectUrl, pathname, router]
   );
