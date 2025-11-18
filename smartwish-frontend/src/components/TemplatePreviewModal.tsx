@@ -53,6 +53,8 @@ export default function TemplatePreviewModal({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flipBookRef = useRef<any>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchEndRef = useRef<{ x: number; y: number } | null>(null);
 
   // Reset to first page when modal opens
   useEffect(() => {
@@ -93,9 +95,12 @@ export default function TemplatePreviewModal({
   const templatePages = product.pages || [product.imageSrc];
   const totalPages = templatePages.length;
 
+  const isDesktopViewport = () =>
+    typeof window !== "undefined" && window.innerWidth >= 1024;
+
   const handleNextPage = () => {
     // Check if we're on desktop (flipbook is visible)
-    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+    if (isDesktopViewport()) {
       // Desktop: use flipbook
       if (flipBookRef.current && currentPage < totalPages - 1) {
         flipBookRef.current.pageFlip().flipNext();
@@ -110,7 +115,7 @@ export default function TemplatePreviewModal({
 
   const handlePrevPage = () => {
     // Check if we're on desktop (flipbook is visible)
-    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+    if (isDesktopViewport()) {
       // Desktop: use flipbook
       if (flipBookRef.current && currentPage > 0) {
         flipBookRef.current.pageFlip().flipPrev();
@@ -125,6 +130,40 @@ export default function TemplatePreviewModal({
 
   const handlePageFlip = (e: { data: number }) => {
     setCurrentPage(e.data);
+  };
+
+  const handleDesktopTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDesktopViewport()) return;
+    const touch = event.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    touchEndRef.current = null;
+  };
+
+  const handleDesktopTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDesktopViewport()) return;
+    const touch = event.touches[0];
+    touchEndRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleDesktopTouchEnd = () => {
+    if (!isDesktopViewport()) return;
+    if (!touchStartRef.current || !touchEndRef.current) return;
+
+    const deltaX = touchEndRef.current.x - touchStartRef.current.x;
+    const deltaY = Math.abs(touchEndRef.current.y - touchStartRef.current.y);
+    const horizontalSwipeThreshold = 50;
+    const verticalAllowance = 60;
+
+    if (Math.abs(deltaX) > horizontalSwipeThreshold && deltaY < verticalAllowance) {
+      if (deltaX < 0) {
+        handleNextPage();
+      } else {
+        handlePrevPage();
+      }
+    }
+
+    touchStartRef.current = null;
+    touchEndRef.current = null;
   };
 
   // Handle scroll to update current page indicator
@@ -197,7 +236,7 @@ export default function TemplatePreviewModal({
   };
 
   return (
-    <Dialog open={open} onClose={() => {}} className="relative z-50">
+    <Dialog open={open} onClose={() => { }} className="relative z-50">
       <DialogBackdrop className="fixed inset-0 bg-black/40" />
       <div
         className="fixed inset-0 overflow-y-auto p-4 sm:p-8"
@@ -223,7 +262,12 @@ export default function TemplatePreviewModal({
               onClick={(e) => e.stopPropagation()}
             >
               {/* Desktop: Flipbook View */}
-              <div className="hidden lg:flex items-center justify-center relative">
+              <div
+                className="hidden lg:flex items-center justify-center relative"
+                onTouchStart={handleDesktopTouchStart}
+                onTouchMove={handleDesktopTouchMove}
+                onTouchEnd={handleDesktopTouchEnd}
+              >
                 {/* Previous Page Button */}
                 <button
                   onClick={(e) => {
@@ -354,9 +398,8 @@ export default function TemplatePreviewModal({
                         e.stopPropagation();
                         scrollToPage(index);
                       }}
-                      className={`w-2 h-2 rounded-full transition-all ${
-                        index === currentPage ? "bg-white" : "bg-white/50"
-                      }`}
+                      className={`w-2 h-2 rounded-full transition-all ${index === currentPage ? "bg-white" : "bg-white/50"
+                        }`}
                     />
                   ))}
                 </div>
@@ -418,7 +461,7 @@ export default function TemplatePreviewModal({
               By {product.publisher.name}
             </div>
             <div className="mt-1 text-xs text-gray-500">
-              Document (A4 Portrait) • 21 × 29.7 cm • {totalPages} pages
+              Cotton Textured Paper • 4 × 6 inches • {totalPages} pages
             </div>
 
             <button
@@ -439,8 +482,7 @@ export default function TemplatePreviewModal({
                 } catch (error) {
                   console.error("❌ Error calling onCustomize:", error);
                   alert(
-                    `Error: ${
-                      error instanceof Error ? error.message : "Unknown error"
+                    `Error: ${error instanceof Error ? error.message : "Unknown error"
                     }`
                   );
                 }
@@ -463,8 +505,7 @@ export default function TemplatePreviewModal({
                     error
                   );
                   alert(
-                    `Error: ${
-                      error instanceof Error ? error.message : "Unknown error"
+                    `Error: ${error instanceof Error ? error.message : "Unknown error"
                     }`
                   );
                 }
@@ -472,15 +513,14 @@ export default function TemplatePreviewModal({
               className="relative z-30 mt-5 w-full inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-500 touch-auto min-h-[48px]"
               style={{ pointerEvents: "auto", touchAction: "manipulation" }}
             >
-              Use this template
+              Use this Design
             </button>
             <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
               <button
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 touch-auto transition-all ${
-                  isLiked
-                    ? "bg-rose-500 text-white hover:bg-rose-600"
-                    : "bg-gray-100 text-gray-900 hover:bg-gray-200"
-                } ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-1 touch-auto transition-all ${isLiked
+                  ? "bg-rose-500 text-white hover:bg-rose-600"
+                  : "bg-gray-100 text-gray-900 hover:bg-gray-200"
+                  } ${isUpdating ? "opacity-50 cursor-not-allowed" : ""}`}
                 style={{ pointerEvents: "auto" }}
                 onClick={handleLike}
                 disabled={isUpdating}
