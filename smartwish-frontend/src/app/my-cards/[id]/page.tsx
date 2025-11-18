@@ -257,7 +257,23 @@ export default function CustomizeCardPage() {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [paperSize, setPaperSize] = useState<'custom' | 'letter' | 'half-letter'>('custom'); // Default to custom 8x6
+  const [paperSize, setPaperSize] = useState<'custom' | 'letter' | 'half-letter'>(() => {
+    // Load from localStorage on mount, default to 'custom' if not set
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('preferredPaperSize');
+      if (saved === 'letter' || saved === 'half-letter' || saved === 'custom') {
+        return saved;
+      }
+    }
+    return 'custom';
+  });
+
+  // Save paper size to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('preferredPaperSize', paperSize);
+    }
+  }, [paperSize]);
 
   // Swipe functionality state
   const [touchStart, setTouchStart] = useState<number | null>(null);

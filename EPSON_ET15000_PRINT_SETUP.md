@@ -34,8 +34,11 @@ These settings need to be configured manually in Windows as they cannot be contr
    - Right-click → Select "Printing Preferences"
 
 3. **Configure Main Settings Tab**
-   - **Paper Source**: Manual Feed (or Auto Select if using special tray)
-   - **Orientation**: Portrait
+   - **Paper Source / Input Tray**: 
+     - For **Heavyweight Cardstock**: `Rear Tray (Manual Feed)` ⭐ RECOMMENDED
+     - For **Regular Paper**: `Auto Select` or `Tray 1 (Cassette)`
+     - **Why Rear Tray?** Heavyweight paper feeds better through the straight rear path, reducing jams
+   - **Orientation**: Portrait (or Landscape depending on paper size selected in app)
 
 4. **Configure Paper/Quality Tab** ⭐ CRITICAL
    - **Paper Type**: 
@@ -165,6 +168,46 @@ When you've finished development and want to re-enable payment:
 4. Repeat for `smartwish-frontend/src/app/my-cards/[id]/page.tsx` line ~896
 
 ---
+
+## 📥 Printer Tray Selection Guide
+
+### Which Tray Should I Use?
+
+The EPSON ET-15000 has multiple paper trays. Choose based on your paper type:
+
+#### For **Heavyweight Cardstock** (Recommended for Greeting Cards):
+- **Use**: `Rear Tray (Manual Feed)` ⭐
+- **Why?**: 
+  - Straight paper path (no curves)
+  - Less chance of jams with thick paper
+  - Better for cardstock over 200 GSM
+  - Manual feed allows you to insert one sheet at a time
+
+#### For **Regular Paper** (Testing/Proofs):
+- **Use**: `Auto Select` or `Tray 1 (Front Cassette)`
+- **Why?**: 
+  - Holds more sheets for batch printing
+  - Automatic feeding
+  - Good for lighter paper (under 200 GSM)
+
+### How to Change the Tray:
+
+1. **Open**: Control Panel → Devices and Printers
+2. **Right-click**: "EPSONC5F6AA (ET-15000 Series)"
+3. **Select**: "Printing Preferences"
+4. **Go to**: "Main" or "Paper/Quality" tab
+5. **Find**: "Paper Source" or "Input Tray" dropdown
+6. **Select**: 
+   - `Rear Tray` for cardstock
+   - `Auto Select` for regular paper
+   - `Tray 1 (Cassette)` for front tray
+7. **Click**: Apply → OK
+
+### 💡 Pro Tips:
+- **Always test** with regular paper first before using expensive cardstock
+- **Load heavyweight paper** one sheet at a time in rear tray
+- **Fan cardstock** before loading to prevent sticking
+- **Check paper guides** are snug against the paper edges
 
 ---
 
