@@ -39,6 +39,10 @@ type ApiTemplate = {
   category_name?: string;
   category_display_name?: string;
   author?: string;
+  message?: string;
+  card_message?: string;
+  text?: string;
+  tags?: string[];
 };
 
 type ApiResponse = {
@@ -63,6 +67,25 @@ type CategoriesResponse = {
   count: number;
 };
 
+type TemplateMetadata = {
+  slug?: string;
+  description?: string;
+  message?: string;
+  card_message?: string;
+  text?: string;
+  cover_image?: string;
+  coverImage?: string;
+  image_1?: string;
+  image_2?: string;
+  image_3?: string;
+  image_4?: string;
+  tags?: string[];
+  language?: string;
+  region?: string;
+  priceValue?: number;
+  title?: string;
+};
+
 export type TemplateCard = {
   id: string;
   name: string;
@@ -79,6 +102,7 @@ export type TemplateCard = {
   category_name?: string;
   category_display_name?: string;
   isLiked?: boolean;
+  metadata?: TemplateMetadata;
 };
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -115,6 +139,24 @@ function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
       apiTemplate.image_3,
       apiTemplate.image_4,
     ].filter(Boolean),
+    metadata: {
+      slug: apiTemplate.slug,
+      description: apiTemplate.description,
+      message: apiTemplate.message,
+      card_message: apiTemplate.card_message,
+      text: apiTemplate.text,
+      cover_image: apiTemplate.cover_image,
+      coverImage: apiTemplate.cover_image,
+      image_1: apiTemplate.image_1,
+      image_2: apiTemplate.image_2,
+      image_3: apiTemplate.image_3,
+      image_4: apiTemplate.image_4,
+      tags: apiTemplate.tags,
+      language: apiTemplate.language,
+      region: apiTemplate.region,
+      priceValue,
+      title: apiTemplate.title,
+    },
   };
 }
 
@@ -298,17 +340,27 @@ function TemplatesPageContent() {
         console.log("🔍 Template ID:", product.id);
 
         // First, copy the template to user's saved designs
+        const copyPayload = {
+          title: product.name,
+          categoryId: product.category_id || '1', // Default to general category if not available
+          categoryName: product.category_display_name || product.category_name || 'General',
+          templateMeta: product.metadata
+            ? {
+                ...product.metadata,
+                id: product.id,
+                title: product.metadata.title || product.name,
+              }
+            : undefined,
+          fallbackImages: product.pages,
+        };
+
         const copyResponse = await fetch(`/api/templates/${product.id}/copy`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           credentials: 'include',
-          body: JSON.stringify({
-            title: product.name,
-            categoryId: product.category_id || '1', // Default to general category if not available
-            categoryName: product.category_display_name || product.category_name || 'General',
-          }),
+          body: JSON.stringify(copyPayload),
         });
 
         if (!copyResponse.ok) {

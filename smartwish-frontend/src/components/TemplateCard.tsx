@@ -7,6 +7,25 @@ import { HeartIcon, EllipsisHorizontalIcon, MagnifyingGlassIcon, FlagIcon } from
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 
+type TemplateMetadata = {
+  slug?: string
+  description?: string
+  message?: string
+  card_message?: string
+  text?: string
+  cover_image?: string
+  coverImage?: string
+  image_1?: string
+  image_2?: string
+  image_3?: string
+  image_4?: string
+  tags?: string[]
+  language?: string
+  region?: string
+  priceValue?: number
+  title?: string
+}
+
 type TemplateCard = {
   id: string
   name: string
@@ -20,6 +39,7 @@ type TemplateCard = {
   likes: number
   pages?: string[]
   isLiked?: boolean
+  metadata?: TemplateMetadata
 }
 
 interface TemplateCardProps {

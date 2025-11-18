@@ -66,7 +66,7 @@ export default function KioskScreenSaver({
         body: "Museum-quality paper + rich color inks.",
       },
       {
-        title: "Over 1,000 Templates",
+        title: "Over 1,000 Designs",
         body: "Birthday • Holiday • Thank You • Weddings",
       },
     ],

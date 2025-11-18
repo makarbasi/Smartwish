@@ -21,54 +21,76 @@ export async function POST(
     const accessToken = (session.user as { access_token?: string })
       .access_token;
     const body = await request.json();
+    const templateMeta = body?.templateMeta;
+    const fallbackImages: string[] = Array.isArray(body?.fallbackImages)
+      ? body.fallbackImages
+      : [];
 
     console.log("Copy API - Template ID:", id);
     console.log("Copy API - Request body:", body);
     console.log("Copy API - API Base URL:", API_BASE_URL);
     console.log("Copy API - Access Token exists:", !!accessToken);
 
-    // First, get the template data
-    const templateUrl = `${API_BASE_URL}/templates-enhanced/templates/${id}`;
-    console.log("Copy API - Fetching template from:", templateUrl);
+    let template = templateMeta
+      ? {
+          ...templateMeta,
+          id: templateMeta.id || id,
+          title: templateMeta.title || body.title || "Template",
+          cover_image:
+            templateMeta.cover_image ||
+            templateMeta.coverImage ||
+            templateMeta.image_1,
+          coverImage:
+            templateMeta.coverImage ||
+            templateMeta.cover_image ||
+            templateMeta.image_1,
+        }
+      : null;
 
-    const templateResponse = await fetch(templateUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    if (!template) {
+      // First, get the template data
+      const templateUrl = `${API_BASE_URL}/templates-enhanced/templates/${id}`;
+      console.log("Copy API - Fetching template from:", templateUrl);
 
-    console.log(
-      "Copy API - Template response status:",
-      templateResponse.status
-    );
+      const templateResponse = await fetch(templateUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
 
-    if (!templateResponse.ok) {
-      const errorText = await templateResponse.text();
-      console.error("Copy API - Template fetch error:", errorText);
+      console.log(
+        "Copy API - Template response status:",
+        templateResponse.status
+      );
 
-      if (templateResponse.status === 404) {
+      if (!templateResponse.ok) {
+        const errorText = await templateResponse.text();
+        console.error("Copy API - Template fetch error:", errorText);
+
+        if (templateResponse.status === 404) {
+          return NextResponse.json(
+            { error: "Template not found" },
+            { status: 404 }
+          );
+        }
+        throw new Error(
+          `Failed to fetch template: ${templateResponse.status} - ${errorText}`
+        );
+      }
+
+      const templateResult = await templateResponse.json();
+
+      // Handle backend response structure
+      if (!templateResult.success || !templateResult.data) {
         return NextResponse.json(
-          { error: "Template not found" },
+          { error: templateResult.error || "Template not found" },
           { status: 404 }
         );
       }
-      throw new Error(
-        `Failed to fetch template: ${templateResponse.status} - ${errorText}`
-      );
+
+      template = templateResult.data;
     }
-
-    const templateResult = await templateResponse.json();
-
-    // Handle backend response structure
-    if (!templateResult.success || !templateResult.data) {
-      return NextResponse.json(
-        { error: templateResult.error || "Template not found" },
-        { status: 404 }
-      );
-    }
-
-    const template = templateResult.data;
 
     // Get user's existing designs to check for duplicate names
     const designsResponse = await fetch(`${API_BASE_URL}/saved-designs`, {
@@ -145,12 +167,17 @@ export async function POST(
     console.log("  - categoryName:", categoryName);
 
     // Use edited images if provided, otherwise use template images
-    const templateImages = [
-      template.image_1 || template.image1,
-      template.image_2 || template.image2,
-      template.image_3 || template.image3,
-      template.image_4 || template.image4,
-    ].filter(Boolean);
+    const templateImages = Array.from(
+      new Set(
+        [
+          template.image_1 || template.image1,
+          template.image_2 || template.image2,
+          template.image_3 || template.image3,
+          template.image_4 || template.image4,
+          ...fallbackImages,
+        ].filter(Boolean)
+      )
+    );
 
     const finalImages = body.editedImages || templateImages;
 

@@ -12,6 +12,25 @@ import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid";
 import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import HTMLFlipBook from "react-pageflip";
 
+type TemplateMetadata = {
+  slug?: string;
+  description?: string;
+  message?: string;
+  card_message?: string;
+  text?: string;
+  cover_image?: string;
+  coverImage?: string;
+  image_1?: string;
+  image_2?: string;
+  image_3?: string;
+  image_4?: string;
+  tags?: string[];
+  language?: string;
+  region?: string;
+  priceValue?: number;
+  title?: string;
+};
+
 type TemplateCard = {
   id: string;
   name: string;
@@ -24,6 +43,7 @@ type TemplateCard = {
   downloads: number;
   likes: number;
   pages?: string[];
+  metadata?: TemplateMetadata;
 };
 
 interface TemplatePreviewModalProps {
