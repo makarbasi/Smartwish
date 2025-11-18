@@ -31,7 +31,18 @@ function SignInForm() {
 
       if (result?.error) {
         console.error("Sign in error:", result.error);
-        setError("Invalid email or password. Please try again.");
+        
+        // Provide more helpful error messages
+        if (result.error === "Configuration") {
+          setError(
+            "Authentication configuration error. Please contact support or try again later. " +
+            "If this persists, the server may need to be restarted."
+          );
+        } else if (result.error === "CredentialsSignin") {
+          setError("Invalid email or password. Please try again.");
+        } else {
+          setError(`Sign in failed: ${result.error}. Please try again.`);
+        }
       } else if (result?.ok) {
         console.log("Sign in successful, redirecting to:", callbackUrl);
         router.push(callbackUrl);

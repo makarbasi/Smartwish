@@ -6,10 +6,15 @@ import Footer from '@/components/Footer'
 import Sidebar from '@/components/Sidebar'
 import MobileMenu from '@/components/MobileMenu'
 import { useDeviceMode } from '@/contexts/DeviceModeContext'
+import { useKioskInactivity } from '@/hooks/useKioskInactivity'
+import KioskScreenSaver from '@/components/KioskScreenSaver'
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const p = usePathname()
   const { isKiosk } = useDeviceMode()
+  
+  // Initialize kiosk inactivity tracking and screen saver
+  const { showScreenSaver, exitScreenSaver } = useKioskInactivity()
 
   const isAuth = p.includes('/sign-in') || p.includes('/sign-up') || p.includes('/forgot-password')
   const showSidebar = !isAuth && (p.startsWith('/templates') || p.startsWith('/my-cards') || p.startsWith('/event') || p.startsWith('/marketplace') || p.startsWith('/contacts') || p.startsWith('/partners') || p.startsWith('/settings'))
@@ -34,6 +39,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       
       {/* Hide Footer in Kiosk mode */}
       {isLanding && !isKiosk && <Footer />}
+      
+      {/* Kiosk Screen Saver */}
+      <KioskScreenSaver isVisible={showScreenSaver} onExit={exitScreenSaver} />
     </>
   )
 }
