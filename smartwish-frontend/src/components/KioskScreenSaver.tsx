@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import Image from "next/image";
 
 interface KioskScreenSaverProps {
@@ -8,50 +8,58 @@ interface KioskScreenSaverProps {
   onExit: () => void;
 }
 
+type HeroCard = {
+  title: string;
+  tagline: string;
+  image: string;
+  accent: string;
+};
+
 export default function KioskScreenSaver({
   isVisible,
   onExit,
 }: KioskScreenSaverProps) {
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const heroCards: HeroCard[] = useMemo(
+    () => [
+      {
+        title: "Birthday Bliss",
+        tagline: "Personal photos + confetti overlays",
+        image: "/resources/hero/wishcards-1.png",
+        accent: "#fbbf24",
+      },
+      {
+        title: "Holiday Magic",
+        tagline: "Foil-stamped greetings in seconds",
+        image: "/resources/hero/wishcards-2.png",
+        accent: "#38bdf8",
+      },
+      {
+        title: "Thank You Love",
+        tagline: "Handwritten notes printed perfectly",
+        image: "/resources/hero/wishcards-3.png",
+        accent: "#f472b6",
+      },
+    ],
+    []
+  );
 
-  const slides = [
-    {
-      title: "Welcome to SmartWish Kiosk",
-      description: "Create personalized greeting cards in minutes!",
-      icon: "🎨",
-    },
-    {
-      title: "Choose from 1000+ Templates",
-      description: "Browse our extensive collection of beautiful card designs",
-      icon: "📇",
-    },
-    {
-      title: "Customize Your Card",
-      description: "Add photos, text, stickers, and make it uniquely yours",
-      icon: "✨",
-    },
-    {
-      title: "Print or Send Instantly",
-      description: "Print your card on the spot or send it as an e-card",
-      icon: "🖨️",
-    },
-    {
-      title: "Perfect for Any Occasion",
-      description: "Birthdays, holidays, thank you cards, and more!",
-      icon: "🎉",
-    },
-  ];
-
-  // Auto-rotate slides every 5 seconds
-  useEffect(() => {
-    if (!isVisible) return;
-
-    const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [isVisible, slides.length]);
+  const floatingCallouts = useMemo(
+    () => [
+      {
+        title: "Create in 3 Minutes",
+        body: "Browse, personalize, and print instantly.",
+      },
+      {
+        title: "Premium Cardstock",
+        body: "Museum-quality paper + rich color inks.",
+      },
+      {
+        title: "Over 1,000 Templates",
+        body: "Birthday • Holiday • Thank You • Weddings",
+      },
+    ],
+    []
+  );
 
   const handleInteraction = () => {
     onExit();
@@ -59,130 +67,151 @@ export default function KioskScreenSaver({
 
   if (!isVisible) return null;
 
+  const duplicatedCards = useMemo(
+    () => [...heroCards, ...heroCards],
+    [heroCards]
+  );
+
   return (
     <div
-      className="fixed inset-0 z-[200] bg-gradient-to-br from-purple-900 via-indigo-900 to-blue-900 flex flex-col items-center justify-center cursor-pointer"
+      className="fixed inset-0 z-[200] cursor-pointer select-none"
       onClick={handleInteraction}
       onTouchStart={handleInteraction}
       tabIndex={0}
     >
-      {/* Animated background patterns */}
-      <div className="absolute inset-0 overflow-hidden opacity-10">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-white rounded-full blur-3xl animate-pulse" />
-        <div
-          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-300 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "2s" }}
-        />
+      {/* Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0A031A] via-[#120B3B] to-[#1F2A69]" />
+
+      {/* Blurred moving cards */}
+      <div className="absolute inset-0 overflow-hidden opacity-70">
+        {duplicatedCards.map((card, index) => {
+          const isEven = index % 2 === 0;
+          const size = isEven ? 420 : 360;
+          const topOffset = isEven
+            ? 10 + (index % heroCards.length) * 12
+            : 20 + (index % heroCards.length) * 9;
+          return (
+            <div
+              key={`${card.title}-${index}`}
+              className="absolute blur-sm lg:blur-[1px]"
+              style={{
+                width: size,
+                height: size * 1.35,
+                top: `${topOffset}%`,
+                left: isEven ? "-25%" : "65%",
+                animation: `${isEven ? "driftRight" : "driftLeft"} ${
+                  18 + index * 1.5
+                }s linear infinite`,
+              }}
+            >
+              <div
+                className="absolute inset-0 rounded-[32px]"
+                style={{
+                  background: `radial-gradient(circle at top, ${card.accent}30, transparent 70%)`,
+                  filter: "blur(40px)",
+                }}
+              />
+              <div className="relative h-full w-full rounded-[32px] overflow-hidden border border-white/15 shadow-2xl shadow-black/40 bg-white/5 backdrop-blur-3xl">
+                <Image
+                  src={card.image}
+                  alt={card.title}
+                  fill
+                  sizes="(max-width: 1024px) 60vw, 35vw"
+                  className="object-cover opacity-80"
+                  priority={index < 3}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="relative z-10 text-center px-8 max-w-4xl">
-        {/* Logo/Branding */}
-        <div className="mb-12">
-          <h1 className="text-6xl md:text-8xl font-bold text-white mb-4 drop-shadow-lg animate-fadeIn">
-            SmartWish
+      {/* Accent gradients */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -bottom-10 right-0 w-[40vw] h-[40vw] bg-[#7C3AED]/40 blur-[120px]" />
+        <div className="absolute -top-32 left-16 w-[25vw] h-[25vw] bg-[#F97316]/30 blur-[120px]" />
+        <div className="absolute top-1/3 left-1/2 w-[30vw] h-[30vw] bg-[#06B6D4]/20 blur-[160px]" />
+      </div>
+
+      {/* Foreground content */}
+      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 text-center text-white">
+        <div className="max-w-3xl space-y-6">
+          <p className="text-sm uppercase tracking-[0.4em] text-white/60">
+            Greeting Card Experience
+          </p>
+          <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
+            SmartWish Kiosk
           </h1>
-          <p className="text-2xl md:text-3xl text-white/80 font-light">
-            Greeting Card Kiosk
+          <p className="text-xl md:text-2xl text-white/80 leading-relaxed">
+            Design, personalize, and print premium greeting cards while you
+            wait. Just tap to wake the screen and start creating.
           </p>
         </div>
 
-        {/* Animated Slide Content */}
-        <div className="bg-white/10 backdrop-blur-md rounded-3xl p-12 mb-8 min-h-[300px] flex flex-col items-center justify-center animate-scaleIn">
-          <div className="text-8xl mb-6 animate-bounce">
-            {slides[currentSlide].icon}
-          </div>
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            {slides[currentSlide].title}
-          </h2>
-          <p className="text-2xl md:text-3xl text-white/90">
-            {slides[currentSlide].description}
-          </p>
-        </div>
-
-        {/* Slide indicators */}
-        <div className="flex justify-center gap-3 mb-8">
-          {slides.map((_, index) => (
+        {/* Floating callouts */}
+        <div className="mt-12 grid grid-cols-1 gap-6 px-4 md:grid-cols-3 max-w-6xl w-full">
+          {floatingCallouts.map((callout, index) => (
             <div
-              key={index}
-              className={`h-3 rounded-full transition-all duration-300 ${
-                index === currentSlide
-                  ? "w-12 bg-white"
-                  : "w-3 bg-white/40"
-              }`}
-            />
+              key={callout.title}
+              className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-lg shadow-[0_20px_60px_rgba(0,0,0,0.25)]"
+              style={{
+                animation: `pulseGlow 6s ease-in-out ${index * 1.5}s infinite`,
+              }}
+            >
+              <p className="text-sm uppercase tracking-[0.3em] text-white/40 mb-3">
+                {`0${index + 1}`}
+              </p>
+              <h3 className="text-2xl font-semibold text-white mb-2">
+                {callout.title}
+              </h3>
+              <p className="text-base text-white/80">{callout.body}</p>
+            </div>
           ))}
         </div>
 
-        {/* Touch/Click to Start */}
-        <div className="animate-pulse">
-          <p className="text-3xl text-white font-semibold mb-4">
-            👆 Touch anywhere to start
-          </p>
-          <p className="text-xl text-white/70">
-            Create your perfect card in just a few steps
-          </p>
+        <div className="mt-12 text-white/80 text-lg flex flex-col items-center gap-3">
+          <span className="px-6 py-2 rounded-full border border-white/20 bg-white/5 backdrop-blur-md">
+            Touch Anywhere to Begin
+          </span>
+          <p>Fully guided experience · Instant high-quality prints</p>
         </div>
       </div>
 
-      {/* Floating particles effect */}
-      <div className="absolute inset-0 pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-2 h-2 bg-white rounded-full opacity-20 animate-float"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${5 + Math.random() * 5}s`,
-            }}
-          />
-        ))}
-      </div>
-
       <style jsx>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes scaleIn {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-
-        @keyframes float {
-          0%,
-          100% {
-            transform: translateY(0) translateX(0);
+        @keyframes driftRight {
+          0% {
+            transform: translate3d(-10%, 0, 0) rotate(-4deg) scale(1);
           }
           50% {
-            transform: translateY(-100px) translateX(50px);
+            transform: translate3d(40%, -10%, 0) rotate(2deg) scale(1.05);
+          }
+          100% {
+            transform: translate3d(90%, 5%, 0) rotate(-2deg) scale(1);
           }
         }
 
-        .animate-fadeIn {
-          animation: fadeIn 1s ease-out;
+        @keyframes driftLeft {
+          0% {
+            transform: translate3d(10%, 0, 0) rotate(5deg) scale(1);
+          }
+          50% {
+            transform: translate3d(-40%, -10%, 0) rotate(-3deg) scale(1.08);
+          }
+          100% {
+            transform: translate3d(-90%, 5%, 0) rotate(2deg) scale(1);
+          }
         }
 
-        .animate-scaleIn {
-          animation: scaleIn 0.5s ease-out;
-        }
-
-        .animate-float {
-          animation: float 10s ease-in-out infinite;
+        @keyframes pulseGlow {
+          0%,
+          100% {
+            transform: translateY(0);
+            box-shadow: 0 10px 40px rgba(124, 58, 237, 0.2);
+          }
+          50% {
+            transform: translateY(-6px);
+            box-shadow: 0 20px 70px rgba(99, 102, 241, 0.35);
+          }
         }
       `}</style>
     </div>
