@@ -319,7 +319,24 @@ function MyCardsContent() {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [cardToPrint, setCardToPrint] = useState<MyCard | null>(null);
-  const [paperSize, setPaperSize] = useState<'custom' | 'letter' | 'half-letter'>('custom'); // Default to custom 8x6
+  const [paperSize, setPaperSize] = useState<'custom' | 'letter' | 'half-letter'>(() => {
+    // Load from localStorage on mount, default to 'custom' if not set
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('preferredPaperSize');
+      if (saved === 'letter' || saved === 'half-letter' || saved === 'custom') {
+        return saved;
+      }
+    }
+    return 'custom';
+  });
+  const [showTrayInfo, setShowTrayInfo] = useState(false);
+
+  // Save paper size to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('preferredPaperSize', paperSize);
+    }
+  }, [paperSize]);
 
   // Publish modal state
   const [publishModalOpen, setPublishModalOpen] = useState(false);
@@ -1070,8 +1087,43 @@ function MyCardsContent() {
                   <span className="text-orange-600">⚠ Custom size - prints 2 separate pages</span>
                 )}
               </p>
+              <button
+                onClick={() => setShowTrayInfo(!showTrayInfo)}
+                className="text-xs text-blue-600 hover:text-blue-800 underline mt-1"
+              >
+                📥 How to select printer tray?
+              </button>
             </div>
           </div>
+          
+          {/* Tray Selection Info */}
+          {showTrayInfo && (
+            <div className="mb-8 rounded-lg bg-blue-50 border border-blue-200 p-4">
+              <h3 className="font-semibold text-blue-900 mb-2">🖨️ Printer Tray Selection</h3>
+              <p className="text-sm text-blue-800 mb-3">
+                Printer tray selection is controlled by <strong>Windows printer settings</strong>, not by the app. Here's how to configure it:
+              </p>
+              <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
+                <li><strong>Open Control Panel</strong> → Devices and Printers</li>
+                <li><strong>Right-click</strong> "EPSONC5F6AA (ET-15000 Series)"</li>
+                <li>Select <strong>"Printing Preferences"</strong></li>
+                <li>Go to <strong>"Paper/Quality"</strong> or <strong>"Main"</strong> tab</li>
+                <li>Find <strong>"Paper Source"</strong> or <strong>"Input Tray"</strong> dropdown</li>
+                <li>Select your preferred tray:
+                  <ul className="ml-6 mt-1 list-disc">
+                    <li><strong>Auto Select</strong> - Printer chooses automatically</li>
+                    <li><strong>Tray 1 (Cassette)</strong> - Main paper tray</li>
+                    <li><strong>Rear Tray</strong> - Manual feed / specialty paper</li>
+                    <li><strong>Front Tray</strong> - If available</li>
+                  </ul>
+                </li>
+                <li>Click <strong>"Apply"</strong> and <strong>"OK"</strong></li>
+              </ol>
+              <p className="text-sm text-blue-800 mt-3">
+                💡 <strong>Tip:</strong> Use <strong>Rear Tray (Manual Feed)</strong> for heavyweight cardstock to prevent jams!
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Saved Cards Section */}
