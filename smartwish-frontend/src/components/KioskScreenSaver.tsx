@@ -9,6 +9,7 @@ interface KioskScreenSaverProps {
 }
 
 type HeroCard = {
+  id?: string;
   title: string;
   tagline: string;
   image: string;
@@ -17,18 +18,21 @@ type HeroCard = {
 
 const FALLBACK_HERO_CARDS: HeroCard[] = [
   {
+    id: "fallback-birthday",
     title: "Birthday Bliss",
     tagline: "Personal photos + confetti overlays",
     image: "/resources/hero/wishcards-1.png",
     accent: "#fbbf24",
   },
   {
+    id: "fallback-holiday",
     title: "Holiday Magic",
     tagline: "Foil-stamped greetings in seconds",
     image: "/resources/hero/wishcards-2.png",
     accent: "#38bdf8",
   },
   {
+    id: "fallback-thankyou",
     title: "Thank You Love",
     tagline: "Handwritten notes printed perfectly",
     image: "/resources/hero/wishcards-3.png",
@@ -36,7 +40,14 @@ const FALLBACK_HERO_CARDS: HeroCard[] = [
   },
 ];
 
-const ACCENT_COLORS = ["#fbbf24", "#38bdf8", "#f472b6", "#34d399", "#a78bfa", "#f97316"];
+const ACCENT_COLORS = [
+  "#fbbf24",
+  "#38bdf8",
+  "#f472b6",
+  "#34d399",
+  "#a78bfa",
+  "#f97316",
+];
 
 export default function KioskScreenSaver({
   isVisible,
@@ -81,6 +92,7 @@ export default function KioskScreenSaver({
         const mappedCards: HeroCard[] = templates
           .filter((template) => template?.image_1 || template?.cover_image)
           .map((template, index) => ({
+            id: template?.id ?? `${template?.title}-${index}`,
             title: template?.title ?? `Template ${index + 1}`,
             tagline:
               template?.category_display_name ||
@@ -106,10 +118,19 @@ export default function KioskScreenSaver({
     };
   }, []);
 
-  const duplicatedCards = useMemo(
-    () => [...heroCards, ...heroCards],
-    [heroCards]
-  );
+  const uniqueCards = useMemo(() => {
+    const seen = new Set<string>();
+    return heroCards.filter((card) => {
+      const key = card.id ?? `${card.title}-${card.image}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [heroCards]);
+
+  const marqueeCards = useMemo(() => uniqueCards, [uniqueCards]);
 
   const handleInteraction = () => {
     onExit();
@@ -129,7 +150,7 @@ export default function KioskScreenSaver({
 
       {/* Blurred moving cards */}
       <div className="absolute inset-0 overflow-hidden opacity-70">
-        {duplicatedCards.map((card, index) => {
+        {marqueeCards.map((card, index) => {
           const isEven = index % 2 === 0;
           const size = isEven ? 420 : 360;
           const topOffset = isEven
