@@ -58,7 +58,7 @@ export default function KioskScreenSaver({
   const floatingCallouts = useMemo(
     () => [
       {
-        title: "Create in 3 Minutes",
+        title: "Create in 1 Minutes",
         body: "Browse, personalize, and print instantly.",
       },
       {
@@ -165,9 +165,8 @@ export default function KioskScreenSaver({
                 height: size * 1.35,
                 top: `${topOffset}%`,
                 left: isEven ? "-25%" : "65%",
-                animation: `${isEven ? "driftRight" : "driftLeft"} ${
-                  18 + index * 1.5
-                }s linear infinite`,
+                animation: `${isEven ? "driftRight" : "driftLeft"} ${18 + index * 1.5
+                  }s linear infinite`,
               }}
             >
               <div
@@ -206,7 +205,7 @@ export default function KioskScreenSaver({
             Greeting Card Experience
           </p>
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
-            SmartWish Kiosk
+            SmartWish
           </h1>
           <p className="text-xl md:text-2xl text-white/80 leading-relaxed">
             Design, personalize, and print premium greeting cards while you
