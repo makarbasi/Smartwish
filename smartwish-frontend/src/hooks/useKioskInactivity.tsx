@@ -11,6 +11,11 @@ interface UseKioskInactivityOptions {
     enabled?: boolean;
 }
 
+// Throttle constants to prevent interfering with Windows screen saver
+// Only process movement events every 5 seconds, allowing Windows screen saver to activate
+const MOUSE_MOVE_THROTTLE = 5000; // milliseconds
+const TOUCH_MOVE_THROTTLE = 5000; // milliseconds
+
 export function useKioskInactivity({
     screenSaverTimeout = 30000, // 30 seconds
     resetTimeout = 60000, // 60 seconds (1 minute)
@@ -25,6 +30,8 @@ export function useKioskInactivity({
     const screenSaverTimerRef = useRef<NodeJS.Timeout | null>(null);
     const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastActivityRef = useRef<number>(Date.now());
+    const lastMouseMoveRef = useRef<number>(0); // Track last mousemove processing time
+    const lastTouchMoveRef = useRef<number>(0); // Track last touchmove processing time
 
     // Clear all timers
     const clearTimers = useCallback(() => {
@@ -58,7 +65,7 @@ export function useKioskInactivity({
             // Just set the flag - don't navigate yet
             setShouldResetOnExit(true);
         }, resetTimeout);
-    }, [isKiosk, enabled, clearTimers, screenSaverTimeout, resetTimeout]);
+    }, [isKiosk, enabled, clearTimers, screenSaverTimeout, resetTimeout, hideKeyboard]);
 
     // Exit screen saver and reset timers
     const exitScreenSaver = useCallback(() => {
@@ -111,6 +118,23 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] 👆 User interaction during screen saver:", event?.type, "- Exiting screen saver");
             exitScreenSaver();
             return;
+        }
+
+        // Throttle mousemove and touchmove events to prevent interfering with Windows screen saver
+        // Only process these events every 5 seconds, allowing Windows screen saver to activate
+        const now = Date.now();
+        if (event && event.type === 'mousemove') {
+            if (now - lastMouseMoveRef.current < MOUSE_MOVE_THROTTLE) {
+                // Skip this mousemove event - too soon since last one
+                return;
+            }
+            lastMouseMoveRef.current = now;
+        } else if (event && event.type === 'touchmove') {
+            if (now - lastTouchMoveRef.current < TOUCH_MOVE_THROTTLE) {
+                // Skip this touchmove event - too soon since last one
+                return;
+            }
+            lastTouchMoveRef.current = now;
         }
 
         // Otherwise, just reset the timers (normal activity tracking)

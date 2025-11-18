@@ -86,6 +86,15 @@ async function refreshAccessToken(refreshToken: string) {
 /* ──────────────────────────────────────────────────────────
    NextAuth
 ─────────────────────────────────────────────────────────── */
+
+// Validate required environment variables
+if (!process.env.AUTH_SECRET) {
+  throw new Error(
+    "AUTH_SECRET is missing. Please set AUTH_SECRET in your .env.local file. " +
+    "You can generate one by running: openssl rand -base64 32"
+  );
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: process.env.AUTH_SECRET,
   providers: [
