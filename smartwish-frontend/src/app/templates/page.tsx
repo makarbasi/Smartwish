@@ -230,6 +230,17 @@ function TemplatesPageContent() {
     setPage(1);
   }, [q, region, language, author, selectedCategory]);
 
+  // Hide scrollbar while keeping scroll functionality when on this page
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.add("scrollbar-hide");
+    document.documentElement.classList.add("scrollbar-hide");
+    return () => {
+      document.body.classList.remove("scrollbar-hide");
+      document.documentElement.classList.remove("scrollbar-hide");
+    };
+  }, []);
+
   // Check for template to auto-open from landing page
   useEffect(() => {
     const openTemplateId = sessionStorage.getItem("openTemplateId");
@@ -400,7 +411,7 @@ function TemplatesPageContent() {
               <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
                 {pagedProducts.map((template, index) => (
                   <TemplateCard
-                    key={template.id}
+                    key={`${template.id}-${index}`}
                     template={template}
                     index={index}
                     onPreview={handlePreviewTemplate}

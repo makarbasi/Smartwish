@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 
 interface KioskScreenSaverProps {
@@ -15,33 +15,34 @@ type HeroCard = {
   accent: string;
 };
 
+const FALLBACK_HERO_CARDS: HeroCard[] = [
+  {
+    title: "Birthday Bliss",
+    tagline: "Personal photos + confetti overlays",
+    image: "/resources/hero/wishcards-1.png",
+    accent: "#fbbf24",
+  },
+  {
+    title: "Holiday Magic",
+    tagline: "Foil-stamped greetings in seconds",
+    image: "/resources/hero/wishcards-2.png",
+    accent: "#38bdf8",
+  },
+  {
+    title: "Thank You Love",
+    tagline: "Handwritten notes printed perfectly",
+    image: "/resources/hero/wishcards-3.png",
+    accent: "#f472b6",
+  },
+];
+
+const ACCENT_COLORS = ["#fbbf24", "#38bdf8", "#f472b6", "#34d399", "#a78bfa", "#f97316"];
+
 export default function KioskScreenSaver({
   isVisible,
   onExit,
 }: KioskScreenSaverProps) {
-  const heroCards: HeroCard[] = useMemo(
-    () => [
-      {
-        title: "Birthday Bliss",
-        tagline: "Personal photos + confetti overlays",
-        image: "/resources/hero/wishcards-1.png",
-        accent: "#fbbf24",
-      },
-      {
-        title: "Holiday Magic",
-        tagline: "Foil-stamped greetings in seconds",
-        image: "/resources/hero/wishcards-2.png",
-        accent: "#38bdf8",
-      },
-      {
-        title: "Thank You Love",
-        tagline: "Handwritten notes printed perfectly",
-        image: "/resources/hero/wishcards-3.png",
-        accent: "#f472b6",
-      },
-    ],
-    []
-  );
+  const [heroCards, setHeroCards] = useState<HeroCard[]>(FALLBACK_HERO_CARDS);
 
   const floatingCallouts = useMemo(
     () => [
@@ -61,16 +62,60 @@ export default function KioskScreenSaver({
     []
   );
 
-  const handleInteraction = () => {
-    onExit();
-  };
+  useEffect(() => {
+    let cancelled = false;
 
-  if (!isVisible) return null;
+    const loadTemplates = async () => {
+      try {
+        const response = await fetch("/api/templates?limit=6", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load templates (${response.status})`);
+        }
+
+        const payload = await response.json();
+        const templates = Array.isArray(payload?.data) ? payload.data : [];
+
+        const mappedCards: HeroCard[] = templates
+          .filter((template) => template?.image_1 || template?.cover_image)
+          .map((template, index) => ({
+            title: template?.title ?? `Template ${index + 1}`,
+            tagline:
+              template?.category_display_name ||
+              template?.category_name ||
+              template?.language ||
+              "SmartWish Studio",
+            image: template?.image_1 || template?.cover_image,
+            accent: ACCENT_COLORS[index % ACCENT_COLORS.length],
+          }));
+
+        if (!cancelled && mappedCards.length > 0) {
+          setHeroCards(mappedCards);
+        }
+      } catch (error) {
+        console.error("Failed to load kiosk templates:", error);
+      }
+    };
+
+    loadTemplates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const duplicatedCards = useMemo(
     () => [...heroCards, ...heroCards],
     [heroCards]
   );
+
+  const handleInteraction = () => {
+    onExit();
+  };
+
+  if (!isVisible) return null;
 
   return (
     <div
