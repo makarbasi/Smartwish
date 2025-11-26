@@ -267,23 +267,7 @@ export default function CustomizeCardPage() {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [paperSize, setPaperSize] = useState<'custom' | 'letter' | 'half-letter'>(() => {
-    // Load from localStorage on mount, default to 'custom' if not set
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('preferredPaperSize');
-      if (saved === 'letter' || saved === 'half-letter' || saved === 'custom') {
-        return saved;
-      }
-    }
-    return 'custom';
-  });
 
-  // Save paper size to localStorage whenever it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('preferredPaperSize', paperSize);
-    }
-  }, [paperSize]);
 
   // Swipe functionality state
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -1058,7 +1042,7 @@ export default function CustomizeCardPage() {
 
   // Auto-print to default EPSON printer (for development) - Direct backend printing
   const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string) => {
-    const defaultPrinter = 'EPSONC5F6AA (ET-15000 Series)';
+    const defaultPrinter = 'HPA4CC43 (HP Smart Tank 7600 series)';
     console.log(`🖨️ Auto-printing to: ${defaultPrinter} (Direct backend print - NO popup)`);
 
     try {
@@ -1082,7 +1066,7 @@ export default function CustomizeCardPage() {
         body: JSON.stringify({
           images: imageBase64Array,
           printerName: defaultPrinter,
-          paperSize: paperSize // Include paper size selection
+          paperSize: 'letter' // Force Letter size for 11x8.5 PDF
         }),
       });
 
