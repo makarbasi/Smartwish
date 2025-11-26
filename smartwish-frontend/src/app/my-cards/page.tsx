@@ -229,7 +229,7 @@ function MyCardsContent() {
   const [sendingECard, setSendingECard] = useState(false);
   const [giftCardData, setGiftCardData] = useState<any>(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  
+
   // Payment modal state
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ card: MyCard; action: 'send' | 'print'; email?: string; message?: string } | null>(null);
@@ -319,24 +319,7 @@ function MyCardsContent() {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [cardToPrint, setCardToPrint] = useState<MyCard | null>(null);
-  const [paperSize, setPaperSize] = useState<'custom' | 'letter' | 'half-letter'>(() => {
-    // Load from localStorage on mount, default to 'custom' if not set
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('preferredPaperSize');
-      if (saved === 'letter' || saved === 'half-letter' || saved === 'custom') {
-        return saved;
-      }
-    }
-    return 'custom';
-  });
   const [showTrayInfo, setShowTrayInfo] = useState(false);
-
-  // Save paper size to localStorage whenever it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('preferredPaperSize', paperSize);
-    }
-  }, [paperSize]);
 
   // Publish modal state
   const [publishModalOpen, setPublishModalOpen] = useState(false);
@@ -557,7 +540,8 @@ function MyCardsContent() {
   const handlePublishClick = (card: MyCard) => {
     setCardToPublish(card);
     setPublishTitle(card.name || "");
-    setPublishCategory(card.categoryId || "");
+    // Use category from card (casting to any if needed to avoid type error if categoryId is missing from type)
+    setPublishCategory(card.category || "");
     setPublishDescription("");
     setPublishModalOpen(true);
   };
@@ -726,11 +710,11 @@ function MyCardsContent() {
     setPendingAction({ card, action: 'send' });
     setPaymentModalOpen(true);
   };
-  
+
   // Execute send e-card after payment
   const executeSendECard = () => {
     if (!pendingAction || pendingAction.action !== 'send') return;
-    
+
     console.log('📧 Payment successful, showing e-card modal');
     setCardToSend({
       id: pendingAction.card.id,
@@ -748,15 +732,15 @@ function MyCardsContent() {
     // TEMPORARY: Skip payment modal during development
     setPendingAction({ card, action: 'print' });
     // setPaymentModalOpen(true); // Commented out for development
-    
+
     // Call executePrint directly without payment
     await executePrintDirect(card);
   };
-  
+
   // Direct print execution without payment (for development)
   const executePrintDirect = async (card: MyCard) => {
     console.log('🖨️ DEV MODE: Printing without payment');
-    
+
     setIsPrinting(true);
     try {
       // Get the card data to extract image URLs
@@ -780,7 +764,7 @@ function MyCardsContent() {
       }
 
       console.log('Printing directly to EPSON printer via backend...');
-      
+
       // Send images directly to backend printer - no PDF generation needed
       // The backend will handle compositing and printing automatically
       await autoPrintToEpson(card, image1, image2, image3, image4);
@@ -791,12 +775,12 @@ function MyCardsContent() {
       setIsPrinting(false);
     }
   };
-  
+
   // Auto-print to default EPSON printer (for development) - Direct backend printing
   const autoPrintToEpson = async (card: MyCard, image1: string, image2: string, image3: string, image4: string) => {
-    const defaultPrinter = 'EPSONC5F6AA (ET-15000 Series)';
+    const defaultPrinter = 'HPA4CC43 (HP Smart Tank 7600 series)';
     console.log(`🖨️ Auto-printing to: ${defaultPrinter} (Direct backend print - NO popup)`);
-    
+
     try {
       // Convert image URLs to base64
       console.log('Converting images to base64 for backend printing...');
@@ -806,9 +790,9 @@ function MyCardsContent() {
         fetchImageAsBase64(image3),
         fetchImageAsBase64(image4)
       ]);
-      
+
       console.log('Images converted, sending to backend printer...');
-      
+
       // Send to backend /print-pc endpoint
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
@@ -818,25 +802,25 @@ function MyCardsContent() {
         body: JSON.stringify({
           images: imageBase64Array,
           printerName: defaultPrinter,
-          paperSize: paperSize // Include paper size selection
+          paperSize: 'letter' // Force Letter size for 11x8.5 PDF
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to send print job');
       }
-      
+
       const result = await response.json();
       console.log('✅ Print job sent successfully!', result);
       alert(`Print job sent to ${defaultPrinter}!\nCheck your printer for output.`);
-      
+
     } catch (err) {
       console.error('Auto-print error:', err);
       alert(`Failed to print: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
-  
+
   // Helper function to fetch image and convert to base64
   const fetchImageAsBase64 = async (imageUrl: string): Promise<string> => {
     const response = await fetch(imageUrl);
@@ -848,14 +832,14 @@ function MyCardsContent() {
       reader.readAsDataURL(blob);
     });
   };
-  
+
   // Execute print after payment
   const executePrint = async () => {
     if (!pendingAction || pendingAction.action !== 'print') return;
-    
+
     const card = pendingAction.card;
     console.log('🖨️ Payment successful, proceeding with print');
-    
+
     setIsPrinting(true);
     try {
       // Get the card data to extract image URLs
@@ -881,7 +865,7 @@ function MyCardsContent() {
       }
 
       console.log('Printing directly to EPSON printer via backend...');
-      
+
       // Send images directly to backend printer - no PDF generation needed
       // The backend will handle compositing and printing automatically
       await autoPrintToEpson(card, image1, image2, image3, image4);
@@ -1062,40 +1046,20 @@ function MyCardsContent() {
             <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
               Designs
             </h1>
-            {/* Paper Size Selector */}
+            {/* Printer Settings Info */}
             <div className="flex flex-col items-end gap-2">
-              <label htmlFor="paperSize" className="text-sm font-medium text-gray-700">
-                Print Paper Size
-              </label>
-              <select
-                id="paperSize"
-                value={paperSize}
-                onChange={(e) => setPaperSize(e.target.value as 'custom' | 'letter' | 'half-letter')}
-                className="block w-56 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-              >
-                <option value="custom">Custom 8×6" (No Auto-Duplex)</option>
-                <option value="letter">Letter 11×8.5" (Auto-Duplex ✓)</option>
-                <option value="half-letter">Half Letter 8.5×5.5" (Auto-Duplex ✓)</option>
-              </select>
-              <p className="text-xs text-gray-500 max-w-xs text-right">
-                {paperSize === 'letter' || paperSize === 'half-letter' ? (
-                  <span className="text-green-600 font-medium">
-                    ✓ Auto-duplex supported - printer will flip automatically
-                    {paperSize === 'half-letter' && <span className="block text-amber-600">⚠ Card is 6" tall, paper is 5.5" - slight trim</span>}
-                  </span>
-                ) : (
-                  <span className="text-orange-600">⚠ Custom size - prints 2 separate pages</span>
-                )}
-              </p>
               <button
                 onClick={() => setShowTrayInfo(!showTrayInfo)}
-                className="text-xs text-blue-600 hover:text-blue-800 underline mt-1"
+                className="text-sm text-blue-600 hover:text-blue-800 underline font-medium"
               >
-                📥 How to select printer tray?
+                📥 Printer Settings & Tray Selection
               </button>
+              <p className="text-xs text-green-600 font-medium">
+                ✓ Printing on Letter Size (11×8.5")
+              </p>
             </div>
           </div>
-          
+
           {/* Tray Selection Info */}
           {showTrayInfo && (
             <div className="mb-8 rounded-lg bg-blue-50 border border-blue-200 p-4">
@@ -1105,7 +1069,7 @@ function MyCardsContent() {
               </p>
               <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
                 <li><strong>Open Control Panel</strong> → Devices and Printers</li>
-                <li><strong>Right-click</strong> "EPSONC5F6AA (ET-15000 Series)"</li>
+                <li><strong>Right-click</strong> "HPA4CC43 (HP Smart Tank 7600 series)"</li>
                 <li>Select <strong>"Printing Preferences"</strong></li>
                 <li>Go to <strong>"Paper/Quality"</strong> or <strong>"Main"</strong> tab</li>
                 <li>Find <strong>"Paper Source"</strong> or <strong>"Input Tray"</strong> dropdown</li>

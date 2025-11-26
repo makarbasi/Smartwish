@@ -266,7 +266,7 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
         };
         
         console.warn("\n═══════════════════════════════════════════════════════════════════════════════════");
-        console.warn(`  🖨️  EPSON ET-15000 PRINT SETTINGS - ${config.name.toUpperCase()}`);
+        console.warn(`  🖨️  HP SMART TANK 7600 PRINT SETTINGS - ${config.name.toUpperCase()}`);
         console.warn("═══════════════════════════════════════════════════════════════════════════════════");
         console.warn("  PDF SETTINGS:");
         console.warn(`    ✓ Paper Size: ${config.description}`);
@@ -332,7 +332,7 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
         if (config.name === 'Custom 8×6') {
           console.warn("  🔧 TO CREATE CUSTOM 8×6 SIZE IN WINDOWS:");
           console.warn("    • Control Panel → Devices and Printers");
-          console.warn("    • Right-click 'EPSONC5F6AA (ET-15000 Series)'");
+          console.warn("    • Right-click 'HPA4CC43 (HP Smart Tank 7600 series)'");
           console.warn("    • 'Printing Preferences' → Main/Paper tab");
           console.warn("    • Paper Size → 'User Defined' at bottom of list");
           console.warn("    • Set Width: 8.00 inches, Height: 6.00 inches");
