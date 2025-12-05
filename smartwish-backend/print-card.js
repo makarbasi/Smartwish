@@ -33,20 +33,17 @@ const DPI = 300; // High quality printing at 300 DPI
 // === PAPER SIZE CONFIGURATIONS ===
 // Function to get paper configuration based on selected size
 function getPaperConfig(paperSize = 'custom') {
-  // Card content is always 8" × 6" (two 4×6 panels side by side)
-  const CARD_WIDTH_INCHES = 8;
-  const CARD_HEIGHT_INCHES = 6;
-  
-  const panelWidthPx = 4 * DPI; // 4 inches * 300 DPI = 1200px
-  const panelHeightPx = 6 * DPI; // 6 inches * 300 DPI = 1800px
-  const cardContentWidthPx = CARD_WIDTH_INCHES * DPI; // 2400px
-  const cardContentHeightPx = CARD_HEIGHT_INCHES * DPI; // 1800px
   
   if (paperSize === 'letter') {
     // LETTER SIZE: 8.5" × 11" (landscape: 11" × 8.5")
+    // BORDERLESS - Card content fills the ENTIRE page
     // Standard size with FULL auto-duplex support!
     const LETTER_WIDTH = 11;    // inches (landscape)
     const LETTER_HEIGHT = 8.5;  // inches (landscape)
+    
+    // For Letter, each panel is HALF the page width
+    const panelWidthPx = Math.round((LETTER_WIDTH / 2) * DPI);  // 5.5" = 1650px
+    const panelHeightPx = Math.round(LETTER_HEIGHT * DPI);       // 8.5" = 2550px
     
     return {
       name: 'Letter',
@@ -54,24 +51,29 @@ function getPaperConfig(paperSize = 'custom') {
       paperHeightPx: Math.round(LETTER_HEIGHT * DPI),    // 2550px
       paperWidthPoints: LETTER_WIDTH * 72,               // 792 points
       paperHeightPoints: LETTER_HEIGHT * 72,             // 612 points
-      panelWidthPx,
-      panelHeightPx,
-      cardContentWidthPx,
-      cardContentHeightPx,
-      // Center the 8×6 card on Letter paper
-      horizontalOffsetPx: Math.round((LETTER_WIDTH - CARD_WIDTH_INCHES) / 2 * DPI), // 1.5" margins = 450px
-      verticalOffsetPx: Math.round((LETTER_HEIGHT - CARD_HEIGHT_INCHES) / 2 * DPI), // 1.25" margins = 375px
+      panelWidthPx,                                      // 1650px (5.5")
+      panelHeightPx,                                     // 2550px (8.5")
+      cardContentWidthPx: Math.round(LETTER_WIDTH * DPI),  // 3300px (full width)
+      cardContentHeightPx: Math.round(LETTER_HEIGHT * DPI), // 2550px (full height)
+      // NO margins - fill entire page for borderless printing
+      horizontalOffsetPx: 0,
+      verticalOffsetPx: 0,
       supportsDuplex: true,
-      description: '11" × 8.5" landscape (standard US Letter size)',
+      description: '11" × 8.5" landscape BORDERLESS (standard US Letter size)',
       trimRequired: false,
+      // Folded card will be 5.5" × 8.5"
+      foldedWidth: 5.5,
+      foldedHeight: 8.5,
     };
   } else if (paperSize === 'half-letter') {
     // HALF LETTER (STATEMENT): 5.5" × 8.5" (landscape: 8.5" × 5.5")
-    // Standard size with auto-duplex support!
-    // Card content is 8" × 6" - slightly larger than paper height (6" > 5.5")
-    // Will need slight trimming or content will be cut off at top/bottom
+    // BORDERLESS - fills entire page
     const HALF_LETTER_WIDTH = 8.5;  // inches (landscape)
     const HALF_LETTER_HEIGHT = 5.5; // inches (landscape)
+    
+    // Each panel is HALF the page width
+    const panelWidthPx = Math.round((HALF_LETTER_WIDTH / 2) * DPI);  // 4.25" = 1275px
+    const panelHeightPx = Math.round(HALF_LETTER_HEIGHT * DPI);       // 5.5" = 1650px
     
     return {
       name: 'Half Letter',
@@ -79,35 +81,43 @@ function getPaperConfig(paperSize = 'custom') {
       paperHeightPx: Math.round(HALF_LETTER_HEIGHT * DPI), // 1650px
       paperWidthPoints: HALF_LETTER_WIDTH * 72,            // 612 points
       paperHeightPoints: HALF_LETTER_HEIGHT * 72,          // 396 points
-      panelWidthPx,
-      panelHeightPx,
-      cardContentWidthPx,
-      cardContentHeightPx,
-      // Center the 8×6 card on Half Letter paper (will overflow height by 0.5")
-      horizontalOffsetPx: Math.round((HALF_LETTER_WIDTH - CARD_WIDTH_INCHES) / 2 * DPI), // 0.25" margins = 75px
-      verticalOffsetPx: Math.round((HALF_LETTER_HEIGHT - CARD_HEIGHT_INCHES) / 2 * DPI), // -0.25" (will be negative/cut off)
+      panelWidthPx,                                        // 1275px (4.25")
+      panelHeightPx,                                       // 1650px (5.5")
+      cardContentWidthPx: Math.round(HALF_LETTER_WIDTH * DPI),   // 2550px (full width)
+      cardContentHeightPx: Math.round(HALF_LETTER_HEIGHT * DPI), // 1650px (full height)
+      // NO margins - fill entire page for borderless printing
+      horizontalOffsetPx: 0,
+      verticalOffsetPx: 0,
       supportsDuplex: true,
-      description: '8.5" × 5.5" landscape (Half Letter/Statement)',
-      trimRequired: true,
-      trimNote: 'Card is 6" tall but paper is 5.5" - top/bottom will be trimmed 0.25" each',
+      description: '8.5" × 5.5" landscape BORDERLESS (Half Letter/Statement)',
+      trimRequired: false,
+      foldedWidth: 4.25,
+      foldedHeight: 5.5,
     };
   } else {
-    // CUSTOM 8×6: Exact card size, NO auto-duplex
+    // CUSTOM 8×6: Traditional card size (two 4×6 panels)
+    const CARD_WIDTH_INCHES = 8;
+    const CARD_HEIGHT_INCHES = 6;
+    const panelWidthPx = 4 * DPI;  // 4" = 1200px
+    const panelHeightPx = 6 * DPI; // 6" = 1800px
+    
     return {
       name: 'Custom 8×6',
-      paperWidthPx: cardContentWidthPx,  // 2400px
-      paperHeightPx: cardContentHeightPx, // 1800px
+      paperWidthPx: CARD_WIDTH_INCHES * DPI,   // 2400px
+      paperHeightPx: CARD_HEIGHT_INCHES * DPI, // 1800px
       paperWidthPoints: CARD_WIDTH_INCHES * 72,  // 576 points
       paperHeightPoints: CARD_HEIGHT_INCHES * 72, // 432 points
-      panelWidthPx,
-      panelHeightPx,
-      cardContentWidthPx,
-      cardContentHeightPx,
+      panelWidthPx,                              // 1200px (4")
+      panelHeightPx,                             // 1800px (6")
+      cardContentWidthPx: CARD_WIDTH_INCHES * DPI,   // 2400px
+      cardContentHeightPx: CARD_HEIGHT_INCHES * DPI, // 1800px
       horizontalOffsetPx: 0,
       verticalOffsetPx: 0,
       supportsDuplex: false,
       description: '8" × 6" landscape (custom size)',
       trimRequired: false,
+      foldedWidth: 4,
+      foldedHeight: 6,
     };
   }
 }
@@ -271,8 +281,8 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
         console.warn("  PDF SETTINGS:");
         console.warn(`    ✓ Paper Size: ${config.description}`);
         console.warn("    ✓ Resolution: 300 DPI (High Quality)");
-        console.warn("    ✓ Layout: Two 4x6 panels side-by-side (8\" × 6\" card content)");
-        console.warn("    ✓ Folded card: 4 × 6 inches");
+        console.warn(`    ✓ Layout: Two ${config.panelWidthPx / DPI}\" × ${config.panelHeightPx / DPI}\" panels side-by-side`);
+        console.warn(`    ✓ Folded card: ${config.foldedWidth || config.panelWidthPx / DPI} × ${config.foldedHeight || config.panelHeightPx / DPI} inches`);
         console.warn("    ✓ Printer: " + printerName);
         console.warn("");
         
@@ -315,14 +325,14 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
           console.warn("    • Use standard US Letter paper (8.5 × 11 inches) or heavyweight cardstock");
           console.warn("    • Place in LANDSCAPE orientation (11\" wide at top)");
           console.warn("    • Printer will auto-duplex - just load and go!");
-          console.warn("    • Card will be centered with 1.5\" margins on sides");
+          console.warn("    • ✅ BORDERLESS: Card fills entire page (no margins)");
+          console.warn("    • Folded card size: 5.5\" × 8.5\"");
         } else if (config.name === 'Half Letter') {
           console.warn("    • Use Half Letter/Statement paper (5.5 × 8.5 inches) or heavyweight cardstock");
           console.warn("    • Place in LANDSCAPE orientation (8.5\" wide at top)");
           console.warn("    • Printer will auto-duplex - just load and go!");
-          console.warn("    • Card will be centered with 0.25\" side margins");
-          console.warn("    • ⚠️  Note: Card (6\" tall) is slightly taller than paper (5.5\")");
-          console.warn("    • Top/bottom will be trimmed by 0.25\" each automatically");
+          console.warn("    • ✅ BORDERLESS: Card fills entire page (no margins)");
+          console.warn("    • Folded card size: 4.25\" × 5.5\"");
         } else {
           console.warn("    • Use 8 × 6 inch heavyweight cardstock");
           console.warn("    • Place in LANDSCAPE orientation (8\" wide at top)");
@@ -348,7 +358,7 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
             await print(absolutePdfPath, printOptions);
             console.log("✅ Print job successfully sent via pdf-to-printer!");
             console.log(`   📄 Paper: ${config.name} (${config.description})`);
-            console.log("   🎴 Card: 4 × 6 inches when folded");
+            console.log(`   🎴 Card: ${config.foldedWidth || config.panelWidthPx / DPI} × ${config.foldedHeight || config.panelHeightPx / DPI} inches when folded`);
             console.log("   🎨 Quality: 300 DPI High Resolution");
             if (config.supportsDuplex) {
               console.log("   ✅ Result: ONE double-sided card (auto-duplex)");
