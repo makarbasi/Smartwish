@@ -1011,7 +1011,7 @@ export default function CustomizeCardPage() {
   const executePrintDirect = async () => {
     if (!cardData) return;
 
-    console.log('🖨️ DEV MODE: Printing without payment');
+    console.log('🖨️ Starting print process...');
 
     setIsPrinting(true);
     try {
@@ -1027,16 +1027,141 @@ export default function CustomizeCardPage() {
         return;
       }
 
-      console.log('Printing directly to EPSON printer via backend...');
-
-      // Send images directly to backend printer - no PDF generation needed
-      // The backend will handle compositing and printing automatically
-      await autoPrintToEpson(image1, image2, image3, image4);
+      // Check if we're running locally (localhost) or in production
+      const isLocalhost = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      
+      if (isLocalhost) {
+        // Local development: print directly via backend
+        console.log('🏠 Local mode: Printing directly via backend...');
+        await autoPrintToEpson(image1, image2, image3, image4);
+      } else {
+        // Production/Cloud: Use browser print dialog (PDF download)
+        console.log('☁️ Production mode: Using browser print dialog...');
+        await printViaBrowser(image1, image2, image3, image4);
+      }
+      
       setIsPrinting(false);
     } catch (error) {
       console.error('Print error:', error);
       alert('Failed to generate print files. Please try again.');
       setIsPrinting(false);
+    }
+  };
+
+  // Browser-based printing for production mode (uses browser's print dialog)
+  const printViaBrowser = async (image1: string, image2: string, image3: string, image4: string) => {
+    console.log('📄 Generating printable card...');
+    
+    try {
+      // Create a print-friendly HTML layout
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Please allow popups to print. Or download the images and print manually.');
+        return;
+      }
+
+      // Create print-optimized layout (landscape, 2 pages for duplex)
+      const printHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Print Card - ${cardData?.name || 'Greeting Card'}</title>
+          <style>
+            @page {
+              size: letter landscape;
+              margin: 0;
+            }
+            @media print {
+              body { margin: 0; padding: 0; }
+              .page { page-break-after: always; }
+              .page:last-child { page-break-after: auto; }
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              font-family: Arial, sans-serif;
+            }
+            .page {
+              width: 11in;
+              height: 8.5in;
+              display: flex;
+              position: relative;
+              background: white;
+            }
+            .panel {
+              width: 50%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+            }
+            .panel img {
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            }
+            .instructions {
+              padding: 20px;
+              text-align: center;
+              background: #f0f0f0;
+            }
+            @media print {
+              .instructions { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="instructions">
+            <h2>🖨️ Print Settings</h2>
+            <p><strong>Paper:</strong> Letter (8.5" × 11") | <strong>Orientation:</strong> Landscape</p>
+            <p><strong>Two-Sided:</strong> ON (Flip on Short Edge) | <strong>Borderless:</strong> ON (recommended)</p>
+            <p>Click Print below or press Ctrl+P</p>
+            <button onclick="window.print()" style="padding: 10px 30px; font-size: 16px; cursor: pointer;">
+              Print Card
+            </button>
+          </div>
+          
+          <!-- Page 1: Back (left) + Front (right) -->
+          <div class="page">
+            <div class="panel">
+              <img src="${image4}" alt="Back Cover" />
+            </div>
+            <div class="panel">
+              <img src="${image1}" alt="Front Cover" />
+            </div>
+          </div>
+          
+          <!-- Page 2: Inside Right (left) + Inside Left (right) -->
+          <div class="page">
+            <div class="panel">
+              <img src="${image2}" alt="Inside Right" />
+            </div>
+            <div class="panel">
+              <img src="${image3}" alt="Inside Left" />
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printHTML);
+      printWindow.document.close();
+      
+      // Wait for images to load, then trigger print
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.focus();
+          printWindow.print();
+        }, 500);
+      };
+
+      console.log('✅ Print window opened. Use your browser print dialog to select your printer.');
+      
+    } catch (error) {
+      console.error('Browser print error:', error);
+      throw error;
     }
   };
 
