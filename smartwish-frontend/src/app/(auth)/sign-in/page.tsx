@@ -4,12 +4,15 @@ import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { VirtualInput } from "@/components/VirtualInput";
+import { Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
+import { InformationCircleIcon } from "@heroicons/react/24/outline";
 
 function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showSignUpModal, setShowSignUpModal] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -58,14 +61,13 @@ function SignInForm() {
   };
 
   const handleGoogleSignIn = async () => {
-    try {
-      await signIn("google", {
-        callbackUrl: callbackUrl,
-      });
-    } catch (error) {
-      console.error("Google sign in error:", error);
-      setError("Google sign in failed. Please try again.");
-    }
+    // Disabled - show modal instead
+    setShowSignUpModal(true);
+  };
+
+  const handleSignUpClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowSignUpModal(true);
   };
 
   return (
@@ -200,7 +202,7 @@ function SignInForm() {
               <div className="mt-6 flex justify-center">
                 <button
                   onClick={handleGoogleSignIn}
-                  className="flex w-full max-w-sm items-center justify-center gap-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 focus-visible:inset-ring-transparent"
+                  className="flex w-full max-w-sm items-center justify-center gap-3 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-400 shadow-xs inset-ring inset-ring-gray-300 opacity-60"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5">
                     <path
@@ -232,13 +234,64 @@ function SignInForm() {
             Not a member?{" "}
             <a
               href="/sign-up"
-              className="font-semibold text-indigo-600 hover:text-indigo-500"
+              onClick={handleSignUpClick}
+              className="font-semibold text-gray-400 cursor-not-allowed opacity-60"
             >
               Create an account
             </a>
           </p>
         </div>
       </div>
+
+      {/* Sign Up Locked Modal */}
+      <Dialog
+        open={showSignUpModal}
+        onClose={() => setShowSignUpModal(false)}
+        className="relative z-50"
+      >
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 bg-black/25 transition-opacity"
+          aria-hidden="true"
+        />
+
+        {/* Full-screen container to center the panel */}
+        <div className="fixed inset-0 flex w-screen items-center justify-center p-4">
+          <DialogPanel className="max-w-md space-y-4 rounded-xl bg-white p-6 shadow-2xl ring-1 ring-black/5">
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0">
+                <InformationCircleIcon
+                  className="h-6 w-6 text-indigo-600"
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="flex-1">
+                <DialogTitle
+                  as="h3"
+                  className="text-lg font-semibold leading-6 text-gray-900"
+                >
+                  Sign Up Locked
+                </DialogTitle>
+                <div className="mt-2">
+                  <p className="text-sm text-gray-500">
+                    Sign up for mobile app is currently locked. Usage is limited to Smart Wish kiosk only.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowSignUpModal(false)}
+                className="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                Understood
+              </button>
+            </div>
+          </DialogPanel>
+        </div>
+      </Dialog>
     </>
   );
 }
