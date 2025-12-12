@@ -30,6 +30,9 @@ interface MarketplaceGiftCarouselProps {
 }
 
 export default function MarketplaceGiftCarousel({ cardId, giftCardData }: MarketplaceGiftCarouselProps) {
+  // Temporarily hidden - Tillo integration in sandbox
+  return null
+  
   // If gift card is selected, show it
   if (giftCardData) {
     return (
