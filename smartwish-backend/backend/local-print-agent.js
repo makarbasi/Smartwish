@@ -35,16 +35,16 @@ const __dirname = path.dirname(__filename);
 const CONFIG = {
   // Cloud server URL - change this to your deployed backend
   cloudServerUrl: process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
-  
+
   // Default printer name - set to your actual printer
   defaultPrinter: process.env.DEFAULT_PRINTER || 'HPA4CC43 (HP Smart Tank 7600 series)',
-  
+
   // How often to poll for new jobs (milliseconds)
   pollInterval: process.env.POLL_INTERVAL || 5000,
-  
+
   // Temporary directory for downloaded files
   tempDir: path.join(__dirname, 'temp-print-jobs'),
-  
+
   // Paper configuration
   dpi: 300,
 };
@@ -52,7 +52,7 @@ const CONFIG = {
 // Paper size configurations
 function getPaperConfig(paperSize = 'letter') {
   const DPI = CONFIG.dpi;
-  
+
   if (paperSize === 'letter') {
     const LETTER_WIDTH = 11;
     const LETTER_HEIGHT = 8.5;
@@ -118,7 +118,7 @@ async function createCompositeImage(outputPath, leftImgPath, rightImgPath, confi
   const leftImage = await sharp(leftImgPath)
     .resize(config.panelWidthPx, config.panelHeightPx, { fit: 'fill' })
     .toBuffer();
-    
+
   const rightImage = await sharp(rightImgPath)
     .resize(config.panelWidthPx, config.panelHeightPx, { fit: 'fill' })
     .toBuffer();
@@ -143,10 +143,10 @@ async function createCompositeImage(outputPath, leftImgPath, rightImgPath, confi
 
 async function createPdf(pdfPath, side1Path, side2Path, config) {
   const pdfDoc = await PDFDocument.create();
-  
+
   const side1Bytes = await fs.readFile(side1Path);
   const side2Bytes = await fs.readFile(side2Path);
-  
+
   const side1Image = await pdfDoc.embedPng(side1Bytes);
   const side2Image = await pdfDoc.embedPng(side2Bytes);
 
@@ -158,14 +158,42 @@ async function createPdf(pdfPath, side1Path, side2Path, config) {
 
   const pdfBytes = await pdfDoc.save();
   await fs.writeFile(pdfPath, pdfBytes);
-  
+
   return pdfPath;
 }
 
 async function printPdf(pdfPath, printerName) {
   console.log(`  🖨️ Printing to: ${printerName}`);
-  await print(pdfPath, { printer: printerName });
-  console.log('  ✅ Print job sent successfully!');
+  console.log(`  📄 Settings: Letter, Landscape, Duplex (flip short edge), Color`);
+
+  // Print options for pdf-to-printer (uses SumatraPDF on Windows)
+  // https://github.com/artiebits/pdf-to-printer
+  const printOptions = {
+    printer: printerName,
+    // Duplex options: 'simplex', 'duplex', 'duplexshort', 'duplexlong'
+    // For landscape greeting cards: use 'duplexshort' (flip on short edge)
+    side: 'duplexshort',
+    // Scale: 'noscale', 'shrink', 'fit'
+    scale: 'noscale',
+    // Color printing (not monochrome)
+    monochrome: false,
+  };
+
+  try {
+    await print(pdfPath, printOptions);
+    console.log('  ✅ Print job sent successfully (duplex: flip on short edge)!');
+  } catch (err) {
+    console.warn('  ⚠️ Print with duplex options failed:', err.message);
+    console.warn('  📝 Trying basic print...');
+    // Fallback: try basic print (duplex should be set in printer defaults)
+    await print(pdfPath, { printer: printerName });
+    console.log('  ✅ Print job sent using printer defaults');
+    console.log('');
+    console.log('  ⚠️  If not printing two-sided, set duplex in Windows:');
+    console.log('     Control Panel → Devices and Printers');
+    console.log('     Right-click printer → Printing Preferences');
+    console.log('     Set "Two-sided" to "Flip on Short Edge"');
+  }
 }
 
 // =============================================================================
@@ -176,15 +204,15 @@ async function processJob(job) {
   console.log(`\n📋 Processing job: ${job.id}`);
   console.log(`   Printer: ${job.printerName}`);
   console.log(`   Images: ${job.imagePaths?.length || 0}`);
-  
+
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });
-  
+
   try {
     // Get paper configuration
     const config = getPaperConfig(job.paperSize || 'letter');
     console.log(`   Paper: ${config.name}`);
-    
+
     // Download or use local paths for images
     const imageFiles = {
       front: path.join(jobDir, 'page_1.png'),
@@ -192,13 +220,13 @@ async function processJob(job) {
       insideLeft: path.join(jobDir, 'page_3.png'),
       back: path.join(jobDir, 'page_4.png'),
     };
-    
+
     // If imagePaths are URLs, download them
     if (job.imagePaths && job.imagePaths.length >= 4) {
       for (let i = 0; i < 4; i++) {
         const imagePath = job.imagePaths[i];
         const localPath = path.join(jobDir, `page_${i + 1}.png`);
-        
+
         if (imagePath.startsWith('http')) {
           await downloadImage(imagePath, localPath);
         } else {
@@ -208,40 +236,40 @@ async function processJob(job) {
         }
       }
     }
-    
+
     // Create composite images
     console.log('  🔧 Creating composite images...');
     const side1Path = path.join(jobDir, 'side1.png');
     const side2Path = path.join(jobDir, 'side2.png');
-    
+
     await createCompositeImage(side1Path, imageFiles.back, imageFiles.front, config);
     await createCompositeImage(side2Path, imageFiles.insideRight, imageFiles.insideLeft, config);
-    
+
     // Create PDF
     console.log('  📄 Creating PDF...');
     const pdfPath = path.join(jobDir, 'card.pdf');
     await createPdf(pdfPath, side1Path, side2Path, config);
-    
+
     // Print
     const printerName = job.printerName || CONFIG.defaultPrinter;
     await printPdf(pdfPath, printerName);
-    
+
     // Update job status on server
     await updateJobStatus(job.id, 'completed');
-    
+
     // Cleanup
     await fs.rm(jobDir, { recursive: true, force: true });
-    
+
     console.log(`  ✅ Job ${job.id} completed successfully!`);
-    
+
   } catch (error) {
     console.error(`  ❌ Job ${job.id} failed:`, error.message);
     await updateJobStatus(job.id, 'failed', error.message);
-    
+
     // Cleanup on error too
     try {
       await fs.rm(jobDir, { recursive: true, force: true });
-    } catch {}
+    } catch { }
   }
 }
 
@@ -249,7 +277,7 @@ async function updateJobStatus(jobId, status, error = null) {
   try {
     const body = { status };
     if (error) body.error = error;
-    
+
     await fetch(`${CONFIG.cloudServerUrl}/print-jobs/${jobId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -270,23 +298,23 @@ async function pollForJobs() {
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
-    
+
     const data = await response.json();
     const jobs = data.jobs || [];
-    
+
     // Find pending jobs
     const pendingJobs = jobs.filter(j => j.status === 'pending');
-    
+
     if (pendingJobs.length > 0) {
       console.log(`\n📬 Found ${pendingJobs.length} pending job(s)`);
-      
+
       for (const job of pendingJobs) {
         // Mark as processing first
         await updateJobStatus(job.id, 'processing');
         await processJob(job);
       }
     }
-    
+
   } catch (error) {
     if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
       // Server might be down, just wait and retry
@@ -299,7 +327,7 @@ async function pollForJobs() {
 async function listPrinters() {
   console.log('\n📋 Available Printers:');
   console.log('─'.repeat(50));
-  
+
   try {
     const printers = await getPrinters();
     if (printers && printers.length > 0) {
@@ -312,7 +340,7 @@ async function listPrinters() {
   } catch (err) {
     console.error('  Could not list printers:', err.message);
   }
-  
+
   console.log('─'.repeat(50));
   console.log(`  Default: ${CONFIG.defaultPrinter}`);
   console.log('');
@@ -325,16 +353,16 @@ async function main() {
   console.log(`  Server: ${CONFIG.cloudServerUrl}`);
   console.log(`  Poll Interval: ${CONFIG.pollInterval}ms`);
   console.log('');
-  
+
   await ensureTempDir();
   await listPrinters();
-  
+
   console.log('🔄 Waiting for print jobs...');
   console.log('   Press Ctrl+C to stop\n');
-  
+
   // Initial poll
   await pollForJobs();
-  
+
   // Start polling loop
   setInterval(pollForJobs, CONFIG.pollInterval);
 }
