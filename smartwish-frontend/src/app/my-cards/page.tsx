@@ -763,20 +763,10 @@ function MyCardsContent() {
         return;
       }
 
-      // Check if we're running locally (localhost) or in production
-      const isLocalhost = typeof window !== 'undefined' && 
-        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      
-      if (isLocalhost) {
-        // Local development: print directly via backend
-        console.log('🏠 Local mode: Printing directly via backend...');
-        await autoPrintToEpson(card, image1, image2, image3, image4);
-      } else {
-        // Production/Cloud: Use browser print dialog (PDF download)
-        console.log('☁️ Production mode: Using browser print dialog...');
-        await printViaBrowser(card, image1, image2, image3, image4);
-      }
-      
+      // Always use direct printing to default printer (no dialog)
+      console.log('🖨️ Direct printing to default printer (no dialog)...');
+      await autoPrintToEpson(card, image1, image2, image3, image4);
+
       setIsPrinting(false);
     } catch (error) {
       console.error('Print error:', error);
@@ -788,7 +778,7 @@ function MyCardsContent() {
   // Browser-based printing for production mode (uses browser's print dialog)
   const printViaBrowser = async (card: MyCard, image1: string, image2: string, image3: string, image4: string) => {
     console.log('📄 Generating printable card...');
-    
+
     try {
       // Create a print-friendly HTML layout
       const printWindow = window.open('', '_blank');
@@ -884,7 +874,7 @@ function MyCardsContent() {
 
       printWindow.document.write(printHTML);
       printWindow.document.close();
-      
+
       // Wait for images to load, then trigger print
       printWindow.onload = () => {
         setTimeout(() => {
@@ -894,7 +884,7 @@ function MyCardsContent() {
       };
 
       console.log('✅ Print window opened. Use your browser print dialog to select your printer.');
-      
+
     } catch (error) {
       console.error('Browser print error:', error);
       throw error;
