@@ -96,6 +96,15 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
+  // Serve static files from downloads directory (for print job images)
+  const downloadsDir = join(process.cwd(), 'downloads');
+  if (!fs.existsSync(downloadsDir)) {
+    fs.mkdirSync(downloadsDir, { recursive: true });
+  }
+  app.useStaticAssets(downloadsDir, {
+    prefix: '/downloads/',
+  });
+
   // Serve static files from frontend public directory
   app.useStaticAssets(join(process.cwd(), 'frontend/public'), {
     prefix: '/',
@@ -105,32 +114,32 @@ async function bootstrap() {
   app.use((req: any, res: any, next: any) => {
     const host = req.get('host') || '';
     const subdomain = host.split('.')[0];
-    
+
     // Check if this is a request to hotels subdomain or localhost development
-    const isHotelsRequest = subdomain === 'hotels' || 
-                           host === 'hotels.smartwish.us' || 
-                           host === 'hotels.smartwish.onrender.com' ||
-                           host === 'hotels.localhost:3001' ||
-                           (host.includes('localhost:3001') && req.headers['x-forwarded-host'] === 'hotels.localhost:3001');
-    
+    const isHotelsRequest = subdomain === 'hotels' ||
+      host === 'hotels.smartwish.us' ||
+      host === 'hotels.smartwish.onrender.com' ||
+      host === 'hotels.localhost:3001' ||
+      (host.includes('localhost:3001') && req.headers['x-forwarded-host'] === 'hotels.localhost:3001');
+
     // Also serve hotels static files for /hotels/ path prefix during development
     const isHotelsPath = req.path.startsWith('/hotels/');
-    
+
     if (isHotelsRequest || isHotelsPath) {
-       // Serve static files from hotels-static project
-       const staticPath = join(process.cwd(), '../hotels-static');
-       
-       let requestPath = req.path;
-       // Remove /hotels prefix if present
-       if (isHotelsPath) {
-         requestPath = req.path.replace('/hotels', '') || '/';
-       }
-      
+      // Serve static files from hotels-static project
+      const staticPath = join(process.cwd(), '../hotels-static');
+
+      let requestPath = req.path;
+      // Remove /hotels prefix if present
+      if (isHotelsPath) {
+        requestPath = req.path.replace('/hotels', '') || '/';
+      }
+
       // Handle root request to hotels subdomain
       if (requestPath === '/' || requestPath === '/index.html') {
         return res.sendFile(join(staticPath, 'index.html'));
       }
-      
+
       // Handle other static files
       const filePath = join(staticPath, requestPath);
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
@@ -147,17 +156,17 @@ async function bootstrap() {
         }
         return res.sendFile(filePath);
       }
-      
+
       // Only serve index.html for HTML requests (not for API calls or other file types)
       const acceptsHtml = req.headers.accept && req.headers.accept.includes('text/html');
       if (acceptsHtml && !requestPath.includes('.')) {
         return res.sendFile(join(staticPath, 'index.html'));
       }
-      
+
       // Return 404 for other missing files
       return res.status(404).send('File not found');
     }
-    
+
     next();
   });
 
@@ -184,11 +193,11 @@ async function bootstrap() {
 
   // Contact form endpoint (before CORS to ensure proper handling)
   const expressApp = app.getHttpAdapter().getInstance();
-  
+
   // Configure body parser before endpoints
   expressApp.use(bodyParser.json({ limit: '50mb' }));
   expressApp.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-  
+
   // Create nodemailer transporter
   const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -200,7 +209,7 @@ async function bootstrap() {
       rejectUnauthorized: false
     }
   });
-  
+
   expressApp.post('/send-email', async (req: any, res: any) => {
     // Set CORS headers manually for this endpoint
     res.header('Access-Control-Allow-Origin', req.headers.origin);
@@ -209,14 +218,14 @@ async function bootstrap() {
     res.header('Access-Control-Allow-Credentials', 'true');
     try {
       const { firstName, lastName, email, subject, message } = req.body;
-      
+
       if (!firstName || !lastName || !email || !subject || !message) {
         return res.status(400).json({ success: false, message: 'All fields are required' });
       }
-      
+
       // Log the contact form submission
       console.log('Contact form submission:', { firstName, lastName, email, subject, message });
-      
+
       // Email options
       const mailOptions = {
         from: process.env.GMAIL_USER || 'ma.karbasi@gmail.com',
@@ -232,10 +241,10 @@ async function bootstrap() {
         `,
         replyTo: email
       };
-      
+
       // Send email
       await transporter.sendMail(mailOptions);
-      
+
       // Return success response
       res.json({ success: true, message: 'Email sent successfully!' });
     } catch (error) {
