@@ -477,6 +477,7 @@ export class AppController {
           imagePaths: imageUrls,
           status: 'pending',
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
 
         // Add to global print job queue
