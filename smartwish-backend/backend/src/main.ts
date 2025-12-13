@@ -97,7 +97,10 @@ async function bootstrap() {
   });
 
   // Serve static files from downloads directory (for print job images)
-  const downloadsDir = join(process.cwd(), 'downloads');
+  // Compiled to dist/backend/src/main.js, so go up 4 levels to smartwish-backend/downloads
+  // Same path structure as app.controller.ts
+  const downloadsDir = join(__dirname, '..', '..', '..', '..', 'downloads');
+  console.log('Downloads static directory:', downloadsDir);
   if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
   }
