@@ -426,15 +426,16 @@ export class AppController {
       if (!printerName) {
         return res.status(400).json({ message: 'Printer name is required' });
       }
-      const selectedPaperSize = paperSize || 'custom'; // Default to 'custom' if not specified
-      
+      const selectedPaperSize = paperSize || 'letter'; // Default to 'letter' for standard size
+
       // Use timestamp in filenames to avoid file locking conflicts
       const timestamp = Date.now();
-      
+      const jobId = `job_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+
       console.log(
         `PC Print request received for ${images.length} images to printer: ${printerName}, paper size: ${selectedPaperSize}`,
       );
-      
+
       // Save images with unique timestamped names
       const savedPaths: string[] = [];
       for (let i = 0; i < images.length; i++) {
@@ -448,54 +449,90 @@ export class AppController {
         savedPaths.push(filePath);
         console.log(`Saved page ${i + 1}: ${filePath}`);
       }
-      // Call the print function with the specified printer
-      try {
-        // Use absolute path to print-card.js to avoid issues after TypeScript compilation
-        // From dist/backend/src, we need to go up to smartwish-backend root
-        const printCardPath = path.join(__dirname, '../../../../print-card.js');
-        const smartwishBackendRoot = path.join(__dirname, '../../../..');
-        
-        console.log('Loading print-card module from:', printCardPath);
-        console.log('Current working directory:', process.cwd());
-        console.log('Changing to smartwish-backend root:', smartwishBackendRoot);
-        
-        // Save current working directory
-        const originalCwd = process.cwd();
-        
-        // Change to smartwish-backend root so relative paths in print-card.js work
-        process.chdir(smartwishBackendRoot);
-        console.log('Working directory changed to:', process.cwd());
-        
-        const printCardModule = require(printCardPath);
-        // Pass timestamp so print-card.js knows which files to use
-        await printCardModule.main(printerName, selectedPaperSize, timestamp);
-        
-        // Restore original working directory
-        process.chdir(originalCwd);
-        console.log('Working directory restored to:', process.cwd());
-        
-        // Clean up timestamped files after successful print (async, don't wait)
-        setTimeout(() => {
-          try {
-            for (const filePath of savedPaths) {
-              if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                console.log(`Cleaned up: ${filePath}`);
+
+      // Check if running in cloud environment (Render, etc.)
+      const isCloudEnvironment = process.env.NODE_ENV === 'production' ||
+        process.env.RENDER === 'true' ||
+        !process.env.LOCAL_PRINTING;
+
+      if (isCloudEnvironment) {
+        // Cloud mode: Queue job for local print agent to pick up
+        console.log('☁️ Cloud environment detected - queuing print job for local agent');
+
+        // Generate URLs for the saved images
+        const baseUrl = process.env.RENDER_EXTERNAL_URL ||
+          process.env.BASE_URL ||
+          'https://smartwish.onrender.com';
+
+        const imageUrls = savedPaths.map((filePath, index) => {
+          const fileName = path.basename(filePath);
+          return `${baseUrl}/downloads/flipbook/${fileName}`;
+        });
+
+        // Create print job for local agent
+        const printJob = {
+          id: jobId,
+          printerName,
+          paperSize: selectedPaperSize,
+          imagePaths: imageUrls,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        };
+
+        // Add to global print job queue
+        if (!global.printJobQueue) {
+          global.printJobQueue = [];
+        }
+        global.printJobQueue.push(printJob);
+
+        console.log(`✅ Print job ${jobId} queued for local print agent`);
+        console.log(`   Run 'node local-print-agent.js' on your local PC to process this job`);
+
+        res.json({
+          message: 'Print job queued successfully',
+          jobId,
+          status: 'pending',
+          note: 'Job queued for local print agent. Make sure local-print-agent.js is running on your PC.',
+          savedImages: savedPaths.length,
+        });
+      } else {
+        // Local mode: Try direct printing (only works on Windows with printer connected)
+        console.log('🏠 Local environment detected - attempting direct print');
+        try {
+          const printCardPath = path.join(__dirname, '../../../../print-card.js');
+          const smartwishBackendRoot = path.join(__dirname, '../../../..');
+
+          console.log('Loading print-card module from:', printCardPath);
+          const originalCwd = process.cwd();
+          process.chdir(smartwishBackendRoot);
+
+          const printCardModule = require(printCardPath);
+          await printCardModule.main(printerName, selectedPaperSize, timestamp);
+
+          process.chdir(originalCwd);
+
+          // Clean up files after print
+          setTimeout(() => {
+            try {
+              for (const filePath of savedPaths) {
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
               }
+            } catch (cleanupError) {
+              console.warn(`Could not clean up files:`, cleanupError.message);
             }
-          } catch (cleanupError) {
-            console.warn(`Could not clean up files:`, cleanupError.message);
-          }
-        }, 5000); // Wait 5 seconds before cleanup to ensure files are released
-      } catch (importError) {
-        console.error('Error importing print-card module:', importError);
-        console.error('Attempted path:', path.join(__dirname, '../../../../print-card.js'));
-        throw new Error('Failed to load printing module');
+          }, 5000);
+
+          res.json({
+            message: 'Print job sent successfully',
+            savedImages: savedPaths.length,
+          });
+        } catch (importError) {
+          console.error('Error in direct printing:', importError);
+          throw new Error('Direct printing failed - try using local print agent');
+        }
       }
-      res.json({
-        message: 'Print job sent successfully',
-        savedImages: savedPaths.length,
-      });
     } catch (error) {
       console.error('Error in PC printing:', error);
       res.status(500).json({
