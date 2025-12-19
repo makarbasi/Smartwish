@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { useState, useEffect } from 'react'
 
 interface GiftCardData {
@@ -30,9 +29,6 @@ interface MarketplaceGiftCarouselProps {
 }
 
 export default function MarketplaceGiftCarousel({ cardId, giftCardData }: MarketplaceGiftCarouselProps) {
-  // Temporarily hidden - Tillo integration in sandbox
-  return null
-  
   // If gift card is selected, show it
   if (giftCardData) {
     return (
@@ -56,14 +52,16 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData }: Market
               <div className="flex-shrink-0">
                 <div className="w-24 h-24 bg-white rounded-2xl shadow-lg flex items-center justify-center p-2 border-2 border-green-200 group-hover:border-green-300 transition-colors">
                   {giftCardData.storeLogo ? (
-                    <div className="relative w-full h-full">
-                      <Image
-                        src={giftCardData.storeLogo}
-                        alt={giftCardData.storeName}
-                        fill
-                        className="object-contain"
-                      />
-                    </div>
+                    <img
+                      src={giftCardData.storeLogo}
+                      alt={giftCardData.storeName}
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.style.display = 'none'
+                        target.parentElement!.innerHTML = '<span class="text-4xl">🎁</span>'
+                      }}
+                    />
                   ) : (
                     <span className="text-4xl">🎁</span>
                   )}
@@ -123,19 +121,29 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData }: Market
   useEffect(() => {
     const fetchFeaturedProducts = async () => {
       try {
-        const response = await fetch('/api/tremendous/products')
+        // Fetch from Tillo brands endpoint
+        const response = await fetch('/api/tillo/brands')
         if (response.ok) {
           const data = await response.json()
-          // Get exactly 2 random products for variety
-          const products = data.products || []
-          if (products.length > 0) {
-            const shuffled = products.sort(() => 0.5 - Math.random())
+          // Get exactly 2 random brands for variety
+          const brands = data.brands || data.products || []
+          if (brands.length > 0) {
+            // Map Tillo brand format to our component format
+            const mappedBrands = brands.map((b: any) => ({
+              id: b.id || b.slug,
+              name: b.name,
+              image: b.logo || b.image || '',
+              minAmount: b.minAmount || 5,
+              maxAmount: b.maxAmount || 500,
+              category: b.category || 'Gift Card'
+            }))
+            const shuffled = mappedBrands.sort(() => 0.5 - Math.random())
             // Always show exactly 2 products
             setFeaturedProducts(shuffled.slice(0, 2))
           }
         }
       } catch (error) {
-        console.error('Failed to fetch marketplace products:', error)
+        console.error('Failed to fetch marketplace brands:', error)
       } finally {
         setIsLoading(false)
       }
@@ -163,57 +171,59 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData }: Market
                   {/* Second Card (Behind, Tilted) */}
                   {featuredProducts.length > 1 && (
                     <div 
-                      className="absolute left-14 top-0 w-28 h-28 rounded-2xl transform rotate-6 transition-all duration-300 group-hover:rotate-12 group-hover:translate-x-2"
+                      className="absolute left-14 top-0 w-28 h-28 rounded-2xl bg-gradient-to-br from-purple-100 to-indigo-100 transform rotate-6 transition-all duration-300 group-hover:rotate-12 group-hover:translate-x-2"
                       style={{ 
                         zIndex: 1,
                         filter: 'drop-shadow(0 10px 15px rgba(0, 0, 0, 0.2))'
                       }}
                     >
                       <div className="w-full h-full flex items-center justify-center p-2">
-                        <div className="relative w-full h-full opacity-90">
-                          <Image
-                            src={featuredProducts[1].image || 'https://via.placeholder.com/112x112?text=🎁'}
+                        {featuredProducts[1].image ? (
+                          <img
+                            src={featuredProducts[1].image}
                             alt={featuredProducts[1].name}
-                            fill
-                            className="object-contain"
-                            style={{ mixBlendMode: 'multiply' }}
+                            className="w-full h-full object-contain opacity-90"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement
-                              target.src = 'https://via.placeholder.com/112x112?text=🎁'
+                              target.style.display = 'none'
+                              target.parentElement!.innerHTML = '<span class="text-4xl">🎁</span>'
                             }}
                           />
-                        </div>
+                        ) : (
+                          <span className="text-4xl">🎁</span>
+                        )}
                       </div>
                     </div>
                   )}
                   
                   {/* First Card (Front, Main) */}
                   <div 
-                    className="absolute left-0 top-0 w-28 h-28 rounded-2xl transform -rotate-3 transition-all duration-300 group-hover:-rotate-6 group-hover:-translate-y-1"
+                    className="absolute left-0 top-0 w-28 h-28 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 transform -rotate-3 transition-all duration-300 group-hover:-rotate-6 group-hover:-translate-y-1"
                     style={{ 
                       zIndex: 2,
                       filter: 'drop-shadow(0 20px 25px rgba(0, 0, 0, 0.3))'
                     }}
                   >
                     <div className="w-full h-full flex items-center justify-center p-3">
-                      <div className="relative w-full h-full">
-                        <Image
-                          src={featuredProducts[0].image || 'https://via.placeholder.com/112x112?text=🎁'}
+                      {featuredProducts[0].image ? (
+                        <img
+                          src={featuredProducts[0].image}
                           alt={featuredProducts[0].name}
-                          fill
-                          className="object-contain"
-                          style={{ mixBlendMode: 'multiply' }}
+                          className="w-full h-full object-contain"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement
-                            target.src = 'https://via.placeholder.com/112x112?text=🎁'
+                            target.style.display = 'none'
+                            target.parentElement!.innerHTML = '<span class="text-4xl">🎁</span>'
                           }}
                         />
-                      </div>
+                      ) : (
+                        <span className="text-4xl">🎁</span>
+                      )}
                     </div>
                   </div>
                 </>
               ) : (
-                <div className="w-28 h-28 rounded-2xl shadow-2xl flex items-center justify-center transform -rotate-3">
+                <div className="w-28 h-28 rounded-2xl shadow-2xl flex items-center justify-center transform -rotate-3 bg-gradient-to-br from-indigo-100 to-purple-100">
                   <span className="text-5xl drop-shadow-lg">🎁</span>
                 </div>
               )}
