@@ -310,6 +310,17 @@ export default function CustomizeCardPage() {
         console.log(`⏱️ [EDITOR] Total template load time: ${(loadEnd - loadStart).toFixed(1)}ms`);
       } else {
         console.warn(`⚠️ [EDITOR] No template data found in sessionStorage for ${cardId}`);
+
+        // Check if this temp ID was already saved - if so, redirect to the real ID
+        const realId = sessionStorage.getItem(`tempIdMap_${cardId}`);
+        if (realId) {
+          console.log('🔄 Found mapping to real ID, redirecting:', cardId, '->', realId);
+          // Preserve any query params (like showGift=true)
+          const currentUrl = new URL(window.location.href);
+          currentUrl.pathname = `/my-cards/${realId}`;
+          window.location.href = currentUrl.toString();
+          return;
+        }
       }
     }
   }, [isTemplateMode, cardId]);
@@ -325,9 +336,20 @@ export default function CustomizeCardPage() {
         setRealSavedDesignId(savedDesignId);
         setSavingInBackground(false);
 
-        // Clean up sessionStorage
-        sessionStorage.removeItem(`pendingTemplate_${tempId}`);
-        sessionStorage.removeItem(`tempIdMap_${tempId}`);
+        // Migrate gift card data from temp ID to real ID
+        const tempGiftCard = localStorage.getItem(`giftCard_${tempId}`);
+        if (tempGiftCard) {
+          console.log('🎁 Migrating gift card from temp ID to real ID:', tempId, '->', savedDesignId);
+          localStorage.setItem(`giftCard_${savedDesignId}`, tempGiftCard);
+          localStorage.removeItem(`giftCard_${tempId}`);
+        }
+
+        // Store mapping from temp ID to real ID (in case user navigates back with old URL)
+        sessionStorage.setItem(`tempIdMap_${tempId}`, savedDesignId);
+
+        // Keep pendingTemplate for a bit longer in case user navigates away and back
+        // Will clean up on next page load if the real design exists
+        // sessionStorage.removeItem(`pendingTemplate_${tempId}`);
 
         // Update URL without reload
         window.history.replaceState(null, '', `/my-cards/${savedDesignId}`);
