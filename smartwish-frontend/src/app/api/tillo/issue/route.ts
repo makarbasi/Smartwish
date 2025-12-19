@@ -3,7 +3,7 @@ import crypto from 'crypto'
 
 // Generate UUID without external dependency
 function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0
     const v = c === 'x' ? r : (r & 0x3 | 0x8)
     return v.toString(16)
@@ -31,7 +31,7 @@ function generateSignature(
     brandSlug,
     timestamp.toString()
   ].join('-')
-  
+
   console.log('🔏 Signature string:', signatureString)
 
   const hmac = crypto.createHmac('sha256', TILLO_API_SECRET)
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     if (!TILLO_API_KEY || !TILLO_API_SECRET) {
       console.error('❌ Tillo API credentials not configured')
       return NextResponse.json(
-        { 
+        {
           error: 'Tillo API configuration missing',
           details: 'Please set TILLO_API_KEY and TILLO_API_SECRET environment variables'
         },
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now()
     const clientRequestId = generateUUID()
     const amountValue = parseFloat(amount)
-    
+
     // Tillo API v2 endpoint for digital gift card issuance
     const endpoint = 'digital/issue'
     const signatureEndpoint = 'digital-issue'  // Signature uses the action name
@@ -77,14 +77,17 @@ export async function POST(request: NextRequest) {
     console.log('📋 Client Request ID:', clientRequestId)
 
     // Tillo API v2 request body format
-    // According to Tillo docs, these are the required fields for digital/issue
+    // V2 requires amount and currency NESTED inside 'face_value' object
     const requestBody = {
-      brand: brandSlug,
-      face_value: amountValue,
-      currency: currency,
       client_request_id: clientRequestId,
-      sector: sector,
-      delivery_method: 'url'
+      brand: brandSlug,
+      face_value: {
+        amount: Number(amountValue.toFixed(2)),
+        currency: currency
+      },
+      delivery_method: 'url',
+      fulfilment_by: 'partner',
+      sector: sector
     }
 
     console.log('📤 Tillo issue request:', JSON.stringify(requestBody))
@@ -105,11 +108,11 @@ export async function POST(request: NextRequest) {
 
     const responseText = await response.text()
     console.log('📥 Tillo issue response status:', response.status)
-    
+
     if (!response.ok) {
       console.error('❌ Tillo issue error:', responseText)
       return NextResponse.json(
-        { 
+        {
           error: 'Failed to issue gift card',
           status: response.status,
           details: responseText
@@ -120,10 +123,10 @@ export async function POST(request: NextRequest) {
 
     const data = JSON.parse(responseText)
     console.log('📦 Tillo issue response:', JSON.stringify(data).substring(0, 500))
-    
+
     // Tillo v2 response format: { code, status, message, data: { ... } }
     const responseData = data.data || data
-    
+
     // Extract the gift card details from response
     const giftCard = {
       orderId: responseData.order_id || responseData.orderId || responseData.id || clientRequestId,
@@ -151,7 +154,7 @@ export async function POST(request: NextRequest) {
     console.log('✅ Successfully issued gift card:', giftCard.orderId)
     console.log('🔗 Redemption URL:', giftCard.url)
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       giftCard,
       source: 'tillo'
@@ -159,7 +162,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('❌ Error issuing Tillo gift card:', error.message)
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to issue gift card',
         details: error.message
       },
