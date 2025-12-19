@@ -605,8 +605,8 @@ export default function CustomizeCardPage() {
 
   // Define callback functions before early returns
   const handleFlipNext = useCallback(() => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
-    if (typeof window !== "undefined" && window.innerWidth < 1280) {
+    // Check if we're on mobile/tablet (flipbook is hidden at lg breakpoint = 1024px)
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
       // Mobile/Tablet: directly update currentPage state
       if (currentPage < 3) {
         setCurrentPage(currentPage + 1);
@@ -620,8 +620,8 @@ export default function CustomizeCardPage() {
   }, [currentPage]);
 
   const handleFlipPrev = useCallback(() => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
-    if (typeof window !== "undefined" && window.innerWidth < 1280) {
+    // Check if we're on mobile/tablet (flipbook is hidden at lg breakpoint = 1024px)
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
       // Mobile/Tablet: directly update currentPage state
       if (currentPage > 0) {
         setCurrentPage(currentPage - 1);
@@ -635,8 +635,8 @@ export default function CustomizeCardPage() {
   }, [currentPage]);
 
   const goToPage = useCallback((pageIndex: number) => {
-    // Check if we're on mobile/tablet (flipbook is hidden)
-    if (typeof window !== "undefined" && window.innerWidth < 1280) {
+    // Check if we're on mobile/tablet (flipbook is hidden at lg breakpoint = 1024px)
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
       // Mobile/Tablet: directly update currentPage state
       setCurrentPage(pageIndex);
     } else {
@@ -685,8 +685,8 @@ export default function CustomizeCardPage() {
   // Keyboard navigation for flipbook
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Only handle keyboard events on desktop when flipbook is visible
-      if (typeof window !== "undefined" && window.innerWidth >= 1280) {
+      // Only handle keyboard events on desktop when flipbook is visible (lg breakpoint = 1024px)
+      if (typeof window !== "undefined" && window.innerWidth >= 1024) {
         switch (event.key) {
           case "ArrowLeft":
             event.preventDefault();
@@ -2032,23 +2032,23 @@ export default function CustomizeCardPage() {
           <button
             onClick={handleFlipPrev}
             disabled={currentPage === 0}
-            className="hidden xl:flex flex-shrink-0 p-4 rounded-full bg-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mr-4 xl:mr-8 text-gray-700"
+            className="hidden lg:flex flex-shrink-0 p-4 rounded-full bg-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mr-4 lg:mr-8 text-gray-700"
           >
             <ChevronLeftIcon className="h-6 w-6" />
           </button>
 
           {/* Desktop Flipbook Container */}
-          <div className="hidden xl:block relative">
+          <div className="hidden lg:block relative">
             <HTMLFlipBook
               ref={flipBookRef}
-              width={500}
-              height={772}
+              width={400}
+              height={617}
               size="fixed"
               startPage={0}
               minWidth={200}
-              maxWidth={1000}
+              maxWidth={800}
               minHeight={200}
-              maxHeight={1000}
+              maxHeight={800}
               style={{}}
               maxShadowOpacity={0.8}
               showCover={true}
@@ -2072,8 +2072,8 @@ export default function CustomizeCardPage() {
                   <Image
                     src={pageImages[0] || cd.pages[0]}
                     alt="Gift Card Cover"
-                    width={500}
-                    height={772}
+                    width={400}
+                    height={617}
                     className="w-full h-full object-cover rounded-lg"
                     priority
                   />
@@ -2138,8 +2138,8 @@ export default function CustomizeCardPage() {
                   <Image
                     src={pageImages[1] || cd.pages[1]}
                     alt="Gift Card Page 2"
-                    width={500}
-                    height={772}
+                    width={400}
+                    height={617}
                     className="w-full h-full object-cover rounded-lg"
                   />
                   {/* Edit icon blocking zone */}
@@ -2203,8 +2203,8 @@ export default function CustomizeCardPage() {
                   <Image
                     src={pageImages[2] || cd.pages[2]}
                     alt="Gift Card Page 3"
-                    width={500}
-                    height={772}
+                    width={400}
+                    height={617}
                     className="w-full h-full object-cover rounded-lg"
                   />
 
@@ -2291,8 +2291,8 @@ export default function CustomizeCardPage() {
                   <Image
                     src={pageImages[3] || cd.pages[3]}
                     alt="Gift Card Page 4"
-                    width={500}
-                    height={772}
+                    width={400}
+                    height={617}
                     className="w-full h-full object-cover rounded-lg"
                   />
                   {/* Edit icon */}
@@ -2340,14 +2340,14 @@ export default function CustomizeCardPage() {
           </div>
 
           {/* Desktop Page Indicator */}
-          <div className="hidden xl:block absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
+          <div className="hidden lg:block absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
             <div className="bg-black/60 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm shadow-lg">
               Page {currentPage + 1} of 4
             </div>
           </div>
 
           {/* Mobile/Tablet Single Page View */}
-          <div className="xl:hidden relative px-4">
+          <div className="lg:hidden relative px-4">
             <div
               className="w-full max-w-sm mx-auto bg-white rounded-xl shadow-2xl overflow-hidden"
               onTouchStart={handleTouchStart}
@@ -2471,7 +2471,7 @@ export default function CustomizeCardPage() {
           <button
             onClick={handleFlipNext}
             disabled={currentPage >= 3}
-            className="hidden xl:flex flex-shrink-0 p-4 rounded-full bg-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ml-4 xl:ml-8 text-gray-700"
+            className="hidden lg:flex flex-shrink-0 p-4 rounded-full bg-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ml-4 lg:ml-8 text-gray-700"
           >
             <ChevronRightIcon className="h-6 w-6" />
           </button>
