@@ -24,7 +24,7 @@ echo   Printer: %DEFAULT_PRINTER%
 echo   Poll Interval: %POLL_INTERVAL%ms
 echo.
 
-node local-print-agent.js
+node backend/local-print-agent.js
 
 pause
 

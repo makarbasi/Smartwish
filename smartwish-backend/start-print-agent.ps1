@@ -16,6 +16,6 @@ Write-Host "  Printer: $env:DEFAULT_PRINTER"
 Write-Host "  Poll Interval: $env:POLL_INTERVAL ms"
 Write-Host ""
 
-# Run the agent
-node local-print-agent.js
+# Run the agent (located in backend/ subdirectory)
+node backend/local-print-agent.js
 

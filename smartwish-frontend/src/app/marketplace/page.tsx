@@ -17,15 +17,20 @@ const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : 
 type Product = {
   id: string
   name: string
+  slug?: string  // Tillo brand slug
   category: string
   image?: string
+  logo?: string  // Tillo brand logo
   minAmount: number
   maxAmount: number
-  availableAmounts: number[]
+  availableAmounts?: number[]
+  currency?: string
+  type?: string
 }
 
 type ProductsResponse = {
-  products: Product[]
+  products?: Product[]
+  brands?: Product[]  // Tillo uses 'brands'
 }
 
 // SWR fetcher
@@ -52,28 +57,35 @@ function ProductCard({ p }: { p: Product }) {
     generateAmountOptions()
   }
 
+  const imageUrl = p.image || p.logo || null
+  
   return (
     <div
       className="group overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm cursor-pointer"
       onClick={() => selectProduct(p.id)}
     >
-      <div className="relative">
-        <img
-          src={p.image || 'https://via.placeholder.com/400x267?text=🎁'}
-          alt={p.name}
-          className="aspect-[3/2] w-full bg-gray-100 object-contain"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement
-            target.src = 'https://via.placeholder.com/400x267?text=🎁'
-          }}
-        />
+      <div className="relative aspect-[3/2] w-full bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={p.name}
+            className="w-full h-full object-contain p-4"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement
+              target.style.display = 'none'
+              target.parentElement!.innerHTML = '<span class="text-5xl">🎁</span>'
+            }}
+          />
+        ) : (
+          <span className="text-5xl">🎁</span>
+        )}
       </div>
       <div className="px-4 pt-3 pb-4 text-left">
         <div className="flex items-center justify-between">
           <h3 className="line-clamp-1 text-[15px] font-semibold leading-6 text-gray-900">{p.name}</h3>
           <div className="text-sm text-gray-700 font-medium">${p.minAmount}-${p.maxAmount}</div>
         </div>
-        <div className="mt-1.5 text-[12px] text-gray-600">{p.category.replace('_', ' ')} · Gift Card</div>
+        <div className="mt-1.5 text-[12px] text-gray-600">{(p.category || 'Gift Card').replace(/[-_]/g, ' ')} · Gift Card</div>
       </div>
     </div>
   )
@@ -111,30 +123,33 @@ function MarketplaceContent() {
   const cardName = searchParams.get('cardName')
   const isGiftMode = searchParams.get('mode') === 'gift'
 
-  // Fetch data from API
+  // Fetch data from Tillo API
   const { data: productsData, error, isLoading } = useSWR<ProductsResponse>(
-    '/api/tremendous/products',
+    '/api/tillo/brands',
     fetcher
   )
 
-  // Update global products when data loads
+  // Update global products when data loads (supports both Tillo brands and Tremendous products)
   useEffect(() => {
-    if (productsData?.products) {
-      allProducts = productsData.products
+    const items = productsData?.brands || productsData?.products || []
+    if (items.length > 0) {
+      allProducts = items
       filteredProducts = [...allProducts]
 
       // Debug: Log available categories
-      const categories = [...new Set(productsData.products.map(p => p.category))]
+      const categories = [...new Set(items.map(p => p.category))]
+      console.log('🎁 Available gift card brands:', items.length)
       console.log('Available categories:', categories)
-      console.log('Sample products:', productsData.products.slice(0, 3))
+      console.log('Sample brands:', items.slice(0, 3))
     }
   }, [productsData])
 
   // Filter products based on search and category filter
   const displayProducts = useMemo(() => {
-    if (!productsData?.products) return []
+    const items = productsData?.brands || productsData?.products || []
+    if (items.length === 0) return []
 
-    let filtered = productsData.products
+    let filtered = items
 
     // Apply category filter first
     if (activeFilter !== 'all') {
@@ -512,13 +527,14 @@ function CheckoutModal({
     setSuccessData(null)
 
     try {
-      const response = await fetch('/api/tremendous/generate-gift-card', {
+      // Use Tillo API to issue gift card
+      const response = await fetch('/api/tillo/issue', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          productId: currentSelectedProduct.id,
+          brandSlug: currentSelectedProduct.slug || currentSelectedProduct.id,
           amount: amount
         })
       })
@@ -526,20 +542,25 @@ function CheckoutModal({
       const data = await response.json()
 
       if (response.ok && data.success) {
-        console.log('✅ Gift Card Generated Successfully:', data)
+        console.log('✅ Gift Card Generated Successfully (Tillo):', data)
 
+        // Get the redemption URL from Tillo response
+        const redemptionLink = data.giftCard?.url || data.giftCard?.redemptionUrl || ''
+        
         // Generate QR code from the redemption link
-        const qrCodeUrl = await QRCode.toDataURL(data.redemptionLink, {
-          width: 200,
-          margin: 2,
-          color: {
-            dark: '#2d3748',
-            light: '#ffffff'
-          },
-          errorCorrectionLevel: 'H'
-        })
-
-        console.log('✅ QR Code Generated')
+        let qrCodeUrl = ''
+        if (redemptionLink) {
+          qrCodeUrl = await QRCode.toDataURL(redemptionLink, {
+            width: 200,
+            margin: 2,
+            color: {
+              dark: '#2d3748',
+              light: '#ffffff'
+            },
+            errorCorrectionLevel: 'H'
+          })
+          console.log('✅ QR Code Generated')
+        }
 
         // Check if we're in gift mode - integrate with card design
         const searchParams = new URLSearchParams(window.location.search)
@@ -556,13 +577,15 @@ function CheckoutModal({
             // Store gift card data in localStorage for card integration
             const giftCardData = {
               qrCode: qrCodeUrl,
-              storeLogo: currentSelectedProduct.image || '',
+              storeLogo: currentSelectedProduct.logo || currentSelectedProduct.image || '',
               storeName: currentSelectedProduct.name,
               amount: amount,
-              redemptionLink: data.redemptionLink,
-              orderId: data.giftCard?.order_id,
-              rewardId: data.giftCard?.reward_id,
-              generatedAt: new Date().toISOString()
+              redemptionLink: redemptionLink,
+              code: data.giftCard?.code,
+              pin: data.giftCard?.pin,
+              orderId: data.giftCard?.orderId,
+              generatedAt: new Date().toISOString(),
+              source: 'tillo'
             }
             localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
             console.log('✅ Gift card saved to localStorage for card:', cardId)
@@ -573,15 +596,25 @@ function CheckoutModal({
           }
         }
 
-        // Normal flow - show modal
-        console.log('📝 Setting Success Data:', data)
-        setSuccessData(data)
-        await generateQRCodeFromLink(data.redemptionLink)
+        // Normal flow - show modal with success data
+        const successPayload = {
+          success: true,
+          redemptionLink: redemptionLink,
+          amount: amount,
+          productName: currentSelectedProduct.name,
+          giftCard: data.giftCard,
+          source: 'tillo'
+        }
+        console.log('📝 Setting Success Data:', successPayload)
+        setSuccessData(successPayload)
+        if (redemptionLink) {
+          await generateQRCodeFromLink(redemptionLink)
+        }
         setGiftCardAmount('')
         console.log('✅ Success flow complete - Print/Send buttons should be visible')
       } else {
         console.error('❌ Gift Card Generation Failed:', data)
-        setErrorMessage('Failed to generate gift card: ' + (data.error || 'Unknown error'))
+        setErrorMessage('Failed to generate gift card: ' + (data.error || data.details || 'Unknown error'))
       }
     } catch (error) {
       console.error('Error generating gift card:', error)
@@ -637,15 +670,22 @@ function CheckoutModal({
                 {currentSelectedProduct && (
                   <div className="mb-6 p-4 bg-gray-50 rounded-xl">
                     <div className="flex items-center gap-3">
-                      <img
-                        src={currentSelectedProduct.image || 'https://via.placeholder.com/60x60?text=🎁'}
-                        alt={currentSelectedProduct.name}
-                        className="w-12 h-12 object-contain rounded-lg bg-gray-100"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = 'https://via.placeholder.com/60x60?text=🎁'
-                        }}
-                      />
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center overflow-hidden">
+                        {currentSelectedProduct.image ? (
+                          <img
+                            src={currentSelectedProduct.image}
+                            alt={currentSelectedProduct.name}
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.style.display = 'none'
+                              target.parentElement!.innerHTML = '<span class="text-2xl">🎁</span>'
+                            }}
+                          />
+                        ) : (
+                          <span className="text-2xl">🎁</span>
+                        )}
+                      </div>
                       <div>
                         <div className="font-semibold text-gray-900">{currentSelectedProduct.name}</div>
                         <div className="text-sm text-gray-500">{currentSelectedProduct.category.replace('_', ' ')}</div>
