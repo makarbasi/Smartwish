@@ -26,11 +26,20 @@ interface MarketplaceProduct {
 interface MarketplaceGiftCarouselProps {
   cardId: string
   giftCardData?: GiftCardData | null
+  onRemove?: () => void
 }
 
-export default function MarketplaceGiftCarousel({ cardId, giftCardData }: MarketplaceGiftCarouselProps) {
+export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove }: MarketplaceGiftCarouselProps) {
   // If gift card is selected, show it
   if (giftCardData) {
+    const handleRemove = (e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (onRemove) {
+        onRemove()
+      }
+    }
+
     return (
       <Link
         href={`/marketplace?returnTo=/my-cards/${cardId}?showGift=true`}
@@ -45,6 +54,19 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData }: Market
             <span className="hidden xs:inline">GIFT CARD ATTACHED</span>
             <span className="xs:hidden">ATTACHED</span>
           </div>
+
+          {/* Remove Button */}
+          {onRemove && (
+            <button
+              onClick={handleRemove}
+              className="absolute -top-2 -right-2 sm:top-2 sm:right-2 w-8 h-8 bg-white border-2 border-red-300 rounded-full shadow-lg flex items-center justify-center text-red-500 hover:bg-red-50 hover:border-red-400 hover:text-red-600 transition-all z-10"
+              title="Remove gift card"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
 
           {/* Main content - stacks vertically on small screens */}
           <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 mt-2">
