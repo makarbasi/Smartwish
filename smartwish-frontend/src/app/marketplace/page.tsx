@@ -551,127 +551,81 @@ function CheckoutModal({
     setSuccessData(null)
 
     try {
-      // Use Tillo API to issue gift card
-      const response = await fetch('/api/tillo/issue', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          brandSlug: currentSelectedProduct.slug || currentSelectedProduct.id,
-          amount: amount
-        })
+      // IMPORTANT: We do NOT issue the gift card here!
+      // We only store the SELECTION. The actual gift card will be issued
+      // only after successful payment in the CardPaymentModal.
+      console.log('🎁 Storing gift card selection (NOT issuing yet):', {
+        brand: currentSelectedProduct.name,
+        brandSlug: currentSelectedProduct.slug || currentSelectedProduct.id,
+        amount: amount
       })
 
-      const data = await response.json()
+      // Check if we're in gift mode - integrate with card design
+      const searchParams = new URLSearchParams(window.location.search)
+      const returnTo = searchParams.get('returnTo')
 
-      if (response.ok && data.success) {
-        console.log('✅ Gift Card Generated Successfully (Tillo):', data)
+      if (returnTo) {
+        console.log('🎁 Return Mode Detected - Saving gift card SELECTION and redirecting:', returnTo)
 
-        // Get the redemption URL from Tillo response
-        const redemptionLink = data.giftCard?.url || data.giftCard?.redemptionUrl || ''
+        // Extract cardId from returnTo URL (e.g., /my-cards/abc123?showGift=true)
+        const cardIdMatch = returnTo.match(/\/my-cards\/([^?]+)/)
+        const cardId = cardIdMatch ? cardIdMatch[1] : null
 
-        // Generate QR code from the redemption link
-        let qrCodeUrl = ''
-        if (redemptionLink) {
-          qrCodeUrl = await QRCode.toDataURL(redemptionLink, {
-            width: 200,
-            margin: 2,
-            color: {
-              dark: '#2d3748',
-              light: '#ffffff'
-            },
-            errorCorrectionLevel: 'H'
-          })
-          console.log('✅ QR Code Generated')
-        }
-
-        // Check if we're in gift mode - integrate with card design
-        const searchParams = new URLSearchParams(window.location.search)
-        const returnTo = searchParams.get('returnTo')
-
-        if (returnTo) {
-          console.log('🎁 Return Mode Detected - Saving gift card and redirecting:', returnTo)
-
-          // Extract cardId from returnTo URL (e.g., /my-cards/abc123?showGift=true)
-          const cardIdMatch = returnTo.match(/\/my-cards\/([^?]+)/)
-          const cardId = cardIdMatch ? cardIdMatch[1] : null
-
-          if (cardId) {
-            // Store gift card data with server-side encryption
-            const giftCardData = {
-              qrCode: qrCodeUrl,
-              storeLogo: currentSelectedProduct.logo || currentSelectedProduct.image || '',
-              storeName: currentSelectedProduct.name,
-              amount: amount,
-              redemptionLink: redemptionLink,
-              code: data.giftCard?.code,
-              pin: data.giftCard?.pin,
-              orderId: data.giftCard?.orderId,
-              generatedAt: new Date().toISOString(),
-              source: 'tillo'
-            }
-
-            // Encrypt gift card data before storage
-            try {
-              const encryptResponse = await fetch('/api/giftcard/encrypt', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ giftCardData })
-              })
-
-              if (encryptResponse.ok) {
-                const { encryptedData } = await encryptResponse.json()
-                localStorage.setItem(`giftCard_${cardId}`, encryptedData)
-                // Store non-sensitive metadata for quick access
-                localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
-                  storeName: currentSelectedProduct.name,
-                  amount: amount,
-                  source: 'tillo',
-                  generatedAt: new Date().toISOString(),
-                  isEncrypted: true
-                }))
-                console.log('🔐 Gift card saved with encryption for card:', cardId)
-              } else {
-                // Fallback to unencrypted if encryption fails (log warning)
-                console.warn('⚠️ Encryption failed, saving unencrypted (dev mode only)')
-                localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
-              }
-            } catch (encryptError) {
-              console.warn('⚠️ Encryption error, saving unencrypted:', encryptError)
-              localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
-            }
-            console.log('✅ Gift card saved to localStorage for card:', cardId)
-
-            // Navigate back to the card editor
-            window.location.href = returnTo
-            return
+        if (cardId) {
+          // Store gift card SELECTION (not issued yet) - no sensitive data
+          // The actual gift card will be issued after payment
+          const giftCardSelection = {
+            // Selection data (for display)
+            storeLogo: currentSelectedProduct.logo || currentSelectedProduct.image || '',
+            storeName: currentSelectedProduct.name,
+            amount: amount,
+            brandSlug: currentSelectedProduct.slug || currentSelectedProduct.id,
+            currency: currentSelectedProduct.currency || 'USD',
+            // Status
+            status: 'pending', // Will change to 'issued' after payment
+            isIssued: false,   // Flag to indicate not yet issued
+            selectedAt: new Date().toISOString(),
+            source: 'tillo'
           }
-        }
 
-        // Normal flow - show modal with success data
-        const successPayload = {
-          success: true,
-          redemptionLink: redemptionLink,
-          amount: amount,
-          productName: currentSelectedProduct.name,
-          giftCard: data.giftCard,
-          source: 'tillo'
+          // Store selection in localStorage (no encryption needed - no sensitive data)
+          localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardSelection))
+          localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
+            storeName: currentSelectedProduct.name,
+            amount: amount,
+            source: 'tillo',
+            status: 'pending',
+            selectedAt: new Date().toISOString(),
+            isEncrypted: false
+          }))
+
+          console.log('✅ Gift card SELECTION saved for card:', cardId)
+          console.log('📝 Note: Gift card will be issued after payment')
+
+          // Navigate back to the card editor
+          window.location.href = returnTo
+          return
         }
-        console.log('📝 Setting Success Data:', successPayload)
-        setSuccessData(successPayload)
-        if (redemptionLink) {
-          await generateQRCodeFromLink(redemptionLink)
-        }
-        setGiftCardAmount('')
-        console.log('✅ Success flow complete - Print/Send buttons should be visible')
-      } else {
-        console.error('❌ Gift Card Generation Failed:', data)
-        setErrorMessage('Failed to generate gift card: ' + (data.error || data.details || 'Unknown error'))
       }
+
+      // Normal flow (not returning to card) - show success
+      // Store selection for standalone use
+      const successPayload = {
+        success: true,
+        amount: amount,
+        productName: currentSelectedProduct.name,
+        brandSlug: currentSelectedProduct.slug || currentSelectedProduct.id,
+        status: 'pending',
+        source: 'tillo'
+      }
+      console.log('📝 Setting Success Data (selection only):', successPayload)
+      setSuccessData(successPayload)
+      setGiftCardAmount('')
+      console.log('✅ Gift card selection complete')
+
     } catch (error) {
-      console.error('Error generating gift card:', error)
-      setErrorMessage('Failed to generate gift card. Please try again.')
+      console.error('Error saving gift card selection:', error)
+      setErrorMessage('Failed to save gift card selection. Please try again.')
     } finally {
       setIsGenerating(false)
     }
