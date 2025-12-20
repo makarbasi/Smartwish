@@ -286,8 +286,32 @@ function MarketplaceContent() {
     )
   }
 
+  // Get returnTo URL for back navigation
+  const returnTo = searchParams.get('returnTo')
+
+  const handleBack = () => {
+    if (returnTo) {
+      router.push(returnTo)
+    } else {
+      router.back()
+    }
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      {/* Back Button */}
+      <div className="mb-6">
+        <button
+          onClick={handleBack}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back
+        </button>
+      </div>
+
       {/* Header */}
       <div className="mb-8 text-center">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">GiftCard Hub</h1>
