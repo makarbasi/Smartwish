@@ -58,7 +58,7 @@ function ProductCard({ p }: { p: Product }) {
   }
 
   const imageUrl = p.image || p.logo || null
-  
+
   return (
     <div
       className="group overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm cursor-pointer"
@@ -546,7 +546,7 @@ function CheckoutModal({
 
         // Get the redemption URL from Tillo response
         const redemptionLink = data.giftCard?.url || data.giftCard?.redemptionUrl || ''
-        
+
         // Generate QR code from the redemption link
         let qrCodeUrl = ''
         if (redemptionLink) {
@@ -574,7 +574,7 @@ function CheckoutModal({
           const cardId = cardIdMatch ? cardIdMatch[1] : null
 
           if (cardId) {
-            // Store gift card data in localStorage for card integration
+            // Store gift card data with server-side encryption
             const giftCardData = {
               qrCode: qrCodeUrl,
               storeLogo: currentSelectedProduct.logo || currentSelectedProduct.image || '',
@@ -587,7 +587,36 @@ function CheckoutModal({
               generatedAt: new Date().toISOString(),
               source: 'tillo'
             }
-            localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
+
+            // Encrypt gift card data before storage
+            try {
+              const encryptResponse = await fetch('/api/giftcard/encrypt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ giftCardData })
+              })
+
+              if (encryptResponse.ok) {
+                const { encryptedData } = await encryptResponse.json()
+                localStorage.setItem(`giftCard_${cardId}`, encryptedData)
+                // Store non-sensitive metadata for quick access
+                localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
+                  storeName: currentSelectedProduct.name,
+                  amount: amount,
+                  source: 'tillo',
+                  generatedAt: new Date().toISOString(),
+                  isEncrypted: true
+                }))
+                console.log('🔐 Gift card saved with encryption for card:', cardId)
+              } else {
+                // Fallback to unencrypted if encryption fails (log warning)
+                console.warn('⚠️ Encryption failed, saving unencrypted (dev mode only)')
+                localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
+              }
+            } catch (encryptError) {
+              console.warn('⚠️ Encryption error, saving unencrypted:', encryptError)
+              localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardData))
+            }
             console.log('✅ Gift card saved to localStorage for card:', cardId)
 
             // Navigate back to the card editor
