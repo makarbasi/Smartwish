@@ -279,11 +279,44 @@ export default function CustomizeCardPage() {
 
   // Gift card integration state
   const [giftCardData, setGiftCardData] = useState<any>(null);
+  const [pendingGiftCardQr, setPendingGiftCardQr] = useState<string>('');
   const showGift = searchParams.get('showGift') === 'true';
+
+  // Check if gift card is pending (not yet issued)
+  const isGiftCardPending = giftCardData && (giftCardData.isIssued === false || giftCardData.status === 'pending');
+
+  // Generate pending QR code for gift cards not yet issued
+  useEffect(() => {
+    if (isGiftCardPending && typeof window !== 'undefined') {
+      import('qrcode').then((QRCode) => {
+        const pendingUrl = `${window.location.origin}/gift-pending`;
+        QRCode.toDataURL(pendingUrl, {
+          width: 200,
+          margin: 2,
+          color: {
+            dark: '#d97706', // Amber color for pending
+            light: '#ffffff'
+          },
+          errorCorrectionLevel: 'H'
+        }).then((url: string) => {
+          setPendingGiftCardQr(url);
+          console.log('✅ Pending gift card QR generated for card page');
+        }).catch((err: Error) => {
+          console.error('Failed to generate pending QR code:', err);
+        });
+      });
+    } else if (!isGiftCardPending) {
+      setPendingGiftCardQr(''); // Clear pending QR when card is issued
+    }
+  }, [isGiftCardPending]);
+
+  // Get the QR code to display (pending or real)
+  const displayQrCode = isGiftCardPending ? pendingGiftCardQr : giftCardData?.qrCode;
 
   // Remove gift card handler
   const handleRemoveGiftCard = useCallback(() => {
     setGiftCardData(null);
+    setPendingGiftCardQr('');
     // Remove from localStorage
     localStorage.removeItem(`giftCard_${cardId}`);
     localStorage.removeItem(`giftCardMeta_${cardId}`);
@@ -2255,15 +2288,15 @@ export default function CustomizeCardPage() {
                   />
 
                   {/* Gift Card QR Code and Logo Overlay */}
-                  {giftCardData && savedDesign?.status !== 'published' && (
-                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200">
+                  {giftCardData && savedDesign?.status !== 'published' && displayQrCode && (
+                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 backdrop-blur-sm rounded-2xl p-4 shadow-lg border bg-white/95 border-gray-200">
                       <div className="flex flex-col items-center space-y-3">
                         {/* QR Code and Logo side-by-side */}
                         <div className="flex items-center space-x-4">
                           {/* QR Code on left */}
                           <div className="bg-white p-2 rounded-lg shadow-sm">
                             <img
-                              src={giftCardData.qrCode}
+                              src={displayQrCode}
                               alt="Gift Card QR Code"
                               className="w-24 h-24 object-contain"
                             />
@@ -2420,15 +2453,15 @@ export default function CustomizeCardPage() {
                 )}
 
                 {/* Gift Card QR Code and Logo Overlay (Mobile) - Show on page 3 (index 2) */}
-                {currentPage === 2 && giftCardData && savedDesign?.status !== 'published' && (
-                  <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-gray-200 max-w-[85%]">
+                {currentPage === 2 && giftCardData && savedDesign?.status !== 'published' && displayQrCode && (
+                  <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 backdrop-blur-sm rounded-xl p-3 shadow-lg border max-w-[85%] bg-white/95 border-gray-200">
                     <div className="flex flex-col items-center space-y-2">
                       {/* QR Code and Logo side-by-side */}
                       <div className="flex items-center space-x-3">
                         {/* QR Code on left */}
                         <div className="bg-white p-1.5 rounded-lg shadow-sm">
                           <img
-                            src={giftCardData.qrCode}
+                            src={displayQrCode}
                             alt="Gift Card QR Code"
                             className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
                           />
