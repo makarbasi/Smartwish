@@ -2,16 +2,21 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import QRCode from 'qrcode'
 
 interface GiftCardData {
   storeName: string
   storeLogo: string
   amount: number
-  qrCode: string
+  qrCode?: string
   redemptionLink?: string
   orderId?: string
   rewardId?: string
   generatedAt?: string
+  // Pending status fields
+  status?: 'pending' | 'issued'
+  isIssued?: boolean
+  brandSlug?: string
 }
 
 interface MarketplaceProduct {
@@ -30,30 +35,112 @@ interface MarketplaceGiftCarouselProps {
 }
 
 export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove }: MarketplaceGiftCarouselProps) {
-  // If gift card is selected, show it
-  if (giftCardData) {
-    const handleRemove = (e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      if (onRemove) {
-        onRemove()
-      }
-    }
+  // ALL HOOKS MUST BE AT THE TOP - before any conditional returns
+  const [pendingQrCode, setPendingQrCode] = useState<string>('')
+  const [featuredProducts, setFeaturedProducts] = useState<MarketplaceProduct[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
+  // Generate QR code for pending gift cards
+  useEffect(() => {
+    if (giftCardData && (giftCardData.isIssued === false || giftCardData.status === 'pending')) {
+      // Generate QR code pointing to the pending info page
+      const pendingUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/gift-pending`
+        : '/gift-pending'
+
+      QRCode.toDataURL(pendingUrl, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#d97706', // Amber color for pending
+          light: '#ffffff'
+        },
+        errorCorrectionLevel: 'H'
+      }).then(url => {
+        setPendingQrCode(url)
+        console.log('✅ Pending QR code generated')
+      }).catch(err => {
+        console.error('Failed to generate pending QR code:', err)
+      })
+    }
+  }, [giftCardData])
+
+  // Fetch featured products from marketplace (for empty state)
+  useEffect(() => {
+    // Only fetch if no gift card is selected
+    if (!giftCardData) {
+      const fetchFeaturedProducts = async () => {
+        try {
+          const response = await fetch('/api/tillo/brands')
+          if (response.ok) {
+            const data = await response.json()
+            const brands = data.brands || data.products || []
+            if (brands.length > 0) {
+              const mappedBrands = brands.map((b: any) => ({
+                id: b.id || b.slug,
+                name: b.name,
+                image: b.logo || b.image || '',
+                minAmount: b.minAmount || 5,
+                maxAmount: b.maxAmount || 500,
+                category: b.category || 'Gift Card'
+              }))
+              const shuffled = mappedBrands.sort(() => 0.5 - Math.random())
+              setFeaturedProducts(shuffled.slice(0, 2))
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch marketplace brands:', error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+
+      fetchFeaturedProducts()
+    } else {
+      setIsLoading(false)
+    }
+  }, [giftCardData])
+
+  // Helper function for remove button
+  const handleRemove = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (onRemove) {
+      onRemove()
+    }
+  }
+
+  // Check if gift card is pending (not yet issued)
+  const isPending = giftCardData && (giftCardData.isIssued === false || giftCardData.status === 'pending')
+
+  // RENDER: Gift card is selected
+  if (giftCardData) {
     return (
       <Link
         href={`/marketplace?returnTo=/my-cards/${cardId}?showGift=true`}
         className="block w-full group cursor-pointer"
       >
         <div className="w-full bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 border-2 border-green-300 rounded-2xl p-4 sm:p-6 shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] hover:border-green-400 relative">
-          {/* Success Badge */}
-          <div className="absolute -top-3 left-4 sm:left-6 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-xs font-bold px-3 sm:px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1">
-            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-            </svg>
-            <span className="hidden xs:inline">GIFT CARD ATTACHED</span>
-            <span className="xs:hidden">ATTACHED</span>
-          </div>
+          {/* Status Badge - Different for pending vs issued */}
+          {isPending ? (
+            // Pending - not yet issued (will be issued after payment)
+            <div className="absolute -top-3 left-4 sm:left-6 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-bold px-3 sm:px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1">
+              <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="hidden xs:inline">GIFT CARD SELECTED</span>
+              <span className="xs:hidden">SELECTED</span>
+            </div>
+          ) : (
+            // Issued - gift card has been purchased
+            <div className="absolute -top-3 left-4 sm:left-6 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-xs font-bold px-3 sm:px-4 py-1.5 rounded-full shadow-lg flex items-center gap-1">
+              <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden xs:inline">GIFT CARD ATTACHED</span>
+              <span className="xs:hidden">ATTACHED</span>
+            </div>
+          )}
 
           {/* Remove Button */}
           {onRemove && (
@@ -109,72 +196,70 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove
               </div>
             </div>
 
-            {/* QR Code Preview - hidden on small screens */}
-            {giftCardData.qrCode && (
-              <div className="hidden md:block flex-shrink-0">
-                <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-xl shadow-md border-2 border-green-200 p-2 group-hover:border-green-300 transition-colors">
-                  <img
-                    src={giftCardData.qrCode}
-                    alt="QR Code"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-              </div>
-            )}
+            {/* QR Code Preview - shows pending QR or real QR */}
+            <div className="hidden md:block flex-shrink-0">
+              {isPending ? (
+                // Pending QR - links to info page
+                pendingQrCode ? (
+                  <div className="relative">
+                    <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-xl shadow-md border-2 border-amber-300 p-2 group-hover:border-amber-400 transition-colors">
+                      <img
+                        src={pendingQrCode}
+                        alt="Pending QR Code"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                      PENDING
+                    </div>
+                  </div>
+                ) : (
+                  // Loading state for QR
+                  <div className="w-20 h-20 lg:w-24 lg:h-24 bg-amber-50 rounded-xl shadow-md border-2 border-amber-200 p-2 flex items-center justify-center">
+                    <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )
+              ) : (
+                // Issued QR - real redemption code
+                giftCardData.qrCode && (
+                  <div className="w-20 h-20 lg:w-24 lg:h-24 bg-white rounded-xl shadow-md border-2 border-green-200 p-2 group-hover:border-green-300 transition-colors">
+                    <img
+                      src={giftCardData.qrCode}
+                      alt="QR Code"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )
+              )}
+            </div>
           </div>
 
-          {/* Info Badge */}
+          {/* Info Badge - Different message for pending vs issued */}
           <div className="mt-3 sm:mt-4 inline-flex items-center gap-2 bg-white/70 backdrop-blur-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm text-gray-700">
-            <svg className="w-3 h-3 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="hidden sm:inline">This gift card will be included when you print or send this card</span>
-            <span className="sm:hidden">Included when you print or send</span>
+            {isPending ? (
+              <>
+                <svg className="w-3 h-3 sm:w-4 sm:h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="hidden sm:inline">Gift card will be purchased when you complete payment</span>
+                <span className="sm:hidden">Purchased after payment</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="hidden sm:inline">This gift card will be included when you print or send this card</span>
+                <span className="sm:hidden">Included when you print or send</span>
+              </>
+            )}
           </div>
         </div>
       </Link>
     )
   }
 
-  // Fetch featured products from marketplace
-  const [featuredProducts, setFeaturedProducts] = useState<MarketplaceProduct[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchFeaturedProducts = async () => {
-      try {
-        // Fetch from Tillo brands endpoint
-        const response = await fetch('/api/tillo/brands')
-        if (response.ok) {
-          const data = await response.json()
-          // Get exactly 2 random brands for variety
-          const brands = data.brands || data.products || []
-          if (brands.length > 0) {
-            // Map Tillo brand format to our component format
-            const mappedBrands = brands.map((b: any) => ({
-              id: b.id || b.slug,
-              name: b.name,
-              image: b.logo || b.image || '',
-              minAmount: b.minAmount || 5,
-              maxAmount: b.maxAmount || 500,
-              category: b.category || 'Gift Card'
-            }))
-            const shuffled = mappedBrands.sort(() => 0.5 - Math.random())
-            // Always show exactly 2 products
-            setFeaturedProducts(shuffled.slice(0, 2))
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch marketplace brands:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchFeaturedProducts()
-  }, [])
-
-  // Default: No gift card selected - Show real products (same height as gift card attached)
+  // RENDER: No gift card selected - Show "Add a Gift Card" prompt
   return (
     <Link
       href={`/marketplace?returnTo=/my-cards/${cardId}?showGift=true`}
@@ -264,4 +349,3 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove
     </Link>
   )
 }
-

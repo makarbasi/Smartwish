@@ -83,7 +83,7 @@ function CardPaymentModalContent({
 }: CardPaymentModalProps) {
   const stripe = useStripe()
   const elements = useElements()
-  
+
   // ✅ Use NextAuth session for authentication
   const { data: session, status: sessionStatus } = useSession()
 
@@ -111,7 +111,7 @@ function CardPaymentModalContent({
   // ✅ Show error if not authenticated (no guest users)
   if (sessionStatus === 'loading') {
     return (
-      <Dialog open={isOpen} onClose={() => {}} className="relative z-50">
+      <Dialog open={isOpen} onClose={() => { }} className="relative z-50">
         <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <DialogPanel className="mx-auto max-w-md rounded-xl bg-white p-6 shadow-xl">
@@ -212,7 +212,7 @@ function CardPaymentModalContent({
           if (storedGiftData) {
             const giftData = JSON.parse(storedGiftData)
             const parsedAmount = parseFloat(giftData.amount || 0)
-            
+
             // ✅ FIX: Validate parsed amount (same as mobile payment page)
             if (!isNaN(parsedAmount) && parsedAmount >= 0 && parsedAmount <= 1000) {
               giftCardAmount = parsedAmount
@@ -300,13 +300,13 @@ function CardPaymentModalContent({
       }
 
       const orderResult = await orderResponse.json()
-      
+
       // ✅ FIX: Validate response structure
       if (!orderResult.success || !orderResult.order || !orderResult.order.id) {
         console.error('Invalid order response:', orderResult)
         throw new Error('Invalid response from order creation')
       }
-      
+
       const createdOrderId = orderResult.order.id
       setOrderId(createdOrderId) // ✅ Store order ID for polling
       console.log('✅ Order created:', createdOrderId)
@@ -344,7 +344,7 @@ function CardPaymentModalContent({
       // Step 5: Create payment session in database
       const sessionId = `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
       console.log('💳 Creating payment session in database...')
-      
+
       const sessionResponse = await fetch(`${backendUrl}/orders/payment-sessions`, {
         method: 'POST',
         headers: {
@@ -374,20 +374,20 @@ function CardPaymentModalContent({
       }
 
       const sessionResult = await sessionResponse.json()
-      
+
       // ✅ FIX: Validate session response structure
       if (!sessionResult.success || !sessionResult.session || !sessionResult.session.id) {
         console.error('Invalid session response:', sessionResult)
         throw new Error('Invalid response from payment session creation')
       }
-      
+
       setPaymentSessionId(sessionResult.session.id)
       console.log('✅ Payment session created:', sessionResult.session.id)
 
     } catch (error: any) {
       console.error('❌ Payment initialization error:', error)
       setPaymentError(error.message || 'Failed to initialize payment')
-      
+
       // ✅ FIX: TODO - Mark order as failed if it was created
       // Future enhancement: Call backend to cancel/mark order as failed
       // For now, orders with status 'pending' and no payment session are orphaned
@@ -439,7 +439,7 @@ function CardPaymentModalContent({
     checkPaymentIntervalRef.current = setInterval(async () => {
       try {
         console.log('🔍 Checking payment status for order:', orderId)
-        
+
         const response = await fetch(`${backendUrl}/orders/${orderId}`, {
           method: 'GET',
           headers: {
@@ -470,16 +470,115 @@ function CardPaymentModalContent({
 
   /**
    * Handle successful payment
+   * Issues the gift card if one is attached (pending)
    */
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     // ✅ Stop polling when payment succeeds
     if (checkPaymentIntervalRef.current) {
       clearInterval(checkPaymentIntervalRef.current)
       checkPaymentIntervalRef.current = null
     }
-    
+
     setIsProcessing(false)
     setPaymentComplete(true)
+
+    // 🎁 Issue gift card if one is pending
+    try {
+      const storedGiftCard = localStorage.getItem(`giftCard_${cardId}`)
+      if (storedGiftCard) {
+        const giftCardSelection = JSON.parse(storedGiftCard)
+
+        // Check if gift card is pending (not yet issued)
+        if (giftCardSelection.status === 'pending' && !giftCardSelection.isIssued) {
+          console.log('🎁 Payment successful - Now issuing gift card:', giftCardSelection)
+
+          // Call Tillo API to issue the actual gift card
+          const response = await fetch('/api/tillo/issue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              brandSlug: giftCardSelection.brandSlug,
+              amount: giftCardSelection.amount,
+              currency: giftCardSelection.currency || 'USD'
+            })
+          })
+
+          const data = await response.json()
+
+          if (response.ok && data.success) {
+            console.log('✅ Gift card issued successfully after payment:', data.giftCard)
+
+            // Update localStorage with issued gift card data
+            const issuedGiftCard = {
+              ...giftCardSelection,
+              status: 'issued',
+              isIssued: true,
+              issuedAt: new Date().toISOString(),
+              // Add the actual gift card data from Tillo
+              redemptionLink: data.giftCard?.url || data.giftCard?.redemptionUrl,
+              code: data.giftCard?.code,
+              pin: data.giftCard?.pin,
+              orderId: data.giftCard?.orderId,
+              expiryDate: data.giftCard?.expiryDate,
+              qrCode: '' // Will be generated if needed
+            }
+
+            // Generate QR code for the redemption link
+            if (issuedGiftCard.redemptionLink) {
+              try {
+                const qrCodeUrl = await QRCode.toDataURL(issuedGiftCard.redemptionLink, {
+                  width: 200,
+                  margin: 2,
+                  color: { dark: '#2d3748', light: '#ffffff' },
+                  errorCorrectionLevel: 'H'
+                })
+                issuedGiftCard.qrCode = qrCodeUrl
+              } catch (qrError) {
+                console.warn('Failed to generate QR code:', qrError)
+              }
+            }
+
+            // Encrypt and save the issued gift card
+            try {
+              const encryptResponse = await fetch('/api/giftcard/encrypt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ giftCardData: issuedGiftCard })
+              })
+
+              if (encryptResponse.ok) {
+                const { encryptedData } = await encryptResponse.json()
+                localStorage.setItem(`giftCard_${cardId}`, encryptedData)
+                localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
+                  storeName: issuedGiftCard.storeName,
+                  amount: issuedGiftCard.amount,
+                  source: 'tillo',
+                  status: 'issued',
+                  issuedAt: issuedGiftCard.issuedAt,
+                  isEncrypted: true
+                }))
+                console.log('🔐 Issued gift card saved with encryption')
+              } else {
+                // Fallback - save without encryption
+                localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(issuedGiftCard))
+              }
+            } catch (encryptError) {
+              console.warn('Encryption failed, saving unencrypted:', encryptError)
+              localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(issuedGiftCard))
+            }
+          } else {
+            console.error('❌ Failed to issue gift card after payment:', data)
+            // Don't fail the payment - the card was paid, just log the error
+            // User can contact support with the payment receipt
+          }
+        } else {
+          console.log('🎁 Gift card already issued or no pending gift card')
+        }
+      }
+    } catch (giftCardError) {
+      console.error('❌ Error processing gift card after payment:', giftCardError)
+      // Don't fail - payment was successful
+    }
 
     // Wait a moment to show success message
     setTimeout(() => {
@@ -541,7 +640,7 @@ function CardPaymentModalContent({
         // Save transaction to database
         try {
           console.log('💾 Creating transaction record...')
-          
+
           // ✅ FIX Bug #28: orderId MUST be in state - no fallback!
           // If orderId is undefined, our payment flow is BROKEN.
           // We should FAIL HARD, not mask the problem with fallbacks.
@@ -557,31 +656,31 @@ function CardPaymentModalContent({
               'DO NOT retry. Save this Payment ID: ' + paymentIntent.id + ' and contact support IMMEDIATELY.'
             )
           }
-          
+
           const txResponse = await fetch(`${backendUrl}/orders/transactions`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-              },
-              body: JSON.stringify({
-                orderId,
-                paymentSessionId,
-                amount: priceData?.total || paymentIntent.amount / 100,
-                currency: 'USD',
-                stripePaymentIntentId: paymentIntent.id,
-                stripeChargeId: paymentIntent.charges?.data[0]?.id,
-                status: 'succeeded',
-                paymentMethodType: paymentIntent.payment_method_types?.[0] || 'card',
-                cardLast4: (paymentIntent.charges?.data[0]?.payment_method_details as any)?.card?.last4,
-                cardBrand: (paymentIntent.charges?.data[0]?.payment_method_details as any)?.card?.brand,
-                metadata: {
-                  paymentIntentId: paymentIntent.id,
-                  cardName: cardName || 'Unknown',
-                  action
-                }
-              })
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              orderId,
+              paymentSessionId,
+              amount: priceData?.total || paymentIntent.amount / 100,
+              currency: 'USD',
+              stripePaymentIntentId: paymentIntent.id,
+              stripeChargeId: paymentIntent.charges?.data[0]?.id,
+              status: 'succeeded',
+              paymentMethodType: paymentIntent.payment_method_types?.[0] || 'card',
+              cardLast4: (paymentIntent.charges?.data[0]?.payment_method_details as any)?.card?.last4,
+              cardBrand: (paymentIntent.charges?.data[0]?.payment_method_details as any)?.card?.brand,
+              metadata: {
+                paymentIntentId: paymentIntent.id,
+                cardName: cardName || 'Unknown',
+                action
+              }
             })
+          })
 
           if (!txResponse.ok) {
             const txError = await txResponse.json().catch(() => ({}))
@@ -614,7 +713,7 @@ function CardPaymentModalContent({
           console.error('❌ CRITICAL DATABASE ERROR (payment succeeded on Stripe):', dbError)
           console.error('Payment Intent ID:', paymentIntent.id)
           console.error('Order ID:', orderId || 'UNDEFINED')
-          
+
           // ❌ DO NOT CALL handlePaymentSuccess() - this is a CRITICAL ERROR
           // User was charged but we can't record it properly
           setPaymentError(
