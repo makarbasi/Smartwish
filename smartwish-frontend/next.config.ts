@@ -50,7 +50,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'testflight.tremendous.com',
+        hostname: 'cdn.tillo.io',
         port: '',
         pathname: '/**',
       },

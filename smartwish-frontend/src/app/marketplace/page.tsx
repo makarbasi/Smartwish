@@ -129,7 +129,7 @@ function MarketplaceContent() {
     fetcher
   )
 
-  // Update global products when data loads (supports both Tillo brands and Tremendous products)
+  // Update global products when data loads (Tillo brands)
   useEffect(() => {
     const items = productsData?.brands || productsData?.products || []
     if (items.length > 0) {
