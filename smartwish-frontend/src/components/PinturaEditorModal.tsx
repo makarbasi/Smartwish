@@ -456,6 +456,45 @@ export default function PinturaEditorModal({
   // When user focuses a real Pintura text editor, we switch the virtual keyboard to it
   const pinturaTextTargetRef = React.useRef<HTMLElement | null>(null);
 
+  // Ensure the proxy input (top bar) exists so the virtual keyboard has a stable target
+  const ensureAnnotateKeyboardInput = (): HTMLInputElement | null => {
+    if (!isKiosk) return null;
+
+    let input =
+      annotateInputRef.current ||
+      (document.getElementById('pintura-annotate-keyboard-input') as HTMLInputElement | null);
+
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.id = 'pintura-annotate-keyboard-input';
+      input.style.cssText =
+        'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:999998;width:80%;max-width:500px;height:50px;font-size:18px;padding:12px 16px;border:3px solid #6366f1;border-radius:12px;background:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
+      input.placeholder = 'Type your text here, then tap on card to place it...';
+      document.body.appendChild(input);
+      annotateInputRef.current = input;
+      console.log('📝 Created annotate keyboard input');
+    }
+
+    return input;
+  };
+
+  const hideAnnotateKeyboardUI = () => {
+    try {
+      // unlock first so it doesn't “fight” hide logic
+      unlockKeyboard();
+      hideKeyboard();
+    } catch {}
+
+    // hide/remove proxy input
+    const existingInput = document.getElementById('pintura-annotate-keyboard-input');
+    if (existingInput) {
+      existingInput.remove();
+    }
+    annotateInputRef.current = null;
+    pinturaTextTargetRef.current = null;
+  };
+
   // Setup annotate button detection (works in all modes, keyboard only in kiosk)
   useEffect(() => {
     if (!isVisible) return;
@@ -463,22 +502,9 @@ export default function PinturaEditorModal({
     let observer: MutationObserver | null = null;
     let annotateButtonFound = false;
     
-    // Create visible input for keyboard if in kiosk mode
-    let keyboardInput: HTMLInputElement | null = null;
-    if (isKiosk && !annotateInputRef.current) {
-      keyboardInput = document.createElement('input');
-      keyboardInput.type = 'text';
-      keyboardInput.id = 'pintura-annotate-keyboard-input';
-      keyboardInput.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:999998;width:80%;max-width:500px;height:50px;font-size:18px;padding:12px 16px;border:3px solid #6366f1;border-radius:12px;background:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
-      keyboardInput.placeholder = 'Type your text here, then tap on card to place it...';
-      document.body.appendChild(keyboardInput);
-      annotateInputRef.current = keyboardInput;
-      
-      // NOTE: We no longer try to "guess" Pintura's text input and mirror into it.
-      // Instead, we listen for focus changes inside Pintura and re-target the virtual keyboard
-      // directly to Pintura's actual input/textarea/contenteditable element.
-      
-      console.log('📝 Created keyboard input with forwarding to Pintura');
+    // Pre-create input in kiosk mode to avoid race conditions on first click
+    if (isKiosk) {
+      ensureAnnotateKeyboardInput();
     }
 
     const handleAnnotateClick = () => {
@@ -489,58 +515,15 @@ export default function PinturaEditorModal({
       
       // Show virtual keyboard in kiosk mode
       if (isKiosk) {
-        console.log('📝 In kiosk mode, attempting to show keyboard...');
-        
-        // Small delay to let the UI update
-        setTimeout(() => {
-          // Try to find or create the input
-          let input = annotateInputRef.current || document.getElementById('pintura-annotate-keyboard-input') as HTMLInputElement;
-          
-          if (!input) {
-            console.log('📝 Creating input element on the fly...');
-            input = document.createElement('input');
-            input.type = 'text';
-            input.id = 'pintura-annotate-keyboard-input';
-            input.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:999998;width:80%;max-width:500px;height:50px;font-size:18px;padding:12px 16px;border:3px solid #6366f1;border-radius:12px;background:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
-            input.placeholder = 'Type your text here, then tap on card to place it...';
-            
-            // Forward input to Pintura's active text element
-            input.addEventListener('input', (e) => {
-              const inputValue = (e.target as HTMLInputElement).value;
-              console.log('📝 Keyboard input changed:', inputValue);
-              
-              // Find and update Pintura's active text element
-              const pinturaTextInput = document.querySelector('.PinturaShapeTextarea') as HTMLTextAreaElement ||
-                                        document.querySelector('.PinturaTextInput') as HTMLInputElement ||
-                                        document.querySelector('[data-pintura-text]') as HTMLElement ||
-                                        document.querySelector('.PinturaEditor textarea') as HTMLTextAreaElement ||
-                                        document.querySelector('.PinturaEditor input[type="text"]') as HTMLInputElement;
-              
-              if (pinturaTextInput) {
-                console.log('📝 Found Pintura text element, updating:', pinturaTextInput);
-                if (pinturaTextInput instanceof HTMLInputElement || pinturaTextInput instanceof HTMLTextAreaElement) {
-                  pinturaTextInput.value = inputValue;
-                  pinturaTextInput.dispatchEvent(new Event('input', { bubbles: true }));
-                } else if ((pinturaTextInput as HTMLElement).isContentEditable) {
-                  pinturaTextInput.textContent = inputValue;
-                  pinturaTextInput.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-              }
-            });
-            
-            document.body.appendChild(input);
-            annotateInputRef.current = input;
-          }
-          
-          console.log('📝 Input element:', input);
+        console.log('📝 In kiosk mode, showing keyboard...');
+        // Lock immediately to prevent "click outside" races
+        lockKeyboard();
+        const input = ensureAnnotateKeyboardInput();
+        if (input) {
           input.style.display = 'block';
           input.focus();
-          console.log('📝 Calling showKeyboard...');
-          showKeyboard(input, '', 'text');
-          // Lock keyboard so it doesn't hide when clicking in Pintura
-          lockKeyboard();
-          console.log('📝 showKeyboard called and locked!');
-        }, 150);
+          showKeyboard(input, input.value || '', 'text');
+        }
       } else {
         console.log('📝 Not in kiosk mode, skipping keyboard');
       }
@@ -550,11 +533,7 @@ export default function PinturaEditorModal({
       console.log('📝 Other tool clicked, exiting annotate mode...');
       setIsAnnotateActive(false);
       if (isKiosk) {
-        unlockKeyboard();
-        hideKeyboard();
-        if (annotateInputRef.current) {
-          annotateInputRef.current.style.display = 'none';
-        }
+        hideAnnotateKeyboardUI();
       }
     };
 
@@ -626,15 +605,30 @@ export default function PinturaEditorModal({
         button.removeEventListener('click', handleOtherToolClick);
         button.removeAttribute('data-exit-annotate-listener');
       });
-      
-      // Clean up hidden input
-      const existingInput = document.getElementById('pintura-annotate-keyboard-input');
-      if (existingInput) {
-        existingInput.remove();
+      // Clean up proxy input + keyboard state
+      if (isKiosk) {
+        hideAnnotateKeyboardUI();
       }
-      annotateInputRef.current = null;
     };
   }, [isVisible, isKiosk, hideKeyboard, showKeyboard, lockKeyboard, unlockKeyboard]);
+
+  // Reliability: if annotate is active in kiosk mode, ensure the keyboard is visible.
+  // This fixes cases where the modal shrinks but keyboard didn't render due to timing.
+  useEffect(() => {
+    if (!isVisible || !isKiosk) return;
+    if (!isAnnotateActive) return;
+
+    if (!isKeyboardVisible) {
+      console.log('📝 Annotate active but keyboard hidden -> forcing showKeyboard()');
+      lockKeyboard();
+      const input = ensureAnnotateKeyboardInput();
+      if (input) {
+        input.style.display = 'block';
+        input.focus();
+        showKeyboard(input, input.value || '', 'text');
+      }
+    }
+  }, [isVisible, isKiosk, isAnnotateActive, isKeyboardVisible, showKeyboard, lockKeyboard]);
 
   // Handle annotate mode text input detection for virtual keyboard in kiosk mode
   useEffect(() => {
@@ -761,6 +755,9 @@ export default function PinturaEditorModal({
         onProcess?.({ dest });
       }
     }
+    // Always clean up keyboard state when we finish
+    setIsAnnotateActive(false);
+    hideAnnotateKeyboardUI();
     onHide();
   };
 
@@ -790,6 +787,9 @@ export default function PinturaEditorModal({
     }
     
     // Always call onHide to close the editor
+    // Always clean up keyboard state when editor is closed
+    setIsAnnotateActive(false);
+    hideAnnotateKeyboardUI();
     onHide();
     
     // Reset canceling flag after editor closes
