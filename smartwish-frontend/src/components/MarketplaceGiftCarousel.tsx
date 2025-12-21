@@ -320,24 +320,33 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove
 
           {/* Decorative Badge - hidden on small screens */}
           <div className="hidden md:flex flex-shrink-0 items-center justify-center">
-            <div className="relative">
-              <div className="w-16 h-16 lg:w-20 lg:h-20 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+            <div className="relative w-16 h-16 lg:w-20 lg:h-20">
+              {/* Rotating gradient border circle */}
+              <div 
+                className="absolute inset-0 rounded-full"
+                style={{ 
+                  background: 'conic-gradient(from 0deg, #6366f1, #8b5cf6, #a855f7, #ec4899, #f43f5e, #ec4899, #a855f7, #8b5cf6, #6366f1)',
+                  padding: '4px',
+                  mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                  WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                  WebkitMaskComposite: 'xor',
+                  maskComposite: 'exclude',
+                  animation: 'rotate-gradient 4s linear infinite'
+                }}
+              >
+                <div className="w-full h-full rounded-full bg-transparent"></div>
+              </div>
+              {/* Inner badge */}
+              <div className="absolute inset-[3px] bg-gradient-to-br from-indigo-100 to-purple-100 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-10">
                 <div className="text-center">
                   <div className="text-xl lg:text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
-                    50+
+                    500+
                   </div>
                   <div className="text-[10px] lg:text-xs text-gray-600 font-semibold">
                     Brands
                   </div>
                 </div>
               </div>
-              {/* Subtle pulse animation - slower and more gentle */}
-              <div 
-                className="absolute inset-0 bg-gradient-to-br from-indigo-400 to-purple-400 rounded-full opacity-15"
-                style={{ 
-                  animation: 'pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                }}
-              ></div>
             </div>
           </div>
         </div>
@@ -355,23 +364,21 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove
   )
 }
 
-// Add CSS for slower pulse animation
+// Add CSS for rotating gradient animation
 if (typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = `
-    @keyframes pulse-slow {
-      0%, 100% {
-        opacity: 0.1;
-        transform: scale(1);
+    @keyframes rotate-gradient {
+      from {
+        transform: rotate(0deg);
       }
-      50% {
-        opacity: 0.2;
-        transform: scale(1.05);
+      to {
+        transform: rotate(360deg);
       }
     }
   `;
-  if (!document.head.querySelector('style[data-pulse-slow]')) {
-    style.setAttribute('data-pulse-slow', 'true');
+  if (!document.head.querySelector('style[data-rotate-gradient]')) {
+    style.setAttribute('data-rotate-gradient', 'true');
     document.head.appendChild(style);
   }
 }
