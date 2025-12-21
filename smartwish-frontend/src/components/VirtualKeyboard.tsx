@@ -188,7 +188,7 @@ export default function VirtualKeyboard() {
   return (
     <>
       {/* Keyboard - positioned at TOP of screen, above everything including Pintura modal */}
-      <div className="virtual-keyboard-container fixed inset-x-0 top-0 z-[999999] bg-gray-100 shadow-2xl border-b-2 border-gray-300" style={{ zIndex: 999999, paddingBottom: '20px' }}>
+      <div className="virtual-keyboard-container fixed inset-x-0 top-0 z-[999999] bg-gray-900 shadow-2xl border-b border-gray-700" style={{ zIndex: 999999, paddingBottom: '20px' }}>
         <div className="max-w-5xl mx-auto px-2 py-3">
           <Keyboard
             keyboardRef={(r: any) => (keyboardRef.current = r)}
@@ -222,55 +222,69 @@ export default function VirtualKeyboard() {
       <style jsx global>{`
         .kiosk-keyboard {
           max-width: 100%;
-          background-color: #f3f4f6;
-          padding: 8px;
-          border-radius: 8px;
+          background-color: #1f2937;
+          padding: 10px;
+          border-radius: 12px;
         }
 
         .kiosk-keyboard .hg-button {
           height: 50px;
           font-size: 16px;
-          background: white;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          color: #1f2937;
+          background: #374151;
+          border: 1px solid #4b5563;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+          color: #f9fafb;
           font-weight: 500;
           margin: 3px;
-          transition: all 0.1s ease;
+          transition: all 0.15s ease;
+        }
+
+        .kiosk-keyboard .hg-button:hover {
+          background: #4b5563;
+          border-color: #6b7280;
         }
 
         .kiosk-keyboard .hg-button:active {
-          background: #e5e7eb;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-          transform: scale(0.95);
+          background: #6b7280;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+          transform: scale(0.97);
         }
 
         .kiosk-keyboard .hg-button.hg-functionBtn {
-          background: #6366f1;
-          color: white;
-          border-color: #4f46e5;
+          background: #4b5563;
+          color: #f9fafb;
+          border-color: #6b7280;
+        }
+
+        .kiosk-keyboard .hg-button.hg-functionBtn:hover {
+          background: #6b7280;
         }
 
         .kiosk-keyboard .hg-button.hg-functionBtn:active {
-          background: #4f46e5;
+          background: #9ca3af;
         }
 
         .kiosk-keyboard .hg-close-button {
-          background: #ef4444 !important;
-          color: white !important;
-          border-color: #dc2626 !important;
+          background: #374151 !important;
+          color: #f9fafb !important;
+          border-color: #6b7280 !important;
           font-weight: 600;
         }
 
+        .kiosk-keyboard .hg-close-button:hover {
+          background: #4b5563 !important;
+        }
+
         .kiosk-keyboard .hg-close-button:active {
-          background: #dc2626 !important;
+          background: #6b7280 !important;
         }
 
         .kiosk-keyboard .hg-caps-active {
-          background: #10b981 !important;
-          color: white !important;
-          border-color: #059669 !important;
+          background: #6b7280 !important;
+          color: #ffffff !important;
+          border-color: #9ca3af !important;
+          box-shadow: 0 0 0 2px rgba(156, 163, 175, 0.3) !important;
         }
 
         /* Larger space bar */
