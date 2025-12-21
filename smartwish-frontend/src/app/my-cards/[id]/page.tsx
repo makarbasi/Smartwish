@@ -2062,7 +2062,7 @@ export default function CustomizeCardPage() {
             {/* Send E-card Button */}
             <button
               onClick={handleSendECard}
-              className="p-1.5 sm:p-2 rounded-full text-blue-600 hover:bg-blue-50 transition-all duration-200 touch-manipulation"
+              className="p-1.5 sm:p-2 rounded-lg bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-200 touch-manipulation"
               title="Send E-card"
             >
               <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2574,39 +2574,43 @@ export default function CustomizeCardPage() {
 
       {/* Kiosk Mode - Bottom Action Buttons */}
       {isKiosk && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-2xl z-40">
-          <div className="max-w-4xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex gap-4 justify-center">
-              {/* Print Button */}
+        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-50 to-white border-t border-gray-100 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-40">
+          <div className="max-w-4xl mx-auto px-4 py-5 sm:px-6 lg:px-8">
+            <div className="flex gap-5 justify-center">
+              {/* Print Button - Elegant purple gradient */}
               <button
                 onClick={handlePrint}
                 disabled={isPrinting}
-                className="flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-indigo-600 text-white rounded-xl font-semibold text-lg shadow-lg hover:bg-indigo-700 active:scale-95 transition-all duration-200 touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white rounded-2xl font-semibold text-lg shadow-[0_8px_30px_rgba(124,58,237,0.35)] hover:shadow-[0_12px_40px_rgba(124,58,237,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-[0_8px_30px_rgba(124,58,237,0.35)] overflow-hidden relative"
               >
+                {/* Shine effect on hover */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
                 {isPrinting ? (
                   <>
-                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Preparing...</span>
+                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span className="relative">Preparing...</span>
                   </>
                 ) : (
                   <>
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-6 w-6 relative drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                     </svg>
-                    <span>Print Card</span>
+                    <span className="relative">Print Card</span>
                   </>
                 )}
               </button>
 
-              {/* Send E-card Button */}
+              {/* Send E-card Button - Elegant teal gradient */}
               <button
                 onClick={handleSendECard}
-                className="flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-blue-600 text-white rounded-xl font-semibold text-lg shadow-lg hover:bg-blue-700 active:scale-95 transition-all duration-200 touch-manipulation"
+                className="group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500 text-white rounded-2xl font-semibold text-lg shadow-[0_8px_30px_rgba(20,184,166,0.35)] hover:shadow-[0_12px_40px_rgba(20,184,166,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out touch-manipulation overflow-hidden relative"
               >
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {/* Shine effect on hover */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
+                <svg className="h-6 w-6 relative drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                <span>Send E-card</span>
+                <span className="relative">Send E-card</span>
               </button>
             </div>
           </div>
