@@ -46,7 +46,7 @@ export default function VirtualKeyboard() {
 
   const onKeyPress = (button: string) => {
     console.log('[VirtualKeyboard] Button pressed:', button)
-    
+
     if (button === '{shift}') {
       // Toggle shift - temporary uppercase
       const newLayoutName = layoutName === 'default' ? 'shift' : 'default'
@@ -187,36 +187,36 @@ export default function VirtualKeyboard() {
 
   return (
     <>
-      {/* Keyboard */}
-      <div className="virtual-keyboard-container fixed inset-x-0 bottom-0 z-[9999] bg-gray-100 shadow-2xl border-t-2 border-gray-300">
+      {/* Keyboard - positioned at TOP of screen */}
+      <div className="virtual-keyboard-container fixed inset-x-0 top-0 z-[9999] bg-gray-100 shadow-2xl border-b-2 border-gray-300">
         <div className="max-w-5xl mx-auto px-2 py-3">
-        <Keyboard
-          keyboardRef={(r: any) => (keyboardRef.current = r)}
-          onChange={onChange}
-          onKeyPress={onKeyPress}
-          layout={getLayout()}
-          layoutName={layoutName}
-          display={getDisplay()}
-          theme="hg-theme-default hg-layout-default kiosk-keyboard"
-          buttonTheme={[
-            {
-              class: 'hg-close-button',
-              buttons: '{close}',
-            },
-            {
-              class: capsLock ? 'hg-caps-active' : '',
-              buttons: '{lock}',
-            },
-          ]}
-          onRender={() => {
-            // Add custom event listener for close button
-            const closeButton = document.querySelector('.hg-close-button')
-            if (closeButton) {
-              closeButton.addEventListener('click', hideKeyboard)
-            }
-          }}
-        />
-      </div>
+          <Keyboard
+            keyboardRef={(r: any) => (keyboardRef.current = r)}
+            onChange={onChange}
+            onKeyPress={onKeyPress}
+            layout={getLayout()}
+            layoutName={layoutName}
+            display={getDisplay()}
+            theme="hg-theme-default hg-layout-default kiosk-keyboard"
+            buttonTheme={[
+              {
+                class: 'hg-close-button',
+                buttons: '{close}',
+              },
+              {
+                class: capsLock ? 'hg-caps-active' : '',
+                buttons: '{lock}',
+              },
+            ]}
+            onRender={() => {
+              // Add custom event listener for close button
+              const closeButton = document.querySelector('.hg-close-button')
+              if (closeButton) {
+                closeButton.addEventListener('click', hideKeyboard)
+              }
+            }}
+          />
+        </div>
       </div>
 
       <style jsx global>{`
@@ -292,9 +292,17 @@ export default function VirtualKeyboard() {
           }
         }
 
-        /* Prevent page scrolling when keyboard is visible */
-        body:has(.kiosk-keyboard) {
-          overflow: hidden;
+        /* When keyboard is visible, push body content DOWN with margin below keyboard */
+        body:has(.virtual-keyboard-container) {
+          padding-top: 340px !important;
+          transition: padding-top 0.2s ease-out;
+        }
+
+        /* Adjust for smaller keyboards (number/tel) */
+        @media (max-width: 768px) {
+          body:has(.virtual-keyboard-container) {
+            padding-top: 300px !important;
+          }
         }
       `}</style>
     </>
