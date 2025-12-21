@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { usePixshop } from "@/contexts/PixshopContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
+import { useVirtualKeyboard } from "@/contexts/VirtualKeyboardContext";
 // Removed WarningDialog import - now using direct redirect
 import {
   setPlugins,
@@ -114,8 +115,13 @@ export default function PinturaEditorModal({
   const { getBlobForDesign, currentBlob, isSaving, saveError, clearPixshopBlob } = usePixshop();
   
   // Device mode context for kiosk detection
-  const { deviceMode } = useDeviceMode();
-  const isKiosk = deviceMode === 'kiosk';
+  const { isKiosk } = useDeviceMode();
+  
+  // Virtual keyboard context for kiosk text input
+  const { showKeyboard, hideKeyboard, isKeyboardVisible, lockKeyboard, unlockKeyboard } = useVirtualKeyboard();
+  
+  // Track when annotate mode is active (for keyboard handling in kiosk mode)
+  const [isAnnotateActive, setIsAnnotateActive] = useState(false);
   
   // Use state to manage the current image source so we can update it dynamically
   const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
@@ -429,8 +435,265 @@ export default function PinturaEditorModal({
     }
   }, [isVisible]);
 
+  // Hidden input ref for keyboard interaction in annotate mode
+  const annotateInputRef = React.useRef<HTMLInputElement | null>(null);
+  // When user focuses a real Pintura text editor, we switch the virtual keyboard to it
+  const pinturaTextTargetRef = React.useRef<HTMLElement | null>(null);
 
+  // Setup annotate button detection (works in all modes, keyboard only in kiosk)
+  useEffect(() => {
+    if (!isVisible) return;
 
+    let observer: MutationObserver | null = null;
+    let annotateButtonFound = false;
+    
+    // Create visible input for keyboard if in kiosk mode
+    let keyboardInput: HTMLInputElement | null = null;
+    if (isKiosk && !annotateInputRef.current) {
+      keyboardInput = document.createElement('input');
+      keyboardInput.type = 'text';
+      keyboardInput.id = 'pintura-annotate-keyboard-input';
+      keyboardInput.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:999998;width:80%;max-width:500px;height:50px;font-size:18px;padding:12px 16px;border:3px solid #6366f1;border-radius:12px;background:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
+      keyboardInput.placeholder = 'Type your text here, then tap on card to place it...';
+      document.body.appendChild(keyboardInput);
+      annotateInputRef.current = keyboardInput;
+      
+      // NOTE: We no longer try to "guess" Pintura's text input and mirror into it.
+      // Instead, we listen for focus changes inside Pintura and re-target the virtual keyboard
+      // directly to Pintura's actual input/textarea/contenteditable element.
+      
+      console.log('📝 Created keyboard input with forwarding to Pintura');
+    }
+
+    const handleAnnotateClick = () => {
+      console.log('📝 Annotate button clicked via DOM listener');
+      console.log('📝 isKiosk:', isKiosk);
+      console.log('📝 annotateInputRef.current:', annotateInputRef.current);
+      setIsAnnotateActive(true);
+      
+      // Show virtual keyboard in kiosk mode
+      if (isKiosk) {
+        console.log('📝 In kiosk mode, attempting to show keyboard...');
+        
+        // Small delay to let the UI update
+        setTimeout(() => {
+          // Try to find or create the input
+          let input = annotateInputRef.current || document.getElementById('pintura-annotate-keyboard-input') as HTMLInputElement;
+          
+          if (!input) {
+            console.log('📝 Creating input element on the fly...');
+            input = document.createElement('input');
+            input.type = 'text';
+            input.id = 'pintura-annotate-keyboard-input';
+            input.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:999998;width:80%;max-width:500px;height:50px;font-size:18px;padding:12px 16px;border:3px solid #6366f1;border-radius:12px;background:white;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
+            input.placeholder = 'Type your text here, then tap on card to place it...';
+            
+            // Forward input to Pintura's active text element
+            input.addEventListener('input', (e) => {
+              const inputValue = (e.target as HTMLInputElement).value;
+              console.log('📝 Keyboard input changed:', inputValue);
+              
+              // Find and update Pintura's active text element
+              const pinturaTextInput = document.querySelector('.PinturaShapeTextarea') as HTMLTextAreaElement ||
+                                        document.querySelector('.PinturaTextInput') as HTMLInputElement ||
+                                        document.querySelector('[data-pintura-text]') as HTMLElement ||
+                                        document.querySelector('.PinturaEditor textarea') as HTMLTextAreaElement ||
+                                        document.querySelector('.PinturaEditor input[type="text"]') as HTMLInputElement;
+              
+              if (pinturaTextInput) {
+                console.log('📝 Found Pintura text element, updating:', pinturaTextInput);
+                if (pinturaTextInput instanceof HTMLInputElement || pinturaTextInput instanceof HTMLTextAreaElement) {
+                  pinturaTextInput.value = inputValue;
+                  pinturaTextInput.dispatchEvent(new Event('input', { bubbles: true }));
+                } else if ((pinturaTextInput as HTMLElement).isContentEditable) {
+                  pinturaTextInput.textContent = inputValue;
+                  pinturaTextInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+              }
+            });
+            
+            document.body.appendChild(input);
+            annotateInputRef.current = input;
+          }
+          
+          console.log('📝 Input element:', input);
+          input.style.display = 'block';
+          input.focus();
+          console.log('📝 Calling showKeyboard...');
+          showKeyboard(input, '', 'text');
+          // Lock keyboard so it doesn't hide when clicking in Pintura
+          lockKeyboard();
+          console.log('📝 showKeyboard called and locked!');
+        }, 150);
+      } else {
+        console.log('📝 Not in kiosk mode, skipping keyboard');
+      }
+    };
+
+    const handleOtherToolClick = () => {
+      console.log('📝 Other tool clicked, exiting annotate mode...');
+      setIsAnnotateActive(false);
+      if (isKiosk) {
+        unlockKeyboard();
+        hideKeyboard();
+        if (annotateInputRef.current) {
+          annotateInputRef.current.style.display = 'none';
+        }
+      }
+    };
+
+    const setupAnnotateDetection = () => {
+      // Find annotate button by title
+      const annotateButton = document.querySelector('[title="Annotate"]');
+      if (annotateButton && !annotateButton.hasAttribute('data-annotate-listener')) {
+        annotateButton.setAttribute('data-annotate-listener', 'true');
+        annotateButton.addEventListener('click', handleAnnotateClick);
+        console.log('✅ Annotate button click listener attached');
+        annotateButtonFound = true;
+      }
+
+      // Find other tool buttons and listen for clicks to exit annotate mode
+      const otherToolButtons = document.querySelectorAll('[title="Fine tune"], [title="Filter"], [title="Sticker"], [title="Retouch"]');
+      otherToolButtons.forEach((button) => {
+        if (!button.hasAttribute('data-exit-annotate-listener')) {
+          button.setAttribute('data-exit-annotate-listener', 'true');
+          button.addEventListener('click', handleOtherToolClick);
+        }
+      });
+
+      // Disconnect observer once found
+      if (annotateButtonFound && observer) {
+        observer.disconnect();
+        observer = null;
+      }
+    };
+
+    // Initial attempts
+    setTimeout(() => setupAnnotateDetection(), 10);
+    setTimeout(() => setupAnnotateDetection(), 100);
+    setTimeout(() => setupAnnotateDetection(), 300);
+
+    // Observer as backup
+    const observerTimeout = setTimeout(() => {
+      if (annotateButtonFound) return;
+      
+      observer = new MutationObserver(() => {
+        if (!annotateButtonFound) {
+          setupAnnotateDetection();
+        }
+      });
+
+      const pinturaRoot = document.querySelector('.PinturaRoot, .PinturaModal, body');
+      if (pinturaRoot) {
+        observer.observe(pinturaRoot, {
+          childList: true,
+          subtree: true
+        });
+      }
+    }, 500);
+
+    return () => {
+      if (observer) {
+        observer.disconnect();
+      }
+      clearTimeout(observerTimeout);
+
+      // Clean up listeners
+      const annotateButton = document.querySelector('[data-annotate-listener="true"]');
+      if (annotateButton) {
+        annotateButton.removeEventListener('click', handleAnnotateClick);
+        annotateButton.removeAttribute('data-annotate-listener');
+      }
+
+      const otherButtons = document.querySelectorAll('[data-exit-annotate-listener="true"]');
+      otherButtons.forEach((button) => {
+        button.removeEventListener('click', handleOtherToolClick);
+        button.removeAttribute('data-exit-annotate-listener');
+      });
+      
+      // Clean up hidden input
+      const existingInput = document.getElementById('pintura-annotate-keyboard-input');
+      if (existingInput) {
+        existingInput.remove();
+      }
+      annotateInputRef.current = null;
+    };
+  }, [isVisible, isKiosk, hideKeyboard, showKeyboard, lockKeyboard, unlockKeyboard]);
+
+  // Handle annotate mode text input detection for virtual keyboard in kiosk mode
+  useEffect(() => {
+    if (!isVisible || !isKiosk || !isAnnotateActive) {
+      return;
+    }
+
+    console.log('📝 Setting up Pintura text input detection for annotate mode');
+
+    // Focus handler: when Pintura opens its own editor field, re-target the virtual keyboard to it.
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target) return;
+
+      // Only for elements inside Pintura
+      const insidePintura =
+        !!target.closest('.PinturaModal') || !!target.closest('.PinturaRoot') || !!target.closest('.PinturaEditor');
+      if (!insidePintura) return;
+
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        pinturaTextTargetRef.current = target;
+        console.log('📝 Pintura input focused -> binding virtual keyboard to Pintura input');
+        showKeyboard(target, target.value || '', 'text');
+        lockKeyboard();
+        return;
+      }
+
+      if (target.isContentEditable || target.getAttribute('contenteditable') === 'true') {
+        pinturaTextTargetRef.current = target;
+        console.log('📝 Pintura contenteditable focused -> binding virtual keyboard to it');
+        showKeyboard(target, target.textContent || '', 'text');
+        lockKeyboard();
+      }
+    };
+
+    // Set up MutationObserver to detect dynamically created text inputs in Pintura
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof HTMLElement) {
+            // No-op: we rely on focusin capturing instead of per-element listeners
+          }
+        });
+      });
+    });
+
+    // Find Pintura container and observe it
+    const pinturaContainer = document.querySelector('.PinturaRoot') || 
+                            document.querySelector('.PinturaModal') ||
+                            document.querySelector('[class*="Pintura"]');
+    
+    if (pinturaContainer) {
+      observer.observe(pinturaContainer, {
+        childList: true,
+        subtree: true
+      });
+      console.log('📝 Started observing Pintura container for text inputs');
+    }
+
+    // Capture focus events anywhere; filter to Pintura only
+    document.addEventListener('focusin', handleFocusIn as any, true);
+
+    return () => {
+      observer.disconnect();
+      console.log('📝 Stopped observing Pintura container for text inputs');
+      document.removeEventListener('focusin', handleFocusIn as any, true);
+    };
+  }, [isVisible, isKiosk, isAnnotateActive, showKeyboard, lockKeyboard]);
+
+  // Reset annotate state when modal is hidden
+  useEffect(() => {
+    if (!isVisible) {
+      setIsAnnotateActive(false);
+    }
+  }, [isVisible]);
 
 
   console.log("🎨 PinturaEditorModal rendered:", {
@@ -439,7 +702,10 @@ export default function PinturaEditorModal({
     pendingBlobSrc: pendingBlobSrc?.substring(0, 50),
     isVisible,
     hasPendingBlob: !!pendingBlobSrc,
-    whatWillBePassedToPintura: currentImageSrc?.substring(0, 50)
+    whatWillBePassedToPintura: currentImageSrc?.substring(0, 50),
+    isKiosk,
+    isAnnotateActive,
+    isKeyboardVisible
   });
 
   const handleProcess = ({ dest }: { dest: File }) => {
@@ -758,81 +1024,62 @@ export default function PinturaEditorModal({
     }
 
     let observer: MutationObserver | null = null;
+    let retouchButtonFound = false;
 
     const setupRetouchInterception = () => {
       const retouchButtons = document.querySelectorAll('[title="Retouch"]');
-      console.log(`🔍 Found ${retouchButtons.length} retouch button(s) in DOM`);
-      let setupComplete = false;
       
-      retouchButtons.forEach((retouchButton, index) => {
+      retouchButtons.forEach((retouchButton) => {
         const isAlreadyIntercepted = retouchButton.getAttribute('data-pixshop-intercepted');
-        console.log(`🎨 Retouch button ${index + 1}:`, {
-          element: retouchButton,
-          alreadyIntercepted: isAlreadyIntercepted,
-          title: retouchButton.getAttribute('title')
-        });
         
         if (!isAlreadyIntercepted) {
           retouchButton.setAttribute('data-pixshop-intercepted', 'true');
           retouchButton.addEventListener('click', handleRetouchClick, { capture: true });
-          console.log(`✅ Retouch button ${index + 1} interception setup complete`);
-          setupComplete = true;
-        } else {
-          console.log(`⚠️ Retouch button ${index + 1} already intercepted, skipping`);
+          console.log('✅ Retouch button interception setup complete');
+          retouchButtonFound = true;
         }
       });
       
-      if (retouchButtons.length === 0) {
-        console.log('❌ No retouch buttons found in DOM');
-      }
-      
-      return setupComplete || retouchButtons.length > 0;
+      return retouchButtonFound;
     };
 
     const setupButtons = () => {
       const retouchSuccess = setupRetouchInterception();
       addUploadButton();
+      
+      // If we found the button, disconnect the observer to stop the spam
+      if (retouchSuccess && observer) {
+        console.log('✅ Retouch button found, disconnecting observer');
+        observer.disconnect();
+        observer = null;
+      }
+      
       return retouchSuccess;
     };
 
-    // Initial setup attempts with more logging
-    console.log('🚀 Starting button setup attempts...');
-    setTimeout(() => {
-      console.log('⏰ Running button setup (10ms)...');
-      setupButtons();
-    }, 10);
-    setTimeout(() => {
-      console.log('⏰ Running button setup (25ms)...');
-      setupButtons();
-    }, 25);
-    setTimeout(() => {
-      console.log('⏰ Running button setup (50ms)...');
-      setupButtons();
-    }, 50);
-    setTimeout(() => {
-      console.log('⏰ Running button setup (100ms)...');
-      setupButtons();
-    }, 100);
+    // Initial setup attempts (reduced logging)
+    setTimeout(() => setupButtons(), 10);
+    setTimeout(() => setupButtons(), 50);
+    setTimeout(() => setupButtons(), 100);
     
-    // Use MutationObserver to watch for dynamically created buttons
+    // Use MutationObserver to watch for dynamically created buttons (only if not found yet)
     const observerTimeout = setTimeout(() => {
-      console.log('⏰ Setting up MutationObserver...');
-      observer = new MutationObserver((mutations) => {
-        console.log('🔄 DOM mutation detected, checking for buttons...');
-        setupButtons();
+      if (retouchButtonFound) return; // Already found, no need for observer
+      
+      observer = new MutationObserver(() => {
+        if (!retouchButtonFound) {
+          setupButtons();
+        }
       });
       
       const pinturaRoot = document.querySelector('.PinturaRoot, .PinturaModal, body');
       if (pinturaRoot) {
-        console.log('✅ Found DOM root for observer:', pinturaRoot);
         observer.observe(pinturaRoot, {
           childList: true,
           subtree: true,
           attributes: true,
           attributeFilter: ['title', 'class']
         });
-      } else {
-        console.warn('⚠️ Could not find DOM root for observer');
       }
     }, 1500);
 
@@ -871,15 +1118,29 @@ export default function PinturaEditorModal({
         (window as any).pinturaEditorInstance = editor;
       }
       
-      // PRIMARY METHOD: Listen for retouch tool selection using v8 API (only in non-kiosk mode)
+      // PRIMARY METHOD: Listen for tool selection using v8 API
       if (typeof editor.on === 'function') {
         editor.on('selectutil', (utilId: string) => {
           console.log(`🔧 Pintura tool selected: ${utilId}`);
+          
+          // Handle retouch (only in non-kiosk mode)
           if (utilId === 'retouch' && !isKiosk) {
             console.log('🎨 Retouch tool activated - auto-saving current state');
             handleRetouchToolActivated();
           } else if (utilId === 'retouch' && isKiosk) {
             console.log('🚫 Retouch tool not available in kiosk mode');
+          }
+          
+          // Handle annotate mode for virtual keyboard in kiosk mode
+          if (utilId === 'annotate') {
+            console.log('📝 Annotate tool selected via editor.on');
+            setIsAnnotateActive(true);
+          } else if (isAnnotateActive) {
+            console.log('📝 Leaving annotate mode via editor.on');
+            setIsAnnotateActive(false);
+            if (isKiosk) {
+              hideKeyboard();
+            }
           }
         });
         
@@ -999,32 +1260,87 @@ export default function PinturaEditorModal({
     hasPendingBlob: !!pendingBlobSrc
   });
 
+  // Determine if we should shrink Pintura for keyboard
+  // Shrink when annotate is active (in kiosk mode, keyboard will be visible too)
+  const shouldShrinkForKeyboard = isAnnotateActive;
+
   return (
-    <PinturaEditorModalComponent
-      {...editorDefaults}
-      src={currentImageSrc}
-      onLoad={handleLoad}
-      onHide={handleHide}
-      onProcess={handleProcess}
-      // Pintura v8 event handlers for retouch detection (only in non-kiosk mode)
-      onSelectUtil={(utilId: string) => {
-        console.log(`🔧 Pintura onSelectUtil: ${utilId}`);
-        if (utilId === 'retouch' && !isKiosk) {
-          console.log('🎨 Retouch selected via onSelectUtil prop');
-          handleRetouchToolActivated();
-        } else if (utilId === 'retouch' && isKiosk) {
-          console.log('🚫 Retouch not available in kiosk mode');
-        }
-      }}
-      onReady={() => {
-        console.log('🎯 Pintura editor ready for interaction');
-      }}
-      onUpdate={(imageState: any) => {
-        console.log('🔄 Pintura onUpdate:', {
-          hasState: !!imageState,
-          stateType: typeof imageState
-        });
-      }}
-    />
+    <>
+      <PinturaEditorModalComponent
+        {...editorDefaults}
+        src={currentImageSrc}
+        onLoad={handleLoad}
+        onHide={handleHide}
+        onProcess={handleProcess}
+        // Pintura v8 event handlers for tool selection
+        onSelectUtil={(utilId: string) => {
+          console.log(`🔧 Pintura onSelectUtil: ${utilId}`);
+          if (utilId === 'retouch' && !isKiosk) {
+            console.log('🎨 Retouch selected via onSelectUtil prop');
+            handleRetouchToolActivated();
+          } else if (utilId === 'retouch' && isKiosk) {
+            console.log('🚫 Retouch not available in kiosk mode');
+          }
+          
+          // Handle annotate mode for virtual keyboard in kiosk mode
+          if (utilId === 'annotate') {
+            console.log('📝 Annotate tool selected');
+            setIsAnnotateActive(true);
+          } else {
+            // Leaving annotate mode
+            if (isAnnotateActive) {
+              console.log('📝 Leaving annotate mode');
+              setIsAnnotateActive(false);
+              if (isKiosk) {
+                hideKeyboard();
+              }
+            }
+          }
+        }}
+        onReady={() => {
+          console.log('🎯 Pintura editor ready for interaction');
+        }}
+        onUpdate={(imageState: any) => {
+          console.log('🔄 Pintura onUpdate:', {
+            hasState: !!imageState,
+            stateType: typeof imageState
+          });
+        }}
+      />
+      
+      {/* CSS to shrink Pintura modal height when virtual keyboard needs space at top */}
+      <style jsx global>{`
+        ${shouldShrinkForKeyboard ? `
+          /* Shrink Pintura modal height only - leave space for keyboard at top */
+          .PinturaModal {
+            top: 300px !important;
+            height: calc(100vh - 300px) !important;
+            transition: top 0.3s ease-out, height 0.3s ease-out !important;
+          }
+          
+          /* The inner editor should fill the available space */
+          .PinturaModal > div,
+          .PinturaEditor,
+          .PinturaRoot {
+            height: 100% !important;
+            max-height: 100% !important;
+          }
+          
+          /* Ensure the stage/canvas area adjusts */
+          .PinturaStage {
+            height: auto !important;
+            max-height: calc(100% - 120px) !important;
+          }
+          
+          /* Keep toolbars visible */
+          .PinturaNavSet,
+          .PinturaNavGroup,
+          .PinturaUtilFooter,
+          .PinturaUtilMain {
+            flex-shrink: 0 !important;
+          }
+        ` : ''}
+      `}</style>
+    </>
   );
 }
