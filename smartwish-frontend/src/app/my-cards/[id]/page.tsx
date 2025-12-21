@@ -2169,19 +2169,15 @@ export default function CustomizeCardPage() {
                     }}
                     onTouchStart={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onTouchEnd={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onPointerDown={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onPointerUp={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     style={{ pointerEvents: "auto" }}
                   >
@@ -2234,19 +2230,15 @@ export default function CustomizeCardPage() {
                     }}
                     onTouchStart={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onTouchEnd={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onPointerDown={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onPointerUp={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     style={{ pointerEvents: "auto" }}
                   >
@@ -2334,11 +2326,9 @@ export default function CustomizeCardPage() {
                     }}
                     onTouchStart={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onTouchEnd={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2378,19 +2368,15 @@ export default function CustomizeCardPage() {
                   <button
                     onMouseDown={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onMouseUp={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onTouchStart={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onTouchEnd={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2501,7 +2487,6 @@ export default function CustomizeCardPage() {
                     }}
                     onTouchEnd={(e) => {
                       e.stopPropagation();
-                      e.preventDefault();
                       handleEditPage(currentPage);
                     }}
                     className="p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200"
