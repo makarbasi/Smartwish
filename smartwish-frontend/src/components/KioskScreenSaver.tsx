@@ -54,24 +54,66 @@ export default function KioskScreenSaver({
   onExit,
 }: KioskScreenSaverProps) {
   const [heroCards, setHeroCards] = useState<HeroCard[]>(FALLBACK_HERO_CARDS);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const [messageIndex, setMessageIndex] = useState(0);
 
   const floatingCallouts = useMemo(
     () => [
       {
-        title: "Create in 1 Minutes",
-        body: "Browse, personalize, and print instantly.",
+        title: "Create in 60 Seconds",
+        body: "Pick a design, add a message, print on premium cardstock.",
       },
       {
-        title: "Premium Cardstock",
-        body: "Museum-quality paper + rich color inks.",
+        title: "Instant Printing",
+        body: "Walk away with a beautiful card — no waiting days for shipping.",
       },
       {
-        title: "Over 1,000 Designs",
-        body: "Birthday • Holiday • Thank You • Weddings",
+        title: "Popular Designs",
+        body: "Birthday • Holiday • Thank You • Love • Congrats",
       },
     ],
     []
   );
+
+  const rotatingMessages = useMemo(
+    () => [
+      {
+        eyebrow: "Welcome",
+        headline: "Make someone smile — right now.",
+        sub: "Tap to browse popular cards, personalize in seconds, and print instantly.",
+      },
+      {
+        eyebrow: "Try it",
+        headline: "Add a photo. Add your message.",
+        sub: "It’s fast, fun, and looks amazing on premium paper.",
+      },
+      {
+        eyebrow: "Surprise",
+        headline: "A card they’ll actually keep.",
+        sub: "Choose a design, personalize, and print — all on this kiosk.",
+      },
+    ],
+    []
+  );
+
+  const sparkles = useMemo(() => {
+    // Lightweight twinkle layer (pure CSS) to make the screen feel alive.
+    // Keep count low to avoid perf issues on kiosk hardware.
+    const count = 22;
+    return Array.from({ length: count }).map((_, i) => {
+      const r1 = Math.random();
+      const r2 = Math.random();
+      const r3 = Math.random();
+      return {
+        id: i,
+        left: `${Math.round(r1 * 100)}%`,
+        top: `${Math.round(r2 * 100)}%`,
+        size: Math.round(2 + r3 * 4), // 2-6px
+        delay: `${(i % 8) * 0.6}s`,
+        duration: `${6 + (i % 7)}s`,
+      };
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +160,27 @@ export default function KioskScreenSaver({
     };
   }, []);
 
+  // Rotate the featured spotlight card + message to add an “attraction / surprise” element.
+  useEffect(() => {
+    if (!isVisible) return;
+
+    setFeaturedIndex(0);
+    setMessageIndex(0);
+
+    const t1 = window.setInterval(() => {
+      setFeaturedIndex((prev) => prev + 1);
+    }, 4500);
+
+    const t2 = window.setInterval(() => {
+      setMessageIndex((prev) => prev + 1);
+    }, 6500);
+
+    return () => {
+      window.clearInterval(t1);
+      window.clearInterval(t2);
+    };
+  }, [isVisible]);
+
   const uniqueCards = useMemo(() => {
     const seen = new Set<string>();
     return heroCards.filter((card) => {
@@ -131,6 +194,12 @@ export default function KioskScreenSaver({
   }, [heroCards]);
 
   const marqueeCards = useMemo(() => uniqueCards, [uniqueCards]);
+  const featuredCard = useMemo(() => {
+    if (uniqueCards.length === 0) return FALLBACK_HERO_CARDS[0];
+    return uniqueCards[featuredIndex % uniqueCards.length];
+  }, [uniqueCards, featuredIndex]);
+
+  const activeMessage = rotatingMessages[messageIndex % rotatingMessages.length];
 
   const handleInteraction = () => {
     onExit();
@@ -144,10 +213,31 @@ export default function KioskScreenSaver({
       className="fixed inset-0 z-[2147483647] cursor-pointer select-none"
       onClick={handleInteraction}
       onTouchStart={handleInteraction}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "Escape") handleInteraction();
+      }}
       tabIndex={0}
     >
       {/* Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#0A031A] via-[#120B3B] to-[#1F2A69]" />
+
+      {/* Sparkles / twinkle layer */}
+      <div className="absolute inset-0 pointer-events-none">
+        {sparkles.map((s) => (
+          <span
+            key={s.id}
+            className="kiosk-sparkle"
+            style={{
+              left: s.left,
+              top: s.top,
+              width: `${s.size}px`,
+              height: `${s.size}px`,
+              animationDelay: s.delay,
+              animationDuration: s.duration,
+            }}
+          />
+        ))}
+      </div>
 
       {/* Blurred moving cards */}
       <div className="absolute inset-0 overflow-hidden opacity-70">
@@ -203,15 +293,55 @@ export default function KioskScreenSaver({
       <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 text-center text-white">
         <div className="max-w-3xl space-y-6">
           <p className="text-sm uppercase tracking-[0.4em] text-white/60">
-            Greeting Card Experience
+            {activeMessage.eyebrow}
           </p>
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
-            SmartWish
+            {activeMessage.headline}
           </h1>
           <p className="text-xl md:text-2xl text-white/80 leading-relaxed">
-            Design, personalize, and print premium greeting cards while you
-            wait. Just tap to wake the screen and start creating.
+            {activeMessage.sub}
           </p>
+        </div>
+
+        {/* Featured spotlight card */}
+        <div className="mt-10 w-full flex items-center justify-center px-4">
+          <div className="relative w-[min(380px,82vw)] aspect-[3/4]">
+            <div
+              className="absolute -inset-4 rounded-[36px] opacity-80"
+              style={{
+                background: `radial-gradient(circle at 30% 20%, ${featuredCard.accent}55, transparent 70%)`,
+                filter: "blur(28px)",
+              }}
+            />
+            <div className="relative h-full w-full rounded-[28px] overflow-hidden border border-white/20 bg-white/5 backdrop-blur-xl shadow-[0_30px_120px_rgba(0,0,0,0.55)] kiosk-featured">
+              <Image
+                src={featuredCard.image}
+                alt={featuredCard.title}
+                fill
+                sizes="(max-width: 1024px) 80vw, 420px"
+                className="object-cover"
+                priority
+              />
+              {/* subtle shine sweep */}
+              <div className="absolute inset-0 kiosk-shine" />
+
+              <div className="absolute bottom-0 left-0 right-0 p-5 text-left">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-4 py-2 backdrop-blur-md">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: featuredCard.accent }}
+                  />
+                  <span className="text-sm tracking-wide text-white/90">
+                    Featured now
+                  </span>
+                </div>
+                <h2 className="mt-3 text-2xl font-semibold leading-tight">
+                  {featuredCard.title}
+                </h2>
+                <p className="mt-1 text-white/75">{featuredCard.tagline}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Floating callouts */}
@@ -236,10 +366,15 @@ export default function KioskScreenSaver({
         </div>
 
         <div className="mt-12 text-white/80 text-lg flex flex-col items-center gap-3">
-          <span className="px-6 py-2 rounded-full border border-white/20 bg-white/5 backdrop-blur-md">
-            Touch Anywhere to Begin
-          </span>
-          <p>Fully guided experience · Instant high-quality prints</p>
+          <div className="relative">
+            <span className="px-7 py-3 rounded-full border border-white/20 bg-white/10 backdrop-blur-md text-xl font-semibold kiosk-cta">
+              Tap Anywhere to Start
+            </span>
+            <span className="absolute inset-0 rounded-full kiosk-cta-ring" aria-hidden />
+          </div>
+          <p className="text-white/70">
+            1) Choose a card · 2) Personalize · 3) Print instantly
+          </p>
         </div>
       </div>
 
@@ -277,6 +412,109 @@ export default function KioskScreenSaver({
           50% {
             transform: translateY(-6px);
             box-shadow: 0 20px 70px rgba(99, 102, 241, 0.35);
+          }
+        }
+
+        .kiosk-sparkle {
+          position: absolute;
+          border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.85);
+          box-shadow: 0 0 10px rgba(255, 255, 255, 0.35);
+          opacity: 0.1;
+          animation-name: twinkle;
+          animation-timing-function: ease-in-out;
+          animation-iteration-count: infinite;
+        }
+
+        @keyframes twinkle {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) scale(0.7);
+            opacity: 0.08;
+          }
+          50% {
+            transform: translate3d(0, -10px, 0) scale(1);
+            opacity: 0.45;
+          }
+        }
+
+        .kiosk-featured {
+          animation: featuredFloat 6s ease-in-out infinite;
+          transform-origin: center;
+        }
+
+        @keyframes featuredFloat {
+          0%,
+          100% {
+            transform: translateY(0) rotate(-0.35deg);
+          }
+          50% {
+            transform: translateY(-10px) rotate(0.35deg);
+          }
+        }
+
+        .kiosk-shine {
+          background: linear-gradient(
+            110deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.06) 35%,
+            rgba(255, 255, 255, 0.22) 50%,
+            rgba(255, 255, 255, 0.06) 65%,
+            transparent 100%
+          );
+          transform: translateX(-140%);
+          animation: shineSweep 4.8s ease-in-out infinite;
+          mix-blend-mode: screen;
+        }
+
+        @keyframes shineSweep {
+          0% {
+            transform: translateX(-140%);
+            opacity: 0.0;
+          }
+          15% {
+            opacity: 0.9;
+          }
+          50% {
+            transform: translateX(140%);
+            opacity: 0.35;
+          }
+          100% {
+            transform: translateX(140%);
+            opacity: 0.0;
+          }
+        }
+
+        .kiosk-cta {
+          animation: ctaPulse 2.4s ease-in-out infinite;
+        }
+
+        .kiosk-cta-ring {
+          border: 2px solid rgba(255, 255, 255, 0.18);
+          transform: scale(1);
+          opacity: 0.9;
+          animation: ringPulse 2.4s ease-in-out infinite;
+        }
+
+        @keyframes ctaPulse {
+          0%,
+          100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.03);
+          }
+        }
+
+        @keyframes ringPulse {
+          0%,
+          100% {
+            transform: scale(1);
+            opacity: 0.65;
+          }
+          50% {
+            transform: scale(1.12);
+            opacity: 0.25;
           }
         }
       `}</style>
