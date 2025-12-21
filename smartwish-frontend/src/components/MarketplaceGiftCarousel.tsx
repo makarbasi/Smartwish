@@ -331,8 +331,13 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove
                   </div>
                 </div>
               </div>
-              {/* Pulse animation */}
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-400 to-purple-400 rounded-full opacity-20 animate-ping"></div>
+              {/* Subtle pulse animation - slower and more gentle */}
+              <div 
+                className="absolute inset-0 bg-gradient-to-br from-indigo-400 to-purple-400 rounded-full opacity-15"
+                style={{ 
+                  animation: 'pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                }}
+              ></div>
             </div>
           </div>
         </div>
@@ -348,4 +353,25 @@ export default function MarketplaceGiftCarousel({ cardId, giftCardData, onRemove
       </div>
     </Link>
   )
+}
+
+// Add CSS for slower pulse animation
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes pulse-slow {
+      0%, 100% {
+        opacity: 0.1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.2;
+        transform: scale(1.05);
+      }
+    }
+  `;
+  if (!document.head.querySelector('style[data-pulse-slow]')) {
+    style.setAttribute('data-pulse-slow', 'true');
+    document.head.appendChild(style);
+  }
 }

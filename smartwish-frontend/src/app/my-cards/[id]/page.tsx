@@ -2187,10 +2187,14 @@ export default function CustomizeCardPage() {
                         e.preventDefault();
                         handleEditPage(0);
                       }}
-                      className="p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200"
+                      className="group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300"
+                      style={{ 
+                        animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
+                      }}
                     >
                       <svg
-                        className="w-5 h-5 text-white"
+                        className="w-6 h-6 text-white drop-shadow-lg"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -2198,7 +2202,7 @@ export default function CustomizeCardPage() {
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          strokeWidth={2}
+                          strokeWidth={2.5}
                           d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                         />
                       </svg>
@@ -2248,10 +2252,11 @@ export default function CustomizeCardPage() {
                         e.preventDefault();
                         handleEditPage(1);
                       }}
-                      className="p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200"
+                      className="group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300 animate-pulse"
+                      style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
                     >
                       <svg
-                        className="w-5 h-5 text-white"
+                        className="w-6 h-6 text-white drop-shadow-lg"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -2259,7 +2264,7 @@ export default function CustomizeCardPage() {
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          strokeWidth={2}
+                          strokeWidth={2.5}
                           d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                         />
                       </svg>
@@ -2335,10 +2340,14 @@ export default function CustomizeCardPage() {
                       e.preventDefault();
                       handleEditPage(2);
                     }}
-                    className="absolute top-4 right-4 p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200 z-20"
+                    className="absolute top-4 right-4 group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300 z-20"
+                    style={{ 
+                      animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                      boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
+                    }}
                   >
                     <svg
-                      className="w-5 h-5 text-white"
+                      className="w-6 h-6 text-white drop-shadow-lg"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -2346,7 +2355,7 @@ export default function CustomizeCardPage() {
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2}
+                        strokeWidth={2.5}
                         d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                       />
                     </svg>
@@ -2383,10 +2392,14 @@ export default function CustomizeCardPage() {
                       e.preventDefault();
                       handleEditPage(3);
                     }}
-                    className="absolute top-4 right-4 p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200 z-20"
+                    className="absolute top-4 right-4 group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300 z-20"
+                    style={{ 
+                      animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                      boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
+                    }}
                   >
                     <svg
-                      className="w-5 h-5 text-white"
+                      className="w-6 h-6 text-white drop-shadow-lg"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -2394,7 +2407,7 @@ export default function CustomizeCardPage() {
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2}
+                        strokeWidth={2.5}
                         d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                       />
                     </svg>
@@ -2489,10 +2502,14 @@ export default function CustomizeCardPage() {
                       e.stopPropagation();
                       handleEditPage(currentPage);
                     }}
-                    className="p-2 bg-black/30 backdrop-blur-sm rounded-full shadow-lg hover:bg-black/40 transition-all duration-200"
+                    className="group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300"
+                    style={{ 
+                      animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                      boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
+                    }}
                   >
                     <svg
-                      className="w-4 h-4 text-white"
+                      className="w-6 h-6 text-white drop-shadow-lg"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -2500,7 +2517,7 @@ export default function CustomizeCardPage() {
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2}
+                        strokeWidth={2.5}
                         d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                       />
                     </svg>
@@ -2793,6 +2810,22 @@ export default function CustomizeCardPage() {
         cardThumbnail={cardData?.pages?.[0] || ""}
         isLoading={isSendingEmail}
       />
+      
+      {/* CSS for fast pulse glow animation */}
+      <style jsx global>{`
+        @keyframes pulse-fast-glow {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+            box-shadow: 0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2);
+          }
+          50% {
+            opacity: 0.9;
+            transform: scale(1.05);
+            box-shadow: 0 6px 30px rgba(124,58,237,0.7), 0 0 30px rgba(124,58,237,0.5), 0 0 60px rgba(124,58,237,0.3);
+          }
+        }
+      `}</style>
     </div>
   );
 }
