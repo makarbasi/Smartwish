@@ -1329,8 +1329,8 @@ export default function PinturaEditorModal({
         ${shouldShrinkForKeyboard ? `
           /* Shrink Pintura modal height only - leave space for keyboard at top */
           .PinturaModal {
-            top: 300px !important;
-            height: calc(100vh - 300px) !important;
+            top: 340px !important;
+            height: calc(100vh - 340px) !important;
             transition: top 0.3s ease-out, height 0.3s ease-out !important;
           }
           

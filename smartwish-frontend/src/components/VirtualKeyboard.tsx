@@ -188,7 +188,7 @@ export default function VirtualKeyboard() {
   return (
     <>
       {/* Keyboard - positioned at TOP of screen, above everything including Pintura modal */}
-      <div className="virtual-keyboard-container fixed inset-x-0 top-0 z-[999999] bg-gray-100 shadow-2xl border-b-2 border-gray-300" style={{ zIndex: 999999 }}>
+      <div className="virtual-keyboard-container fixed inset-x-0 top-0 z-[999999] bg-gray-100 shadow-2xl border-b-2 border-gray-300" style={{ zIndex: 999999, paddingBottom: '20px' }}>
         <div className="max-w-5xl mx-auto px-2 py-3">
           <Keyboard
             keyboardRef={(r: any) => (keyboardRef.current = r)}
