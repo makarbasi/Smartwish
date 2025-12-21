@@ -188,7 +188,7 @@ export default function VirtualKeyboard() {
   return (
     <>
       {/* Keyboard - positioned at TOP of screen, above everything including Pintura modal */}
-      <div className="virtual-keyboard-container fixed inset-x-0 top-0 z-[999999] bg-gray-900 shadow-2xl border-b border-gray-700" style={{ zIndex: 999999, paddingBottom: '20px' }}>
+      <div className="virtual-keyboard-container fixed top-4 left-4 right-4 sm:top-6 sm:left-6 sm:right-6 z-[999999] bg-gray-900 shadow-2xl border-b border-gray-700 rounded-2xl" style={{ zIndex: 999999, paddingBottom: '20px' }}>
         <div className="max-w-5xl mx-auto px-2 py-3">
           <Keyboard
             keyboardRef={(r: any) => (keyboardRef.current = r)}
@@ -308,14 +308,14 @@ export default function VirtualKeyboard() {
 
         /* When keyboard is visible, push body content DOWN with margin below keyboard */
         body:has(.virtual-keyboard-container) {
-          padding-top: 340px !important;
+          padding-top: 380px !important;
           transition: padding-top 0.2s ease-out;
         }
 
         /* Adjust for smaller keyboards (number/tel) */
         @media (max-width: 768px) {
           body:has(.virtual-keyboard-container) {
-            padding-top: 300px !important;
+            padding-top: 340px !important;
           }
         }
       `}</style>
