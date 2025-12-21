@@ -28,6 +28,7 @@ import {
   createDefaultImageWriter,
   createDefaultShapePreprocessor,
   createMarkupEditorShapeStyleControls,
+  createMarkupEditorToolStyles,
 } from "@pqina/pintura";
 
 // Set up the plugins WITHOUT crop and WITHOUT frame
@@ -46,6 +47,18 @@ const createEditorDefaults = (handleOpenPixshop: () => void, isKiosk: boolean = 
   const utils = isKiosk ? baseUtils : [...baseUtils, "retouch"];
   
   console.log('🎨 Creating Pintura editor defaults:', { isKiosk, utils });
+
+  // Default annotate text settings:
+  // - color: black
+  // - font size: "normal" (use Pintura default medium scale = 10%)
+  // - font: "Old-Style" (Palatino)
+  const defaultMarkupToolStyles = createMarkupEditorToolStyles({
+    text: {
+      color: [0, 0, 0],
+      fontSize: '10%',
+      fontFamily: 'Palatino',
+    },
+  });
   
   return {
     utils, // conditionally include retouch based on kiosk mode
@@ -55,6 +68,9 @@ const createEditorDefaults = (handleOpenPixshop: () => void, isKiosk: boolean = 
     ...plugin_finetune_defaults,
     ...plugin_filter_defaults,
     ...markup_editor_defaults,
+    // Override markup defaults (applies to annotate text tool)
+    markupEditorToolStyles: defaultMarkupToolStyles,
+    annotateToolShapes: defaultMarkupToolStyles,
     // Add default stickers
     stickers: [
       [
