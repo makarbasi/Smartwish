@@ -248,11 +248,16 @@ export default function HeroSearch(props: Props) {
   }
 
   return (
-    <div ref={ref} className="relative mx-auto max-w-3xl">
+    <div ref={ref} className="relative mx-auto max-w-4xl">
       <form
         onSubmit={onSubmit}
-        className={`flex items-center gap-1 sm:gap-2 rounded-2xl bg-white/95 p-1.5 sm:p-2 shadow-sm ring-1 ring-gray-300 backdrop-blur transition focus-within:ring-indigo-400 ${open ? 'ring-indigo-400 shadow-md' : ''
+        className={`flex items-center gap-2 sm:gap-3 rounded-3xl bg-gradient-to-r from-indigo-50 via-white to-purple-50 p-4 sm:p-5 shadow-2xl ring-2 ring-indigo-200/60 backdrop-blur-md transition-all duration-300 focus-within:ring-indigo-500 focus-within:shadow-[0_0_30px_rgba(99,102,241,0.4)] focus-within:scale-[1.02] ${open ? 'ring-indigo-500 shadow-[0_0_30px_rgba(99,102,241,0.4)]' : 'animate-pulse-glow'
           }`}
+        style={{
+          boxShadow: open 
+            ? '0 20px 60px rgba(99, 102, 241, 0.3), 0 0 0 1px rgba(99, 102, 241, 0.2)' 
+            : '0 10px 40px rgba(99, 102, 241, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.1)'
+        }}
       >
         <VirtualInput
           value={q}
@@ -260,8 +265,8 @@ export default function HeroSearch(props: Props) {
           onChange={(e) => setQ(e.target.value)}
           type="text"
           aria-label="Search"
-          placeholder="Describe your idea, and we'll bring it to life"
-          className="flex-1 min-w-0 rounded-2xl bg-transparent px-2 sm:px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+          placeholder="Search in natural language... e.g., 'birthday card for mom' or 'thank you card'"
+          className="flex-1 min-w-0 rounded-2xl bg-transparent px-4 sm:px-6 py-3 sm:py-4 text-lg sm:text-xl text-gray-900 placeholder:text-gray-500 placeholder:font-medium focus:outline-none"
         />
 
         {/* Voice Input Button */}
@@ -270,9 +275,9 @@ export default function HeroSearch(props: Props) {
           onClick={startVoice}
           disabled={recording}
           aria-label={recording ? "Recording..." : "Voice search"}
-          className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${recording
-            ? 'bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 focus-visible:outline-gray-600'
+          className={`flex-shrink-0 mr-1 sm:mr-2 grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${recording
+            ? 'bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600 animate-pulse'
+            : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200 hover:scale-110 focus-visible:outline-indigo-600'
             }`}
         >
           {recording ? (
@@ -292,7 +297,7 @@ export default function HeroSearch(props: Props) {
         <button
           type="submit"
           aria-label="Search"
-          className="flex-shrink-0 mr-0.5 sm:mr-1 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full bg-indigo-600 text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-all"
+          className="flex-shrink-0 mr-0.5 sm:mr-1 grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg hover:from-indigo-500 hover:to-purple-500 hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-all transform"
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <circle cx="11" cy="11" r="8" />
@@ -513,6 +518,21 @@ export default function HeroSearch(props: Props) {
           </div>
         )
       )}
+
+      <style jsx>{`
+        @keyframes pulse-glow {
+          0%, 100% {
+            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.1);
+          }
+          50% {
+            box-shadow: 0 15px 50px rgba(99, 102, 241, 0.35), 0 0 0 1px rgba(99, 102, 241, 0.2);
+          }
+        }
+        
+        .animate-pulse-glow {
+          animation: pulse-glow 3s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   )
 }
