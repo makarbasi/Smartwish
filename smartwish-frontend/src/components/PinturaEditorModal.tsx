@@ -61,6 +61,12 @@ const createEditorDefaults = (handleOpenPixshop: () => void, isKiosk: boolean = 
   });
   
   return {
+    // Prefer placing Pintura UI chrome (utils/toolbars/controls) at the top instead of bottom
+    // This helps on tablet/kiosk where the bottom UI can be obscured or less discoverable.
+    layoutVerticalUtilsPreference: 'top',
+    layoutVerticalToolbarPreference: 'top',
+    layoutVerticalControlGroupsPreference: 'top',
+    layoutVerticalControlTabsPreference: 'top',
     utils, // conditionally include retouch based on kiosk mode
     imageReader: createDefaultImageReader(),
     imageWriter: createDefaultImageWriter(),
