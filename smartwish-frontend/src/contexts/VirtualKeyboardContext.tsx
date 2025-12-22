@@ -103,14 +103,47 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      // Don't hide if clicking on any input or textarea
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      // Don't hide if clicking on any input, textarea, or select element
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+        return
+      }
+
+      // Don't hide if clicking on option elements (dropdown options)
+      if (target.tagName === 'OPTION') {
         return
       }
 
       // Don't hide if clicking inside Pintura (when in annotate mode)
       if (target.closest('.PinturaModal') || target.closest('.PinturaRoot') || target.closest('.PinturaEditor')) {
         return
+      }
+
+      // Don't hide if clicking inside any select dropdown or its parent container
+      // This handles category selectors and other filter dropdowns in HeroSearch
+      if (target.closest('select') || 
+          target.closest('[aria-label*="Category"]') ||
+          target.closest('[aria-label*="Region"]') ||
+          target.closest('[aria-label*="Language"]') ||
+          target.closest('[aria-label*="Author"]')) {
+        return
+      }
+
+      // Don't hide if clicking inside the search dropdown panel container
+      // Check if we're inside a dropdown panel that contains select elements
+      const parentContainer = target.closest('div')
+      if (parentContainer) {
+        // Check if this container or any parent has select elements (search filter dropdowns)
+        const hasSelects = parentContainer.querySelector('select') !== null
+        // Also check if we're in a dropdown-like container (has rounded corners, shadow, etc - typical dropdown styling)
+        const isDropdownPanel = 
+          parentContainer.classList.contains('rounded-2xl') || 
+          parentContainer.classList.contains('shadow-lg') ||
+          parentContainer.style.position === 'absolute' ||
+          window.getComputedStyle(parentContainer).position === 'absolute'
+        
+        if (hasSelects && isDropdownPanel) {
+          return
+        }
       }
 
       // Hide keyboard for any other clicks
