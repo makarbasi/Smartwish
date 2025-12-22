@@ -7,10 +7,11 @@ export class GeminiEmbeddingService {
   private embeddingModel: any = null;
 
   constructor() {
-    const apiKey = process.env.GOOGLE_API_KEY;
+    // Check for GEMINI_API_KEY first (preferred), then fallback to GOOGLE_API_KEY
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     
     if (!apiKey) {
-      console.warn('⚠️  GOOGLE_API_KEY not set - embedding service will be limited');
+      console.warn('⚠️  GEMINI_API_KEY or GOOGLE_API_KEY not set - embedding service will be limited');
       return;
     }
 
