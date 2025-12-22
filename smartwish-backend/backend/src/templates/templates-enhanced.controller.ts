@@ -549,7 +549,9 @@ export class TemplatesEnhancedController {
 
       const totalTime = Date.now() - startTime;
       console.log(`[Hybrid Search] ✅ Completed in ${totalTime}ms - ${resultsWithAuthor.length} results`);
-      console.log(`[Performance] ~${Math.round(totalTime / resultsWithAuthor.length)}ms per result`);
+      console.log(
+        `[Performance] ~${resultsWithAuthor.length > 0 ? Math.round(totalTime / resultsWithAuthor.length) : 'n/a'}ms per result`,
+      );
 
       return resultsWithAuthor;
     } catch (geminiError) {
@@ -576,6 +578,8 @@ export class TemplatesEnhancedController {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY not configured');
     }
+
+    const normalizeId = (v: any) => String(v ?? '').trim().toLowerCase();
 
     // Prepare candidate descriptions
     const candidateDescriptions = candidates.map((c, index) => {
@@ -683,8 +687,26 @@ If no templates are relevant (all score < 6), return an empty array: []`;
     // Map results back to full template objects
     const results = geminiResults
       .map((gr) => {
-        const template = candidates.find((c) => c.id === gr.id);
-        if (!template) return null;
+        const rawId = (gr as any)?.id;
+        const wanted = normalizeId(rawId);
+
+        // 1) Prefer exact ID match (uuid) against common candidate fields
+        let template =
+          candidates.find((c) => normalizeId((c as any).id) === wanted) ??
+          candidates.find((c) => normalizeId((c as any).template_id) === wanted);
+
+        // 2) Fallback: Gemini sometimes returns the candidate index ("1", "2", ...)
+        if (!template) {
+          const idx = Number.parseInt(String(rawId ?? '').trim(), 10);
+          if (Number.isFinite(idx) && idx >= 1 && idx <= candidates.length) {
+            template = candidates[idx - 1];
+          }
+        }
+
+        if (!template) {
+          console.warn(`[Gemini AI] Could not map result id "${rawId}" to any candidate`);
+          return null;
+        }
 
         return {
           ...template,
