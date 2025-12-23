@@ -48,14 +48,23 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // If raw=1 is provided, return the *raw* upstream Tillo response (useful for certification/debugging).
+    // This does not expose secrets; it's just the upstream JSON payload.
+    const raw = request.nextUrl.searchParams.get('raw') === '1'
+
     const timestamp = Date.now()
     const endpoint = 'brands'
     const signature = generateSignature('GET', endpoint, timestamp)
 
-    console.log('🔑 Making Tillo API request to:', `${TILLO_BASE_URL}/${endpoint}`)
+    // Request brand detail so we receive brand assets (logo_url / gift_card_url) as per Tillo docs:
+    // - https://tillo.tech/v2_docs/brand_information.html#brands-api-response
+    // - https://tillo.tech/v2_docs/brand_information.html#brand-assets
+    const upstreamUrl = `${TILLO_BASE_URL}/${endpoint}?detail=true`
+
+    console.log('🔑 Making Tillo API request to:', upstreamUrl)
     console.log('📋 API Key:', TILLO_API_KEY.substring(0, 8) + '...')
 
-    const response = await fetch(`${TILLO_BASE_URL}/${endpoint}`, {
+    const response = await fetch(upstreamUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -82,6 +91,11 @@ export async function GET(request: NextRequest) {
     }
 
     const data = JSON.parse(responseText)
+
+    // Return the raw upstream payload if requested
+    if (raw) {
+      return NextResponse.json(data)
+    }
 
     // Log the actual response structure for debugging
     console.log('📦 Tillo Response Structure:', JSON.stringify(data).substring(0, 500))
@@ -127,12 +141,11 @@ export async function GET(request: NextRequest) {
     // -------------------------------------------------------------------------
     // Logo strategy
     // -------------------------------------------------------------------------
-    // Tillo's /brands response does NOT include logos.
-    //
-    // We support:
-    // 1) Manual asset hosting: put files in `smartwish-frontend/public/tillo-logos/`
-    //    Named by brand slug: `amazon-us.png`, `starbucks.png`, etc.
-    // 2) Guaranteed fallback: generate an SVG "initials badge" data URI.
+    // With `detail=true`, Tillo can provide brand assets under `detail.assets`
+    // (e.g. `detail.assets.logo_url`) per docs. If a logo is not present for a
+    // given brand/account, we fall back to:
+    // 1) Manual asset hosting: `smartwish-frontend/public/tillo-logos/<slug>.png`
+    // 2) Guaranteed fallback: generated SVG "initials badge" data URI.
 
     const normalizeSlug = (s: string): string => {
       return (s || '')
@@ -214,6 +227,11 @@ export async function GET(request: NextRequest) {
       // Try multiple possible logo field names from Tillo API
       // (kept for compatibility if Tillo ever adds assets in the future)
       let logo =
+        // Preferred: documented assets location when using detail=true
+        brand?.detail?.assets?.logo_url ||
+        brand?.detail?.assets?.logoUrl ||
+        brand?.assets?.logo_url ||
+        brand?.assets?.logoUrl ||
         brand.logo ||
         brand.logo_url ||
         brand.logoUrl ||
@@ -228,6 +246,13 @@ export async function GET(request: NextRequest) {
         brand.assets?.logo_url ||
         null
 
+      const giftCardImage =
+        brand?.detail?.assets?.gift_card_url ||
+        brand?.detail?.assets?.giftCardUrl ||
+        brand?.assets?.gift_card_url ||
+        brand?.assets?.giftCardUrl ||
+        null
+
       // If no logo from API (expected), use manual asset if present; otherwise initials SVG
       if (!logo) {
         logo = getBrandLogo(brand.name || slug, brand.slug || slug)
@@ -239,6 +264,7 @@ export async function GET(request: NextRequest) {
         slug: brand.slug || slug,
         logo: logo,
         image: logo, // Also set image for backward compatibility
+        giftCardImage,
         category: (brand.categories && brand.categories[0]) || brand.category || 'Gift Card',
         minAmount: brand.digital_face_value_limits?.lower || brand.min_value || brand.minValue || 5,
         maxAmount: brand.digital_face_value_limits?.upper || brand.max_value || brand.maxValue || 500,

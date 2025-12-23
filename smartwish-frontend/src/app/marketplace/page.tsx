@@ -64,12 +64,13 @@ function ProductCard({ p }: { p: Product }) {
       className="group overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm cursor-pointer"
       onClick={() => selectProduct(p.id)}
     >
-      <div className="relative aspect-[3/2] w-full bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center">
+      <div className="relative aspect-[3/2] w-full bg-gradient-to-br from-indigo-50 to-purple-50">
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={p.name}
-            className="w-full h-full object-contain p-4"
+            // Full-bleed logo in tile
+            className="w-full h-full object-cover"
             onError={(e) => {
               // If logo fails to load, show placeholder
               const target = e.target as HTMLImageElement
@@ -78,7 +79,9 @@ function ProductCard({ p }: { p: Product }) {
             }}
           />
         ) : (
-          <span className="text-5xl">🎁</span>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-5xl">🎁</span>
+          </div>
         )}
       </div>
       <div className="px-4 pt-3 pb-4 text-left">
