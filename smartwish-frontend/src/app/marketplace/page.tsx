@@ -133,6 +133,78 @@ function MarketplaceContent() {
     fetcher
   )
 
+  const CATEGORY_LABELS: Record<string, string> = {
+    'food-and-drink': 'Food & Drink',
+    'tv-and-movies': 'TV & Movies',
+    'travel-and-leisure': 'Travel & Leisure',
+    'department-store': 'Department Store',
+    'school-vouchers': 'School Vouchers',
+  }
+
+  const formatCategoryLabel = (category: string): string => {
+    if (!category) return 'Other'
+    const known = CATEGORY_LABELS[category]
+    if (known) return known
+    return category
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+
+  const categoryTabs = useMemo(() => {
+    const items = productsData?.brands || productsData?.products || []
+    if (!items || items.length === 0) return [{ key: 'all', label: 'All' }]
+
+    const counts = new Map<string, number>()
+    for (const p of items) {
+      const c = (p.category || 'other').toLowerCase()
+      counts.set(c, (counts.get(c) || 0) + 1)
+    }
+
+    // Prefer common, user-meaningful categories first, then remaining by count.
+    const preferredOrder = [
+      'food-and-drink',
+      'supermarket',
+      'fashion',
+      'beauty',
+      'gaming',
+      'electronics',
+      'home',
+      'travel-and-leisure',
+      'sports',
+      'tv-and-movies',
+      'music',
+      'baby',
+      'charity',
+      'other',
+    ]
+
+    const preferredIndex = (c: string) => {
+      const idx = preferredOrder.indexOf(c)
+      return idx === -1 ? Number.MAX_SAFE_INTEGER : idx
+    }
+
+    const categories = Array.from(counts.keys()).sort((a, b) => {
+      const ai = preferredIndex(a)
+      const bi = preferredIndex(b)
+      if (ai !== bi) return ai - bi
+      const ac = counts.get(a) || 0
+      const bc = counts.get(b) || 0
+      if (ac !== bc) return bc - ac
+      return a.localeCompare(b)
+    })
+
+    // Keep UI compact: show the most relevant categories; always keep "other" last if present.
+    const withoutOther = categories.filter((c) => c !== 'other')
+    const hasOther = categories.includes('other')
+    const limited = withoutOther.slice(0, 8)
+    if (hasOther) limited.push('other')
+
+    return [
+      { key: 'all', label: 'All' },
+      ...limited.map((c) => ({ key: c, label: formatCategoryLabel(c) })),
+    ]
+  }, [productsData])
+
   // Update global products when data loads (Tillo brands)
   useEffect(() => {
     const items = productsData?.brands || productsData?.products || []
@@ -371,43 +443,19 @@ function MarketplaceContent() {
 
       {/* Filters */}
       <div className="mb-6 flex justify-center">
-        <div className="flex gap-2">
-          <button
-            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'all'
-              ? 'bg-indigo-600 text-white border-indigo-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            onClick={() => filterProducts('all')}
-          >
-            All
-          </button>
-          <button
-            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'merchant_card'
-              ? 'bg-indigo-600 text-white border-indigo-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            onClick={() => filterProducts('merchant_card')}
-          >
-            Gift Cards
-          </button>
-          <button
-            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'charity'
-              ? 'bg-indigo-600 text-white border-indigo-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            onClick={() => filterProducts('charity')}
-          >
-            Charity
-          </button>
-          <button
-            className={`filter-btn px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === 'prepaid_card'
-              ? 'bg-indigo-600 text-white border-indigo-600'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            onClick={() => filterProducts('prepaid_card')}
-          >
-            Prepaid Cards
-          </button>
+        <div className="flex max-w-full gap-2 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {categoryTabs.map((tab) => (
+            <button
+              key={tab.key}
+              className={`filter-btn whitespace-nowrap px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === tab.key
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              onClick={() => filterProducts(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
