@@ -58,6 +58,13 @@ declare global {
     id: string;
     printerName: string;
     imagePaths: string[];
+    pdfUrl?: string;
+    pdfData?: string;
+    paperSize?: string;
+    borderless?: boolean;
+    borderlessPaperSize?: string;
+    duplexSide?: 'duplex' | 'duplexshort' | 'duplexlong' | 'simplex';
+    copies?: number;
     status: string;
     createdAt: string;
     updatedAt: string;
@@ -460,14 +467,52 @@ export class AppController {
         console.log('☁️ Cloud environment detected - queuing print job for local agent');
 
         // Generate URLs for the saved images
-        const baseUrl = process.env.RENDER_EXTERNAL_URL ||
-          process.env.BASE_URL ||
-          'https://smartwish.onrender.com';
+        const baseUrl =
+          process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || getBaseUrl();
 
         const imageUrls = savedPaths.map((filePath, index) => {
           const fileName = path.basename(filePath);
           return `${baseUrl}/downloads/flipbook/${fileName}`;
         });
+
+        // ALSO generate a server-side PDF (preferred by the local print agent).
+        // This avoids re-compositing on the local machine and enables a cleaner job format: { pdfUrl, ... }.
+        let pdfUrl: string | undefined = undefined;
+        try {
+          const printJpegsDir = path.join(downloadsDir, 'print-jpegs');
+          if (!fs.existsSync(printJpegsDir)) {
+            fs.mkdirSync(printJpegsDir, { recursive: true });
+          }
+
+          // Map images to greeting card positions (same mapping used elsewhere)
+          const imageFiles = {
+            front: savedPaths[0], // page_1
+            insideRight: savedPaths[1], // page_2
+            insideLeft: savedPaths[2], // page_3
+            back: savedPaths[3], // page_4
+          };
+
+          const compositeSide1Path = path.join(printJpegsDir, `temp_${jobId}_side1.png`);
+          const compositeSide2Path = path.join(printJpegsDir, `temp_${jobId}_side2.png`);
+
+          await this.createCompositeImage(compositeSide1Path, imageFiles.back, imageFiles.front);
+          await this.createCompositeImage(compositeSide2Path, imageFiles.insideRight, imageFiles.insideLeft);
+
+          const outputPdf = `${jobId}_print.pdf`;
+          const pdfPath = path.join(printJpegsDir, outputPdf);
+          await this.createPdf(pdfPath, compositeSide1Path, compositeSide2Path);
+
+          // Cleanup temp composites (keep the final PDF)
+          try {
+            if (fs.existsSync(compositeSide1Path)) fs.unlinkSync(compositeSide1Path);
+            if (fs.existsSync(compositeSide2Path)) fs.unlinkSync(compositeSide2Path);
+          } catch { /* ignore */ }
+
+          pdfUrl = `${baseUrl}/downloads/print-jpegs/${outputPdf}`;
+          console.log(`✅ Server-generated PDF ready for local agent: ${pdfUrl}`);
+        } catch (pdfErr) {
+          console.warn('⚠️ Could not generate server-side PDF for print job. Falling back to image-based job.', pdfErr?.message || pdfErr);
+        }
 
         // Create print job for local agent
         const printJob = {
@@ -475,6 +520,7 @@ export class AppController {
           printerName,
           paperSize: selectedPaperSize,
           imagePaths: imageUrls,
+          ...(pdfUrl ? { pdfUrl } : {}),
           status: 'pending',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
