@@ -131,12 +131,19 @@ function HandwritingDemo({
   const messageType = clamp01((phase - 0.42) / 0.48); // 0.42..0.90
   const showSignature = phase > 0.62;
 
-  const message = "Merry Christmas John!";
+  // Write the message on two lines so "John!" always fits on the card.
+  const line1 = "Merry Christmas";
+  const line2 = "John!";
   const reveal = clamp01(messageType);
   const textDraw = clamp01((phase - 0.48) / 0.5); // start writing after heart begins
+  const lines = useMemo(() => [line1, line2], []);
+  const totalChars = useMemo(
+    () => lines.reduce((sum, l) => sum + l.length, 0),
+    [lines]
+  );
   const visibleChars = Math.max(
     0,
-    Math.min(message.length, Math.floor(textDraw * (message.length + 1)))
+    Math.min(totalChars, Math.floor(textDraw * (totalChars + 1)))
   );
 
   // Hand-drawn-ish heart stroke (jittered).
@@ -258,21 +265,32 @@ function HandwritingDemo({
             }}
           >
             <div className="kiosk-handwriting-line" aria-hidden>
-              {message.split("").map((ch, idx) => {
-                const shown = idx < visibleChars;
-                return (
-                  <span
-                    key={`${ch}-${idx}`}
-                    className="kiosk-handwriting-char"
-                    style={{
-                      opacity: shown ? 1 : 0,
-                      transform: shown ? "translateY(0) rotate(-0.2deg)" : "translateY(2px)",
-                    }}
+              {(() => {
+                let cursor = 0;
+                return lines.map((line, lineIdx) => (
+                  <div
+                    key={`line-${lineIdx}`}
+                    className={lineIdx === 1 ? "kiosk-handwriting-line2" : ""}
                   >
-                    {ch === " " ? "\u00A0" : ch}
-                  </span>
-                );
-              })}
+                    {line.split("").map((ch, idx) => {
+                      const shown = cursor < visibleChars;
+                      cursor += 1;
+                      return (
+                        <span
+                          key={`${lineIdx}-${idx}`}
+                          className="kiosk-handwriting-char"
+                          style={{
+                            opacity: shown ? 1 : 0,
+                            transform: shown ? "translateY(0) rotate(-0.25deg)" : "translateY(2px)",
+                          }}
+                        >
+                          {ch === " " ? "\u00A0" : ch}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
           <div className="mt-2 flex items-center justify-between gap-3 text-black/70">
@@ -306,17 +324,20 @@ function HandwritingDemo({
         .kiosk-handwriting-line {
           font-family: "Segoe Script", "Bradley Hand", "Comic Sans MS",
             "Brush Script MT", cursive;
-          font-size: 32px;
-          line-height: 1.08;
+          font-size: 26px;
+          line-height: 1.02;
           font-weight: 500;
-          letter-spacing: -0.01em;
-          white-space: nowrap;
+          letter-spacing: -0.02em;
           text-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
         }
 
         .kiosk-handwriting-char {
           display: inline-block;
           transition: opacity 140ms ease-out, transform 140ms ease-out;
+        }
+
+        .kiosk-handwriting-line2 {
+          margin-top: 2px;
         }
       `}</style>
 
@@ -331,7 +352,7 @@ export default function KioskScreenSaver({
   const [heroCards, setHeroCards] = useState<HeroCard[]>(FALLBACK_HERO_CARDS);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
-  const [sceneIndex, setSceneIndex] = useState(0); // 0: showcase, 1: personalization demo
+  const [sceneStep, setSceneStep] = useState(0);
   const [themeStage, setThemeStage] = useState(0);
   const [kioskTheme, setKioskTheme] = useState<KioskTheme>("default");
   const [demoPhase, setDemoPhase] = useState(0);
@@ -507,7 +528,7 @@ export default function KioskScreenSaver({
     setKioskTheme(resolveKioskTheme());
     setFeaturedIndex(0);
     setMessageIndex(0);
-    setSceneIndex(0);
+    setSceneStep(0);
     setThemeStage(0);
     setDemoPhase(0);
 
@@ -520,8 +541,8 @@ export default function KioskScreenSaver({
     }, 6500);
 
     const t3 = window.setInterval(() => {
-      // Alternate between "showcase" and "personalization" scenes.
-      setSceneIndex((prev) => (prev + 1) % 2);
+      // Show handwriting twice (2x) then go back to showcase.
+      setSceneStep((prev) => prev + 1);
     }, 28000);
 
     const t4 = window.setInterval(() => {
@@ -536,6 +557,12 @@ export default function KioskScreenSaver({
       window.clearInterval(t4);
     };
   }, [isVisible]);
+
+  const sceneIndex = useMemo(() => {
+    // 0: showcase, 1: handwriting demo. Pattern => [showcase, handwriting, handwriting]
+    const seq = [0, 1, 1] as const;
+    return seq[sceneStep % seq.length];
+  }, [sceneStep]);
 
   // Keep handwriting animation smooth while the personalization scene is visible.
   useEffect(() => {
