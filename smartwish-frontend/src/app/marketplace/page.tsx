@@ -71,6 +71,7 @@ function ProductCard({ p }: { p: Product }) {
             alt={p.name}
             className="w-full h-full object-contain p-4"
             onError={(e) => {
+              // If logo fails to load, show placeholder
               const target = e.target as HTMLImageElement
               target.style.display = 'none'
               target.parentElement!.innerHTML = '<span class="text-5xl">🎁</span>'

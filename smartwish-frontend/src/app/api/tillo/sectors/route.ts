@@ -3,7 +3,7 @@ import crypto from 'crypto'
 
 const TILLO_API_KEY = process.env.TILLO_API_KEY || ''
 const TILLO_API_SECRET = process.env.TILLO_API_SECRET || ''
-const TILLO_BASE_URL = process.env.TILLO_BASE_URL || 'https://sandbox.tillo.dev/api/v2'
+const TILLO_BASE_URL = process.env.TILLO_BASE_URL || 'https://app.tillo.io/api/v2'
 
 function generateSignature(method: string, endpoint: string, timestamp: number): string {
   const signatureString = [TILLO_API_KEY, method.toUpperCase(), endpoint, timestamp.toString()].join('-')
