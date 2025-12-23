@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 
 interface KioskScreenSaverProps {
@@ -49,6 +49,232 @@ const ACCENT_COLORS = [
   "#f97316",
 ];
 
+type KioskTheme = "default" | "christmas";
+
+function resolveKioskTheme(): KioskTheme {
+  // Allow easy on-device override for demos:
+  // localStorage.setItem("kioskTheme", "christmas" | "default")
+  try {
+    if (typeof window !== "undefined") {
+      const override = localStorage.getItem("kioskTheme");
+      if (override === "christmas" || override === "default") return override;
+    }
+  } catch {
+    // ignore
+  }
+
+  const now = new Date();
+  const isDecember = now.getMonth() === 11; // 0-based
+  return isDecember ? "christmas" : "default";
+}
+
+function clamp01(n: number) {
+  return Math.max(0, Math.min(1, n));
+}
+
+function mulberry32(seed: number) {
+  // tiny deterministic PRNG for consistent "hand-drawn" jitter per mount
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let x = Math.imul(t ^ (t >>> 15), 1 | t);
+    x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildScribbleHeartPath(seed: number) {
+  // Parametric heart with jitter -> looks more like a human stroke than a perfect bezier.
+  // viewBox is 0..240, so we scale/center into that space.
+  const rand = mulberry32(seed);
+  const pts: Array<{ x: number; y: number }> = [];
+  const steps = 96;
+
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * Math.PI * 2;
+    const sx = 16 * Math.pow(Math.sin(t), 3);
+    const sy =
+      13 * Math.cos(t) -
+      5 * Math.cos(2 * t) -
+      2 * Math.cos(3 * t) -
+      Math.cos(4 * t);
+
+    // scale into viewBox
+    const x0 = 120 + sx * 5.6;
+    const y0 = 128 - sy * 5.2;
+
+    // jitter: subtle (less noisy), more at the top lobes, less near the point
+    const topBias = clamp01((y0 - 70) / 90);
+    const j = 0.55 + topBias * 0.75; // 0.55..1.30
+    const jx = (rand() - 0.5) * 2.1 * j;
+    const jy = (rand() - 0.5) * 1.9 * j;
+
+    pts.push({ x: x0 + jx, y: y0 + jy });
+  }
+
+  // Convert to a polyline path. With round caps/joins it reads as a single hand stroke.
+  const d = pts
+    .map((p, idx) => `${idx === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+    .join(" ");
+  return d;
+}
+
+function HandwritingDemo({
+  accent,
+  phase,
+}: {
+  accent: string;
+  phase: number; // 0..1 looped
+}) {
+  // phase drives a few synchronized effects: pen movement, stroke reveal, typewriter.
+  const heartDraw = clamp01((phase - 0.08) / 0.38); // 0.08..0.46
+  const messageType = clamp01((phase - 0.42) / 0.48); // 0.42..0.90
+  const showSignature = phase > 0.62;
+
+  const message = "Merry christmas John!";
+  const typedCount = Math.round(message.length * messageType);
+  const typed = message.slice(0, typedCount);
+
+  // Hand-drawn-ish heart stroke (jittered).
+  const HEART_INK = "#EF4444";
+  const wobble = Math.sin(phase * Math.PI * 2) * 1.0;
+  const heartPath = useMemo(
+    () => buildScribbleHeartPath(Math.floor(Math.random() * 1_000_000)),
+    []
+  );
+
+  // Pen position: wobbly orbit (more "human").
+  const penX = 120 + Math.cos((heartDraw * Math.PI) * 1.4) * (50 + wobble * 6);
+  const penY = 116 + Math.sin((heartDraw * Math.PI) * 1.2) * (42 + wobble * 5);
+
+  return (
+    <div
+      className="relative h-full w-full rounded-[28px] overflow-hidden border border-white/25 shadow-[0_30px_120px_rgba(0,0,0,0.55)]"
+      style={{
+        // Make the demo unmistakably visible (high-contrast "paper" card),
+        // even on bright kiosk screens / glare.
+        background:
+          "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.90))",
+      }}
+    >
+      {/* card paper */}
+      <div className="absolute inset-0">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(circle at 18% 10%, rgba(255,255,255,0.9), transparent 40%), radial-gradient(circle at 88% 0%, rgba(255,255,255,0.7), transparent 45%), linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08))",
+          }}
+        />
+        <div
+          className="absolute -right-16 -top-14 h-56 w-56 blur-[70px] opacity-70"
+          style={{
+            background: `radial-gradient(circle at center, ${accent}55, transparent 65%)`,
+          }}
+        />
+      </div>
+
+      {/* handwriting-only area */}
+      <div className="absolute left-7 right-7 bottom-7 top-7 rounded-2xl border border-black/10 bg-white overflow-hidden">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(circle at 25% 20%, rgba(0,0,0,0.04), transparent 55%), radial-gradient(circle at 75% 70%, rgba(0,0,0,0.03), transparent 60%)",
+          }}
+        />
+
+        {/* faint writing lines */}
+        <div className="absolute inset-0 opacity-[0.22]">
+          <div className="absolute left-0 right-0 top-[56%] h-px bg-black/10" />
+          <div className="absolute left-0 right-0 top-[68%] h-px bg-black/10" />
+          <div className="absolute left-0 right-0 top-[80%] h-px bg-black/10" />
+        </div>
+
+        <svg
+          className="absolute inset-0"
+          viewBox="0 0 240 240"
+          aria-hidden
+          style={{
+            transform: `rotate(${-3 + wobble * 1.2}deg) translate(${wobble * 1.2}px, ${-2 + wobble * 0.7}px)`,
+            transformOrigin: "120px 140px",
+          }}
+        >
+          <path
+            d={heartPath}
+            fill="none"
+            stroke="rgba(17,24,39,0.16)"
+            strokeWidth="10"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d={heartPath}
+            fill="none"
+            stroke={HEART_INK}
+            strokeWidth={12 + wobble * 0.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength={1}
+            strokeDasharray="1 1"
+            strokeDashoffset={1 - heartDraw}
+            style={{
+              filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.35))",
+              opacity: heartDraw > 0 ? 1 : 0,
+              transition: "opacity 220ms ease-out",
+            }}
+          />
+
+          {/* pen tip */}
+          <g
+            style={{
+              opacity: heartDraw > 0.08 && heartDraw < 0.98 ? 1 : 0,
+              transition: "opacity 220ms ease-out",
+            }}
+          >
+            <circle
+              cx={penX}
+              cy={penY}
+              r="7.5"
+              fill="rgba(17,24,39,0.92)"
+              style={{ filter: "drop-shadow(0 12px 14px rgba(0,0,0,0.45))" }}
+            />
+            <circle cx={penX} cy={penY} r="3" fill={HEART_INK} />
+          </g>
+        </svg>
+
+        {/* message */}
+        <div className="absolute left-6 right-6 bottom-6">
+          <div className="text-[#111827] text-2xl font-semibold tracking-tight">
+            {typed}
+            <span className="kiosk-caret" aria-hidden>
+              ▍
+            </span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3 text-black/70">
+            <div className="text-sm font-medium">Sign your name, write a personal note</div>
+          </div>
+        </div>
+
+        {/* signature flourish */}
+        <div
+          className="absolute right-6 top-5 text-black/65 text-sm italic"
+          style={{
+            opacity: showSignature ? 1 : 0,
+            transform: showSignature ? "translateY(0)" : "translateY(-6px)",
+            transition: "opacity 300ms ease-out, transform 300ms ease-out",
+          }}
+        >
+          — Love, Alex
+        </div>
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,rgba(0,0,0,0.12))]" />
+
+    </div>
+  );
+}
+
 export default function KioskScreenSaver({
   isVisible,
   onExit,
@@ -56,6 +282,10 @@ export default function KioskScreenSaver({
   const [heroCards, setHeroCards] = useState<HeroCard[]>(FALLBACK_HERO_CARDS);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
+  const [sceneIndex, setSceneIndex] = useState(0); // 0: showcase, 1: personalization demo
+  const [themeStage, setThemeStage] = useState(0);
+  const [kioskTheme, setKioskTheme] = useState<KioskTheme>("default");
+  const [demoPhase, setDemoPhase] = useState(0);
 
   const floatingCallouts = useMemo(
     () => [
@@ -75,31 +305,50 @@ export default function KioskScreenSaver({
     []
   );
 
-  const rotatingMessages = useMemo(
-    () => [
-      {
-        eyebrow: "Welcome",
-        headline: "Make someone smile — right now.",
-        sub: "Tap to browse popular cards, personalize in seconds, and print instantly.",
-      },
-      {
-        eyebrow: "Try it",
-        headline: "Add a photo. Add your message.",
-        sub: "It’s fast, fun, and looks amazing on premium paper.",
-      },
-      {
-        eyebrow: "Surprise",
-        headline: "A card they’ll actually keep.",
-        sub: "Choose a design, personalize, and print — all on this kiosk.",
-      },
-    ],
-    []
-  );
+  const isChristmas = kioskTheme === "christmas";
+
+  const rotatingMessages = useMemo(() => {
+    return isChristmas
+      ? [
+          {
+            eyebrow: "Christmas",
+            headline: "Print a beautiful card in minutes.",
+            sub: "Choose a design, add a message (or handwriting), and print instantly.",
+          },
+          {
+            eyebrow: "Make it personal",
+            headline: "Handwriting makes it feel real.",
+            sub: "Draw a heart, sign your name, or write a note right on the card.",
+          },
+          {
+            eyebrow: "Fast & vivid",
+            headline: "Bright designs that pop.",
+            sub: "Premium paper + vivid color + instant printing — tap to start.",
+          },
+        ]
+      : [
+          {
+            eyebrow: "Welcome",
+            headline: "Make someone smile — right now.",
+            sub: "Tap to browse popular cards, personalize in seconds, and print instantly.",
+          },
+          {
+            eyebrow: "Try it",
+            headline: "Add a photo. Add your message.",
+            sub: "It’s fast, fun, and looks amazing on premium paper.",
+          },
+          {
+            eyebrow: "Surprise",
+            headline: "A card they’ll actually keep.",
+            sub: "Choose a design, personalize, and print — all on this kiosk.",
+          },
+        ];
+  }, [isChristmas]);
 
   const sparkles = useMemo(() => {
     // Lightweight twinkle layer (pure CSS) to make the screen feel alive.
     // Keep count low to avoid perf issues on kiosk hardware.
-    const count = 22;
+    const count = 26;
     return Array.from({ length: count }).map((_, i) => {
       const r1 = Math.random();
       const r2 = Math.random();
@@ -111,6 +360,47 @@ export default function KioskScreenSaver({
         size: Math.round(2 + r3 * 4), // 2-6px
         delay: `${(i % 8) * 0.6}s`,
         duration: `${6 + (i % 7)}s`,
+      };
+    });
+  }, []);
+
+  const snow = useMemo(() => {
+    const count = 18;
+    return Array.from({ length: count }).map((_, i) => {
+      const r1 = Math.random();
+      const r2 = Math.random();
+      const r3 = Math.random();
+      const r4 = Math.random();
+      return {
+        id: i,
+        left: `${Math.round(r1 * 100)}%`,
+        top: `${Math.round(r2 * 30)}%`,
+        size: Math.round(6 + r3 * 14), // 6-20px
+        drift: Math.round(12 + r4 * 28), // 12-40px
+        delay: `${(i % 9) * 0.7}s`,
+        duration: `${10 + (i % 9) * 1.4}s`,
+        opacity: 0.25 + (i % 5) * 0.12,
+      };
+    });
+  }, []);
+
+  const ornaments = useMemo(() => {
+    const count = 10;
+    const colors = ["#EF4444", "#22C55E", "#F59E0B", "#60A5FA", "#A78BFA"];
+    return Array.from({ length: count }).map((_, i) => {
+      const r1 = Math.random();
+      const r2 = Math.random();
+      const r3 = Math.random();
+      const r4 = Math.random();
+      return {
+        id: i,
+        left: `${Math.round(r1 * 100)}%`,
+        top: `${Math.round(10 + r2 * 70)}%`,
+        size: Math.round(14 + r3 * 30), // 14-44px
+        color: colors[i % colors.length],
+        delay: `${(i % 7) * 0.8}s`,
+        duration: `${7 + (i % 6) * 1.2}s`,
+        blur: `${Math.round(r4 * 2)}px`,
       };
     });
   }, []);
@@ -164,22 +454,53 @@ export default function KioskScreenSaver({
   useEffect(() => {
     if (!isVisible) return;
 
+    // Determine theme only when the screen saver becomes visible.
+    setKioskTheme(resolveKioskTheme());
     setFeaturedIndex(0);
     setMessageIndex(0);
+    setSceneIndex(0);
+    setThemeStage(0);
+    setDemoPhase(0);
 
     const t1 = window.setInterval(() => {
       setFeaturedIndex((prev) => prev + 1);
-    }, 4500);
+    }, 9500);
 
     const t2 = window.setInterval(() => {
       setMessageIndex((prev) => prev + 1);
     }, 6500);
 
+    const t3 = window.setInterval(() => {
+      // Alternate between "showcase" and "personalization" scenes.
+      setSceneIndex((prev) => (prev + 1) % 2);
+    }, 28000);
+
+    const t4 = window.setInterval(() => {
+      // Sub-theme palette cycling keeps the screen feeling alive and more colorful.
+      setThemeStage((prev) => prev + 1);
+    }, 16000);
+
     return () => {
       window.clearInterval(t1);
       window.clearInterval(t2);
+      window.clearInterval(t3);
+      window.clearInterval(t4);
     };
   }, [isVisible]);
+
+  // Keep handwriting animation smooth while the personalization scene is visible.
+  useEffect(() => {
+    if (!isVisible) return;
+    if (sceneIndex % 2 === 0) return;
+
+    const startedAt = performance.now();
+    const interval = window.setInterval(() => {
+      const elapsedSeconds = (performance.now() - startedAt) / 1000;
+      setDemoPhase((elapsedSeconds % 8) / 8);
+    }, 90);
+
+    return () => window.clearInterval(interval);
+  }, [isVisible, sceneIndex]);
 
   const uniqueCards = useMemo(() => {
     const seen = new Set<string>();
@@ -200,6 +521,23 @@ export default function KioskScreenSaver({
   }, [uniqueCards, featuredIndex]);
 
   const activeMessage = rotatingMessages[messageIndex % rotatingMessages.length];
+  const stage = themeStage % 3;
+
+  const DEFAULT_STAGE_PALETTES: Array<[string, string, string]> = [
+    ["#38bdf8", "#a78bfa", "#f97316"],
+    ["#34d399", "#f472b6", "#fbbf24"],
+    ["#a78bfa", "#38bdf8", "#34d399"],
+  ];
+
+  const accentA = isChristmas
+    ? ["#EF4444", "#22C55E", "#60A5FA"][stage]
+    : DEFAULT_STAGE_PALETTES[stage][0];
+  const accentB = isChristmas
+    ? ["#F59E0B", "#A78BFA", "#F472B6"][stage]
+    : DEFAULT_STAGE_PALETTES[stage][1];
+  const accentC = isChristmas
+    ? ["#34D399", "#F97316", "#38BDF8"][stage]
+    : DEFAULT_STAGE_PALETTES[stage][2];
 
   const handleInteraction = () => {
     onExit();
@@ -219,7 +557,17 @@ export default function KioskScreenSaver({
       tabIndex={0}
     >
       {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0A031A] via-[#120B3B] to-[#1F2A69]" />
+      <div
+        className="absolute inset-0"
+        style={{
+          background: isChristmas
+            ? "radial-gradient(circle at 20% 20%, rgba(239,68,68,0.25), transparent 45%), radial-gradient(circle at 80% 10%, rgba(34,197,94,0.22), transparent 45%), radial-gradient(circle at 60% 70%, rgba(96,165,250,0.18), transparent 50%), linear-gradient(135deg, #070312, #120B3B 40%, #0B1B4D)"
+            : "linear-gradient(135deg, #0A031A, #120B3B 55%, #1F2A69)",
+        }}
+      />
+
+      {/* Vivid animated glow wash */}
+      <div className="absolute inset-0 pointer-events-none kiosk-huewash" />
 
       {/* Sparkles / twinkle layer */}
       <div className="absolute inset-0 pointer-events-none">
@@ -238,6 +586,48 @@ export default function KioskScreenSaver({
           />
         ))}
       </div>
+
+      {/* Christmas snow + ornaments */}
+      {isChristmas ? (
+        <>
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {snow.map((f) => (
+              <span
+                key={f.id}
+                className="kiosk-snow"
+                style={{
+                  left: f.left,
+                  top: f.top,
+                  width: `${f.size}px`,
+                  height: `${f.size}px`,
+                  opacity: f.opacity,
+                  animationDelay: f.delay,
+                  animationDuration: f.duration,
+                  ["--drift" as any]: `${f.drift}px`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="absolute inset-0 pointer-events-none">
+            {ornaments.map((o) => (
+              <span
+                key={o.id}
+                className="kiosk-ornament"
+                style={{
+                  left: o.left,
+                  top: o.top,
+                  width: `${o.size}px`,
+                  height: `${o.size}px`,
+                  background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), transparent 35%), radial-gradient(circle at 70% 75%, rgba(0,0,0,0.18), transparent 48%), ${o.color}`,
+                  filter: `blur(${o.blur})`,
+                  animationDelay: o.delay,
+                  animationDuration: o.duration,
+                }}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {/* Blurred moving cards */}
       <div className="absolute inset-0 overflow-hidden opacity-70">
@@ -284,9 +674,18 @@ export default function KioskScreenSaver({
 
       {/* Accent gradients */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -bottom-10 right-0 w-[40vw] h-[40vw] bg-[#7C3AED]/40 blur-[120px]" />
-        <div className="absolute -top-32 left-16 w-[25vw] h-[25vw] bg-[#F97316]/30 blur-[120px]" />
-        <div className="absolute top-1/3 left-1/2 w-[30vw] h-[30vw] bg-[#06B6D4]/20 blur-[160px]" />
+        <div
+          className="absolute -bottom-10 right-0 w-[44vw] h-[44vw] blur-[120px]"
+          style={{ background: `${accentB}55` }}
+        />
+        <div
+          className="absolute -top-32 left-16 w-[30vw] h-[30vw] blur-[120px]"
+          style={{ background: `${accentA}45` }}
+        />
+        <div
+          className="absolute top-1/3 left-1/2 w-[34vw] h-[34vw] blur-[160px]"
+          style={{ background: `${accentC}35` }}
+        />
       </div>
 
       {/* Foreground content */}
@@ -303,44 +702,54 @@ export default function KioskScreenSaver({
           </p>
         </div>
 
-        {/* Featured spotlight card */}
+        {/* Featured spotlight card / personalization demo */}
         <div className="mt-10 w-full flex items-center justify-center px-4">
           <div className="relative w-[min(380px,82vw)] aspect-[3/4]">
             <div
               className="absolute -inset-4 rounded-[36px] opacity-80"
               style={{
-                background: `radial-gradient(circle at 30% 20%, ${featuredCard.accent}55, transparent 70%)`,
+                background: `radial-gradient(circle at 30% 20%, ${accentA}60, transparent 70%)`,
                 filter: "blur(28px)",
               }}
             />
-            <div className="relative h-full w-full rounded-[28px] overflow-hidden border border-white/20 bg-white/5 backdrop-blur-xl shadow-[0_30px_120px_rgba(0,0,0,0.55)] kiosk-featured">
-              <Image
-                src={featuredCard.image}
-                alt={featuredCard.title}
-                fill
-                sizes="(max-width: 1024px) 80vw, 420px"
-                className="object-cover"
-                priority
-              />
-              {/* subtle shine sweep */}
-              <div className="absolute inset-0 kiosk-shine" />
 
-              <div className="absolute bottom-0 left-0 right-0 p-5 text-left">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-4 py-2 backdrop-blur-md">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: featuredCard.accent }}
-                  />
-                  <span className="text-sm tracking-wide text-white/90">
-                    Featured now
-                  </span>
+            {sceneIndex % 2 === 0 ? (
+              <div className="relative h-full w-full rounded-[28px] overflow-hidden border border-white/20 bg-white/5 backdrop-blur-xl shadow-[0_30px_120px_rgba(0,0,0,0.55)] kiosk-featured">
+                <Image
+                  src={featuredCard.image}
+                  alt={featuredCard.title}
+                  fill
+                  sizes="(max-width: 1024px) 80vw, 420px"
+                  className="object-cover"
+                  priority
+                />
+                {/* subtle shine sweep */}
+                <div className="absolute inset-0 kiosk-shine" />
+
+                <div className="absolute bottom-0 left-0 right-0 p-5 text-left">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-4 py-2 backdrop-blur-md">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: accentA }}
+                    />
+                    <span className="text-sm tracking-wide text-white/90">
+                      Featured now
+                    </span>
+                  </div>
+                  <h2 className="mt-3 text-2xl font-semibold leading-tight">
+                    {featuredCard.title}
+                  </h2>
+                  <p className="mt-1 text-white/75">{featuredCard.tagline}</p>
                 </div>
-                <h2 className="mt-3 text-2xl font-semibold leading-tight">
-                  {featuredCard.title}
-                </h2>
-                <p className="mt-1 text-white/75">{featuredCard.tagline}</p>
               </div>
-            </div>
+            ) : (
+              <div className="relative h-full w-full rounded-[28px] kiosk-featured">
+                <HandwritingDemo
+                  accent={accentA}
+                  phase={demoPhase}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -373,7 +782,7 @@ export default function KioskScreenSaver({
             <span className="absolute inset-0 rounded-full kiosk-cta-ring" aria-hidden />
           </div>
           <p className="text-white/70">
-            1) Choose a card · 2) Personalize · 3) Print instantly
+            1) Choose a card · 2) Personalize (photo + handwriting) · 3) Print instantly
           </p>
         </div>
       </div>
@@ -424,6 +833,71 @@ export default function KioskScreenSaver({
           animation-name: twinkle;
           animation-timing-function: ease-in-out;
           animation-iteration-count: infinite;
+        }
+
+        .kiosk-huewash {
+          opacity: 0.7;
+          background: radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.10), transparent 40%),
+            radial-gradient(circle at 80% 10%, rgba(255, 255, 255, 0.08), transparent 45%),
+            radial-gradient(circle at 65% 80%, rgba(255, 255, 255, 0.06), transparent 55%);
+          mix-blend-mode: screen;
+          animation: hueShift 8.5s ease-in-out infinite;
+        }
+
+        @keyframes hueShift {
+          0% {
+            filter: hue-rotate(0deg) saturate(1.15);
+            transform: scale(1);
+          }
+          50% {
+            filter: hue-rotate(45deg) saturate(1.45);
+            transform: scale(1.04);
+          }
+          100% {
+            filter: hue-rotate(0deg) saturate(1.15);
+            transform: scale(1);
+          }
+        }
+
+        .kiosk-snow {
+          position: absolute;
+          border-radius: 9999px;
+          background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.25));
+          box-shadow: 0 0 18px rgba(255, 255, 255, 0.18);
+          animation-name: snowFall;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+
+        @keyframes snowFall {
+          0% {
+            transform: translate3d(0, 0, 0);
+          }
+          100% {
+            transform: translate3d(var(--drift), 110vh, 0);
+          }
+        }
+
+        .kiosk-ornament {
+          position: absolute;
+          border-radius: 9999px;
+          opacity: 0.6;
+          box-shadow: 0 25px 70px rgba(0, 0, 0, 0.35);
+          animation-name: ornamentFloat;
+          animation-timing-function: ease-in-out;
+          animation-iteration-count: infinite;
+        }
+
+        @keyframes ornamentFloat {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) scale(1);
+            opacity: 0.5;
+          }
+          50% {
+            transform: translate3d(0, -14px, 0) scale(1.05);
+            opacity: 0.78;
+          }
         }
 
         @keyframes twinkle {
@@ -494,6 +968,23 @@ export default function KioskScreenSaver({
           transform: scale(1);
           opacity: 0.9;
           animation: ringPulse 2.4s ease-in-out infinite;
+        }
+
+        .kiosk-caret {
+          display: inline-block;
+          margin-left: 2px;
+          opacity: 0.8;
+          animation: caretBlink 1s step-end infinite;
+        }
+
+        @keyframes caretBlink {
+          0%,
+          100% {
+            opacity: 0;
+          }
+          50% {
+            opacity: 0.85;
+          }
         }
 
         @keyframes ctaPulse {
