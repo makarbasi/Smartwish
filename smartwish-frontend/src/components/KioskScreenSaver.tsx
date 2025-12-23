@@ -131,9 +131,13 @@ function HandwritingDemo({
   const messageType = clamp01((phase - 0.42) / 0.48); // 0.42..0.90
   const showSignature = phase > 0.62;
 
-  const message = "Merry christmas John!";
-  const typedCount = Math.round(message.length * messageType);
-  const typed = message.slice(0, typedCount);
+  const message = "Merry Christmas John!";
+  const reveal = clamp01(messageType);
+  const textDraw = clamp01((phase - 0.48) / 0.5); // start writing after heart begins
+  const visibleChars = Math.max(
+    0,
+    Math.min(message.length, Math.floor(textDraw * (message.length + 1)))
+  );
 
   // Hand-drawn-ish heart stroke (jittered).
   const HEART_INK = "#EF4444";
@@ -245,11 +249,31 @@ function HandwritingDemo({
 
         {/* message */}
         <div className="absolute left-6 right-6 bottom-6">
-          <div className="text-[#111827] text-2xl font-semibold tracking-tight">
-            {typed}
-            <span className="kiosk-caret" aria-hidden>
-              ▍
-            </span>
+          <div
+            className="kiosk-handwriting-text"
+            style={{
+              opacity: 0.25 + 0.75 * reveal,
+              transform: `translateY(${(1 - reveal) * 2}px)`,
+              transition: "opacity 220ms ease-out, transform 220ms ease-out",
+            }}
+          >
+            <div className="kiosk-handwriting-line" aria-hidden>
+              {message.split("").map((ch, idx) => {
+                const shown = idx < visibleChars;
+                return (
+                  <span
+                    key={`${ch}-${idx}`}
+                    className="kiosk-handwriting-char"
+                    style={{
+                      opacity: shown ? 1 : 0,
+                      transform: shown ? "translateY(0) rotate(-0.2deg)" : "translateY(2px)",
+                    }}
+                  >
+                    {ch === " " ? "\u00A0" : ch}
+                  </span>
+                );
+              })}
+            </div>
           </div>
           <div className="mt-2 flex items-center justify-between gap-3 text-black/70">
             <div className="text-sm font-medium">Sign your name, write a personal note</div>
@@ -270,6 +294,31 @@ function HandwritingDemo({
       </div>
 
       <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,rgba(0,0,0,0.12))]" />
+
+      {/* Local styles for the handwriting demo (must live here to override parent text-white) */}
+      <style jsx>{`
+        .kiosk-handwriting-text {
+          color: #111827; /* black ink */
+          transform: rotate(-1.3deg);
+          transform-origin: left bottom;
+        }
+
+        .kiosk-handwriting-line {
+          font-family: "Segoe Script", "Bradley Hand", "Comic Sans MS",
+            "Brush Script MT", cursive;
+          font-size: 32px;
+          line-height: 1.08;
+          font-weight: 500;
+          letter-spacing: -0.01em;
+          white-space: nowrap;
+          text-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+        }
+
+        .kiosk-handwriting-char {
+          display: inline-block;
+          transition: opacity 140ms ease-out, transform 140ms ease-out;
+        }
+      `}</style>
 
     </div>
   );
@@ -365,7 +414,7 @@ export default function KioskScreenSaver({
   }, []);
 
   const snow = useMemo(() => {
-    const count = 18;
+    const count = 26;
     return Array.from({ length: count }).map((_, i) => {
       const r1 = Math.random();
       const r2 = Math.random();
@@ -386,7 +435,7 @@ export default function KioskScreenSaver({
 
   const ornaments = useMemo(() => {
     const count = 10;
-    const colors = ["#EF4444", "#22C55E", "#F59E0B", "#60A5FA", "#A78BFA"];
+    const colors = ["#EF4444", "#22C55E", "#F59E0B", "#F97316", "#EAB308"];
     return Array.from({ length: count }).map((_, i) => {
       const r1 = Math.random();
       const r2 = Math.random();
@@ -530,14 +579,42 @@ export default function KioskScreenSaver({
   ];
 
   const accentA = isChristmas
-    ? ["#EF4444", "#22C55E", "#60A5FA"][stage]
+    ? ["#EF4444", "#22C55E", "#F59E0B"][stage]
     : DEFAULT_STAGE_PALETTES[stage][0];
   const accentB = isChristmas
-    ? ["#F59E0B", "#A78BFA", "#F472B6"][stage]
+    ? ["#22C55E", "#EF4444", "#F59E0B"][stage]
     : DEFAULT_STAGE_PALETTES[stage][1];
   const accentC = isChristmas
-    ? ["#34D399", "#F97316", "#38BDF8"][stage]
+    ? ["#F59E0B", "#EF4444", "#22C55E"][stage]
     : DEFAULT_STAGE_PALETTES[stage][2];
+
+  const backgroundCards = useMemo(() => {
+    const take = Math.min(8, marqueeCards.length);
+    return Array.from({ length: take }).map((_, idx) => {
+      const card = marqueeCards[idx];
+      const r = mulberry32(20251223 + idx * 1337);
+      const size = 260 + Math.round(r() * 220); // 260..480
+      const left = Math.round(r() * 86); // keep inside a bit
+      const top = Math.round(r() * 70);
+      const rot = (r() - 0.5) * 14; // -7..7 deg
+      const scale = 0.92 + r() * 0.22;
+      const anim = idx % 3;
+      const delay = `${(idx % 6) * 0.7}s`;
+      const duration = `${26 + Math.round(r() * 16)}s`;
+      return {
+        key: `${card?.id ?? card?.title ?? "card"}-${idx}`,
+        card,
+        size,
+        left: `${left}%`,
+        top: `${top}%`,
+        rot,
+        scale,
+        anim,
+        delay,
+        duration,
+      };
+    });
+  }, [marqueeCards]);
 
   const handleInteraction = () => {
     onExit();
@@ -561,13 +638,37 @@ export default function KioskScreenSaver({
         className="absolute inset-0"
         style={{
           background: isChristmas
-            ? "radial-gradient(circle at 20% 20%, rgba(239,68,68,0.25), transparent 45%), radial-gradient(circle at 80% 10%, rgba(34,197,94,0.22), transparent 45%), radial-gradient(circle at 60% 70%, rgba(96,165,250,0.18), transparent 50%), linear-gradient(135deg, #070312, #120B3B 40%, #0B1B4D)"
+            ? `radial-gradient(circle at 18% 18%, ${accentA}35, transparent 45%),
+               radial-gradient(circle at 82% 14%, ${accentB}28, transparent 48%),
+               radial-gradient(circle at 58% 72%, ${accentC}22, transparent 52%),
+               linear-gradient(135deg, #070312, #120B3B 45%, #071a12)`
             : "linear-gradient(135deg, #0A031A, #120B3B 55%, #1F2A69)",
         }}
       />
 
       {/* Vivid animated glow wash */}
       <div className="absolute inset-0 pointer-events-none kiosk-huewash" />
+
+      {/* Christmas candy-cane sheen + garland lights */}
+      {isChristmas ? (
+        <>
+          <div className="absolute inset-0 pointer-events-none kiosk-candy" />
+          <div className="absolute top-0 left-0 right-0 h-28 pointer-events-none">
+            <div className="kiosk-garland" />
+            {Array.from({ length: 14 }).map((_, i) => (
+              <span
+                key={i}
+                className="kiosk-bulb"
+                style={{
+                  left: `${6 + i * 6.6}%`,
+                  animationDelay: `${(i % 7) * 0.45}s`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="absolute inset-x-0 bottom-0 h-40 pointer-events-none kiosk-snowdrift" />
+        </>
+      ) : null}
 
       {/* Sparkles / twinkle layer */}
       <div className="absolute inset-0 pointer-events-none">
@@ -629,47 +730,42 @@ export default function KioskScreenSaver({
         </>
       ) : null}
 
-      {/* Blurred moving cards */}
-      <div className="absolute inset-0 overflow-hidden opacity-70">
-        {marqueeCards.map((card, index) => {
-          const isEven = index % 2 === 0;
-          const size = isEven ? 420 : 360;
-          const topOffset = isEven
-            ? 10 + (index % heroCards.length) * 12
-            : 20 + (index % heroCards.length) * 9;
-          return (
+      {/* Calm parallax background cards (no big drifting across the screen) */}
+      <div className="absolute inset-0 overflow-hidden opacity-55 pointer-events-none">
+        {backgroundCards.map((b) => (
+          <div
+            key={b.key}
+            className={`absolute blur-[1px] kiosk-bgcard kiosk-bgcard-${b.anim}`}
+            style={{
+              width: b.size,
+              height: b.size * 1.35,
+              left: b.left,
+              top: b.top,
+              ["--rot" as any]: `${b.rot}deg`,
+              ["--scale" as any]: `${b.scale}`,
+              animationDelay: b.delay,
+              animationDuration: b.duration,
+            }}
+          >
             <div
-              key={`${card.title}-${index}`}
-              className="absolute blur-sm lg:blur-[1px]"
+              className="absolute inset-0 rounded-[32px]"
               style={{
-                width: size,
-                height: size * 1.35,
-                top: `${topOffset}%`,
-                left: isEven ? "-25%" : "65%",
-                animation: `${isEven ? "driftRight" : "driftLeft"} ${18 + index * 1.5
-                  }s linear infinite`,
+                background: `radial-gradient(circle at 30% 20%, ${b.card.accent}28, transparent 70%)`,
+                filter: "blur(46px)",
               }}
-            >
-              <div
-                className="absolute inset-0 rounded-[32px]"
-                style={{
-                  background: `radial-gradient(circle at top, ${card.accent}30, transparent 70%)`,
-                  filter: "blur(40px)",
-                }}
+            />
+            <div className="relative h-full w-full rounded-[32px] overflow-hidden border border-white/12 shadow-2xl shadow-black/40 bg-white/5 backdrop-blur-3xl">
+              <Image
+                src={b.card.image}
+                alt={b.card.title}
+                fill
+                sizes="(max-width: 1024px) 60vw, 35vw"
+                className="object-cover opacity-70"
+                priority={false}
               />
-              <div className="relative h-full w-full rounded-[32px] overflow-hidden border border-white/15 shadow-2xl shadow-black/40 bg-white/5 backdrop-blur-3xl">
-                <Image
-                  src={card.image}
-                  alt={card.title}
-                  fill
-                  sizes="(max-width: 1024px) 60vw, 35vw"
-                  className="object-cover opacity-80"
-                  priority={index < 3}
-                />
-              </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       {/* Accent gradients */}
@@ -782,33 +878,60 @@ export default function KioskScreenSaver({
             <span className="absolute inset-0 rounded-full kiosk-cta-ring" aria-hidden />
           </div>
           <p className="text-white/70">
-            1) Choose a card · 2) Personalize (photo + handwriting) · 3) Print instantly
+            1) Choose a card · 2) Personalize · 3) Print instantly
           </p>
         </div>
       </div>
 
       <style jsx>{`
-        @keyframes driftRight {
-          0% {
-            transform: translate3d(-10%, 0, 0) rotate(-4deg) scale(1);
+        .kiosk-bgcard {
+          animation-timing-function: ease-in-out;
+          animation-iteration-count: infinite;
+          will-change: transform;
+        }
+
+        .kiosk-bgcard-0 {
+          animation-name: bgFloatA;
+        }
+
+        .kiosk-bgcard-1 {
+          animation-name: bgFloatB;
+        }
+
+        .kiosk-bgcard-2 {
+          animation-name: bgFloatC;
+        }
+
+        @keyframes bgFloatA {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) rotate(var(--rot, 0deg)) scale(var(--scale, 1));
           }
           50% {
-            transform: translate3d(40%, -10%, 0) rotate(2deg) scale(1.05);
-          }
-          100% {
-            transform: translate3d(90%, 5%, 0) rotate(-2deg) scale(1);
+            transform: translate3d(14px, -10px, 0) rotate(calc(var(--rot, 0deg) + 0.9deg))
+              scale(calc(var(--scale, 1) + 0.015));
           }
         }
 
-        @keyframes driftLeft {
-          0% {
-            transform: translate3d(10%, 0, 0) rotate(5deg) scale(1);
+        @keyframes bgFloatB {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) rotate(var(--rot, 0deg)) scale(var(--scale, 1));
           }
           50% {
-            transform: translate3d(-40%, -10%, 0) rotate(-3deg) scale(1.08);
+            transform: translate3d(-12px, -14px, 0) rotate(calc(var(--rot, 0deg) - 0.8deg))
+              scale(calc(var(--scale, 1) + 0.012));
           }
+        }
+
+        @keyframes bgFloatC {
+          0%,
           100% {
-            transform: translate3d(-90%, 5%, 0) rotate(2deg) scale(1);
+            transform: translate3d(0, 0, 0) rotate(var(--rot, 0deg)) scale(var(--scale, 1));
+          }
+          50% {
+            transform: translate3d(10px, -8px, 0) rotate(calc(var(--rot, 0deg) + 0.6deg))
+              scale(calc(var(--scale, 1) + 0.01));
           }
         }
 
@@ -841,7 +964,7 @@ export default function KioskScreenSaver({
             radial-gradient(circle at 80% 10%, rgba(255, 255, 255, 0.08), transparent 45%),
             radial-gradient(circle at 65% 80%, rgba(255, 255, 255, 0.06), transparent 55%);
           mix-blend-mode: screen;
-          animation: hueShift 8.5s ease-in-out infinite;
+          animation: hueShift 11.5s ease-in-out infinite;
         }
 
         @keyframes hueShift {
@@ -886,6 +1009,77 @@ export default function KioskScreenSaver({
           animation-name: ornamentFloat;
           animation-timing-function: ease-in-out;
           animation-iteration-count: infinite;
+        }
+
+        .kiosk-candy {
+          opacity: 0.08;
+          background: repeating-linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.55) 0px,
+            rgba(255, 255, 255, 0.55) 10px,
+            rgba(239, 68, 68, 0.35) 10px,
+            rgba(239, 68, 68, 0.35) 20px,
+            rgba(34, 197, 94, 0.28) 20px,
+            rgba(34, 197, 94, 0.28) 30px
+          );
+          mix-blend-mode: soft-light;
+        }
+
+        .kiosk-garland {
+          position: absolute;
+          left: -10%;
+          right: -10%;
+          top: 10px;
+          height: 40px;
+          border-top: 6px solid rgba(255, 255, 255, 0.14);
+          border-radius: 9999px;
+          filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.35));
+          transform: rotate(-2deg);
+          opacity: 0.7;
+        }
+
+        .kiosk-bulb {
+          position: absolute;
+          top: 18px;
+          width: 14px;
+          height: 14px;
+          border-radius: 9999px;
+          background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.85), transparent 40%),
+            rgba(239, 68, 68, 0.95);
+          box-shadow: 0 0 18px rgba(239, 68, 68, 0.42), 0 0 48px rgba(239, 68, 68, 0.18);
+          animation: bulbTwinkle 2.9s ease-in-out infinite;
+        }
+
+        .kiosk-bulb:nth-child(3n) {
+          background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.85), transparent 40%),
+            rgba(34, 197, 94, 0.95);
+          box-shadow: 0 0 18px rgba(34, 197, 94, 0.40), 0 0 48px rgba(34, 197, 94, 0.16);
+        }
+
+        .kiosk-bulb:nth-child(4n) {
+          background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.85), transparent 40%),
+            rgba(245, 158, 11, 0.95);
+          box-shadow: 0 0 18px rgba(245, 158, 11, 0.40), 0 0 48px rgba(245, 158, 11, 0.16);
+        }
+
+        @keyframes bulbTwinkle {
+          0%,
+          100% {
+            transform: translateY(0) scale(0.92);
+            opacity: 0.55;
+          }
+          50% {
+            transform: translateY(2px) scale(1.08);
+            opacity: 0.95;
+          }
+        }
+
+        .kiosk-snowdrift {
+          background: radial-gradient(circle at 20% 120%, rgba(255, 255, 255, 0.28), transparent 55%),
+            radial-gradient(circle at 70% 120%, rgba(255, 255, 255, 0.18), transparent 58%),
+            linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.08));
+          opacity: 0.8;
+          filter: blur(2px);
         }
 
         @keyframes ornamentFloat {
@@ -973,7 +1167,7 @@ export default function KioskScreenSaver({
         .kiosk-caret {
           display: inline-block;
           margin-left: 2px;
-          opacity: 0.8;
+          opacity: 0.75;
           animation: caretBlink 1s step-end infinite;
         }
 
@@ -985,6 +1179,19 @@ export default function KioskScreenSaver({
           50% {
             opacity: 0.85;
           }
+        }
+
+        .kiosk-handwriting-text {
+          color: #111827; /* black ink */
+          font-size: 30px;
+          line-height: 1.06;
+          font-weight: 500;
+          letter-spacing: -0.01em;
+          transform: rotate(-1.3deg);
+          transform-origin: left bottom;
+          text-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+          font-family: "Segoe Script", "Bradley Hand", "Comic Sans MS",
+            "Brush Script MT", cursive;
         }
 
         @keyframes ctaPulse {
