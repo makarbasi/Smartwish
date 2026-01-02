@@ -35,6 +35,15 @@
    - DEFAULT_PAPER_SIZE:
        Used when borderless paper size isn't available (default: "Letter")
 
+## If printing fails on one PC but works on another
+
+Most common cause is the **printer name mismatch** (Windows often appends "Copy 1", uses a different port, etc.).
+
+- Make sure `DEFAULT_PRINTER` matches **exactly** one of the names shown in the agent's "Available Printers" list.
+- For debugging Sumatra output, enable debug mode:
+  - PowerShell: set `$env:DEBUG_PRINT = "true"` before starting the agent
+  - BAT: set `DEBUG_PRINT=true`
+
 5. Test Run
    - Run: .\start-print-agent.ps1
    - Verify it connects and sees your printer

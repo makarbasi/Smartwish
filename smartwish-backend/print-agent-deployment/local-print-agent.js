@@ -197,6 +197,32 @@ async function getPrinterInfoByName(printerName) {
   }
 }
 
+async function getAllPrintersSafe() {
+  try {
+    const printers = await getPrinters();
+    return Array.isArray(printers) ? printers : [];
+  } catch {
+    return [];
+  }
+}
+
+function pickBestMatchingPrinter(printers, requestedName) {
+  if (!requestedName) return null;
+  const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const req = normalize(requestedName);
+  if (!req) return null;
+
+  // Exact match (case-insensitive)
+  const exact = printers.find((p) => normalize(p.name) === req);
+  if (exact) return exact;
+
+  // Substring match (helps when Windows appends "Copy 1", etc.)
+  const contains = printers.find((p) => normalize(p.name).includes(req) || req.includes(normalize(p.name)));
+  if (contains) return contains;
+
+  return null;
+}
+
 function resolvePaperSizeForJob(job, printerInfo) {
   const requestedPaperSize = job.paperSize || CONFIG.defaultPaperSize;
   const wantsBorderless = Boolean(job.borderless ?? CONFIG.defaultBorderless);
@@ -250,10 +276,21 @@ function resolveScale(job) {
 }
 
 async function printPdf(pdfPath, printerName, job = {}) {
-  console.log(`  🖨️ Printing to: ${printerName}`);
+  const debugPrint = (process.env.DEBUG_PRINT || '').toLowerCase() === 'true';
 
-  const printerInfo = await getPrinterInfoByName(printerName);
-  const paperSize = resolvePaperSizeForJob(job, printerInfo);
+  const printers = await getAllPrintersSafe();
+  const matched = pickBestMatchingPrinter(printers, printerName);
+  const effectivePrinterName = matched?.name || printerName;
+
+  if (!matched) {
+    console.warn(
+      `  ⚠️ Printer "${printerName}" not found on this machine. Will try Windows default printer instead.`,
+    );
+  }
+
+  console.log(`  🖨️ Printing to: ${matched ? effectivePrinterName : '(Windows default printer)'}`);
+
+  const paperSize = resolvePaperSizeForJob(job, matched);
   const side = resolveDuplexSide(job);
   const scale = resolveScale(job);
   const copies = Number(job.copies || CONFIG.defaultCopies || 1);
@@ -267,7 +304,7 @@ async function printPdf(pdfPath, printerName, job = {}) {
   // Print options for pdf-to-printer (uses SumatraPDF on Windows)
   // https://github.com/artiebits/pdf-to-printer
   const printOptions = {
-    printer: printerName,
+    ...(matched ? { printer: effectivePrinterName } : {}),
     // Duplex options: 'simplex', 'duplex', 'duplexshort', 'duplexlong'
     // For landscape greeting cards: use 'duplexshort' (flip on short edge)
     side,
@@ -277,17 +314,23 @@ async function printPdf(pdfPath, printerName, job = {}) {
     monochrome: false,
     paperSize,
     copies,
-    silent: true,
+    silent: !debugPrint,
   };
 
   try {
     await print(pdfPath, printOptions);
     console.log('  ✅ Print job sent successfully!');
   } catch (err) {
-    console.warn('  ⚠️ Print with options failed:', err.message);
-    console.warn('  📝 Trying basic print...');
-    // Fallback: try basic print (duplex should be set in printer defaults)
-    await print(pdfPath, { printer: printerName });
+    const e = err || {};
+    console.warn('  ⚠️ Print with options failed:', e.message || e);
+    if (e.code !== undefined) console.warn('  ↳ exit code:', e.code);
+    if (e.signal) console.warn('  ↳ signal:', e.signal);
+    if (e.stdout) console.warn('  ↳ stdout:', String(e.stdout).trim());
+    if (e.stderr) console.warn('  ↳ stderr:', String(e.stderr).trim());
+
+    console.warn('  📝 Trying basic print (no options)...');
+    // Fallback: try basic print (uses printer defaults; if printer not found, uses Windows default)
+    await print(pdfPath, matched ? { printer: effectivePrinterName } : {});
     console.log('  ✅ Print job sent using printer defaults');
     console.log('');
     console.log('  ⚠️  If not printing two-sided, set duplex in Windows:');
