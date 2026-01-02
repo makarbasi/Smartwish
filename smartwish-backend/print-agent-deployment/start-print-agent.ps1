@@ -44,6 +44,19 @@ if (-not (Test-Path $nodeModulesDir)) {
   Write-Host ""
 }
 
+# Sanity check: ensure local-print-agent.js wasn't accidentally duplicated/concatenated
+$agentPath = Join-Path $PSScriptRoot "local-print-agent.js"
+if (-not (Test-Path $agentPath)) {
+  Write-Host "ERROR: Cannot find local-print-agent.js at: $agentPath" -ForegroundColor Red
+  exit 1
+}
+$dupImports = (Select-String -Path $agentPath -SimpleMatch "import pdfPrinter from 'pdf-to-printer'" -ErrorAction SilentlyContinue).Count
+if ($dupImports -gt 1) {
+  Write-Host "ERROR: local-print-agent.js appears to contain duplicated code (pdf-to-printer import found $dupImports times)." -ForegroundColor Red
+  Write-Host "Fix: replace this folder with a fresh copy of print-agent-deployment (or re-extract the zip) and try again." -ForegroundColor Yellow
+  exit 1
+}
+
 # Run the agent (this folder)
 node local-print-agent.js
 
