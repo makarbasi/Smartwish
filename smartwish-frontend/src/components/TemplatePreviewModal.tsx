@@ -112,7 +112,13 @@ export default function TemplatePreviewModal({
 
   if (!product) return null;
 
-  const templatePages = product.pages || [product.imageSrc];
+  const templatePages = (() => {
+    const pages = product.pages || [product.imageSrc];
+    if (pages.length < 3) return pages;
+    const swapped = [...pages];
+    [swapped[1], swapped[2]] = [swapped[2], swapped[1]];
+    return swapped;
+  })();
   const totalPages = templatePages.length;
 
   const isDesktopViewport = () =>
