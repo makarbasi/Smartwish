@@ -845,14 +845,19 @@ export default function PinturaEditorModal({
       uploadInput.style.display = 'none';
       uploadInput.id = 'custom-upload-input';
       uploadInput.addEventListener('change', handleImageUpload);
+      uploadInput.disabled = true; // Upload disabled by design
       
       // Create upload button
       const uploadButton = document.createElement('button');
       uploadButton.type = 'button';
       uploadButton.id = 'custom-upload-button';
       uploadButton.className = 'PinturaButton';
-      uploadButton.title = 'Upload Image';
+      uploadButton.title = 'Upload disabled';
       uploadButton.style.marginRight = '8px';
+      uploadButton.disabled = true;
+      uploadButton.setAttribute('aria-disabled', 'true');
+      uploadButton.style.pointerEvents = 'none';
+      uploadButton.style.opacity = '0.5';
       
       uploadButton.innerHTML = `
         <span class="PinturaButtonInner">
@@ -866,10 +871,6 @@ export default function PinturaEditorModal({
           <span class="PinturaButtonLabel hidden md:inline">Upload</span>
         </span>
       `;
-      
-      uploadButton.addEventListener('click', () => {
-        uploadInput.click();
-      });
       
       // Insert before the Done button
       navGroup.insertBefore(uploadInput, doneButton);
