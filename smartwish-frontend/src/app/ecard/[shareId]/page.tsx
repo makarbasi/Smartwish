@@ -102,10 +102,22 @@ export default function ECardViewer() {
             const pageImages = eCard.cardData.designData.pages
                 .map(page => page.image)
                 .filter(Boolean) as string[];
-            return pageImages.length > 0 ? pageImages : ["/placeholder-image.jpg"];
+            if (pageImages.length < 3) {
+                return pageImages.length > 0 ? pageImages : ["/placeholder-image.jpg"];
+            }
+            const swapped = [...pageImages];
+            [swapped[1], swapped[2]] = [swapped[2], swapped[1]];
+            return swapped;
         }
 
-        return directImages.length > 0 ? directImages : ["/placeholder-image.jpg"];
+        if (directImages.length > 0) {
+            if (directImages.length < 3) return directImages;
+            const swapped = [...directImages];
+            [swapped[1], swapped[2]] = [swapped[2], swapped[1]];
+            return swapped;
+        }
+
+        return ["/placeholder-image.jpg"];
     };
 
     const cardImages = getCardImages();
