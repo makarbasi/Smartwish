@@ -1549,39 +1549,28 @@ export default function CustomizeCardPage() {
 
   console.log(`⏱️ [EDITOR] Rendering main UI at ${performance.now().toFixed(1)}ms with card:`, cd.name);
 
-  // Map from displayed page index to underlying data index (swap 2nd/3rd)
-  const toDataIndex = (displayIndex: number): number => {
-    if (displayIndex === 1) return 2;
-    if (displayIndex === 2) return 1;
-    return displayIndex;
-  };
-
-  // Function to handle editing a specific page (accepts display index)
+  // Function to handle editing a specific page (expects underlying data index)
   const handleEditPage = async (pageIndex: number) => {
-    const dataIndex = toDataIndex(pageIndex);
-    console.log("🎨 Opening Pintura editor for page:", {
-      displayIndex: pageIndex,
-      dataIndex,
-    });
+    console.log("🎨 Opening Pintura editor for page:", pageIndex);
 
-    if (!cardData || dataIndex >= cardData.pages.length) {
+    if (!cardData || pageIndex >= cardData.pages.length) {
       console.error("❌ Invalid page index or no card data");
       return;
     }
 
     try {
       // Convert image to blob URL for Pintura compatibility if needed
-      const imageUrl = pageImages[dataIndex] || cardData.pages[dataIndex];
+      const imageUrl = pageImages[pageIndex] || cardData.pages[pageIndex];
       const blobImageUrl = await convertImageToBlob(imageUrl);
 
       // Update the page images with blob URL if needed
       if (imageUrl !== blobImageUrl) {
         const updatedImages = [...pageImages];
-        updatedImages[dataIndex] = blobImageUrl;
+        updatedImages[pageIndex] = blobImageUrl;
         setPageImages(updatedImages);
       }
 
-      setEditingPageIndex(dataIndex);
+      setEditingPageIndex(pageIndex);
       setEditorVisible(true);
     } catch (error) {
       console.error("❌ Failed to open editor:", error);
@@ -2209,7 +2198,7 @@ export default function CustomizeCardPage() {
                         handleEditPage(0);
                       }}
                       className="group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300"
-                      style={{ 
+                      style={{
                         animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                         boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
                       }}
@@ -2271,7 +2260,7 @@ export default function CustomizeCardPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        handleEditPage(1);
+                        handleEditPage(2);
                       }}
                       className="group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300 animate-pulse"
                       style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
@@ -2359,10 +2348,10 @@ export default function CustomizeCardPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleEditPage(2);
+                      handleEditPage(1);
                     }}
                     className="absolute top-4 right-4 group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300 z-20"
-                    style={{ 
+                    style={{
                       animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                       boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
                     }}
@@ -2414,7 +2403,7 @@ export default function CustomizeCardPage() {
                       handleEditPage(3);
                     }}
                     className="absolute top-4 right-4 group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300 z-20"
-                    style={{ 
+                    style={{
                       animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                       boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
                     }}
@@ -2517,14 +2506,16 @@ export default function CustomizeCardPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleEditPage(currentPage);
+                      const dataIndex = currentPage === 1 ? 2 : currentPage === 2 ? 1 : currentPage;
+                      handleEditPage(dataIndex);
                     }}
                     onTouchEnd={(e) => {
                       e.stopPropagation();
-                      handleEditPage(currentPage);
+                      const dataIndex = currentPage === 1 ? 2 : currentPage === 2 ? 1 : currentPage;
+                      handleEditPage(dataIndex);
                     }}
                     className="group p-3 bg-gradient-to-br from-violet-500 via-purple-500 to-indigo-500 rounded-full shadow-[0_4px_20px_rgba(124,58,237,0.5)] hover:shadow-[0_6px_30px_rgba(124,58,237,0.7)] hover:scale-110 active:scale-95 transition-all duration-300"
-                    style={{ 
+                    style={{
                       animation: 'pulse-fast-glow 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                       boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 0 20px rgba(124,58,237,0.3), 0 0 40px rgba(124,58,237,0.2)'
                     }}
@@ -2831,7 +2822,7 @@ export default function CustomizeCardPage() {
         cardThumbnail={cardData?.pages?.[0] || ""}
         isLoading={isSendingEmail}
       />
-      
+
       {/* CSS for fast pulse glow animation */}
       <style jsx global>{`
         @keyframes pulse-fast-glow {
