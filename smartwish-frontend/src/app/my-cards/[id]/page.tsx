@@ -1549,28 +1549,39 @@ export default function CustomizeCardPage() {
 
   console.log(`⏱️ [EDITOR] Rendering main UI at ${performance.now().toFixed(1)}ms with card:`, cd.name);
 
-  // Function to handle editing a specific page
-  const handleEditPage = async (pageIndex: number) => {
-    console.log("🎨 Opening Pintura editor for page:", pageIndex);
+  // Map from displayed page index to underlying data index (swap 2nd/3rd)
+  const toDataIndex = (displayIndex: number): number => {
+    if (displayIndex === 1) return 2;
+    if (displayIndex === 2) return 1;
+    return displayIndex;
+  };
 
-    if (!cardData || pageIndex >= cardData.pages.length) {
+  // Function to handle editing a specific page (accepts display index)
+  const handleEditPage = async (pageIndex: number) => {
+    const dataIndex = toDataIndex(pageIndex);
+    console.log("🎨 Opening Pintura editor for page:", {
+      displayIndex: pageIndex,
+      dataIndex,
+    });
+
+    if (!cardData || dataIndex >= cardData.pages.length) {
       console.error("❌ Invalid page index or no card data");
       return;
     }
 
     try {
       // Convert image to blob URL for Pintura compatibility if needed
-      const imageUrl = pageImages[pageIndex] || cardData.pages[pageIndex];
+      const imageUrl = pageImages[dataIndex] || cardData.pages[dataIndex];
       const blobImageUrl = await convertImageToBlob(imageUrl);
 
       // Update the page images with blob URL if needed
       if (imageUrl !== blobImageUrl) {
         const updatedImages = [...pageImages];
-        updatedImages[pageIndex] = blobImageUrl;
+        updatedImages[dataIndex] = blobImageUrl;
         setPageImages(updatedImages);
       }
 
-      setEditingPageIndex(pageIndex);
+      setEditingPageIndex(dataIndex);
       setEditorVisible(true);
     } catch (error) {
       console.error("❌ Failed to open editor:", error);
