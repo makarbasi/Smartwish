@@ -516,6 +516,16 @@ export default function CustomizeCardPage() {
     return apiResponse.data.find((d) => d.id === cardId) || null;
   }, [apiResponse, cardId, isTemplateMode]);
 
+  // Display-only order: swap inside pages so blank shows second and content third
+  const displayPages = useMemo(() => {
+    const basePages = cardData?.pages || [];
+    const pages = [0, 1, 2, 3].map((i) => pageImages[i] || basePages[i] || "");
+    if (pages.length >= 3) {
+      [pages[1], pages[2]] = [pages[2], pages[1]];
+    }
+    return pages;
+  }, [pageImages, cardData?.pages]);
+
   // Load gift card data - check both localStorage and saved design metadata
   useEffect(() => {
     console.log('🎁 Initial gift card load effect running...', { cardId, hasSavedDesign: !!savedDesign });
@@ -2149,7 +2159,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[0] || cd.pages[0]}
+                    src={displayPages[0]}
                     alt="Gift Card Cover"
                     width={400}
                     height={617}
@@ -2215,7 +2225,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[1] || cd.pages[1]}
+                    src={displayPages[1]}
                     alt="Gift Card Page 2"
                     width={400}
                     height={617}
@@ -2277,7 +2287,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[2] || cd.pages[2]}
+                    src={displayPages[2]}
                     alt="Gift Card Page 3"
                     width={400}
                     height={617}
@@ -2367,7 +2377,7 @@ export default function CustomizeCardPage() {
               <div className="page-hard">
                 <div className="page-content w-full h-full relative">
                   <Image
-                    src={pageImages[3] || cd.pages[3]}
+                    src={displayPages[3]}
                     alt="Gift Card Page 4"
                     width={400}
                     height={617}
@@ -2433,9 +2443,9 @@ export default function CustomizeCardPage() {
               onTouchEnd={handleTouchEnd}
             >
               <div className="w-full aspect-[640/989] relative bg-gray-100">
-                {pageImages[currentPage] || cd.pages[currentPage] ? (
+                {displayPages[currentPage] ? (
                   <Image
-                    src={pageImages[currentPage] || cd.pages[currentPage]}
+                    src={displayPages[currentPage]}
                     alt={`Card Page ${currentPage + 1}`}
                     width={640}
                     height={989}
