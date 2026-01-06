@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, ReactNode, useMemo } from 'react'
+import { createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 
 type DeviceMode = 'mobile' | 'pc' | 'kiosk'
@@ -14,8 +14,50 @@ interface DeviceModeContextType {
 
 const DeviceModeContext = createContext<DeviceModeContextType | undefined>(undefined)
 
+// Storage key for kiosk activation (same as in KioskContext)
+const KIOSK_STORAGE_KEY = 'smartwish_kiosk_id';
+
+// Check if a kiosk has been activated on this device
+function isKioskActivated(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const kioskId = localStorage.getItem(KIOSK_STORAGE_KEY);
+    return !!kioskId;
+  } catch {
+    return false;
+  }
+}
+
 export function DeviceModeProvider({ children }: { children: ReactNode }) {
   const { data: session } = useSession()
+  const [kioskActivated, setKioskActivated] = useState(false)
+  
+  // Check kiosk activation status on mount and when localStorage changes
+  useEffect(() => {
+    setKioskActivated(isKioskActivated());
+    
+    // Listen for storage changes (in case kiosk is activated/deactivated in another tab)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === KIOSK_STORAGE_KEY) {
+        setKioskActivated(!!e.newValue);
+      }
+    };
+    
+    // Listen for custom event from KioskContext (same-tab activation changes)
+    const handleKioskActivationChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ activated: boolean; kioskId: string | null }>;
+      console.log('🖥️ [DeviceMode] Kiosk activation changed:', customEvent.detail);
+      setKioskActivated(customEvent.detail.activated);
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('kioskActivationChange', handleKioskActivationChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('kioskActivationChange', handleKioskActivationChange);
+    };
+  }, []);
 
   const mode = useMemo<DeviceMode>(() => {
     // Check if user is logged in as kiosk account
@@ -25,11 +67,14 @@ export function DeviceModeProvider({ children }: { children: ReactNode }) {
       hasSession: !!session,
       hasUser: !!session?.user,
       userEmail: userEmail || 'not logged in',
-      isKiosk: userEmail === 'kiosk@smartwish.us'
+      isKioskEmail: userEmail === 'kiosk@smartwish.us',
+      isKioskActivated: kioskActivated
     })
     
-    if (userEmail === 'kiosk@smartwish.us') {
-      console.log('🖥️ [DeviceMode] ✅ KIOSK MODE ACTIVATED - user:', userEmail)
+    // Kiosk mode if logged in as kiosk@smartwish.us OR if a kiosk has been activated by a manager
+    if (userEmail === 'kiosk@smartwish.us' || kioskActivated) {
+      console.log('🖥️ [DeviceMode] ✅ KIOSK MODE ACTIVATED -', 
+        kioskActivated ? 'via manager setup' : `user: ${userEmail}`)
       return 'kiosk'
     }
 
@@ -42,7 +87,7 @@ export function DeviceModeProvider({ children }: { children: ReactNode }) {
     }
 
     return 'pc'
-  }, [session?.user?.email])
+  }, [session?.user?.email, kioskActivated])
 
   const value: DeviceModeContextType = {
     mode,
