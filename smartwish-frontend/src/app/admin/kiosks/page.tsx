@@ -55,6 +55,7 @@ type KioskConfig = {
   printerProfile?: string;
   printerName?: string;
   printerTrays?: PrinterTray[];
+  revenueSharePercent?: number; // Store owner's share of net profit (default 30%)
 };
 
 type Kiosk = {
@@ -101,6 +102,7 @@ const DEFAULT_CONFIG: KioskConfig = {
     { trayNumber: 1, trayName: "Tray 1", paperType: "greeting-card", paperSize: "letter" },
     { trayNumber: 2, trayName: "Tray 2", paperType: "sticker", paperSize: "letter" },
   ],
+  revenueSharePercent: 30, // Default 30% of net profit goes to store owner
 };
 
 export default function KiosksAdminPage() {
@@ -1258,6 +1260,37 @@ function KioskFormModal({
                           ))}
                         </div>
                       )}
+                    </div>
+
+                    {/* Revenue Share Configuration */}
+                    <div className="col-span-2 border-t pt-4 mt-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Revenue Share %
+                      </label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Percentage of net profit (after transaction fees) to share with the store owner. 
+                        Transaction fee = $0.50 + 3% of sale price.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={formData.config.revenueSharePercent ?? 30}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              config: {
+                                ...formData.config,
+                                revenueSharePercent: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)),
+                              },
+                            })
+                          }
+                          className="w-24 rounded border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        />
+                        <span className="text-sm text-gray-600">%</span>
+                      </div>
                     </div>
                   </div>
                 </div>

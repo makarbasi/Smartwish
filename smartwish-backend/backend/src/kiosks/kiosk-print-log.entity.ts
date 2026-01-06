@@ -38,6 +38,10 @@ export class KioskPrintLog {
   @Column({ name: 'product_name', nullable: true })
   productName: string;
 
+  // Pricing / Revenue
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  price: number;
+
   // Print details
   @Column({ name: 'paper_type', nullable: true })
   paperType: string;

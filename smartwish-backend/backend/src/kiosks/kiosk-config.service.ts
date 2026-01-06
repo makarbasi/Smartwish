@@ -612,6 +612,7 @@ export class KioskConfigService {
     productType?: string;
     productId?: string;
     productName?: string;
+    price?: number;
     paperType?: string;
     paperSize?: string;
     trayNumber?: number;
@@ -629,6 +630,7 @@ export class KioskConfigService {
       productType: data.productType || 'greeting-card',
       productId: data.productId,
       productName: data.productName,
+      price: data.price || 0,
       paperType: data.paperType,
       paperSize: data.paperSize,
       trayNumber: data.trayNumber,
@@ -785,10 +787,15 @@ export class KioskConfigService {
 
   /**
    * Get print statistics for a manager's kiosks
+   * Includes revenue calculations:
+   * - Transaction fee = $0.50 + 3% of sale price
+   * - Net profit = Sale price - Transaction fee
+   * - Store share = revenueSharePercent * Net profit
    */
   async getManagerPrintStats(managerId: string, days: number = 30) {
     const assignments = await this.kioskManagerRepo.find({
       where: { userId: managerId },
+      relations: ['kiosk'],
     });
 
     if (assignments.length === 0) {
@@ -799,12 +806,25 @@ export class KioskConfigService {
         printsByKiosk: [],
         printsByProductType: [],
         recentActivity: [],
+        // Revenue data
+        totalSales: 0,
+        transactionFees: 0,
+        netProfit: 0,
+        storeOwnerShare: 0,
+        revenueByKiosk: [],
       };
     }
 
     const kioskIds = assignments.map(a => a.kioskId);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+
+    // Create a map of kiosk ID to revenue share percent
+    const kioskShareMap = new Map<string, number>();
+    for (const a of assignments) {
+      const config = a.kiosk?.config as Record<string, any> || {};
+      kioskShareMap.set(a.kioskId, config.revenueSharePercent ?? 30);
+    }
 
     // Total counts
     const totalPrints = await this.printLogRepo
@@ -827,7 +847,7 @@ export class KioskConfigService {
       .andWhere('log.created_at >= :startDate', { startDate })
       .getCount();
 
-    // Prints by kiosk
+    // Prints by kiosk (with count)
     const printsByKiosk = await this.printLogRepo
       .createQueryBuilder('log')
       .select('log.kiosk_id', 'kioskId')
@@ -859,6 +879,54 @@ export class KioskConfigService {
       .limit(10)
       .getMany();
 
+    // ==================== Revenue Calculations ====================
+    // Get completed prints with prices for revenue calculation
+    const completedLogsWithPrices = await this.printLogRepo
+      .createQueryBuilder('log')
+      .select('log.kiosk_id', 'kioskId')
+      .addSelect('kiosk.name', 'kioskName')
+      .addSelect('COALESCE(SUM(log.price * log.copies), 0)', 'totalSales')
+      .addSelect('COUNT(*)', 'printCount')
+      .leftJoin('log.kiosk', 'kiosk')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .andWhere('log.status = :status', { status: PrintStatus.COMPLETED })
+      .andWhere('log.created_at >= :startDate', { startDate })
+      .groupBy('log.kiosk_id')
+      .addGroupBy('kiosk.name')
+      .getRawMany();
+
+    // Calculate revenue breakdown by kiosk
+    let totalSales = 0;
+    let transactionFees = 0;
+    let netProfit = 0;
+    let storeOwnerShare = 0;
+
+    const revenueByKiosk = completedLogsWithPrices.map(row => {
+      const sales = parseFloat(row.totalSales) || 0;
+      const printCount = parseInt(row.printCount) || 0;
+      // Transaction fee: $0.50 + 3% per print
+      const fees = (0.50 * printCount) + (sales * 0.03);
+      const profit = sales - fees;
+      const sharePercent = kioskShareMap.get(row.kioskId) ?? 30;
+      const share = profit * (sharePercent / 100);
+
+      totalSales += sales;
+      transactionFees += fees;
+      netProfit += profit;
+      storeOwnerShare += share;
+
+      return {
+        kioskId: row.kioskId,
+        kioskName: row.kioskName,
+        printCount,
+        totalSales: Math.round(sales * 100) / 100,
+        transactionFees: Math.round(fees * 100) / 100,
+        netProfit: Math.round(profit * 100) / 100,
+        revenueSharePercent: sharePercent,
+        storeOwnerShare: Math.round(share * 100) / 100,
+      };
+    });
+
     return {
       totalPrints,
       completedPrints,
@@ -866,6 +934,12 @@ export class KioskConfigService {
       printsByKiosk,
       printsByProductType,
       recentActivity,
+      // Revenue data (rounded to 2 decimal places)
+      totalSales: Math.round(totalSales * 100) / 100,
+      transactionFees: Math.round(transactionFees * 100) / 100,
+      netProfit: Math.round(netProfit * 100) / 100,
+      storeOwnerShare: Math.round(storeOwnerShare * 100) / 100,
+      revenueByKiosk,
     };
   }
 }
