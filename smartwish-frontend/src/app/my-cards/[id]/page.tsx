@@ -1033,6 +1033,7 @@ export default function CustomizeCardPage() {
       alert("No card data available");
       return;
     }
+    
     console.log('💳 Opening payment modal for send e-card:', cardData.id);
     setPendingAction({
       card: { id: cardData.id, name: cardData.name },
@@ -1104,16 +1105,13 @@ export default function CustomizeCardPage() {
       alert("No card data available");
       return;
     }
+    
     console.log('💳 Opening payment modal for print:', cardData.id);
-    // TEMPORARY: Skip payment modal during development
     setPendingAction({
       card: { id: cardData.id, name: cardData.name },
       action: 'print'
     });
-    // setPaymentModalOpen(true); // Commented out for development
-
-    // Call executePrint directly without payment
-    executePrintDirect();
+    setPaymentModalOpen(true);
   };
 
   // Direct print execution without payment (for development)
