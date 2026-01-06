@@ -46,6 +46,7 @@ import { TemplatesEnhancedController } from './templates/templates-enhanced.cont
 import { PartnersModule } from './partners/partners.module';
 import { GeminiEmbeddingService } from './services/gemini-embedding.service';
 import { OrdersModule } from './orders/orders.module';
+import { KioskConfigModule } from './kiosks/kiosk-config.module';
 
 @Module({
   imports: [
@@ -100,6 +101,7 @@ import { OrdersModule } from './orders/orders.module';
     EventsModule,
     PartnersModule,
     OrdersModule,
+    KioskConfigModule,
   ],
   controllers: [AppController, SharingController, TemplatesEnhancedController],
   providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService, GeminiEmbeddingService],

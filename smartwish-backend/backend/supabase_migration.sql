@@ -43,6 +43,39 @@ ALTER TABLE saved_designs
 ADD CONSTRAINT saved_designs_status_check 
 CHECK (status IN ('draft', 'published', 'archived', 'template_candidate', 'published_to_templates'));
 
+-- ----------------------------------------
+-- Kiosk configuration (per-device settings)
+-- ----------------------------------------
+CREATE TABLE IF NOT EXISTS kiosk_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kiosk_id VARCHAR(128) UNIQUE NOT NULL,
+    store_id VARCHAR(128),
+    name VARCHAR(255),
+    api_key VARCHAR(255) NOT NULL,
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    version VARCHAR(32) NOT NULL DEFAULT '1.0.0',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_kiosk_configs_kiosk_id ON kiosk_configs(kiosk_id);
+CREATE INDEX IF NOT EXISTS idx_kiosk_configs_updated_at ON kiosk_configs(updated_at DESC);
+
+-- Trigger to keep updated_at fresh
+CREATE OR REPLACE FUNCTION update_kiosk_configs_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_kiosk_configs_updated_at ON kiosk_configs;
+CREATE TRIGGER trg_kiosk_configs_updated_at
+BEFORE UPDATE ON kiosk_configs
+FOR EACH ROW
+EXECUTE FUNCTION update_kiosk_configs_updated_at();
+
 -- Create function to copy template to saved design
 CREATE OR REPLACE FUNCTION copy_template_to_saved_design(
     p_template_id UUID,
@@ -275,3 +308,44 @@ FROM saved_designs
 WHERE status IN ('published', 'published_to_templates');
 
 GRANT SELECT ON published_designs TO authenticated;
+
+-- ----------------------------------------
+-- Multi-tenant Kiosk Management System
+-- ----------------------------------------
+
+-- Add 'manager' role to user_role enum (required for kiosk managers)
+-- Note: ALTER TYPE ... ADD VALUE cannot run inside a transaction, so run this separately if needed
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'manager' AND enumtypid = 'user_role'::regtype) THEN
+        ALTER TYPE user_role ADD VALUE 'manager';
+    END IF;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- Extend kiosk_configs table with activation status and creator tracking
+ALTER TABLE kiosk_configs 
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_kiosk_configs_is_active ON kiosk_configs(is_active);
+CREATE INDEX IF NOT EXISTS idx_kiosk_configs_created_by ON kiosk_configs(created_by);
+
+-- Junction table for many-to-many relationship between kiosks and managers
+CREATE TABLE IF NOT EXISTS kiosk_managers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kiosk_id UUID NOT NULL REFERENCES kiosk_configs(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    assigned_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(kiosk_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_kiosk_managers_user ON kiosk_managers(user_id);
+CREATE INDEX IF NOT EXISTS idx_kiosk_managers_kiosk ON kiosk_managers(kiosk_id);
+CREATE INDEX IF NOT EXISTS idx_kiosk_managers_assigned_by ON kiosk_managers(assigned_by);
+
+-- Enable Supabase Realtime on kiosk_configs for live config updates
+-- Note: Run this only if you're using Supabase. Skip if using plain PostgreSQL.
+-- ALTER PUBLICATION supabase_realtime ADD TABLE kiosk_configs;

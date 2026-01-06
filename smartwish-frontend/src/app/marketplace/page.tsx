@@ -7,6 +7,7 @@ import QRCode from 'qrcode'
 import { VirtualInput } from '@/components/VirtualInput'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { useKioskConfig } from '@/hooks/useKioskConfig'
 
 // Initialize Stripe
 const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
@@ -110,6 +111,8 @@ function MarketplaceContent() {
   const [activeFilter, setActiveFilter] = useState<string>('all')
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [paymentAction, setPaymentAction] = useState<'print' | 'send' | null>(null)
+  const { config: kioskConfig } = useKioskConfig()
+  const micEnabled = kioskConfig?.micEnabled !== false
 
   // Debug logging for state changes
   useEffect(() => {
@@ -256,6 +259,10 @@ function MarketplaceContent() {
   // Voice search functionality
   const startVoiceSearch = () => {
     if (typeof window === 'undefined') return
+    if (!micEnabled) {
+      alert('Microphone is disabled on this kiosk.')
+      return
+    }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
@@ -411,6 +418,7 @@ function MarketplaceContent() {
               <button
                 type="button"
                 onClick={startVoiceSearch}
+                disabled={!micEnabled}
                 className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs transition-all ${isVoiceRecording
                   ? 'bg-red-600 text-white hover:bg-red-500'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

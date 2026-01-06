@@ -16,9 +16,10 @@ import {
   // CurrencyDollarIcon, // commented out because pricing link is commented below
   ShoppingBagIcon,
   ArrowRightStartOnRectangleIcon,
-  // UserIcon removed (unused)
+  UserIcon,
   UserGroupIcon,
   BuildingStorefrontIcon,
+  ComputerDesktopIcon,
 } from "@heroicons/react/24/outline";
 
 type Item = {
@@ -32,6 +33,8 @@ const items: Item[] = [
   { href: "/my-cards", label: "Designs", icon: PencilSquareIcon },
   { href: "/contacts", label: "Contacts", icon: UserGroupIcon },
   { href: "/partners", label: "Partners", icon: BuildingStorefrontIcon },
+  { href: "/admin/kiosks", label: "Kiosks", icon: ComputerDesktopIcon },
+  { href: "/admin/managers", label: "Managers", icon: UserIcon },
 ];
 
 // Page Navigator Component for card detail pages
