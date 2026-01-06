@@ -8,6 +8,7 @@ import * as nodemailer from 'nodemailer';
 import * as bcrypt from 'bcrypt';
 import { KioskConfig } from './kiosk-config.entity';
 import { KioskManager } from './kiosk-manager.entity';
+import { KioskPrintLog, PrintStatus } from './kiosk-print-log.entity';
 import { User, UserRole, UserStatus, OAuthProvider } from '../user/user.entity';
 import { CreateKioskConfigDto } from './dto/create-kiosk-config.dto';
 import { UpdateKioskConfigDto } from './dto/update-kiosk-config.dto';
@@ -29,6 +30,8 @@ export class KioskConfigService {
     private readonly kioskRepo: Repository<KioskConfig>,
     @InjectRepository(KioskManager)
     private readonly kioskManagerRepo: Repository<KioskManager>,
+    @InjectRepository(KioskPrintLog)
+    private readonly printLogRepo: Repository<KioskPrintLog>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly jwtService: JwtService,
@@ -597,5 +600,272 @@ export class KioskConfigService {
       }),
     );
     return results;
+  }
+
+  // ==================== Print Log Methods ====================
+
+  /**
+   * Create a new print log entry
+   */
+  async createPrintLog(data: {
+    kioskId: string;
+    productType?: string;
+    productId?: string;
+    productName?: string;
+    paperType?: string;
+    paperSize?: string;
+    trayNumber?: number;
+    copies?: number;
+    initiatedBy?: string;
+  }): Promise<KioskPrintLog> {
+    // Verify kiosk exists
+    const kiosk = await this.kioskRepo.findOne({ where: { id: data.kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${data.kioskId} not found`);
+    }
+
+    const printLog = this.printLogRepo.create({
+      kioskId: data.kioskId,
+      productType: data.productType || 'greeting-card',
+      productId: data.productId,
+      productName: data.productName,
+      paperType: data.paperType,
+      paperSize: data.paperSize,
+      trayNumber: data.trayNumber,
+      copies: data.copies || 1,
+      status: PrintStatus.PENDING,
+      initiatedBy: data.initiatedBy,
+    });
+
+    return this.printLogRepo.save(printLog);
+  }
+
+  /**
+   * Update print log status
+   */
+  async updatePrintLogStatus(
+    logId: string,
+    status: PrintStatus,
+    errorMessage?: string,
+  ): Promise<KioskPrintLog> {
+    const log = await this.printLogRepo.findOne({ where: { id: logId } });
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    log.status = status;
+    if (status === PrintStatus.PROCESSING) {
+      log.startedAt = new Date();
+    } else if (status === PrintStatus.COMPLETED || status === PrintStatus.FAILED) {
+      log.completedAt = new Date();
+    }
+    if (errorMessage) {
+      log.errorMessage = errorMessage;
+    }
+
+    return this.printLogRepo.save(log);
+  }
+
+  /**
+   * Get print logs for a specific kiosk
+   */
+  async getKioskPrintLogs(
+    kioskId: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      status?: PrintStatus;
+      productType?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+  ) {
+    const query = this.printLogRepo
+      .createQueryBuilder('log')
+      .where('log.kiosk_id = :kioskId', { kioskId })
+      .orderBy('log.created_at', 'DESC');
+
+    if (options?.status) {
+      query.andWhere('log.status = :status', { status: options.status });
+    }
+    if (options?.productType) {
+      query.andWhere('log.product_type = :productType', { productType: options.productType });
+    }
+    if (options?.startDate) {
+      query.andWhere('log.created_at >= :startDate', { startDate: options.startDate });
+    }
+    if (options?.endDate) {
+      query.andWhere('log.created_at <= :endDate', { endDate: options.endDate });
+    }
+
+    const total = await query.getCount();
+    
+    if (options?.limit) {
+      query.limit(options.limit);
+    }
+    if (options?.offset) {
+      query.offset(options.offset);
+    }
+
+    const logs = await query.getMany();
+
+    return { logs, total };
+  }
+
+  /**
+   * Get print logs for all kiosks assigned to a manager
+   */
+  async getManagerPrintLogs(
+    managerId: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      kioskId?: string;
+      status?: PrintStatus;
+      productType?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+  ) {
+    // First get all kiosk IDs assigned to this manager
+    const assignments = await this.kioskManagerRepo.find({
+      where: { userId: managerId },
+      relations: ['kiosk'],
+    });
+
+    if (assignments.length === 0) {
+      return { logs: [], total: 0, kiosks: [] };
+    }
+
+    const kioskIds = assignments.map(a => a.kioskId);
+
+    const query = this.printLogRepo
+      .createQueryBuilder('log')
+      .leftJoinAndSelect('log.kiosk', 'kiosk')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .orderBy('log.created_at', 'DESC');
+
+    if (options?.kioskId) {
+      query.andWhere('log.kiosk_id = :kioskId', { kioskId: options.kioskId });
+    }
+    if (options?.status) {
+      query.andWhere('log.status = :status', { status: options.status });
+    }
+    if (options?.productType) {
+      query.andWhere('log.product_type = :productType', { productType: options.productType });
+    }
+    if (options?.startDate) {
+      query.andWhere('log.created_at >= :startDate', { startDate: options.startDate });
+    }
+    if (options?.endDate) {
+      query.andWhere('log.created_at <= :endDate', { endDate: options.endDate });
+    }
+
+    const total = await query.getCount();
+    
+    if (options?.limit) {
+      query.limit(options.limit);
+    }
+    if (options?.offset) {
+      query.offset(options.offset);
+    }
+
+    const logs = await query.getMany();
+
+    // Get kiosk info for context
+    const kiosks = assignments.map(a => ({
+      id: a.kiosk.id,
+      kioskId: a.kiosk.kioskId,
+      name: a.kiosk.name,
+      storeId: a.kiosk.storeId,
+    }));
+
+    return { logs, total, kiosks };
+  }
+
+  /**
+   * Get print statistics for a manager's kiosks
+   */
+  async getManagerPrintStats(managerId: string, days: number = 30) {
+    const assignments = await this.kioskManagerRepo.find({
+      where: { userId: managerId },
+    });
+
+    if (assignments.length === 0) {
+      return {
+        totalPrints: 0,
+        completedPrints: 0,
+        failedPrints: 0,
+        printsByKiosk: [],
+        printsByProductType: [],
+        recentActivity: [],
+      };
+    }
+
+    const kioskIds = assignments.map(a => a.kioskId);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    // Total counts
+    const totalPrints = await this.printLogRepo
+      .createQueryBuilder('log')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .andWhere('log.created_at >= :startDate', { startDate })
+      .getCount();
+
+    const completedPrints = await this.printLogRepo
+      .createQueryBuilder('log')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .andWhere('log.status = :status', { status: PrintStatus.COMPLETED })
+      .andWhere('log.created_at >= :startDate', { startDate })
+      .getCount();
+
+    const failedPrints = await this.printLogRepo
+      .createQueryBuilder('log')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .andWhere('log.status = :status', { status: PrintStatus.FAILED })
+      .andWhere('log.created_at >= :startDate', { startDate })
+      .getCount();
+
+    // Prints by kiosk
+    const printsByKiosk = await this.printLogRepo
+      .createQueryBuilder('log')
+      .select('log.kiosk_id', 'kioskId')
+      .addSelect('kiosk.name', 'kioskName')
+      .addSelect('COUNT(*)', 'count')
+      .leftJoin('log.kiosk', 'kiosk')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .andWhere('log.created_at >= :startDate', { startDate })
+      .groupBy('log.kiosk_id')
+      .addGroupBy('kiosk.name')
+      .getRawMany();
+
+    // Prints by product type
+    const printsByProductType = await this.printLogRepo
+      .createQueryBuilder('log')
+      .select('log.product_type', 'productType')
+      .addSelect('COUNT(*)', 'count')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .andWhere('log.created_at >= :startDate', { startDate })
+      .groupBy('log.product_type')
+      .getRawMany();
+
+    // Recent activity (last 10)
+    const recentActivity = await this.printLogRepo
+      .createQueryBuilder('log')
+      .leftJoinAndSelect('log.kiosk', 'kiosk')
+      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
+      .orderBy('log.created_at', 'DESC')
+      .limit(10)
+      .getMany();
+
+    return {
+      totalPrints,
+      completedPrints,
+      failedPrints,
+      printsByKiosk,
+      printsByProductType,
+      recentActivity,
+    };
   }
 }

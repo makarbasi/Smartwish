@@ -83,8 +83,15 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] 🔄 60s timeout reached - resetting to /templates");
 
             // Clear all localStorage and sessionStorage for a fresh start
+            // But keep kiosk-related keys so the device remains in kiosk mode
             try {
-                const keysToKeep = ['nextauth.message', 'next-auth.session-token', 'next-auth.csrf-token'];
+                const keysToKeep = [
+                    'nextauth.message', 
+                    'next-auth.session-token', 
+                    'next-auth.csrf-token',
+                    'smartwish_kiosk_id',      // Keep kiosk activation
+                    'smartwish_kiosk_config',  // Keep kiosk config cache
+                ];
                 const allKeys = Object.keys(localStorage);
                 allKeys.forEach(key => {
                     if (!keysToKeep.includes(key)) {
@@ -92,7 +99,7 @@ export function useKioskInactivity({
                     }
                 });
                 sessionStorage.clear();
-                console.log("🖥️ [KioskInactivity] 🧹 Cleared all data");
+                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data (preserved kiosk activation)");
             } catch (error) {
                 console.error("🖥️ [KioskInactivity] Error clearing storage:", error);
             }

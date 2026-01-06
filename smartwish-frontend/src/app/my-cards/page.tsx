@@ -893,6 +893,30 @@ function MyCardsContent() {
     }
   };
 
+  // Helper function to log print job to the database (for manager tracking)
+  const logPrintJob = async (data: {
+    kioskId: string;
+    productType: string;
+    productId?: string;
+    productName?: string;
+    paperType?: string;
+    paperSize?: string;
+    trayNumber?: number | null;
+    copies?: number;
+  }) => {
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      console.log('📊 Print job logged for tracking');
+    } catch (err) {
+      console.warn('Failed to log print job:', err);
+      // Don't throw - logging is optional, print should still proceed
+    }
+  };
+
   // Auto-print using kiosk config for printer and tray selection
   const autoPrintToEpson = async (card: MyCard, image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card') => {
     // Get printer settings from kiosk config
@@ -904,10 +928,27 @@ function MyCardsContent() {
     const trayNumber = tray?.trayNumber || null;
     const paperSize = tray?.paperSize || 'letter';
     
+    // Get kiosk ID from context for logging
+    const kioskId = localStorage.getItem('smartwish_kiosk_id');
+    
     console.log(`🖨️ Auto-printing to: ${printerName} (Direct backend print - NO popup)`);
     console.log(`📥 Paper type: ${paperType}, Tray: ${trayNumber || 'Auto'}, Size: ${paperSize}`);
 
     try {
+      // Log the print job for manager tracking (if kiosk is activated)
+      if (kioskId) {
+        await logPrintJob({
+          kioskId,
+          productType: paperType,
+          productId: card.id,
+          productName: card.name || 'Greeting Card',
+          paperType,
+          paperSize,
+          trayNumber,
+          copies: 1,
+        });
+      }
+
       // Convert image URLs to base64
       console.log('Converting images to base64 for backend printing...');
       const imageBase64Array = await Promise.all([
