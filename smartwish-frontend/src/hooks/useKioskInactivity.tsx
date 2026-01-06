@@ -17,7 +17,7 @@ const MOUSE_MOVE_THROTTLE = 5000; // milliseconds
 const TOUCH_MOVE_THROTTLE = 5000; // milliseconds
 
 // Pages where screen saver should never appear
-const EXCLUDED_PATHS = ['/admin', '/kiosk/setup'];
+const EXCLUDED_PATHS = ['/admin', '/managers'];
 
 export function useKioskInactivity({
     screenSaverTimeout = 30000, // 30 seconds

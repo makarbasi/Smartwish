@@ -53,6 +53,16 @@ export class KioskPublicController {
   async getConfigById(@Param('id') id: string) {
     return this.kioskService.getConfigById(id);
   }
+}
+
+// ==================== Manager Public Endpoints ====================
+
+/**
+ * Public endpoints for manager signup, login, etc.
+ */
+@Controller('managers')
+export class ManagersPublicController {
+  constructor(private readonly kioskService: KioskConfigService) {}
 
   /**
    * Verify manager invitation token
@@ -67,7 +77,7 @@ export class KioskPublicController {
   }
 
   /**
-   * Complete manager account setup
+   * Complete manager account setup (signup)
    */
   @Public()
   @Post('complete-setup')
@@ -79,6 +89,27 @@ export class KioskPublicController {
       throw new BadRequestException('Password must be at least 8 characters');
     }
     return this.kioskService.completeManagerSetup(body.token, body.password);
+  }
+
+  /**
+   * Manager login
+   */
+  @Public()
+  @Post('login')
+  async login(@Body() body: { email: string; password: string }) {
+    if (!body.email || !body.password) {
+      throw new BadRequestException('Email and password are required');
+    }
+    return this.kioskService.managerLogin(body.email, body.password);
+  }
+
+  /**
+   * Get kiosks assigned to logged-in manager (uses JWT from header)
+   */
+  @Get('my-kiosks')
+  @UseGuards(JwtAuthGuard)
+  async getMyKiosks(@Request() req: any) {
+    return this.kioskService.getManagerKiosks(req.user.id);
   }
 }
 
