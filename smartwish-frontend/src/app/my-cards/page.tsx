@@ -731,12 +731,8 @@ function MyCardsContent() {
   // Handle print card - Show payment modal first
   const handlePrint = async (card: MyCard) => {
     console.log('💳 Opening payment modal for print:', card.id);
-    // TEMPORARY: Skip payment modal during development
     setPendingAction({ card, action: 'print' });
-    // setPaymentModalOpen(true); // Commented out for development
-
-    // Call executePrint directly without payment
-    await executePrintDirect(card);
+    setPaymentModalOpen(true);
   };
 
   // Direct print execution without payment (for development)

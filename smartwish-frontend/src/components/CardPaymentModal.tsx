@@ -93,6 +93,12 @@ function CardPaymentModalContent({
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [loadingPrice, setLoadingPrice] = useState(true)
+  
+  // Promo code state
+  const [promoCode, setPromoCode] = useState('')
+  const [promoApplied, setPromoApplied] = useState(false)
+  const [promoError, setPromoError] = useState<string | null>(null)
+  const VALID_PROMO_CODE = 'smartwish2'
 
   // Payment Data
   const [orderId, setOrderId] = useState<string | null>(null)
@@ -587,6 +593,31 @@ function CardPaymentModalContent({
   }
 
   /**
+   * Apply promo code to bypass payment
+   */
+  const applyPromoCode = () => {
+    setPromoError(null)
+    if (promoCode.toLowerCase() === VALID_PROMO_CODE.toLowerCase()) {
+      setPromoApplied(true)
+      console.log('🎟️ Promo code applied - payment will be bypassed')
+    } else {
+      setPromoError('Invalid promo code')
+      setPromoApplied(false)
+    }
+  }
+
+  /**
+   * Handle free checkout with promo code
+   */
+  const handleFreeCheckout = () => {
+    if (promoApplied) {
+      console.log('🎟️ Free checkout with promo code')
+      setPaymentComplete(true)
+      onPaymentSuccess()
+    }
+  }
+
+  /**
    * Process card payment on kiosk
    */
   const processPayment = async () => {
@@ -839,12 +870,66 @@ function CardPaymentModalContent({
                       </div>
                       <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-base">
                         <span className="text-gray-900">Total:</span>
-                        <span className="text-blue-600">${priceData?.total?.toFixed(2) || '0.00'}</span>
+                        <span className={promoApplied ? "text-green-600 line-through" : "text-blue-600"}>
+                          ${priceData?.total?.toFixed(2) || '0.00'}
+                        </span>
                       </div>
+                      {promoApplied && (
+                        <div className="flex justify-between font-semibold text-base text-green-600">
+                          <span>Promo Applied:</span>
+                          <span>$0.00</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Promo Code Input */}
+                    <div className="mt-4 pt-3 border-t border-gray-200">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Have a promo code?
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={promoCode}
+                          onChange={(e) => {
+                            setPromoCode(e.target.value)
+                            setPromoApplied(false)
+                            setPromoError(null)
+                          }}
+                          placeholder="Enter code"
+                          className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all ${
+                            promoApplied
+                              ? 'border-green-400 bg-green-50 focus:ring-green-300'
+                              : promoError
+                              ? 'border-red-400 focus:ring-red-300'
+                              : 'border-gray-300 focus:ring-blue-300'
+                          }`}
+                          disabled={promoApplied}
+                        />
+                        <button
+                          type="button"
+                          onClick={applyPromoCode}
+                          disabled={!promoCode || promoApplied}
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                            promoApplied
+                              ? 'bg-green-100 text-green-700 cursor-default'
+                              : 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
+                          }`}
+                        >
+                          {promoApplied ? '✓ Applied' : 'Apply'}
+                        </button>
+                      </div>
+                      {promoError && (
+                        <p className="mt-1 text-sm text-red-600">{promoError}</p>
+                      )}
+                      {promoApplied && (
+                        <p className="mt-1 text-sm text-green-600">🎉 Promo code applied! Free checkout available.</p>
+                      )}
                     </div>
                   </div>
 
-                  {/* Card Payment Form */}
+                  {/* Card Payment Form - Hidden when promo applied */}
+                  {!promoApplied && (
                   <div className="space-y-4">
                     <h3 className="font-semibold text-gray-900">Enter Card Details</h3>
 
@@ -896,9 +981,31 @@ function CardPaymentModalContent({
                       )}
                     </button>
                   </div>
+                  )}
+
+                  {/* Free Checkout Button - When promo applied */}
+                  {promoApplied && (
+                    <div className="space-y-4">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                        <div className="text-green-600 text-4xl mb-2">🎉</div>
+                        <h3 className="font-semibold text-green-800 mb-1">Promo Code Applied!</h3>
+                        <p className="text-sm text-green-700">Your total is now $0.00</p>
+                      </div>
+                      <button
+                        onClick={handleFreeCheckout}
+                        className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
+                      >
+                        <span>Complete Free Checkout</span>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Right Column: QR Code Payment */}
+                {/* Right Column: QR Code Payment - Hidden when promo applied */}
+                {!promoApplied && (
                 <div className="border-l border-gray-200 pl-6">
                   <div className="sticky top-6">
                     <h3 className="font-semibold text-gray-900 mb-3">Or Scan to Pay</h3>
@@ -937,6 +1044,7 @@ function CardPaymentModalContent({
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             )}
           </div>
