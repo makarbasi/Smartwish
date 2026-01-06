@@ -155,12 +155,20 @@ export default function ManagerLoginPage() {
                 Welcome, {session.name} ({session.email})
               </p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-gray-500 hover:text-gray-700 font-medium"
-            >
-              Sign out
-            </button>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/managers/dashboard"
+                className="text-sm text-indigo-600 hover:text-indigo-500 font-medium"
+              >
+                📊 Print History
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-500 hover:text-gray-700 font-medium"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
 
           {error && (

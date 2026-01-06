@@ -252,3 +252,102 @@ export class ManagerAdminController {
     return this.kioskService.deleteManager(id);
   }
 }
+
+// ==================== Print Log Endpoints ====================
+
+/**
+ * Public endpoint for kiosks to log print jobs
+ */
+@Controller('kiosk/print-logs')
+export class KioskPrintLogController {
+  constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * Create a print log entry (called by kiosk when printing)
+   */
+  @Public()
+  @Post()
+  async createPrintLog(
+    @Body()
+    body: {
+      kioskId: string;
+      productType?: string;
+      productId?: string;
+      productName?: string;
+      paperType?: string;
+      paperSize?: string;
+      trayNumber?: number;
+      copies?: number;
+      initiatedBy?: string;
+    },
+  ) {
+    if (!body.kioskId) {
+      throw new BadRequestException('kioskId is required');
+    }
+    return this.kioskService.createPrintLog(body);
+  }
+
+  /**
+   * Update print log status (called by print agent)
+   */
+  @Public()
+  @Put(':logId/status')
+  async updatePrintLogStatus(
+    @Param('logId') logId: string,
+    @Body() body: { status: string; errorMessage?: string },
+  ) {
+    return this.kioskService.updatePrintLogStatus(
+      logId,
+      body.status as any,
+      body.errorMessage,
+    );
+  }
+}
+
+/**
+ * Manager endpoints for viewing print logs
+ */
+@Controller('managers/print-logs')
+@UseGuards(JwtAuthGuard)
+export class ManagerPrintLogController {
+  constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * Get print logs for the authenticated manager's kiosks
+   */
+  @Get()
+  async getMyPrintLogs(
+    @Request() req: any,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('kioskId') kioskId?: string,
+    @Query('status') status?: string,
+    @Query('productType') productType?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.kioskService.getManagerPrintLogs(req.user.id, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+      kioskId,
+      status: status as any,
+      productType,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+  }
+
+  /**
+   * Get print statistics for the authenticated manager
+   */
+  @Get('stats')
+  async getMyPrintStats(
+    @Request() req: any,
+    @Query('days') days?: string,
+  ) {
+    return this.kioskService.getManagerPrintStats(
+      req.user.id,
+      days ? parseInt(days) : 30,
+    );
+  }
+}

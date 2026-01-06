@@ -349,3 +349,54 @@ CREATE INDEX IF NOT EXISTS idx_kiosk_managers_assigned_by ON kiosk_managers(assi
 -- Enable Supabase Realtime on kiosk_configs for live config updates
 -- Note: Run this only if you're using Supabase. Skip if using plain PostgreSQL.
 -- ALTER PUBLICATION supabase_realtime ADD TABLE kiosk_configs;
+
+-- ----------------------------------------
+-- Kiosk Print Logs (for manager tracking)
+-- ----------------------------------------
+
+CREATE TABLE IF NOT EXISTS kiosk_print_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kiosk_id UUID NOT NULL REFERENCES kiosk_configs(id) ON DELETE CASCADE,
+    
+    -- What was printed
+    product_type VARCHAR(50) NOT NULL DEFAULT 'greeting-card', -- 'greeting-card', 'sticker', 'photo', 'label'
+    product_id VARCHAR(255), -- ID of the card/design that was printed (if applicable)
+    product_name VARCHAR(255), -- Name of the product for display
+    
+    -- Print details
+    paper_type VARCHAR(50), -- 'greeting-card', 'sticker', 'photo', etc.
+    paper_size VARCHAR(50), -- 'letter', 'a4', '4x6', etc.
+    tray_number INTEGER,
+    copies INTEGER DEFAULT 1,
+    
+    -- Status tracking
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed'
+    error_message TEXT,
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Optional: who initiated the print (could be a customer at the kiosk)
+    initiated_by UUID REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kiosk_print_logs_kiosk ON kiosk_print_logs(kiosk_id);
+CREATE INDEX IF NOT EXISTS idx_kiosk_print_logs_status ON kiosk_print_logs(status);
+CREATE INDEX IF NOT EXISTS idx_kiosk_print_logs_created ON kiosk_print_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kiosk_print_logs_product_type ON kiosk_print_logs(product_type);
+
+-- View for managers to see their kiosk print logs
+CREATE OR REPLACE VIEW manager_kiosk_print_logs AS
+SELECT 
+    pl.*,
+    kc.name as kiosk_name,
+    kc.store_id,
+    km.user_id as manager_id
+FROM kiosk_print_logs pl
+JOIN kiosk_configs kc ON pl.kiosk_id = kc.id
+JOIN kiosk_managers km ON kc.id = km.kiosk_id;
+
+-- Grant access to authenticated users (managers will filter by their user_id)
+GRANT SELECT ON manager_kiosk_print_logs TO authenticated;
