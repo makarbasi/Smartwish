@@ -24,6 +24,17 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Handle non-JSON responses (like rate limit errors)
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Non-JSON response from backend:', text);
+      return NextResponse.json(
+        { error: text || 'Backend returned non-JSON response' },
+        { status: response.status || 500 }
+      );
+    }
+
     const data = await response.json();
 
     if (!response.ok) {

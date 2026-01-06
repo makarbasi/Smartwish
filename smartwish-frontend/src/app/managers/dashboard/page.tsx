@@ -95,6 +95,9 @@ export default function ManagerDashboardPage() {
   const [page, setPage] = useState(0);
   const pageSize = 20;
 
+  // Track if initial load has happened
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
   // Check if manager is logged in
   useEffect(() => {
     const managerSession = localStorage.getItem("smartwish_manager_session");
@@ -103,15 +106,20 @@ export default function ManagerDashboardPage() {
       return;
     }
     
-    // Load data
-    loadStats();
-    loadLogs();
-  }, [router]);
+    // Load data only once on mount
+    if (!initialLoadDone) {
+      loadStats();
+      loadLogs();
+      setInitialLoadDone(true);
+    }
+  }, [router, initialLoadDone]);
 
-  // Reload logs when filters change
+  // Reload logs when filters change (but not on initial mount)
   useEffect(() => {
-    loadLogs();
-  }, [selectedKiosk, selectedStatus, selectedProductType, page]);
+    if (initialLoadDone) {
+      loadLogs();
+    }
+  }, [selectedKiosk, selectedStatus, selectedProductType, page, initialLoadDone]);
 
   const getAuthHeaders = () => {
     const session = localStorage.getItem("smartwish_manager_session");
@@ -130,9 +138,21 @@ export default function ManagerDashboardPage() {
         { headers: getAuthHeaders() }
       );
       
-      if (!response.ok) throw new Error("Failed to load stats");
+      // Check content type before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error("Non-JSON stats response:", text);
+        return; // Stats will remain at default values
+      }
       
       const data = await response.json();
+      
+      if (!response.ok) {
+        console.error("Stats error:", data.error || "Failed to load stats");
+        return;
+      }
+      
       setStats(data);
     } catch (err) {
       console.error("Error loading stats:", err);
@@ -156,16 +176,27 @@ export default function ManagerDashboardPage() {
         { headers: getAuthHeaders() }
       );
       
-      if (!response.ok) throw new Error("Failed to load print logs");
+      // Check content type before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error("Non-JSON logs response:", text);
+        throw new Error(text || "Server returned non-JSON response");
+      }
       
       const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to load print logs");
+      }
+      
       setLogs(data.logs || []);
       setTotalLogs(data.total || 0);
       setKiosks(data.kiosks || []);
       setError(null);
-    } catch (err) {
-      console.error("Error loading logs:", err);
-      setError("Failed to load print logs");
+    } catch (err: any) {
+      console.error("Error fetching print logs:", err);
+      setError(err.message || "Failed to load print logs");
     } finally {
       setLoading(false);
     }
