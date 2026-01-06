@@ -26,13 +26,15 @@ import { User } from '../user/user.entity';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => {
         const secret = configService.get<string>('JWT_SECRET') || 'your-secret-key';
-        console.log('[KioskConfigModule] JWT Secret configured:', secret ? 'Yes' : 'No (using default)');
+        const issuer = configService.get<string>('JWT_ISSUER') || 'smartwish-app';
+        const audience = configService.get<string>('JWT_AUDIENCE') || 'smartwish-users';
+        console.log('[KioskConfigModule] JWT configured - Secret:', secret ? 'Yes' : 'No', '| Issuer:', issuer, '| Audience:', audience);
         return {
           secret,
           signOptions: {
             expiresIn: configService.get<string>('JWT_EXPIRES_IN', '24h'),
-            issuer: 'smartwish-app',
-            audience: 'smartwish-users',
+            issuer,
+            audience,
           },
         };
       },
