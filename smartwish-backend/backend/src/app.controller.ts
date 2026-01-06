@@ -35,6 +35,40 @@ if (!fs.existsSync(downloadsDir)) {
   fs.mkdirSync(downloadsDir, { recursive: true });
 }
 
+// Cleanup old temp files on startup (older than 1 hour)
+const cleanupOldTempFiles = () => {
+  const flipbookDir = path.join(downloadsDir, 'flipbook');
+  const printJpegsDir = path.join(downloadsDir, 'print-jpegs');
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  let totalCleaned = 0;
+
+  [flipbookDir, printJpegsDir].forEach(dir => {
+    if (!fs.existsSync(dir)) return;
+    try {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        const filePath = path.join(dir, file);
+        try {
+          const stats = fs.statSync(filePath);
+          if (stats.mtimeMs < oneHourAgo) {
+            fs.unlinkSync(filePath);
+            totalCleaned++;
+          }
+        } catch { /* ignore individual file errors */ }
+      }
+    } catch (err) {
+      console.warn(`⚠️ Could not clean ${dir}:`, err.message);
+    }
+  });
+
+  if (totalCleaned > 0) {
+    console.log(`🧹 Startup cleanup: Removed ${totalCleaned} old temp files`);
+  }
+};
+
+// Run cleanup on module load
+cleanupOldTempFiles();
+
 function getBaseUrl() {
   const isDevelopment =
     process.env.NODE_ENV === 'development' ||
@@ -423,6 +457,9 @@ export class AppController {
 
   @Post('print-pc')
   async printPC(@Req() req: Request, @Res() res: Response) {
+    // Declare outside try block so cleanup can access on error
+    let savedPaths: string[] = [];
+    
     try {
       const { images, printerName, paperSize, paperType, trayNumber } = req.body;
       const flipbookDir = path.join(downloadsDir, 'flipbook');
@@ -446,7 +483,7 @@ export class AppController {
       );
 
       // Save images with unique timestamped names
-      const savedPaths: string[] = [];
+      savedPaths = [];
       for (let i = 0; i < images.length; i++) {
         const imageData = images[i];
         const fileName = `page_${i + 1}_${timestamp}.png`;
@@ -458,6 +495,27 @@ export class AppController {
         savedPaths.push(filePath);
         console.log(`Saved page ${i + 1}: ${filePath}`);
       }
+
+      // Helper function to clean up temporary files
+      const cleanupFiles = (files: string[], description: string = 'temp files') => {
+        let cleaned = 0;
+        let notFound = 0;
+        for (const filePath of files) {
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              console.log(`   ✓ Deleted: ${path.basename(filePath)}`);
+              cleaned++;
+            } else {
+              console.log(`   - Not found: ${path.basename(filePath)}`);
+              notFound++;
+            }
+          } catch (err) {
+            console.warn(`   ✗ Could not delete ${path.basename(filePath)}:`, err.message);
+          }
+        }
+        console.log(`🧹 Cleanup summary: ${cleaned} deleted, ${notFound} not found (${description})`);
+      };
 
       // Check if running in cloud environment (Render, etc.)
       const isCloudEnvironment = process.env.NODE_ENV === 'production' ||
@@ -529,6 +587,10 @@ export class AppController {
           console.warn('⚠️ Could not generate server-side PDF for print job. Falling back to image-based job.', pdfErr?.message || pdfErr);
         }
 
+        // Clean up source images - PDF is now in Supabase, we don't need local files
+        console.log(`🧹 Cleaning up ${savedPaths.length} source images...`);
+        cleanupFiles(savedPaths, 'source images (cloud mode)');
+
         // Create print job for local agent
         const printJob = {
           id: jobId,
@@ -593,18 +655,18 @@ export class AppController {
             console.warn('⚠️ Failed to upload PDF to Supabase:', uploadErr?.message || uploadErr);
           }
 
-          // Clean up source images after print
-          setTimeout(() => {
-            try {
-              for (const filePath of savedPaths) {
-                if (fs.existsSync(filePath)) {
-                  fs.unlinkSync(filePath);
-                }
-              }
-            } catch (cleanupError) {
-              console.warn(`Could not clean up files:`, cleanupError.message);
+          // Clean up source images immediately after PDF upload
+          console.log(`🧹 Cleaning up ${savedPaths.length} source images...`);
+          cleanupFiles(savedPaths, 'source images (local mode)');
+
+          // Also clean up the local greeting_card.pdf after uploading to Supabase
+          try {
+            const generatedPdfPath = path.join(smartwishBackendRoot, 'greeting_card.pdf');
+            if (fs.existsSync(generatedPdfPath)) {
+              fs.unlinkSync(generatedPdfPath);
+              console.log('🧹 Cleaned up local greeting_card.pdf');
             }
-          }, 5000);
+          } catch { /* ignore */ }
 
           res.json({
             message: 'Print job sent successfully',
@@ -618,6 +680,17 @@ export class AppController {
       }
     } catch (error) {
       console.error('Error in PC printing:', error);
+      // Clean up any saved files on error
+      if (savedPaths && savedPaths.length > 0) {
+        for (const filePath of savedPaths) {
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          } catch { /* ignore cleanup errors */ }
+        }
+        console.log(`🧹 Cleaned up ${savedPaths.length} files after error`);
+      }
       res.status(500).json({
         message: 'Failed to print',
         error: error.message,
