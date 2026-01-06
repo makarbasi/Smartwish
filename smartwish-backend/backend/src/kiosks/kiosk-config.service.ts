@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import * as crypto from 'crypto';
 import * as nodemailer from 'nodemailer';
+import * as bcrypt from 'bcrypt';
 import { KioskConfig } from './kiosk-config.entity';
 import { KioskManager } from './kiosk-manager.entity';
 import { User, UserRole, UserStatus, OAuthProvider } from '../user/user.entity';
@@ -29,6 +31,7 @@ export class KioskConfigService {
     private readonly kioskManagerRepo: Repository<KioskManager>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly jwtService: JwtService,
   ) { }
 
   private generateApiKey() {
@@ -238,7 +241,7 @@ export class KioskConfigService {
       });
 
       const frontendUrl = process.env.FRONTEND_URL || 'https://smartwish.us';
-      const setupUrl = `${frontendUrl}/kiosk/setup?token=${token}`;
+      const setupUrl = `${frontendUrl}/managers/signup?token=${token}`;
 
       const mailOptions = {
         from: process.env.EMAIL_USER || 'noreply@smartwish.us',
@@ -346,7 +349,6 @@ export class KioskConfigService {
     }
 
     // Hash the password using bcrypt
-    const bcrypt = await import('bcrypt');
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
@@ -363,6 +365,56 @@ export class KioskConfigService {
       success: true,
       message: 'Account set up successfully',
       email: user.email,
+    };
+  }
+
+  /**
+   * Manager login
+   */
+  async managerLogin(email: string, password: string) {
+    // Find user by email
+    const user = await this.userRepo
+      .createQueryBuilder('user')
+      .addSelect('user.password') // password is not selected by default
+      .where('user.email = :email', { email: email.toLowerCase() })
+      .andWhere('user.role = :role', { role: UserRole.MANAGER })
+      .getOne();
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Account is not active. Please complete your account setup first.');
+    }
+
+    if (!user.password) {
+      throw new UnauthorizedException('Password not set. Please complete your account setup.');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    // Update last login
+    user.lastLoginAt = new Date();
+    await this.userRepo.save(user);
+
+    // Generate JWT token
+    const payload = {
+      email: user.email,
+      sub: user.id,
+    };
+
+    const token = this.jwtService.sign(payload);
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      token,
     };
   }
 

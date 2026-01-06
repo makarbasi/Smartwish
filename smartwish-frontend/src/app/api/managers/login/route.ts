@@ -3,40 +3,33 @@ import { NextRequest, NextResponse } from "next/server";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://smartwish.onrender.com";
 
 /**
- * POST /api/kiosk/setup-account
- * Complete manager account setup with password
+ * POST /api/managers/login
+ * Manager login endpoint
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { token, password } = body;
+    const { email, password } = body;
 
-    if (!token || !password) {
+    if (!email || !password) {
       return NextResponse.json(
-        { error: "Token and password are required" },
+        { error: "Email and password are required" },
         { status: 400 }
       );
     }
 
-    if (password.length < 8) {
-      return NextResponse.json(
-        { error: "Password must be at least 8 characters long" },
-        { status: 400 }
-      );
-    }
-
-    const response = await fetch(`${API_BASE}/kiosk/complete-setup`, {
+    const response = await fetch(`${API_BASE}/managers/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({ email, password }),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { error: errorData.message || "Failed to set up account" },
+        { error: errorData.message || "Invalid email or password" },
         { status: response.status }
       );
     }
@@ -44,7 +37,7 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Error setting up account:", error);
+    console.error("Error logging in:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

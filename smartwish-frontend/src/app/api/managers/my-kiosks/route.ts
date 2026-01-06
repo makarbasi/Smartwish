@@ -3,42 +3,42 @@ import { NextRequest, NextResponse } from "next/server";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://smartwish.onrender.com";
 
 /**
- * GET /api/kiosk/verify-token
- * Verify manager invitation token
+ * GET /api/managers/my-kiosks
+ * Get kiosks assigned to the logged-in manager
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token');
+    const authHeader = request.headers.get('authorization');
 
-    if (!token) {
+    if (!authHeader) {
       return NextResponse.json(
-        { valid: false, error: "Token is required" },
-        { status: 400 }
+        { error: "Unauthorized - No token provided" },
+        { status: 401 }
       );
     }
 
-    const response = await fetch(`${API_BASE}/kiosk/verify-invite-token?token=${token}`, {
+    const response = await fetch(`${API_BASE}/managers/my-kiosks`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": authHeader,
       },
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { valid: false, error: errorData.message || "Invalid or expired token" },
+        { error: errorData.message || "Failed to fetch kiosks" },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json({ valid: true, email: data.email });
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("Error verifying token:", error);
+    console.error("Error fetching kiosks:", error);
     return NextResponse.json(
-      { valid: false, error: "Failed to verify token" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

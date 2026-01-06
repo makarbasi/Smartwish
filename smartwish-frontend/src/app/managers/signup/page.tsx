@@ -3,8 +3,9 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { VirtualInput } from '@/components/VirtualInput';
+import Link from 'next/link';
 
-function SetupContent() {
+function SignupContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get('token');
@@ -28,7 +29,7 @@ function SetupContent() {
 
     const verifyToken = async () => {
       try {
-        const response = await fetch(`/api/kiosk/verify-token?token=${token}`);
+        const response = await fetch(`/api/managers/verify-token?token=${token}`);
         const data = await response.json();
 
         if (response.ok && data.valid) {
@@ -64,7 +65,7 @@ function SetupContent() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/kiosk/setup-account', {
+      const response = await fetch('/api/managers/setup-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),
@@ -74,9 +75,9 @@ function SetupContent() {
 
       if (response.ok) {
         setSuccess(true);
-        // Redirect to kiosk activation page after 3 seconds
+        // Redirect to manager login page after 3 seconds
         setTimeout(() => {
-          router.push('/kiosk');
+          router.push('/managers/login');
         }, 3000);
       } else {
         setError(data.error || 'Failed to set up account');
@@ -90,7 +91,7 @@ function SetupContent() {
 
   if (verifying) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent mx-auto"></div>
           <p className="mt-4 text-gray-600">Verifying your invitation...</p>
@@ -101,7 +102,7 @@ function SetupContent() {
 
   if (success) {
     return (
-      <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="bg-white px-6 py-12 shadow-sm sm:rounded-lg sm:px-12 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
@@ -109,9 +110,9 @@ function SetupContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
               </svg>
             </div>
-            <h2 className="mt-4 text-xl font-bold text-gray-900">Account Set Up Successfully!</h2>
+            <h2 className="mt-4 text-xl font-bold text-gray-900">Account Created Successfully!</h2>
             <p className="mt-2 text-gray-600">
-              Your account is now active. Redirecting you to the kiosk activation page...
+              Your account is now active. Redirecting you to the login page...
             </p>
           </div>
         </div>
@@ -121,7 +122,7 @@ function SetupContent() {
 
   if (!tokenValid) {
     return (
-      <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="bg-white px-6 py-12 shadow-sm sm:rounded-lg sm:px-12 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
@@ -134,6 +135,12 @@ function SetupContent() {
             <p className="mt-4 text-sm text-gray-500">
               Please contact your administrator for a new invitation.
             </p>
+            <Link 
+              href="/managers/login"
+              className="mt-6 inline-block text-indigo-600 hover:text-indigo-500 font-medium"
+            >
+              Already have an account? Sign in
+            </Link>
           </div>
         </div>
       </div>
@@ -141,13 +148,14 @@ function SetupContent() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <h1 className="text-center text-3xl font-bold text-indigo-600">SmartWish</h1>
         <h2 className="mt-6 text-center text-2xl font-bold tracking-tight text-gray-900">
-          Set Up Your Account
+          Manager Account Setup
         </h2>
         <p className="mt-2 text-center text-sm text-gray-500">
-          Welcome! Please create a password for your manager account.
+          Welcome! Please create a password for your account.
         </p>
         {managerEmail && (
           <p className="mt-1 text-center text-sm text-indigo-600">{managerEmail}</p>
@@ -205,24 +213,31 @@ function SetupContent() {
                 disabled={loading}
                 className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Setting up...' : 'Set Up Account'}
+                {loading ? 'Creating Account...' : 'Create Account'}
               </button>
             </div>
           </form>
+
+          <p className="mt-6 text-center text-sm text-gray-500">
+            Already have an account?{' '}
+            <Link href="/managers/login" className="font-semibold text-indigo-600 hover:text-indigo-500">
+              Sign in
+            </Link>
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-export default function KioskSetupPage() {
+export default function ManagerSignupPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
       </div>
     }>
-      <SetupContent />
+      <SignupContent />
     </Suspense>
   );
 }
