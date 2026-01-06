@@ -1034,9 +1034,18 @@ export default function CustomizeCardPage() {
       return;
     }
     
-    console.log('💳 Opening payment modal for send e-card:', cardData.id);
+    // Use real saved design ID if we have it (for templates that were saved in background)
+    const actualCardId = realSavedDesignId || cardData.id;
+    
+    // If still in template mode without real ID, can't send yet
+    if (isTemplateMode && !realSavedDesignId) {
+      alert("Your card is still being prepared. Please wait a moment and try again.");
+      return;
+    }
+    
+    console.log('💳 Opening payment modal for send e-card:', actualCardId);
     setPendingAction({
-      card: { id: cardData.id, name: cardData.name },
+      card: { id: actualCardId, name: cardData.name },
       action: 'send'
     });
     setPaymentModalOpen(true);
@@ -1062,6 +1071,9 @@ export default function CustomizeCardPage() {
       throw new Error("Please sign in to send e-cards");
     }
 
+    // Use real saved design ID if we have it (for templates that were saved in background)
+    const actualCardId = realSavedDesignId || cardData.id;
+
     setIsSendingEmail(true);
 
     try {
@@ -1072,7 +1084,7 @@ export default function CustomizeCardPage() {
         },
         credentials: "include",
         body: JSON.stringify({
-          cardId: cardData.id,
+          cardId: actualCardId,
           cardName: cardData.name,
           recipientEmail: email,
           message: message,
@@ -1106,9 +1118,18 @@ export default function CustomizeCardPage() {
       return;
     }
     
-    console.log('💳 Opening payment modal for print:', cardData.id);
+    // Use real saved design ID if we have it (for templates that were saved in background)
+    const actualCardId = realSavedDesignId || cardData.id;
+    
+    // If still in template mode without real ID, can't print yet
+    if (isTemplateMode && !realSavedDesignId) {
+      alert("Your card is still being prepared. Please wait a moment and try again.");
+      return;
+    }
+    
+    console.log('💳 Opening payment modal for print:', actualCardId);
     setPendingAction({
-      card: { id: cardData.id, name: cardData.name },
+      card: { id: actualCardId, name: cardData.name },
       action: 'print'
     });
     setPaymentModalOpen(true);

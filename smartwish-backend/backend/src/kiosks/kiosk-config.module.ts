@@ -24,14 +24,18 @@ import { User } from '../user/user.entity';
     TypeOrmModule.forFeature([KioskConfig, KioskManager, KioskPrintLog, User]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '24h'),
-          issuer: 'smartwish-app',
-          audience: 'smartwish-users',
-        },
-      }),
+      useFactory: async (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET') || 'your-secret-key';
+        console.log('[KioskConfigModule] JWT Secret configured:', secret ? 'Yes' : 'No (using default)');
+        return {
+          secret,
+          signOptions: {
+            expiresIn: configService.get<string>('JWT_EXPIRES_IN', '24h'),
+            issuer: 'smartwish-app',
+            audience: 'smartwish-users',
+          },
+        };
+      },
       inject: [ConfigService],
     }),
   ],
