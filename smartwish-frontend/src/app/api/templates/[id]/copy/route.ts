@@ -180,7 +180,7 @@ export async function POST(
       category: categoryName,
       categoryId: categoryId, // Use camelCase to match SavedDesign interface
       categoryName: categoryName, // Use camelCase to match SavedDesign interface
-      price: template.price || 1.99, // ✅ FIX: Copy price from template (default to $1.99 if missing)
+      price: body.price || template.price || template.priceValue || 1.99, // ✅ FIX: Copy price from request body, template, or default
       designData: {
         templateKey: template.slug || template.id,
         // Create pages from final images (edited or template)

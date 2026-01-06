@@ -370,15 +370,22 @@ function TemplatesPageContent() {
       // Start background save (fire and forget)
       console.log("🎨 Starting background copy to saved designs...");
       
+      // Get price from product (formatted string like "$2.99") or metadata
+      const priceValue = product.metadata?.priceValue 
+        || (typeof product.price === 'string' ? parseFloat(product.price.replace('$', '')) : product.price)
+        || 1.99;
+      
       const copyPayload = {
         title: product.name,
         categoryId: product.category_id || '1',
         categoryName: product.category_display_name || product.category_name || 'General',
+        price: priceValue, // ✅ Include price in copy payload
         templateMeta: product.metadata
           ? {
               ...product.metadata,
               id: product.id,
               title: product.metadata.title || product.name,
+              price: priceValue, // ✅ Also include in metadata
             }
           : undefined,
         fallbackImages: product.pages,
