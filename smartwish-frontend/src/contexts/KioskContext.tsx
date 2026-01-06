@@ -13,6 +13,8 @@ export interface KioskConfig {
     playlist: Array<{ url: string; duration?: number; weight?: number }>;
   };
   printerProfile: string;
+  printerName: string;
+  paperSize: string;
   [key: string]: unknown;
 }
 
@@ -52,6 +54,8 @@ const DEFAULT_CONFIG: KioskConfig = {
   micEnabled: true,
   ads: { playlist: [] },
   printerProfile: 'default',
+  printerName: 'HP OfficeJet Pro 9130e Series [HPIE4B65B]',
+  paperSize: 'letter',
 };
 
 // ==================== Context ====================
