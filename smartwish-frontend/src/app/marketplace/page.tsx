@@ -414,24 +414,25 @@ function MarketplaceContent() {
                 className="flex-1 min-w-0 rounded-2xl bg-transparent px-2 sm:px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
               />
 
-              {/* Voice Input Button */}
-              <button
-                type="button"
-                onClick={startVoiceSearch}
-                disabled={!micEnabled}
-                className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs transition-all ${isVoiceRecording
-                  ? 'bg-red-600 text-white hover:bg-red-500'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                aria-label="Voice search"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden="true">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
+              {/* Voice Input Button - hidden when micEnabled is false */}
+              {micEnabled && (
+                <button
+                  type="button"
+                  onClick={startVoiceSearch}
+                  className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs transition-all ${isVoiceRecording
+                    ? 'bg-red-600 text-white hover:bg-red-500'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  aria-label="Voice search"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden="true">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
 
               {/* Search Button */}
               <button

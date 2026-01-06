@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { CheckIcon, MicrophoneIcon } from './icons';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { useKioskConfig } from '@/hooks/useKioskConfig';
 
 interface FilterPanelProps {
   onApplyFilter: (prompt: string) => void;
@@ -15,6 +16,8 @@ interface FilterPanelProps {
 const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) => {
   const [selectedPresetPrompt, setSelectedPresetPrompt] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
+  const { config: kioskConfig } = useKioskConfig();
+  const micEnabled = kioskConfig?.micEnabled !== false;
 
   const { isRecording, isSupported, startRecording } = useVoiceInput({
     onResult: (transcript) => {
@@ -88,7 +91,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) =
             className="flex-1 min-w-0 bg-transparent placeholder-gray-400 text-gray-800 text-xs sm:text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
           />
-          {isSupported && (
+          {isSupported && micEnabled && (
             <button
               onClick={startRecording}
               disabled={isLoading || isRecording}

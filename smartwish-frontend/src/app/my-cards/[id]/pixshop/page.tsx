@@ -178,6 +178,7 @@ const Spinner = () => (
 import FilterPanel from '../../../../components/pixshop/FilterPanel';
 import AdjustmentPanel from '../../../../components/pixshop/AdjustmentPanel';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { useKioskConfig } from '@/hooks/useKioskConfig';
 
 // Icons
 const UndoIcon = ({ className }: { className?: string }) => (
@@ -346,6 +347,10 @@ const PixshopPage: React.FC = () => {
   const [hasUserInteracted, setHasUserInteracted] = useState<boolean>(false);
   const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Kiosk config for mic enabled check
+  const { config: kioskConfig } = useKioskConfig();
+  const micEnabled = kioskConfig?.micEnabled !== false;
 
   // Voice input for retouch tab
   const { isRecording, isSupported, startRecording } = useVoiceInput({
@@ -1748,7 +1753,7 @@ const PixshopPage: React.FC = () => {
                 className="flex-1 min-w-0 bg-transparent placeholder-gray-400 text-gray-800 text-xs sm:text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isLoading || !editHotspot}
               />
-              {isSupported && (
+              {isSupported && micEnabled && (
                 <button
                   onClick={startRecording}
                   disabled={isLoading || !editHotspot || isRecording}
