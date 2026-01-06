@@ -836,6 +836,8 @@ export class KioskConfigService {
    * - Transaction fee = $0.50 + 3% of sale price
    * - Net profit = Sale price - Transaction fee
    * - Store share = revenueSharePercent * Net profit
+   * 
+   * OPTIMIZED: Uses consolidated queries to reduce database calls
    */
   async getManagerPrintStats(managerId: string, days: number = 30) {
     const assignments = await this.kioskManagerRepo.find({
@@ -871,39 +873,49 @@ export class KioskConfigService {
       kioskShareMap.set(a.kioskId, config.revenueSharePercent ?? 30);
     }
 
-    // Total counts
-    const totalPrints = await this.printLogRepo
+    // OPTIMIZED: Single query to get all counts by status
+    const statusCounts = await this.printLogRepo
       .createQueryBuilder('log')
+      .select('log.status', 'status')
+      .addSelect('COUNT(*)', 'count')
       .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
       .andWhere('log.created_at >= :startDate', { startDate })
-      .getCount();
+      .groupBy('log.status')
+      .getRawMany();
 
-    const completedPrints = await this.printLogRepo
-      .createQueryBuilder('log')
-      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
-      .andWhere('log.status = :status', { status: PrintStatus.COMPLETED })
-      .andWhere('log.created_at >= :startDate', { startDate })
-      .getCount();
+    // Parse counts from single query result
+    let totalPrints = 0;
+    let completedPrints = 0;
+    let failedPrints = 0;
+    for (const row of statusCounts) {
+      const count = parseInt(row.count) || 0;
+      totalPrints += count;
+      if (row.status === PrintStatus.COMPLETED) completedPrints = count;
+      if (row.status === PrintStatus.FAILED) failedPrints = count;
+    }
 
-    const failedPrints = await this.printLogRepo
-      .createQueryBuilder('log')
-      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
-      .andWhere('log.status = :status', { status: PrintStatus.FAILED })
-      .andWhere('log.created_at >= :startDate', { startDate })
-      .getCount();
-
-    // Prints by kiosk (with count)
-    const printsByKiosk = await this.printLogRepo
+    // OPTIMIZED: Combined query for prints by kiosk with sales data
+    const printsByKioskWithSales = await this.printLogRepo
       .createQueryBuilder('log')
       .select('log.kiosk_id', 'kioskId')
       .addSelect('kiosk.name', 'kioskName')
       .addSelect('COUNT(*)', 'count')
+      .addSelect('SUM(CASE WHEN log.status = :completed THEN log.price * log.copies ELSE 0 END)', 'totalSales')
+      .addSelect('SUM(CASE WHEN log.status = :completed THEN 1 ELSE 0 END)', 'completedCount')
       .leftJoin('log.kiosk', 'kiosk')
       .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
       .andWhere('log.created_at >= :startDate', { startDate })
       .groupBy('log.kiosk_id')
       .addGroupBy('kiosk.name')
+      .setParameter('completed', PrintStatus.COMPLETED)
       .getRawMany();
+
+    // Extract printsByKiosk from combined result
+    const printsByKiosk = printsByKioskWithSales.map(row => ({
+      kioskId: row.kioskId,
+      kioskName: row.kioskName,
+      count: row.count,
+    }));
 
     // Prints by product type
     const printsByProductType = await this.printLogRepo
@@ -925,30 +937,15 @@ export class KioskConfigService {
       .getMany();
 
     // ==================== Revenue Calculations ====================
-    // Get completed prints with prices for revenue calculation
-    const completedLogsWithPrices = await this.printLogRepo
-      .createQueryBuilder('log')
-      .select('log.kiosk_id', 'kioskId')
-      .addSelect('kiosk.name', 'kioskName')
-      .addSelect('COALESCE(SUM(log.price * log.copies), 0)', 'totalSales')
-      .addSelect('COUNT(*)', 'printCount')
-      .leftJoin('log.kiosk', 'kiosk')
-      .where('log.kiosk_id IN (:...kioskIds)', { kioskIds })
-      .andWhere('log.status = :status', { status: PrintStatus.COMPLETED })
-      .andWhere('log.created_at >= :startDate', { startDate })
-      .groupBy('log.kiosk_id')
-      .addGroupBy('kiosk.name')
-      .getRawMany();
-
-    // Calculate revenue breakdown by kiosk
+    // OPTIMIZED: Use the combined printsByKioskWithSales data instead of separate query
     let totalSales = 0;
     let transactionFees = 0;
     let netProfit = 0;
     let storeOwnerShare = 0;
 
-    const revenueByKiosk = completedLogsWithPrices.map(row => {
+    const revenueByKiosk = printsByKioskWithSales.map(row => {
       const sales = parseFloat(row.totalSales) || 0;
-      const printCount = parseInt(row.printCount) || 0;
+      const printCount = parseInt(row.completedCount) || 0;
       // Transaction fee: $0.50 + 3% per print
       const fees = (0.50 * printCount) + (sales * 0.03);
       const profit = sales - fees;
