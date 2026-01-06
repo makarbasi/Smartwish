@@ -16,6 +16,9 @@ interface UseKioskInactivityOptions {
 const MOUSE_MOVE_THROTTLE = 5000; // milliseconds
 const TOUCH_MOVE_THROTTLE = 5000; // milliseconds
 
+// Pages where screen saver should never appear
+const EXCLUDED_PATHS = ['/admin', '/kiosk/setup'];
+
 export function useKioskInactivity({
     screenSaverTimeout = 30000, // 30 seconds
     resetTimeout = 60000, // 60 seconds (1 minute)
@@ -24,6 +27,10 @@ export function useKioskInactivity({
     const { isKiosk } = useDeviceMode();
     const pathname = usePathname();
     const { hideKeyboard } = useVirtualKeyboard();
+
+    // Disable screen saver on admin pages and setup pages
+    const isExcludedPath = EXCLUDED_PATHS.some(path => pathname.startsWith(path));
+    const effectiveEnabled = enabled && !isExcludedPath;
 
     const [showScreenSaver, setShowScreenSaver] = useState(false);
     const [shouldResetOnExit, setShouldResetOnExit] = useState(false); // Flag for 60s timeout
@@ -47,7 +54,7 @@ export function useKioskInactivity({
 
     // Reset activity timers
     const resetActivity = useCallback(() => {
-        if (!isKiosk || !enabled) return;
+        if (!isKiosk || !effectiveEnabled) return;
 
         lastActivityRef.current = Date.now();
         clearTimers();
@@ -65,7 +72,7 @@ export function useKioskInactivity({
             // Just set the flag - don't navigate yet
             setShouldResetOnExit(true);
         }, resetTimeout);
-    }, [isKiosk, enabled, clearTimers, screenSaverTimeout, resetTimeout, hideKeyboard]);
+    }, [isKiosk, effectiveEnabled, clearTimers, screenSaverTimeout, resetTimeout, hideKeyboard]);
 
     // Exit screen saver and reset timers
     const exitScreenSaver = useCallback(() => {
@@ -144,7 +151,7 @@ export function useKioskInactivity({
 
     // Start timers on initial mount only
     useEffect(() => {
-        if (!isKiosk || !enabled) {
+        if (!isKiosk || !effectiveEnabled) {
             clearTimers();
             setShowScreenSaver(false);
             return;
@@ -157,11 +164,11 @@ export function useKioskInactivity({
             clearTimers();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isKiosk, enabled]); // Only run on mount or when kiosk mode changes
+    }, [isKiosk, effectiveEnabled]); // Only run on mount or when kiosk mode changes
 
     // Set up activity listeners
     useEffect(() => {
-        if (!isKiosk || !enabled) {
+        if (!isKiosk || !effectiveEnabled) {
             return;
         }
 
@@ -191,17 +198,17 @@ export function useKioskInactivity({
                 window.removeEventListener(event, activityHandler);
             });
         };
-    }, [isKiosk, enabled, handleActivity]);
+    }, [isKiosk, effectiveEnabled, handleActivity]);
 
     // Reset timers when pathname changes (navigation)
     useEffect(() => {
-        if (isKiosk && enabled) {
+        if (isKiosk && effectiveEnabled) {
             console.log("🖥️ [KioskInactivity] Page changed, resetting activity");
             setShowScreenSaver(false);
             setShouldResetOnExit(false);
             resetActivity();
         }
-    }, [pathname, isKiosk, enabled, resetActivity]);
+    }, [pathname, isKiosk, effectiveEnabled, resetActivity]);
 
     return {
         showScreenSaver,
