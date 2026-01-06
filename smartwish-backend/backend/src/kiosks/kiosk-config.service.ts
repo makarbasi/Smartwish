@@ -8,7 +8,7 @@ import * as nodemailer from 'nodemailer';
 import * as bcrypt from 'bcrypt';
 import { KioskConfig } from './kiosk-config.entity';
 import { KioskManager } from './kiosk-manager.entity';
-import { KioskPrintLog, PrintStatus } from './kiosk-print-log.entity';
+import { KioskPrintLog, PrintStatus, RefundStatus } from './kiosk-print-log.entity';
 import { User, UserRole, UserStatus, OAuthProvider } from '../user/user.entity';
 import { CreateKioskConfigDto } from './dto/create-kiosk-config.dto';
 import { UpdateKioskConfigDto } from './dto/update-kiosk-config.dto';
@@ -375,6 +375,8 @@ export class KioskConfigService {
    * Manager login
    */
   async managerLogin(email: string, password: string) {
+    console.log('[managerLogin] Attempting login for:', email.toLowerCase());
+    
     // Find user by email
     const user = await this.userRepo
       .createQueryBuilder('user')
@@ -384,19 +386,29 @@ export class KioskConfigService {
       .getOne();
 
     if (!user) {
+      // Debug: check if user exists with different role
+      const anyUser = await this.userRepo.findOne({ 
+        where: { email: email.toLowerCase() } 
+      });
+      console.log('[managerLogin] User not found with MANAGER role. Any user with this email?', anyUser ? `Yes, role: ${anyUser.role}` : 'No');
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    console.log('[managerLogin] Found user:', { id: user.id, status: user.status, hasPassword: !!user.password });
+
     if (user.status !== UserStatus.ACTIVE) {
+      console.log('[managerLogin] User status is not active:', user.status);
       throw new UnauthorizedException('Account is not active. Please complete your account setup first.');
     }
 
     if (!user.password) {
+      console.log('[managerLogin] User has no password set');
       throw new UnauthorizedException('Password not set. Please complete your account setup.');
     }
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
+    console.log('[managerLogin] Password validation result:', isPasswordValid);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -612,7 +624,15 @@ export class KioskConfigService {
     productType?: string;
     productId?: string;
     productName?: string;
+    pdfUrl?: string;
     price?: number;
+    stripePaymentIntentId?: string;
+    stripeChargeId?: string;
+    tilloOrderId?: string;
+    tilloTransactionRef?: string;
+    giftCardBrand?: string;
+    giftCardAmount?: number;
+    giftCardCode?: string;
     paperType?: string;
     paperSize?: string;
     trayNumber?: number;
@@ -630,7 +650,15 @@ export class KioskConfigService {
       productType: data.productType || 'greeting-card',
       productId: data.productId,
       productName: data.productName,
+      pdfUrl: data.pdfUrl,
       price: data.price || 0,
+      stripePaymentIntentId: data.stripePaymentIntentId,
+      stripeChargeId: data.stripeChargeId,
+      tilloOrderId: data.tilloOrderId,
+      tilloTransactionRef: data.tilloTransactionRef,
+      giftCardBrand: data.giftCardBrand,
+      giftCardAmount: data.giftCardAmount,
+      giftCardCode: data.giftCardCode,
       paperType: data.paperType,
       paperSize: data.paperSize,
       trayNumber: data.trayNumber,
@@ -643,12 +671,13 @@ export class KioskConfigService {
   }
 
   /**
-   * Update print log status
+   * Update print log status (and optionally pdfUrl)
    */
   async updatePrintLogStatus(
     logId: string,
     status: PrintStatus,
     errorMessage?: string,
+    pdfUrl?: string,
   ): Promise<KioskPrintLog> {
     const log = await this.printLogRepo.findOne({ where: { id: logId } });
     if (!log) {
@@ -664,7 +693,23 @@ export class KioskConfigService {
     if (errorMessage) {
       log.errorMessage = errorMessage;
     }
+    if (pdfUrl) {
+      log.pdfUrl = pdfUrl;
+    }
 
+    return this.printLogRepo.save(log);
+  }
+
+  /**
+   * Update print log with PDF URL (for reprint functionality)
+   */
+  async updatePrintLogPdfUrl(logId: string, pdfUrl: string): Promise<KioskPrintLog> {
+    const log = await this.printLogRepo.findOne({ where: { id: logId } });
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    log.pdfUrl = pdfUrl;
     return this.printLogRepo.save(log);
   }
 
@@ -941,5 +986,164 @@ export class KioskConfigService {
       storeOwnerShare: Math.round(storeOwnerShare * 100) / 100,
       revenueByKiosk,
     };
+  }
+
+  // ==================== Reprint & Refund Methods ====================
+
+  /**
+   * Get a single print log by ID (with kiosk info)
+   */
+  async getPrintLogById(logId: string): Promise<KioskPrintLog> {
+    const log = await this.printLogRepo.findOne({
+      where: { id: logId },
+      relations: ['kiosk'],
+    });
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+    return log;
+  }
+
+  /**
+   * Reprint a print job (manager action)
+   * Returns the print log with updated reprint info
+   */
+  async reprintJob(
+    logId: string,
+    managerId: string,
+  ): Promise<{ printLog: KioskPrintLog; reprintJob: any }> {
+    const log = await this.printLogRepo.findOne({
+      where: { id: logId },
+      relations: ['kiosk'],
+    });
+
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    if (!log.pdfUrl) {
+      throw new BadRequestException('Cannot reprint: No PDF stored for this print job');
+    }
+
+    // Check reprint limit (max 3 reprints)
+    if (log.reprintCount >= 3) {
+      throw new BadRequestException('Maximum reprint limit (3) reached for this job');
+    }
+
+    // Update reprint tracking
+    log.reprintCount = (log.reprintCount || 0) + 1;
+    log.lastReprintedAt = new Date();
+    log.lastReprintedBy = managerId;
+
+    await this.printLogRepo.save(log);
+
+    // Create the reprint job data (to be sent to printer)
+    const reprintJob = {
+      id: `reprint-${log.id}-${log.reprintCount}`,
+      originalJobId: log.id,
+      pdfUrl: log.pdfUrl,
+      kioskId: log.kioskId,
+      kioskName: log.kiosk?.name,
+      printerName: (log.kiosk?.config as any)?.printerName || 'default',
+      paperType: log.paperType,
+      paperSize: log.paperSize,
+      trayNumber: log.trayNumber,
+      reprintNumber: log.reprintCount,
+      initiatedBy: managerId,
+      createdAt: new Date().toISOString(),
+    };
+
+    return { printLog: log, reprintJob };
+  }
+
+  /**
+   * Process a refund for a print job (admin action)
+   */
+  async processRefund(
+    logId: string,
+    adminId: string,
+    refundType: 'partial' | 'full',
+    reason: string,
+  ): Promise<{ printLog: KioskPrintLog; refundResult: any }> {
+    const log = await this.printLogRepo.findOne({
+      where: { id: logId },
+      relations: ['kiosk'],
+    });
+
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    if (log.refundStatus) {
+      throw new BadRequestException(`This job has already been refunded (${log.refundStatus})`);
+    }
+
+    if (!log.stripePaymentIntentId && !log.stripeChargeId) {
+      throw new BadRequestException('Cannot refund: No Stripe payment info found for this job');
+    }
+
+    // Calculate refund amount
+    let refundAmount = 0;
+    if (refundType === 'full') {
+      refundAmount = parseFloat(log.price?.toString()) || 0;
+    } else {
+      // Partial refund: refund everything except gift card
+      const totalPrice = parseFloat(log.price?.toString()) || 0;
+      const giftCardAmount = parseFloat(log.giftCardAmount?.toString()) || 0;
+      refundAmount = totalPrice - giftCardAmount;
+    }
+
+    // Note: Actual Stripe refund would be called here
+    // For now, we just record the refund info
+    // In production, you'd call: await stripe.refunds.create({ ... })
+
+    const refundResult = {
+      success: true,
+      refundId: `refund_${Date.now()}`, // Placeholder - would be Stripe refund ID
+      amount: refundAmount,
+      stripePaymentIntentId: log.stripePaymentIntentId,
+      stripeChargeId: log.stripeChargeId,
+      tilloOrderId: log.tilloOrderId,
+      giftCardNote: log.tilloOrderId 
+        ? 'Gift card was already issued. Contact Tillo support with order ID to void if needed.' 
+        : null,
+    };
+
+    // Update refund tracking
+    log.refundStatus = refundType as any;
+    log.refundAmount = refundAmount;
+    log.refundedAt = new Date();
+    log.refundedBy = adminId;
+    log.refundReason = reason;
+
+    await this.printLogRepo.save(log);
+
+    return { printLog: log, refundResult };
+  }
+
+  /**
+   * Get print log details for manager (verify they have access)
+   */
+  async getManagerPrintLogById(logId: string, managerId: string): Promise<KioskPrintLog> {
+    // First check if manager has access to this kiosk
+    const log = await this.printLogRepo.findOne({
+      where: { id: logId },
+      relations: ['kiosk'],
+    });
+
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    // Verify manager has access to this kiosk
+    const assignment = await this.kioskManagerRepo.findOne({
+      where: { kioskId: log.kioskId, userId: managerId },
+    });
+
+    if (!assignment) {
+      throw new UnauthorizedException('You do not have access to this print job');
+    }
+
+    return log;
   }
 }

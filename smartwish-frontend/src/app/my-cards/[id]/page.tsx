@@ -1264,28 +1264,53 @@ export default function CustomizeCardPage() {
     }
   };
 
-  // Helper function to log print job to the database (for manager tracking)
+  // Helper function to log print job to the database (for manager tracking and reprints)
   const logPrintJob = async (data: {
     kioskId: string;
     productType: string;
     productId?: string;
     productName?: string;
+    pdfUrl?: string;
     price?: number;
+    stripePaymentIntentId?: string;
+    stripeChargeId?: string;
+    tilloOrderId?: string;
+    tilloTransactionRef?: string;
+    giftCardBrand?: string;
+    giftCardAmount?: number;
+    giftCardCode?: string;
     paperType?: string;
     paperSize?: string;
     trayNumber?: number | null;
     copies?: number;
   }) => {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      console.log('📊 Print job logged for tracking');
+      const result = await response.json();
+      console.log('📊 Print job logged for tracking:', result.id);
+      return result;
     } catch (err) {
       console.warn('Failed to log print job:', err);
       // Don't throw - logging is optional, print should still proceed
+      return null;
+    }
+  };
+
+  // Helper to update print log status (and optionally pdfUrl)
+  const updatePrintLogStatus = async (logId: string, status: 'processing' | 'completed' | 'failed', errorMessage?: string, pdfUrl?: string) => {
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs/${logId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, errorMessage, pdfUrl }),
+      });
+      console.log(`📊 Print log status updated to: ${status}${pdfUrl ? ' (with PDF URL)' : ''}`);
+    } catch (err) {
+      console.warn('Failed to update print log status:', err);
     }
   };
 
@@ -1306,6 +1331,8 @@ export default function CustomizeCardPage() {
     console.log(`🖨️ Auto-printing to: ${printerName} (Direct backend print - NO popup)`);
     console.log(`📥 Paper type: ${paperType}, Tray: ${trayNumber || 'Auto'}, Size: ${paperSize}`);
 
+    let printLogId: string | null = null;
+
     try {
       // Log the print job for manager tracking (if kiosk is activated)
       if (kioskId) {
@@ -1318,7 +1345,7 @@ export default function CustomizeCardPage() {
         };
         const price = defaultPrices[paperType] || 5.00;
         
-        await logPrintJob({
+        const logResult = await logPrintJob({
           kioskId,
           productType: paperType,
           productId: cardData?.id,
@@ -1329,6 +1356,12 @@ export default function CustomizeCardPage() {
           trayNumber,
           copies: 1,
         });
+        printLogId = logResult?.id || null;
+      }
+
+      // Update status to processing
+      if (printLogId) {
+        await updatePrintLogStatus(printLogId, 'processing');
       }
 
       // Convert image URLs to base64
@@ -1364,10 +1397,25 @@ export default function CustomizeCardPage() {
 
       const result = await response.json();
       console.log('✅ Print job sent successfully!', result);
+      
+      // Update status to completed (include PDF URL if available)
+      if (printLogId) {
+        if (result.pdfUrl) {
+          console.log('📄 PDF URL received:', result.pdfUrl);
+        }
+        await updatePrintLogStatus(printLogId, 'completed', undefined, result.pdfUrl);
+      }
+      
       alert(`Print job sent to ${printerName}${trayNumber ? ` (Tray ${trayNumber})` : ''}!\nCheck your printer for output.`);
 
     } catch (err) {
       console.error('Auto-print error:', err);
+      
+      // Update status to failed
+      if (printLogId) {
+        await updatePrintLogStatus(printLogId, 'failed', err instanceof Error ? err.message : 'Unknown error');
+      }
+      
       alert(`Failed to print: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };

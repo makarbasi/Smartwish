@@ -510,7 +510,20 @@ export class AppController {
             if (fs.existsSync(compositeSide2Path)) fs.unlinkSync(compositeSide2Path);
           } catch { /* ignore */ }
 
-          pdfUrl = `${baseUrl}/downloads/print-jpegs/${outputPdf}`;
+          // Upload PDF to Supabase for permanent storage (reprints)
+          try {
+            const pdfBuffer = fs.readFileSync(pdfPath);
+            const supabasePdfPath = `print-pdfs/${outputPdf}`;
+            pdfUrl = await this.storageService.uploadBuffer(pdfBuffer, supabasePdfPath, 'application/pdf');
+            console.log(`✅ PDF uploaded to Supabase: ${pdfUrl}`);
+            // Clean up local PDF after upload
+            fs.unlinkSync(pdfPath);
+          } catch (uploadErr) {
+            // Fallback to local URL if Supabase upload fails
+            pdfUrl = `${baseUrl}/downloads/print-jpegs/${outputPdf}`;
+            console.warn(`⚠️ Supabase upload failed, using local URL: ${pdfUrl}`);
+          }
+          
           console.log(`✅ Server-generated PDF ready for local agent: ${pdfUrl}`);
         } catch (pdfErr) {
           console.warn('⚠️ Could not generate server-side PDF for print job. Falling back to image-based job.', pdfErr?.message || pdfErr);
@@ -545,10 +558,12 @@ export class AppController {
           status: 'pending',
           note: 'Job queued for local print agent. Make sure local-print-agent.js is running on your PC.',
           savedImages: savedPaths.length,
+          pdfUrl: pdfUrl || null, // Include PDF URL for reprint functionality
         });
       } else {
         // Local mode: Try direct printing (only works on Windows with printer connected)
         console.log('🏠 Local environment detected - attempting direct print');
+        
         try {
           const printCardPath = path.join(__dirname, '../../../../print-card.js');
           const smartwishBackendRoot = path.join(__dirname, '../../../..');
@@ -562,7 +577,23 @@ export class AppController {
 
           process.chdir(originalCwd);
 
-          // Clean up files after print
+          // Upload the generated PDF to Supabase for reprint capability
+          let pdfUrl: string | null = null;
+          try {
+            const generatedPdfPath = path.join(smartwishBackendRoot, 'greeting_card.pdf');
+            if (fs.existsSync(generatedPdfPath)) {
+              const pdfBuffer = fs.readFileSync(generatedPdfPath);
+              const pdfFilePath = `print-pdfs/${jobId}_greeting_card.pdf`;
+              pdfUrl = await this.storageService.uploadBuffer(pdfBuffer, pdfFilePath, 'application/pdf');
+              console.log(`✅ PDF uploaded to Supabase: ${pdfUrl}`);
+            } else {
+              console.warn('⚠️ Generated PDF not found at:', generatedPdfPath);
+            }
+          } catch (uploadErr) {
+            console.warn('⚠️ Failed to upload PDF to Supabase:', uploadErr?.message || uploadErr);
+          }
+
+          // Clean up source images after print
           setTimeout(() => {
             try {
               for (const filePath of savedPaths) {
@@ -578,6 +609,7 @@ export class AppController {
           res.json({
             message: 'Print job sent successfully',
             savedImages: savedPaths.length,
+            pdfUrl: pdfUrl, // Supabase URL for reprint functionality
           });
         } catch (importError) {
           console.error('Error in direct printing:', importError);

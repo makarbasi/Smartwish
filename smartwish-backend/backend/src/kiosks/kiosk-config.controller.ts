@@ -274,7 +274,15 @@ export class KioskPrintLogController {
       productType?: string;
       productId?: string;
       productName?: string;
+      pdfUrl?: string;
       price?: number;
+      stripePaymentIntentId?: string;
+      stripeChargeId?: string;
+      tilloOrderId?: string;
+      tilloTransactionRef?: string;
+      giftCardBrand?: string;
+      giftCardAmount?: number;
+      giftCardCode?: string;
       paperType?: string;
       paperSize?: string;
       trayNumber?: number;
@@ -289,18 +297,20 @@ export class KioskPrintLogController {
   }
 
   /**
-   * Update print log status (called by print agent)
+   * Update print log status (called by print agent or frontend)
+   * Also accepts pdfUrl to save for reprint functionality
    */
   @Public()
   @Put(':logId/status')
   async updatePrintLogStatus(
     @Param('logId') logId: string,
-    @Body() body: { status: string; errorMessage?: string },
+    @Body() body: { status: string; errorMessage?: string; pdfUrl?: string },
   ) {
     return this.kioskService.updatePrintLogStatus(
       logId,
       body.status as any,
       body.errorMessage,
+      body.pdfUrl,
     );
   }
 }
@@ -350,5 +360,79 @@ export class ManagerPrintLogController {
       req.user.id,
       days ? parseInt(days) : 30,
     );
+  }
+
+  /**
+   * Get a single print log by ID (manager must have access)
+   */
+  @Get(':logId')
+  async getPrintLog(
+    @Param('logId') logId: string,
+    @Request() req: any,
+  ) {
+    return this.kioskService.getManagerPrintLogById(logId, req.user.id);
+  }
+
+  /**
+   * Reprint a print job (manager action)
+   * Sends the stored PDF back to the printer
+   */
+  @Post(':logId/reprint')
+  async reprintJob(
+    @Param('logId') logId: string,
+    @Request() req: any,
+  ) {
+    // First verify manager has access
+    await this.kioskService.getManagerPrintLogById(logId, req.user.id);
+    // Then process reprint
+    return this.kioskService.reprintJob(logId, req.user.id);
+  }
+}
+
+/**
+ * Admin endpoints for managing print logs (refunds, etc.)
+ */
+@Controller('admin/print-logs')
+@UseGuards(JwtAuthGuard)
+export class AdminPrintLogController {
+  constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * Get a single print log by ID (admin access)
+   */
+  @Get(':logId')
+  async getPrintLog(@Param('logId') logId: string) {
+    return this.kioskService.getPrintLogById(logId);
+  }
+
+  /**
+   * Process a refund for a print job (admin only)
+   */
+  @Post(':logId/refund')
+  async refundJob(
+    @Param('logId') logId: string,
+    @Body() body: { refundType: 'partial' | 'full'; reason: string },
+    @Request() req: any,
+  ) {
+    if (!body.refundType || !body.reason) {
+      throw new BadRequestException('refundType and reason are required');
+    }
+    return this.kioskService.processRefund(
+      logId,
+      req.user.id,
+      body.refundType,
+      body.reason,
+    );
+  }
+
+  /**
+   * Admin can also trigger reprints
+   */
+  @Post(':logId/reprint')
+  async reprintJob(
+    @Param('logId') logId: string,
+    @Request() req: any,
+  ) {
+    return this.kioskService.reprintJob(logId, req.user.id);
   }
 }

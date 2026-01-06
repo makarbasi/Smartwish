@@ -363,8 +363,22 @@ CREATE TABLE IF NOT EXISTS kiosk_print_logs (
     product_id VARCHAR(255), -- ID of the card/design that was printed (if applicable)
     product_name VARCHAR(255), -- Name of the product for display
     
+    -- PDF Storage (for reprints)
+    pdf_url TEXT, -- URL to the PDF stored in Supabase Storage
+    
     -- Pricing / Revenue
     price DECIMAL(10, 2) DEFAULT 0.00, -- Sale price of the printed item
+    
+    -- Stripe Payment Info (for refunds)
+    stripe_payment_intent_id VARCHAR(255),
+    stripe_charge_id VARCHAR(255),
+    
+    -- Tillo Gift Card Info (if applicable)
+    tillo_order_id VARCHAR(255),
+    tillo_transaction_ref VARCHAR(255),
+    gift_card_brand VARCHAR(100),
+    gift_card_amount DECIMAL(10, 2),
+    gift_card_code VARCHAR(255), -- Store the actual code for reference
     
     -- Print details
     paper_type VARCHAR(50), -- 'greeting-card', 'sticker', 'photo', etc.
@@ -375,6 +389,18 @@ CREATE TABLE IF NOT EXISTS kiosk_print_logs (
     -- Status tracking
     status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed'
     error_message TEXT,
+    
+    -- Reprint tracking
+    reprint_count INTEGER DEFAULT 0,
+    last_reprinted_at TIMESTAMP WITH TIME ZONE,
+    last_reprinted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    
+    -- Refund tracking
+    refund_status VARCHAR(50), -- null, 'partial', 'full'
+    refund_amount DECIMAL(10, 2),
+    refunded_at TIMESTAMP WITH TIME ZONE,
+    refunded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    refund_reason TEXT,
     
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
