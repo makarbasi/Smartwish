@@ -116,6 +116,8 @@ function setStoredKioskId(id: string): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, id);
+    // Dispatch custom event to notify DeviceModeContext
+    window.dispatchEvent(new CustomEvent('kioskActivationChange', { detail: { activated: true, kioskId: id } }));
   } catch {
     console.error('Failed to store kiosk ID');
   }
@@ -126,6 +128,8 @@ function clearStoredKioskId(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(CONFIG_CACHE_KEY);
+    // Dispatch custom event to notify DeviceModeContext
+    window.dispatchEvent(new CustomEvent('kioskActivationChange', { detail: { activated: false, kioskId: null } }));
   } catch {
     console.error('Failed to clear kiosk ID');
   }
