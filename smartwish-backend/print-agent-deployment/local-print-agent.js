@@ -162,8 +162,11 @@ async function createPdf(pdfPath, side1Path, side2Path, config) {
   return pdfPath;
 }
 
-async function printPdf(pdfPath, printerName) {
+async function printPdf(pdfPath, printerName, trayNumber = null) {
   console.log(`  🖨️ Printing to: ${printerName}`);
+  if (trayNumber) {
+    console.log(`  📥 Using tray: ${trayNumber}`);
+  }
   console.log(`  📄 Settings: Letter, Landscape, Duplex (flip short edge), Color`);
 
   // Print options for pdf-to-printer (uses SumatraPDF on Windows)
@@ -179,6 +182,13 @@ async function printPdf(pdfPath, printerName) {
     monochrome: false,
   };
 
+  // Add tray selection if specified
+  // Note: Tray selection support depends on printer driver
+  // Common tray names: 'Tray 1', 'Tray 2', 'Auto', 'Manual Feed'
+  if (trayNumber) {
+    printOptions.paperSource = `Tray ${trayNumber}`;
+  }
+
   try {
     await print(pdfPath, printOptions);
     console.log('  ✅ Print job sent successfully (duplex: flip on short edge)!');
@@ -186,7 +196,11 @@ async function printPdf(pdfPath, printerName) {
     console.warn('  ⚠️ Print with duplex options failed:', err.message);
     console.warn('  📝 Trying basic print...');
     // Fallback: try basic print (duplex should be set in printer defaults)
-    await print(pdfPath, { printer: printerName });
+    const fallbackOptions = { printer: printerName };
+    if (trayNumber) {
+      fallbackOptions.paperSource = `Tray ${trayNumber}`;
+    }
+    await print(pdfPath, fallbackOptions);
     console.log('  ✅ Print job sent using printer defaults');
     console.log('');
     console.log('  ⚠️  If not printing two-sided, set duplex in Windows:');
@@ -203,6 +217,8 @@ async function printPdf(pdfPath, printerName) {
 async function processJob(job) {
   console.log(`\n📋 Processing job: ${job.id}`);
   console.log(`   Printer: ${job.printerName}`);
+  console.log(`   Paper Type: ${job.paperType || 'greeting-card'}`);
+  console.log(`   Tray: ${job.trayNumber || 'Auto'}`);
   console.log(`   Images: ${job.imagePaths?.length || 0}`);
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
@@ -250,9 +266,10 @@ async function processJob(job) {
     const pdfPath = path.join(jobDir, 'card.pdf');
     await createPdf(pdfPath, side1Path, side2Path, config);
 
-    // Print
+    // Print with tray selection
     const printerName = job.printerName || CONFIG.defaultPrinter;
-    await printPdf(pdfPath, printerName);
+    const trayNumber = job.trayNumber || null;
+    await printPdf(pdfPath, printerName, trayNumber);
 
     // Update job status on server
     await updateJobStatus(job.id, 'completed');

@@ -61,6 +61,8 @@ declare global {
     pdfUrl?: string;
     pdfData?: string;
     paperSize?: string;
+    paperType?: string;
+    trayNumber?: number | null;
     borderless?: boolean;
     borderlessPaperSize?: string;
     duplexSide?: 'duplex' | 'duplexshort' | 'duplexlong' | 'simplex';
@@ -422,7 +424,7 @@ export class AppController {
   @Post('print-pc')
   async printPC(@Req() req: Request, @Res() res: Response) {
     try {
-      const { images, printerName, paperSize } = req.body;
+      const { images, printerName, paperSize, paperType, trayNumber } = req.body;
       const flipbookDir = path.join(downloadsDir, 'flipbook');
       if (!fs.existsSync(flipbookDir)) {
         fs.mkdirSync(flipbookDir, { recursive: true });
@@ -440,7 +442,7 @@ export class AppController {
       const jobId = `job_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
 
       console.log(
-        `PC Print request received for ${images.length} images to printer: ${printerName}, paper size: ${selectedPaperSize}`,
+        `PC Print request received for ${images.length} images to printer: ${printerName}, paper size: ${selectedPaperSize}, paper type: ${paperType || 'greeting-card'}, tray: ${trayNumber || 'auto'}`,
       );
 
       // Save images with unique timestamped names
@@ -519,6 +521,8 @@ export class AppController {
           id: jobId,
           printerName,
           paperSize: selectedPaperSize,
+          paperType: paperType || 'greeting-card',
+          trayNumber: trayNumber || null,
           imagePaths: imageUrls,
           ...(pdfUrl ? { pdfUrl } : {}),
           status: 'pending',
@@ -554,7 +558,7 @@ export class AppController {
           process.chdir(smartwishBackendRoot);
 
           const printCardModule = require(printCardPath);
-          await printCardModule.main(printerName, selectedPaperSize, timestamp);
+          await printCardModule.main(printerName, selectedPaperSize, timestamp, trayNumber);
 
           process.chdir(originalCwd);
 

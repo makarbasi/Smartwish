@@ -38,6 +38,13 @@ type AvailableManager = {
   assignedKiosksCount: number;
 };
 
+type PrinterTray = {
+  trayNumber: number;
+  trayName: string;
+  paperType: string; // 'greeting-card' | 'sticker' | 'photo' | 'envelope' | 'label' | 'plain'
+  paperSize: string; // 'letter' | 'a4' | '4x6' | '5x7' | etc.
+};
+
 type KioskConfig = {
   theme?: string;
   featuredTemplateIds?: string[];
@@ -47,7 +54,7 @@ type KioskConfig = {
   };
   printerProfile?: string;
   printerName?: string;
-  paperSize?: string;
+  printerTrays?: PrinterTray[];
 };
 
 type Kiosk = {
@@ -63,6 +70,26 @@ type Kiosk = {
   updatedAt: string;
 };
 
+const PAPER_TYPES = [
+  { value: 'greeting-card', label: 'Greeting Card' },
+  { value: 'sticker', label: 'Sticker' },
+  { value: 'photo', label: 'Photo Paper' },
+  { value: 'envelope', label: 'Envelope' },
+  { value: 'label', label: 'Label' },
+  { value: 'plain', label: 'Plain Paper' },
+];
+
+const PAPER_SIZES = [
+  { value: 'letter', label: 'Letter (8.5" × 11")' },
+  { value: 'legal', label: 'Legal (8.5" × 14")' },
+  { value: 'a4', label: 'A4 (210mm × 297mm)' },
+  { value: 'a5', label: 'A5 (148mm × 210mm)' },
+  { value: '4x6', label: '4" × 6" (Photo)' },
+  { value: '5x7', label: '5" × 7" (Photo)' },
+  { value: '8x10', label: '8" × 10" (Photo)' },
+  { value: 'half-letter', label: 'Half Letter (5.5" × 8.5")' },
+];
+
 const DEFAULT_CONFIG: KioskConfig = {
   theme: "default",
   featuredTemplateIds: [],
@@ -70,7 +97,10 @@ const DEFAULT_CONFIG: KioskConfig = {
   ads: { playlist: [] },
   printerProfile: "default",
   printerName: "HP OfficeJet Pro 9130e Series [HPIE4B65B]",
-  paperSize: "letter",
+  printerTrays: [
+    { trayNumber: 1, trayName: "Tray 1", paperType: "greeting-card", paperSize: "letter" },
+    { trayNumber: 2, trayName: "Tray 2", paperType: "sticker", paperSize: "letter" },
+  ],
 };
 
 export default function KiosksAdminPage() {
@@ -489,7 +519,7 @@ export default function KiosksAdminPage() {
                     <div className="flex items-center gap-2 text-sm">
                       <DocumentIcon className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-600">
-                        Paper: {kiosk.config?.paperSize?.toUpperCase() || "Letter"}
+                        Trays: {kiosk.config?.printerTrays?.length || 0} configured
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -1070,34 +1100,6 @@ function KioskFormModal({
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Paper Size
-                      </label>
-                      <select
-                        value={formData.config.paperSize || "letter"}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            config: {
-                              ...formData.config,
-                              paperSize: e.target.value,
-                            },
-                          })
-                        }
-                        className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                      >
-                        <option value="letter">Letter (8.5&quot; × 11&quot;)</option>
-                        <option value="legal">Legal (8.5&quot; × 14&quot;)</option>
-                        <option value="tabloid">Tabloid (11&quot; × 17&quot;)</option>
-                        <option value="a4">A4 (210mm × 297mm)</option>
-                        <option value="a5">A5 (148mm × 210mm)</option>
-                        <option value="4x6">4&quot; × 6&quot; (Photo)</option>
-                        <option value="5x7">5&quot; × 7&quot; (Photo)</option>
-                        <option value="8x10">8&quot; × 10&quot; (Photo)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Featured Template IDs
                       </label>
                       <input
@@ -1121,6 +1123,141 @@ function KioskFormModal({
                       <p className="mt-1 text-xs text-gray-500">
                         Comma-separated list of template IDs to feature
                       </p>
+                    </div>
+
+                    {/* Printer Trays Configuration */}
+                    <div className="col-span-2 border-t pt-4 mt-2">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Printer Trays
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const trays = formData.config.printerTrays || [];
+                            const nextTrayNumber = trays.length > 0 
+                              ? Math.max(...trays.map(t => t.trayNumber)) + 1 
+                              : 1;
+                            setFormData({
+                              ...formData,
+                              config: {
+                                ...formData.config,
+                                printerTrays: [
+                                  ...trays,
+                                  { 
+                                    trayNumber: nextTrayNumber, 
+                                    trayName: `Tray ${nextTrayNumber}`, 
+                                    paperType: "plain", 
+                                    paperSize: "letter" 
+                                  },
+                                ],
+                              },
+                            });
+                          }}
+                          className="text-sm text-indigo-600 hover:text-indigo-500 font-medium"
+                        >
+                          + Add Tray
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Configure paper trays for different print jobs. The system will automatically select the correct tray based on paper type.
+                      </p>
+                      
+                      {(!formData.config.printerTrays || formData.config.printerTrays.length === 0) ? (
+                        <div className="text-center py-4 text-gray-500 text-sm border border-dashed border-gray-300 rounded-lg">
+                          No trays configured. Click &quot;+ Add Tray&quot; to add one.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {formData.config.printerTrays.map((tray, index) => (
+                            <div key={index} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium text-gray-700">
+                                  Tray {tray.trayNumber}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const trays = [...(formData.config.printerTrays || [])];
+                                    trays.splice(index, 1);
+                                    setFormData({
+                                      ...formData,
+                                      config: {
+                                        ...formData.config,
+                                        printerTrays: trays,
+                                      },
+                                    });
+                                  }}
+                                  className="text-red-600 hover:text-red-500 text-xs"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Tray Name</label>
+                                  <input
+                                    type="text"
+                                    value={tray.trayName}
+                                    onChange={(e) => {
+                                      const trays = [...(formData.config.printerTrays || [])];
+                                      trays[index] = { ...trays[index], trayName: e.target.value };
+                                      setFormData({
+                                        ...formData,
+                                        config: { ...formData.config, printerTrays: trays },
+                                      });
+                                    }}
+                                    className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    placeholder="e.g., Main Tray"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Paper Type</label>
+                                  <select
+                                    value={tray.paperType}
+                                    onChange={(e) => {
+                                      const trays = [...(formData.config.printerTrays || [])];
+                                      trays[index] = { ...trays[index], paperType: e.target.value };
+                                      setFormData({
+                                        ...formData,
+                                        config: { ...formData.config, printerTrays: trays },
+                                      });
+                                    }}
+                                    className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                  >
+                                    {PAPER_TYPES.map((pt) => (
+                                      <option key={pt.value} value={pt.value}>
+                                        {pt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Paper Size</label>
+                                  <select
+                                    value={tray.paperSize}
+                                    onChange={(e) => {
+                                      const trays = [...(formData.config.printerTrays || [])];
+                                      trays[index] = { ...trays[index], paperSize: e.target.value };
+                                      setFormData({
+                                        ...formData,
+                                        config: { ...formData.config, printerTrays: trays },
+                                      });
+                                    }}
+                                    className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                  >
+                                    {PAPER_SIZES.map((ps) => (
+                                      <option key={ps.value} value={ps.value}>
+                                        {ps.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
