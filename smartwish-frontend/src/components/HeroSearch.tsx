@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, FormEvent } from 'react'
 import useSWR from 'swr'
 import { VirtualInput } from '@/components/VirtualInput'
 import { useDeviceMode } from '@/contexts/DeviceModeContext'
+import { useKioskConfig } from '@/hooks/useKioskConfig'
 
 const quickActions = [
   'Design for me',
@@ -35,6 +36,8 @@ export default function HeroSearch(props: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const { isKiosk } = useDeviceMode()
+  const { config: kioskConfig } = useKioskConfig()
+  const micEnabled = kioskConfig?.micEnabled !== false
   const [q, setQ] = useState(props.initialQuery ?? '')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -186,6 +189,10 @@ export default function HeroSearch(props: Props) {
 
   const startVoice = () => {
     if (typeof window === 'undefined') return
+    if (!micEnabled) {
+      alert('Microphone is disabled on this kiosk.')
+      return
+    }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
@@ -273,7 +280,7 @@ export default function HeroSearch(props: Props) {
         <button
           type="button"
           onClick={startVoice}
-          disabled={recording}
+          disabled={recording || !micEnabled}
           aria-label={recording ? "Recording..." : "Voice search"}
           className={`flex-shrink-0 mr-1 sm:mr-2 grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${recording
             ? 'bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600 animate-pulse'

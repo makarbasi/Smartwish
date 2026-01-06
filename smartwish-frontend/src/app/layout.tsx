@@ -10,6 +10,7 @@ import { AuthModalProvider } from "@/contexts/AuthModalContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { VirtualKeyboardProvider } from "@/contexts/VirtualKeyboardContext";
 import { DeviceModeProvider } from "@/contexts/DeviceModeContext";
+import { KioskProvider } from "@/contexts/KioskContext";
 import VirtualKeyboard from "@/components/VirtualKeyboard";
 import DeviceModeLogger from "@/components/DeviceModeLogger";
 
@@ -56,18 +57,20 @@ export default function RootLayout({
           </Suspense>
           <DeviceModeProvider>
             <DeviceModeLogger />
-            <ToastProvider>
-              <AuthModalProvider>
-                <VirtualKeyboardProvider>
-                  <RequireAuthModal
-                    protectedPaths={["/contacts", "/my-cards", "/event"]}
-                  >
-                    <AppChrome>{children}</AppChrome>
-                  </RequireAuthModal>
-                  <VirtualKeyboard />
-                </VirtualKeyboardProvider>
-              </AuthModalProvider>
-            </ToastProvider>
+            <KioskProvider>
+              <ToastProvider>
+                <AuthModalProvider>
+                  <VirtualKeyboardProvider>
+                    <RequireAuthModal
+                      protectedPaths={["/contacts", "/my-cards", "/event"]}
+                    >
+                      <AppChrome>{children}</AppChrome>
+                    </RequireAuthModal>
+                    <VirtualKeyboard />
+                  </VirtualKeyboardProvider>
+                </AuthModalProvider>
+              </ToastProvider>
+            </KioskProvider>
           </DeviceModeProvider>
         </AuthProvider>
       </body>
