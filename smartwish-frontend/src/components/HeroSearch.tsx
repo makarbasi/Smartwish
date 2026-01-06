@@ -276,30 +276,32 @@ export default function HeroSearch(props: Props) {
           className="flex-1 min-w-0 rounded-2xl bg-transparent px-4 sm:px-6 py-3 sm:py-4 text-lg sm:text-xl text-gray-900 placeholder:text-gray-500 placeholder:font-medium focus:outline-none"
         />
 
-        {/* Voice Input Button */}
-        <button
-          type="button"
-          onClick={startVoice}
-          disabled={recording || !micEnabled}
-          aria-label={recording ? "Recording..." : "Voice search"}
-          className={`flex-shrink-0 mr-1 sm:mr-2 grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${recording
-            ? 'bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600 animate-pulse'
-            : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200 hover:scale-110 focus-visible:outline-indigo-600'
-            }`}
-        >
-          {recording ? (
-            <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden>
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden>
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          )}
-        </button>
+        {/* Voice Input Button - hidden when micEnabled is false */}
+        {micEnabled && (
+          <button
+            type="button"
+            onClick={startVoice}
+            disabled={recording}
+            aria-label={recording ? "Recording..." : "Voice search"}
+            className={`flex-shrink-0 mr-1 sm:mr-2 grid h-12 w-12 sm:h-14 sm:w-14 place-items-center rounded-full shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${recording
+              ? 'bg-red-600 text-white hover:bg-red-500 focus-visible:outline-red-600 animate-pulse'
+              : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200 hover:scale-110 focus-visible:outline-indigo-600'
+              }`}
+          >
+            {recording ? (
+              <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden>
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden>
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
+        )}
 
         <button
           type="submit"
