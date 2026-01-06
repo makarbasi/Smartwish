@@ -12,6 +12,8 @@ import {
   FunnelIcon,
   CurrencyDollarIcon,
   BanknotesIcon,
+  DocumentDuplicateIcon,
+  GiftIcon,
 } from "@heroicons/react/24/outline";
 
 interface PrintLog {
@@ -24,12 +26,19 @@ interface PrintLog {
   productType: string;
   productId?: string;
   productName?: string;
+  pdfUrl?: string;
+  price?: number;
   paperType?: string;
   paperSize?: string;
   trayNumber?: number;
   copies: number;
   status: string;
   errorMessage?: string;
+  reprintCount?: number;
+  lastReprintedAt?: string;
+  refundStatus?: string;
+  giftCardBrand?: string;
+  giftCardAmount?: number;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
@@ -75,6 +84,9 @@ export default function ManagerDashboardPage() {
   const [logs, setLogs] = useState<PrintLog[]>([]);
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [totalLogs, setTotalLogs] = useState(0);
+  
+  // Reprint state
+  const [reprintingId, setReprintingId] = useState<string | null>(null);
   
   // Filters
   const [selectedKiosk, setSelectedKiosk] = useState<string>("");
@@ -156,6 +168,34 @@ export default function ManagerDashboardPage() {
       setError("Failed to load print logs");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle reprint action
+  const handleReprint = async (logId: string) => {
+    if (!confirm("Are you sure you want to reprint this job?")) return;
+    
+    setReprintingId(logId);
+    try {
+      const response = await fetch(`/api/managers/print-logs/${logId}/reprint`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reprint');
+      }
+      
+      alert(`Reprint job sent! This is reprint #${data.printLog.reprintCount}`);
+      
+      // Refresh the logs to show updated reprint count
+      loadLogs();
+    } catch (err) {
+      alert(`Reprint failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setReprintingId(null);
     }
   };
 
@@ -432,48 +472,100 @@ export default function ManagerDashboardPage() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Date
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Kiosk
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Product
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Type
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Price
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Paper
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Gift Card
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Reprints
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {logs.map((log) => (
                       <tr key={log.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                           {formatDate(log.createdAt)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                           {log.kiosk?.name || log.kioskId?.substring(0, 8)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {log.productName || log.productId?.substring(0, 12) || "-"}
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div>{log.productName || log.productId?.substring(0, 12) || "-"}</div>
+                          <div className="text-xs text-gray-400">{log.productType}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {log.productType}
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                          ${parseFloat(String(log.price || 0)).toFixed(2)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {log.paperSize || "-"} {log.trayNumber ? `(Tray ${log.trayNumber})` : ""}
+                        <td className="px-4 py-4 whitespace-nowrap text-sm">
+                          {log.giftCardBrand ? (
+                            <div className="flex items-center gap-1">
+                              <GiftIcon className="h-4 w-4 text-purple-500" />
+                              <span className="text-purple-700">{log.giftCardBrand}</span>
+                              <span className="text-gray-500">${parseFloat(String(log.giftCardAmount || 0)).toFixed(2)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           {getStatusBadge(log.status)}
+                          {log.refundStatus && (
+                            <span className="ml-1 text-xs text-orange-600">({log.refundStatus} refund)</span>
+                          )}
                           {log.errorMessage && (
                             <p className="text-xs text-red-500 mt-1">{log.errorMessage}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-center text-gray-500">
+                          {log.reprintCount || 0}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-center">
+                          {log.status === 'completed' && !log.refundStatus ? (
+                            log.pdfUrl ? (
+                              <button
+                                onClick={() => handleReprint(log.id)}
+                                disabled={reprintingId === log.id || (log.reprintCount || 0) >= 3}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={
+                                  (log.reprintCount || 0) >= 3 
+                                    ? "Max reprints (3) reached" 
+                                    : "Reprint this job"
+                                }
+                              >
+                                {reprintingId === log.id ? (
+                                  <ArrowPathIcon className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <DocumentDuplicateIcon className="h-3 w-3" />
+                                )}
+                                Reprint
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400" title="PDF not saved for this job (legacy)">
+                                No PDF saved
+                              </span>
+                            )
+                          ) : log.refundStatus ? (
+                            <span className="text-xs text-orange-500">Refunded</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
                           )}
                         </td>
                       </tr>
