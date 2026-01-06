@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Log token info (first/last 10 chars for debugging)
+    const tokenPart = authHeader.replace('Bearer ', '');
+    console.log('[my-kiosks] Token received:', tokenPart.substring(0, 20) + '...' + tokenPart.substring(tokenPart.length - 10));
     console.log('[my-kiosks] Fetching from:', `${API_BASE}/managers/my-kiosks`);
     
     const response = await fetch(`${API_BASE}/managers/my-kiosks`, {
