@@ -363,6 +363,9 @@ CREATE TABLE IF NOT EXISTS kiosk_print_logs (
     product_id VARCHAR(255), -- ID of the card/design that was printed (if applicable)
     product_name VARCHAR(255), -- Name of the product for display
     
+    -- Pricing / Revenue
+    price DECIMAL(10, 2) DEFAULT 0.00, -- Sale price of the printed item
+    
     -- Print details
     paper_type VARCHAR(50), -- 'greeting-card', 'sticker', 'photo', etc.
     paper_size VARCHAR(50), -- 'letter', 'a4', '4x6', etc.

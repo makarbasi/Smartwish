@@ -274,6 +274,7 @@ export class KioskPrintLogController {
       productType?: string;
       productId?: string;
       productName?: string;
+      price?: number;
       paperType?: string;
       paperSize?: string;
       trayNumber?: number;

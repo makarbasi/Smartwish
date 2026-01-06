@@ -10,6 +10,8 @@ import {
   XCircleIcon,
   ArrowPathIcon,
   FunnelIcon,
+  CurrencyDollarIcon,
+  BanknotesIcon,
 } from "@heroicons/react/24/outline";
 
 interface PrintLog {
@@ -33,6 +35,17 @@ interface PrintLog {
   completedAt?: string;
 }
 
+interface RevenueByKiosk {
+  kioskId: string;
+  kioskName: string;
+  printCount: number;
+  totalSales: number;
+  transactionFees: number;
+  netProfit: number;
+  revenueSharePercent: number;
+  storeOwnerShare: number;
+}
+
 interface PrintStats {
   totalPrints: number;
   completedPrints: number;
@@ -40,6 +53,12 @@ interface PrintStats {
   printsByKiosk: Array<{ kioskId: string; kioskName: string; count: string }>;
   printsByProductType: Array<{ productType: string; count: string }>;
   recentActivity: PrintLog[];
+  // Revenue data
+  totalSales: number;
+  transactionFees: number;
+  netProfit: number;
+  storeOwnerShare: number;
+  revenueByKiosk: RevenueByKiosk[];
 }
 
 interface Kiosk {
@@ -205,7 +224,39 @@ export default function ManagerDashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
+        {/* Revenue Summary - Highlighted */}
+        {stats && (
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg shadow-lg p-6 mb-8 text-white">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <BanknotesIcon className="h-6 w-6" />
+                Your Earnings (Last 30 Days)
+              </h2>
+              <span className="text-sm opacity-80">Revenue share calculated after transaction fees</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div>
+                <p className="text-sm opacity-80">Total Sales</p>
+                <p className="text-3xl font-bold">${stats.totalSales?.toFixed(2) || '0.00'}</p>
+              </div>
+              <div>
+                <p className="text-sm opacity-80">Transaction Fees</p>
+                <p className="text-3xl font-bold">-${stats.transactionFees?.toFixed(2) || '0.00'}</p>
+                <p className="text-xs opacity-70">$0.50 + 3% per sale</p>
+              </div>
+              <div>
+                <p className="text-sm opacity-80">Net Profit</p>
+                <p className="text-3xl font-bold">${stats.netProfit?.toFixed(2) || '0.00'}</p>
+              </div>
+              <div className="bg-white/20 rounded-lg p-3">
+                <p className="text-sm opacity-90">Your Share</p>
+                <p className="text-4xl font-bold">${stats.storeOwnerShare?.toFixed(2) || '0.00'}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Print Stats Cards */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white rounded-lg shadow p-6">
@@ -246,7 +297,45 @@ export default function ManagerDashboardPage() {
           </div>
         )}
 
-        {/* Prints by Kiosk */}
+        {/* Revenue by Kiosk */}
+        {stats && stats.revenueByKiosk && stats.revenueByKiosk.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6 mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <CurrencyDollarIcon className="h-5 w-5 text-gray-400" />
+              Revenue by Kiosk
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Kiosk</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Prints</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Sales</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Fees</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Net</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Share %</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Your Share</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {stats.revenueByKiosk.map((kiosk) => (
+                    <tr key={kiosk.kioskId} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{kiosk.kioskName || kiosk.kioskId}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500 text-right">{kiosk.printCount}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right">${kiosk.totalSales.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-sm text-red-600 text-right">-${kiosk.transactionFees.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right">${kiosk.netProfit.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500 text-right">{kiosk.revenueSharePercent}%</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-green-600 text-right">${kiosk.storeOwnerShare.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Prints by Kiosk (count) */}
         {stats && stats.printsByKiosk.length > 0 && (
           <div className="bg-white rounded-lg shadow p-6 mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">

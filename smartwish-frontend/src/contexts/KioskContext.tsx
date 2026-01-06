@@ -22,6 +22,7 @@ export interface KioskConfig {
   printerProfile: string;
   printerName: string;
   printerTrays: PrinterTray[];
+  revenueSharePercent: number; // Store owner's share of net profit (default 30%)
   [key: string]: unknown;
 }
 
@@ -66,6 +67,7 @@ const DEFAULT_CONFIG: KioskConfig = {
     { trayNumber: 1, trayName: 'Tray 1', paperType: 'greeting-card', paperSize: 'letter' },
     { trayNumber: 2, trayName: 'Tray 2', paperType: 'sticker', paperSize: 'letter' },
   ],
+  revenueSharePercent: 30, // Default 30% of net profit goes to store owner
 };
 
 /**

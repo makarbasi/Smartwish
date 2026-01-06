@@ -899,6 +899,7 @@ function MyCardsContent() {
     productType: string;
     productId?: string;
     productName?: string;
+    price?: number;
     paperType?: string;
     paperSize?: string;
     trayNumber?: number | null;
@@ -937,11 +938,21 @@ function MyCardsContent() {
     try {
       // Log the print job for manager tracking (if kiosk is activated)
       if (kioskId) {
+        // Default prices per product type (can be customized in future)
+        const defaultPrices: Record<string, number> = {
+          'greeting-card': 5.00,
+          'sticker': 2.00,
+          'photo': 3.00,
+          'label': 1.00,
+        };
+        const price = defaultPrices[paperType] || 5.00;
+        
         await logPrintJob({
           kioskId,
           productType: paperType,
           productId: card.id,
           productName: card.name || 'Greeting Card',
+          price,
           paperType,
           paperSize,
           trayNumber,
