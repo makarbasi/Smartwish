@@ -5,6 +5,13 @@ import { supabase, KioskConfigRow } from '@/lib/supabase';
 
 // ==================== Types ====================
 
+export interface PrinterTray {
+  trayNumber: number;
+  trayName: string;
+  paperType: string; // 'greeting-card' | 'sticker' | 'photo' | 'envelope' | 'label' | 'plain'
+  paperSize: string; // 'letter' | 'a4' | '4x6' | '5x7' | etc.
+}
+
 export interface KioskConfig {
   theme: string;
   featuredTemplateIds: string[];
@@ -14,7 +21,7 @@ export interface KioskConfig {
   };
   printerProfile: string;
   printerName: string;
-  paperSize: string;
+  printerTrays: PrinterTray[];
   [key: string]: unknown;
 }
 
@@ -55,8 +62,32 @@ const DEFAULT_CONFIG: KioskConfig = {
   ads: { playlist: [] },
   printerProfile: 'default',
   printerName: 'HP OfficeJet Pro 9130e Series [HPIE4B65B]',
-  paperSize: 'letter',
+  printerTrays: [
+    { trayNumber: 1, trayName: 'Tray 1', paperType: 'greeting-card', paperSize: 'letter' },
+    { trayNumber: 2, trayName: 'Tray 2', paperType: 'sticker', paperSize: 'letter' },
+  ],
 };
+
+/**
+ * Get the tray number for a specific paper type
+ * @param config - The kiosk config
+ * @param paperType - The type of paper needed (e.g., 'greeting-card', 'sticker')
+ * @returns The tray number to use, or undefined if no matching tray found
+ */
+export function getTrayForPaperType(config: KioskConfig, paperType: string): number | undefined {
+  const tray = config.printerTrays?.find(t => t.paperType === paperType);
+  return tray?.trayNumber;
+}
+
+/**
+ * Get tray info for a specific paper type
+ * @param config - The kiosk config
+ * @param paperType - The type of paper needed
+ * @returns The tray configuration or undefined
+ */
+export function getTrayInfo(config: KioskConfig, paperType: string): PrinterTray | undefined {
+  return config.printerTrays?.find(t => t.paperType === paperType);
+}
 
 // ==================== Context ====================
 

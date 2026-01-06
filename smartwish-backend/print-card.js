@@ -275,6 +275,12 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
             // Most settings must be configured in Windows printer preferences
         };
         
+        // Add tray selection if specified
+        if (trayNumber) {
+            printOptions.paperSource = `Tray ${trayNumber}`;
+            console.log(`   📥 Using tray: ${trayNumber}`);
+        }
+        
         console.warn("\n═══════════════════════════════════════════════════════════════════════════════════");
         console.warn(`  🖨️  HP SMART TANK 7600 PRINT SETTINGS - ${config.name.toUpperCase()}`);
         console.warn("═══════════════════════════════════════════════════════════════════════════════════");
@@ -395,7 +401,7 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
 }
 
 // --- Main Application Logic ---
-export async function main(printerName, paperSize = 'custom', timestamp = null) {
+export async function main(printerName, paperSize = 'custom', timestamp = null, trayNumber = null) {
   const compositeSide1 = 'temp_side1.png';
   const compositeSide2 = 'temp_side2.png';
 

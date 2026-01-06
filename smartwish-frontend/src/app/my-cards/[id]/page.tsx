@@ -36,6 +36,7 @@ import useSWR from "swr";
 import { saveSavedDesignWithImages } from "@/utils/savedDesignUtils";
 import { useSession } from "next-auth/react";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
+import { useKioskConfig } from "@/hooks/useKioskConfig";
 
 type SavedDesign = {
   id: string;
@@ -246,6 +247,7 @@ export default function CustomizeCardPage() {
 
   const { data: session, status } = useSession();
   const { isKiosk } = useDeviceMode();
+  const { config: kioskConfig } = useKioskConfig();
   const params = useParams();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1262,10 +1264,19 @@ export default function CustomizeCardPage() {
     }
   };
 
-  // Auto-print to default EPSON printer (for development) - Direct backend printing
-  const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string) => {
-    const defaultPrinter = 'HPA4CC43 (HP Smart Tank 7600 series)';
-    console.log(`🖨️ Auto-printing to: ${defaultPrinter} (Direct backend print - NO popup)`);
+  // Auto-print using kiosk config for printer and tray selection
+  const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card') => {
+    // Get printer settings from kiosk config
+    const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9130e Series [HPIE4B65B]';
+    const trays = kioskConfig?.printerTrays || [];
+    
+    // Find the tray for this paper type
+    const tray = trays.find(t => t.paperType === paperType);
+    const trayNumber = tray?.trayNumber || null;
+    const paperSize = tray?.paperSize || 'letter'; // Default to letter if no tray configured
+    
+    console.log(`🖨️ Auto-printing to: ${printerName} (Direct backend print - NO popup)`);
+    console.log(`📥 Paper type: ${paperType}, Tray: ${trayNumber || 'Auto'}, Size: ${paperSize}`);
 
     try {
       // Convert image URLs to base64
@@ -1279,7 +1290,7 @@ export default function CustomizeCardPage() {
 
       console.log('Images converted, sending to backend printer...');
 
-      // Send to backend /print-pc endpoint
+      // Send to backend /print-pc endpoint with tray info
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
         headers: {
@@ -1287,8 +1298,10 @@ export default function CustomizeCardPage() {
         },
         body: JSON.stringify({
           images: imageBase64Array,
-          printerName: defaultPrinter,
-          paperSize: 'letter' // Force Letter size for 11x8.5 PDF
+          printerName: printerName,
+          paperSize: paperSize,
+          paperType: paperType,
+          trayNumber: trayNumber,
         }),
       });
 
@@ -1299,7 +1312,7 @@ export default function CustomizeCardPage() {
 
       const result = await response.json();
       console.log('✅ Print job sent successfully!', result);
-      alert(`Print job sent to ${defaultPrinter}!\nCheck your printer for output.`);
+      alert(`Print job sent to ${printerName}${trayNumber ? ` (Tray ${trayNumber})` : ''}!\nCheck your printer for output.`);
 
     } catch (err) {
       console.error('Auto-print error:', err);
