@@ -18,6 +18,7 @@ import {
   FilmIcon,
   UserGroupIcon,
   UserPlusIcon,
+  DocumentIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 
@@ -45,6 +46,8 @@ type KioskConfig = {
     playlist?: Array<{ url: string; duration?: number; weight?: number }>;
   };
   printerProfile?: string;
+  printerName?: string;
+  paperSize?: string;
 };
 
 type Kiosk = {
@@ -66,6 +69,8 @@ const DEFAULT_CONFIG: KioskConfig = {
   micEnabled: true,
   ads: { playlist: [] },
   printerProfile: "default",
+  printerName: "HP OfficeJet Pro 9130e Series [HPIE4B65B]",
+  paperSize: "letter",
 };
 
 export default function KiosksAdminPage() {
@@ -478,7 +483,13 @@ export default function KiosksAdminPage() {
                     <div className="flex items-center gap-2 text-sm">
                       <PrinterIcon className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-600">
-                        Printer: {kiosk.config?.printerProfile || "default"}
+                        Printer: {kiosk.config?.printerName || "Not set"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <DocumentIcon className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-600">
+                        Paper: {kiosk.config?.paperSize?.toUpperCase() || "Letter"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -1027,25 +1038,61 @@ function KioskFormModal({
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Printer Profile
+                        Printer Name
                       </label>
-                      <select
-                        value={formData.config.printerProfile || "default"}
+                      <input
+                        type="text"
+                        list="printer-suggestions"
+                        value={formData.config.printerName || ""}
                         onChange={(e) =>
                           setFormData({
                             ...formData,
                             config: {
                               ...formData.config,
-                              printerProfile: e.target.value,
+                              printerName: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="Enter printer name or select from list"
+                        className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      />
+                      <datalist id="printer-suggestions">
+                        <option value="HP OfficeJet Pro 9130e Series [HPIE4B65B]" />
+                        <option value="EPSON ET-15000 Series" />
+                        <option value="HP Smart Tank 7600 series" />
+                        <option value="Brother MFC-J4335DW" />
+                        <option value="Canon PIXMA TR8620" />
+                      </datalist>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Type the exact printer name as it appears in your system, or select from suggestions
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Paper Size
+                      </label>
+                      <select
+                        value={formData.config.paperSize || "letter"}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            config: {
+                              ...formData.config,
+                              paperSize: e.target.value,
                             },
                           })
                         }
                         className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                       >
-                        <option value="default">Default</option>
-                        <option value="epson">Epson ET-15000</option>
-                        <option value="hp">HP Smart Tank 7600</option>
-                        <option value="brother">Brother MFC</option>
+                        <option value="letter">Letter (8.5&quot; × 11&quot;)</option>
+                        <option value="legal">Legal (8.5&quot; × 14&quot;)</option>
+                        <option value="tabloid">Tabloid (11&quot; × 17&quot;)</option>
+                        <option value="a4">A4 (210mm × 297mm)</option>
+                        <option value="a5">A5 (148mm × 210mm)</option>
+                        <option value="4x6">4&quot; × 6&quot; (Photo)</option>
+                        <option value="5x7">5&quot; × 7&quot; (Photo)</option>
+                        <option value="8x10">8&quot; × 10&quot; (Photo)</option>
                       </select>
                     </div>
 
