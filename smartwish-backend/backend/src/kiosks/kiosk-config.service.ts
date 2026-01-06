@@ -243,7 +243,7 @@ export class KioskConfigService {
         secure: true,
       });
 
-      const frontendUrl = process.env.FRONTEND_URL || 'https://smartwish.us';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://app.smartwish.us';
       const setupUrl = `${frontendUrl}/managers/signup?token=${token}`;
 
       const mailOptions = {
@@ -310,7 +310,7 @@ export class KioskConfigService {
    */
   async verifyInviteToken(token: string) {
     const user = await this.userRepo.findOne({
-      where: { 
+      where: {
         emailVerificationToken: token,
         role: UserRole.MANAGER,
       },
@@ -337,7 +337,7 @@ export class KioskConfigService {
    */
   async completeManagerSetup(token: string, password: string) {
     const user = await this.userRepo.findOne({
-      where: { 
+      where: {
         emailVerificationToken: token,
         role: UserRole.MANAGER,
       },
@@ -376,7 +376,7 @@ export class KioskConfigService {
    */
   async managerLogin(email: string, password: string) {
     console.log('[managerLogin] Attempting login for:', email.toLowerCase());
-    
+
     // Find user by email
     const user = await this.userRepo
       .createQueryBuilder('user')
@@ -387,8 +387,8 @@ export class KioskConfigService {
 
     if (!user) {
       // Debug: check if user exists with different role
-      const anyUser = await this.userRepo.findOne({ 
-        where: { email: email.toLowerCase() } 
+      const anyUser = await this.userRepo.findOne({
+        where: { email: email.toLowerCase() }
       });
       console.log('[managerLogin] User not found with MANAGER role. Any user with this email?', anyUser ? `Yes, role: ${anyUser.role}` : 'No');
       throw new UnauthorizedException('Invalid email or password');
@@ -746,7 +746,7 @@ export class KioskConfigService {
     }
 
     const total = await query.getCount();
-    
+
     if (options?.limit) {
       query.limit(options.limit);
     }
@@ -809,7 +809,7 @@ export class KioskConfigService {
     }
 
     const total = await query.getCount();
-    
+
     if (options?.limit) {
       query.limit(options.limit);
     }
@@ -1101,8 +1101,8 @@ export class KioskConfigService {
       stripePaymentIntentId: log.stripePaymentIntentId,
       stripeChargeId: log.stripeChargeId,
       tilloOrderId: log.tilloOrderId,
-      giftCardNote: log.tilloOrderId 
-        ? 'Gift card was already issued. Contact Tillo support with order ID to void if needed.' 
+      giftCardNote: log.tilloOrderId
+        ? 'Gift card was already issued. Contact Tillo support with order ID to void if needed.'
         : null,
     };
 
