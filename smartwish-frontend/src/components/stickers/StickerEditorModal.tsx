@@ -1,12 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
-
-// IMPORTANT: Import Pintura CSS - required for the editor to render
-import "@pqina/pintura/pintura.css";
-
 import {
   setPlugins,
   plugin_crop,
@@ -39,9 +35,9 @@ setPlugins(
   plugin_sticker
 );
 
-// Dynamic import for the Pintura editor
-const PinturaEditor = dynamic(
-  () => import("@pqina/react-pintura").then((mod) => mod.PinturaEditor),
+// Dynamic import for the Pintura editor modal (same as greeting cards)
+const PinturaEditorModalComponent = dynamic(
+  () => import("../DynamicPinturaEditor"),
   { ssr: false }
 );
 
@@ -53,7 +49,7 @@ interface StickerEditorModalProps {
 }
 
 // Create editor defaults with circular crop for stickers
-const createStickerEditorDefaults = () => {
+const createStickerEditorDefaults = (isKiosk: boolean = false) => {
   const defaultMarkupToolStyles = createMarkupEditorToolStyles({
     text: {
       color: [0, 0, 0],
@@ -92,33 +88,6 @@ const createStickerEditorDefaults = () => {
     cropEnableZoomInput: true,
     cropEnableRotationInput: true,
     cropActiveTransformTool: "zoom" as const,
-
-    // Show circular mask preview
-    cropWillRenderImageSelectionGuides: (
-      interaction: string,
-      interactionFraction: number
-    ) => {
-      // Return guides for circular preview
-      return [
-        {
-          // Center crosshair
-          id: "center-h",
-          x: 0.5,
-          y: 0.5,
-          width: 0.1,
-          height: 0.002,
-          opacity: 0.5,
-        },
-        {
-          id: "center-v",
-          x: 0.5,
-          y: 0.5,
-          width: 0.002,
-          height: 0.1,
-          opacity: 0.5,
-        },
-      ];
-    },
 
     // Stickers for decoration
     stickers: [
@@ -160,86 +129,38 @@ export default function StickerEditorModal({
 }: StickerEditorModalProps) {
   const { isKiosk } = useDeviceMode();
   const [currentImageSrc, setCurrentImageSrc] = useState(imageSrc);
-  const editorRef = useRef<any>(null);
 
   // Update image source when prop changes
   useEffect(() => {
     setCurrentImageSrc(imageSrc);
   }, [imageSrc]);
 
+  // Don't render if not visible
   if (!isVisible) return null;
 
-  const editorDefaults = createStickerEditorDefaults();
+  const editorDefaults = createStickerEditorDefaults(isKiosk);
+
+  console.log("🎨 StickerEditorModal rendering with:", {
+    imageSrc: imageSrc?.substring(0, 50),
+    isVisible,
+    isKiosk,
+  });
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center">
-      {/* Close button */}
-      <button
-        onClick={onHide}
-        className="absolute top-4 right-4 z-60 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
-        aria-label="Close editor"
-      >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-
-      {/* Circular mask indicator */}
-      <div className="absolute top-4 left-4 z-60 bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2 text-white text-sm">
-        <span className="flex items-center gap-2">
-          <span className="w-4 h-4 rounded-full border-2 border-white"></span>
-          Circular sticker (3" diameter)
-        </span>
-      </div>
-
-      {/* Editor container */}
-      <div
-        className="w-full h-full max-w-4xl max-h-[90vh] mx-4"
-        style={{
-          // Add circular crop overlay CSS
-          ["--pintura-color-primary" as any]: "#ec4899", // pink-500
-          ["--pintura-color-primary-dark" as any]: "#be185d", // pink-700
-        }}
-      >
-        <PinturaEditor
-          ref={editorRef}
-          {...editorDefaults}
-          src={currentImageSrc}
-          onLoad={(res: any) => {
-            console.log("Sticker editor loaded:", res);
-          }}
-          onProcess={(result: { dest: File }) => {
-            console.log("Sticker processed:", result);
-            onProcess?.(result);
-          }}
-          onClose={() => {
-            onHide();
-          }}
-        />
-      </div>
-
-      {/* Circular mask overlay - visual hint */}
-      <style jsx global>{`
-        /* Add circular crop mask styling */
-        .pintura-editor [data-util="crop"] .pintura-image-selection {
-          border-radius: 50% !important;
-        }
-
-        .pintura-editor [data-util="crop"] .pintura-image-selection::before {
-          content: "";
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-          box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-          pointer-events: none;
-        }
-
-        /* Pink theme for sticker editor */
-        .pintura-editor {
-          --color-primary: #ec4899;
-          --color-primary-dark: #be185d;
-        }
-      `}</style>
-    </div>
+    <PinturaEditorModalComponent
+      {...editorDefaults}
+      src={currentImageSrc}
+      onLoad={(res: any) => {
+        console.log("Sticker editor loaded:", res);
+      }}
+      onProcess={(result: { dest: File }) => {
+        console.log("Sticker processed:", result);
+        onProcess?.(result);
+      }}
+      onHide={() => {
+        console.log("Sticker editor hidden");
+        onHide();
+      }}
+    />
   );
 }
