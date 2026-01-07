@@ -1,6 +1,6 @@
 "use client";
 
-import { PlusIcon, XMarkIcon, PencilIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, XMarkIcon, PencilIcon, DocumentDuplicateIcon } from "@heroicons/react/24/outline";
 import Image from "next/image";
 
 interface StickerCircleProps {
@@ -11,6 +11,11 @@ interface StickerCircleProps {
   onClick: () => void;
   onClear?: () => void;
   onEdit?: () => void;
+  onCopy?: () => void;
+  /** This circle is the source being copied from */
+  isCopySource?: boolean;
+  /** Another circle is being copied, this is a potential paste target */
+  isCopyTarget?: boolean;
   /** When true, circle fills its container (used for exact paper positioning) */
   useFullSize?: boolean;
 }
@@ -23,6 +28,9 @@ export default function StickerCircle({
   onClick,
   onClear,
   onEdit,
+  onCopy,
+  isCopySource = false,
+  isCopyTarget = false,
   useFullSize = false,
 }: StickerCircleProps) {
   const hasImage = !!imageUrl && imageUrl.length > 0;
@@ -44,8 +52,34 @@ export default function StickerCircle({
   const buttonIconSize = isCompact || useFullSize ? "w-2 h-2 md:w-3 md:h-3" : "w-4 h-4";
   const buttonPosition = isCompact || useFullSize ? "-1px" : "-8px";
 
+  // Determine border/ring styling based on state
+  const getBorderClasses = () => {
+    if (isCopySource) {
+      // Source being copied - blue highlight
+      return "border-blue-500 ring-4 ring-blue-200 shadow-lg shadow-blue-200/50";
+    }
+    if (isCopyTarget) {
+      // Potential paste target - cyan pulsing border
+      return "border-cyan-400 border-dashed ring-2 ring-cyan-200 animate-pulse";
+    }
+    if (isSelected) {
+      return "border-pink-500 ring-4 ring-pink-200 shadow-lg shadow-pink-200/50";
+    }
+    if (hasImage) {
+      return "border-gray-300 hover:border-pink-400 hover:shadow-md bg-white";
+    }
+    return "border-dashed border-gray-300 hover:border-pink-400 bg-gray-50 hover:bg-pink-50";
+  };
+
   return (
     <div className={`relative group ${useFullSize ? "w-full h-full" : ""}`}>
+      {/* Copy source indicator badge */}
+      {isCopySource && (
+        <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 z-20 bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shadow-md">
+          Copying
+        </div>
+      )}
+
       <button
         onClick={onClick}
         className={`
@@ -60,13 +94,7 @@ export default function StickerCircle({
           justify-center
           relative
           ${useFullSize ? "aspect-square" : ""}
-          ${
-            isSelected
-              ? "border-pink-500 ring-4 ring-pink-200 shadow-lg shadow-pink-200/50"
-              : hasImage
-              ? "border-gray-300 hover:border-pink-400 hover:shadow-md bg-white"
-              : "border-dashed border-gray-300 hover:border-pink-400 bg-gray-50 hover:bg-pink-50"
-          }
+          ${getBorderClasses()}
         `}
       >
         {hasImage ? (
@@ -124,8 +152,8 @@ export default function StickerCircle({
         </div>
       </button>
 
-      {/* Edit button - only show when has image */}
-      {hasImage && onEdit && (
+      {/* Edit button - only show when has image and not in copy mode */}
+      {hasImage && onEdit && !isCopySource && !isCopyTarget && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -157,8 +185,41 @@ export default function StickerCircle({
         </button>
       )}
 
-      {/* Clear button - only show when has image */}
-      {hasImage && onClear && (
+      {/* Copy button - only show when has image and not in copy mode */}
+      {hasImage && onCopy && !isCopySource && !isCopyTarget && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopy();
+          }}
+          className={`
+            absolute
+            ${buttonSize}
+            rounded-full
+            bg-blue-500
+            text-white
+            flex
+            items-center
+            justify-center
+            opacity-0
+            group-hover:opacity-100
+            transition-opacity
+            duration-200
+            hover:bg-blue-600
+            shadow-md
+            z-10
+          `}
+          style={{
+            bottom: buttonPosition,
+            left: buttonPosition,
+          }}
+        >
+          <DocumentDuplicateIcon className={buttonIconSize} strokeWidth={2.5} />
+        </button>
+      )}
+
+      {/* Clear button - only show when has image and not in copy mode */}
+      {hasImage && onClear && !isCopySource && !isCopyTarget && (
         <button
           onClick={(e) => {
             e.stopPropagation();

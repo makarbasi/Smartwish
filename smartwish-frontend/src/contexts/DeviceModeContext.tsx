@@ -10,6 +10,8 @@ interface DeviceModeContextType {
   isMobile: boolean
   isPC: boolean
   isKiosk: boolean
+  /** True once the kiosk activation status has been checked from localStorage */
+  isInitialized: boolean
 }
 
 const DeviceModeContext = createContext<DeviceModeContextType | undefined>(undefined)
@@ -31,10 +33,12 @@ function isKioskActivated(): boolean {
 export function DeviceModeProvider({ children }: { children: ReactNode }) {
   const { data: session } = useSession()
   const [kioskActivated, setKioskActivated] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
   
   // Check kiosk activation status on mount and when localStorage changes
   useEffect(() => {
     setKioskActivated(isKioskActivated());
+    setIsInitialized(true);
     
     // Listen for storage changes (in case kiosk is activated/deactivated in another tab)
     const handleStorageChange = (e: StorageEvent) => {
@@ -94,6 +98,7 @@ export function DeviceModeProvider({ children }: { children: ReactNode }) {
     isMobile: mode === 'mobile',
     isPC: mode === 'pc',
     isKiosk: mode === 'kiosk',
+    isInitialized,
   }
 
   return (
