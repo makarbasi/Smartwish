@@ -8,7 +8,9 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit');
     const offset = searchParams.get('offset');
 
-    const base = process.env.NEXT_PUBLIC_API_BASE ?? 'https://smartwish.onrender.com';
+    // Use local backend in development, remote in production
+    const base = process.env.NEXT_PUBLIC_API_BASE ?? 
+      (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : 'https://smartwish.onrender.com');
     const apiUrl = new URL('/stickers', base);
 
     // Add query parameters
@@ -29,8 +31,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
       },
-      // Cache for 5 minutes
-      next: { revalidate: 300 },
+      cache: 'no-store', // Don't cache sticker listings
     });
 
     if (!response.ok) {

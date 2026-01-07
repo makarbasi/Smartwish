@@ -365,11 +365,11 @@ export default function StickersPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-white to-purple-50">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-pink-50 via-white to-purple-50 overflow-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-white/90 backdrop-blur-sm border-b border-gray-200">
+      <div className="flex-shrink-0 bg-white/90 backdrop-blur-sm border-b border-gray-200 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-14">
             <button
               onClick={handleBackToHome}
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
@@ -377,61 +377,103 @@ export default function StickersPage() {
               <ArrowLeftIcon className="w-5 h-5" />
               <span className="font-medium">Back</span>
             </button>
-            <h1 className="text-xl font-bold text-gray-900">Create Stickers</h1>
+            <h1 className="text-lg font-bold text-gray-900">Create Stickers</h1>
             <div className="w-20" /> {/* Spacer for centering */}
           </div>
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main content - flex column to fill remaining space */}
+      <div className="flex-1 flex flex-col min-h-0 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
+        {/* Copy Mode Banner */}
+        {copySourceIndex !== null && (
+          <div className="flex-shrink-0 mb-3 flex items-center justify-center">
+            <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-2.5 rounded-full shadow-lg flex items-center gap-3">
+              <div className="w-2.5 h-2.5 bg-white rounded-full animate-pulse" />
+              <span className="font-semibold text-sm">
+                Tap any circle to paste sticker #{copySourceIndex + 1}
+              </span>
+              <button
+                onClick={handleExitCopyMode}
+                className="ml-2 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm font-medium transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sticker Sheet - compact when in selection mode */}
         <div
           className={`
-            transition-all duration-500 ease-in-out
-            ${viewMode !== "initial" ? "mb-4" : "mb-8"}
+            flex-shrink-0 transition-all duration-500 ease-in-out
+            ${viewMode === "selection" ? "transform scale-[0.6] origin-top -mb-20" : ""}
           `}
         >
-          {/* Copy Mode Banner */}
-          {copySourceIndex !== null && (
-            <div className="mb-4 flex items-center justify-center gap-4">
-              <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3">
-                <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
-                <span className="font-semibold">
-                  Tap any circle to paste sticker #{copySourceIndex + 1}
-                </span>
-                <button
-                  onClick={handleExitCopyMode}
-                  className="ml-2 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm font-medium transition-colors"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Sticker Sheet - shrinks when in selection mode */}
-          <div
-            className={`
-              transition-all duration-500 ease-in-out
-              ${viewMode !== "initial" ? "transform scale-75 origin-top" : ""}
-            `}
-          >
-            <StickerSheet
-              slots={slots}
-              selectedIndex={selectedSlotIndex}
-              isCompact={viewMode !== "initial"}
-              onSlotClick={handleSlotClick}
-              onSlotClear={handleSlotClear}
-              onSlotEdit={handleSlotEdit}
-              onSlotCopy={handleSlotCopy}
-              copySourceIndex={copySourceIndex}
-            />
-          </div>
+          <StickerSheet
+            slots={slots}
+            selectedIndex={selectedSlotIndex}
+            isCompact={viewMode === "selection"}
+            onSlotClick={handleSlotClick}
+            onSlotClear={handleSlotClear}
+            onSlotEdit={handleSlotEdit}
+            onSlotCopy={handleSlotCopy}
+            copySourceIndex={copySourceIndex}
+          />
         </div>
+
+        {/* Print button - below the sheet */}
+        {viewMode === "initial" && (
+          <div className="flex-shrink-0 mt-4 mb-4">
+            <div className="max-w-md mx-auto">
+              <button
+                onClick={handlePrintClick}
+                disabled={filledSlotsCount === 0 || isPrinting}
+                className={`
+                  w-full
+                  flex
+                  items-center
+                  justify-center
+                  gap-3
+                  px-6
+                  py-3
+                  rounded-xl
+                  font-semibold
+                  text-base
+                  shadow-lg
+                  transition-all
+                  duration-300
+                  ${
+                    filledSlotsCount > 0
+                      ? "bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
+                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                  }
+                `}
+              >
+                {isPrinting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Printing...</span>
+                  </>
+                ) : (
+                  <>
+                    <PrinterIcon className="w-5 h-5" />
+                    <span>Print Sticker Sheet • ${STICKER_SHEET_PRICE.toFixed(2)}</span>
+                  </>
+                )}
+              </button>
+              {filledSlotsCount === 0 && (
+                <p className="text-center text-xs text-gray-500 mt-1.5">
+                  Tap a circle to add stickers
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Carousel - only show in initial mode */}
         {viewMode === "initial" && (
-          <div className="mt-6">
+          <div className="flex-shrink-0 mt-2">
             <StickerCarousel
               stickers={carouselStickers}
               isLoading={isLoadingStickers}
@@ -439,62 +481,15 @@ export default function StickersPage() {
           </div>
         )}
 
-        {/* Gallery - show in selection mode */}
+        {/* Gallery - takes the rest of the screen in selection mode */}
         {viewMode === "selection" && (
-          <div className="mt-4 bg-white rounded-2xl shadow-lg border border-gray-200 p-4 max-h-[50vh] overflow-hidden">
+          <div className="flex-1 min-h-0 bg-white rounded-2xl shadow-lg border border-gray-200 p-4 flex flex-col overflow-hidden">
             <StickerGallery
               onSelectSticker={handleSelectSticker}
               onClose={handleGalleryClose}
             />
           </div>
         )}
-      </div>
-
-      {/* Print button - fixed at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent pb-6 pt-10 px-4 z-10">
-        <div className="max-w-md mx-auto">
-          <button
-            onClick={handlePrintClick}
-            disabled={filledSlotsCount === 0 || isPrinting}
-            className={`
-              w-full
-              flex
-              items-center
-              justify-center
-              gap-3
-              px-8
-              py-4
-              rounded-2xl
-              font-semibold
-              text-lg
-              shadow-lg
-              transition-all
-              duration-300
-              ${
-                filledSlotsCount > 0
-                  ? "bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
-                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
-              }
-            `}
-          >
-            {isPrinting ? (
-              <>
-                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Printing...</span>
-              </>
-            ) : (
-              <>
-                <PrinterIcon className="w-6 h-6" />
-                <span>Print Sticker Sheet • ${STICKER_SHEET_PRICE.toFixed(2)}</span>
-              </>
-            )}
-          </button>
-          {filledSlotsCount === 0 && (
-            <p className="text-center text-sm text-gray-500 mt-2">
-              Add at least one sticker to print
-            </p>
-          )}
-        </div>
       </div>
 
       {/* Sticker Editor Modal - using same Pintura as greeting cards */}

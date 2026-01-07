@@ -64,7 +64,7 @@ export class StickersController {
 
     const searchOptions = {
       category,
-      limit: limit ? parseInt(limit, 10) : 20,
+      limit: limit ? parseInt(limit, 10) : undefined, // No limit by default
     };
 
     let results;

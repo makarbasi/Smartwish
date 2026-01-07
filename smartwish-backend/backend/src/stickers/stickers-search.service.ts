@@ -89,7 +89,7 @@ export class StickersSearchService {
       return [];
     }
 
-    const limit = options.limit || 20;
+    const limit = options.limit || 1000; // Return all by default
     const minSimilarity = options.minSimilarity || 0.3;
 
     // Generate embedding for search query
@@ -156,7 +156,7 @@ export class StickersSearchService {
   ): Promise<StickerSearchResult[]> {
     if (!this.supabase) return [];
 
-    const limit = options.limit || 20;
+    const limit = options.limit || 1000; // Return all by default
     const term = query.toLowerCase();
 
     try {
@@ -226,7 +226,7 @@ export class StickersSearchService {
     query: string,
     options: SearchOptions = {},
   ): Promise<StickerSearchResult[]> {
-    const limit = options.limit || 20;
+    const limit = options.limit || 1000; // Return all by default
 
     // Run both searches in parallel
     const [semanticResults, keywordResults] = await Promise.all([
