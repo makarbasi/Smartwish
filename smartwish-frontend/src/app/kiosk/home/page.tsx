@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
+import { useKioskConfig } from "@/hooks/useKioskConfig";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import useSWR from "swr";
@@ -36,6 +37,11 @@ interface StickersResponse {
 export default function KioskHomePage() {
   const router = useRouter();
   const { isKiosk, isInitialized } = useDeviceMode();
+  const { config: kioskConfig } = useKioskConfig();
+
+  // Check if features are enabled (default to true if not set)
+  const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;
+  const stickersEnabled = kioskConfig?.stickersEnabled !== false;
 
   // Fetch popular templates
   const { data: templatesData } = useSWR<TemplatesResponse>(
@@ -60,10 +66,12 @@ export default function KioskHomePage() {
   }, [isKiosk, isInitialized, router]);
 
   const handleSelectGreetingCards = () => {
+    if (!greetingCardsEnabled) return;
     router.push("/templates");
   };
 
   const handleSelectStickers = () => {
+    if (!stickersEnabled) return;
     router.push("/stickers");
   };
 
@@ -95,7 +103,12 @@ export default function KioskHomePage() {
         {/* Greeting Cards Option */}
         <button
           onClick={handleSelectGreetingCards}
-          className="group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform hover:scale-[1.02] active:scale-[0.98] overflow-hidden border border-white/20 hover:border-indigo-400/50 focus:outline-none min-h-[480px] lg:min-h-[520px]"
+          disabled={!greetingCardsEnabled}
+          className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none min-h-[480px] lg:min-h-[520px] ${
+            greetingCardsEnabled
+              ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-indigo-400/50 cursor-pointer'
+              : 'opacity-50 cursor-not-allowed border-white/10'
+          }`}
         >
           {/* Glow effect on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/0 to-purple-600/0 group-hover:from-indigo-600/20 group-hover:to-purple-600/20 transition-all duration-500" />
@@ -153,11 +166,17 @@ export default function KioskHomePage() {
             </p>
             
             {/* CTA */}
-            <div className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full text-white font-semibold text-lg shadow-lg shadow-indigo-500/40 group-hover:shadow-indigo-500/60 transition-all duration-300">
-              <span>Create Now</span>
-              <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
+            <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
+              greetingCardsEnabled
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/40 group-hover:shadow-indigo-500/60'
+                : 'bg-gray-600/50 text-gray-400'
+            }`}>
+              <span>{greetingCardsEnabled ? 'Create Now' : 'Coming Soon'}</span>
+              {greetingCardsEnabled && (
+                <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              )}
             </div>
           </div>
         </button>
@@ -165,7 +184,12 @@ export default function KioskHomePage() {
         {/* Stickers Option */}
         <button
           onClick={handleSelectStickers}
-          className="group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform hover:scale-[1.02] active:scale-[0.98] overflow-hidden border border-white/20 hover:border-pink-400/50 focus:outline-none min-h-[480px] lg:min-h-[520px]"
+          disabled={!stickersEnabled}
+          className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none min-h-[480px] lg:min-h-[520px] ${
+            stickersEnabled
+              ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-pink-400/50 cursor-pointer'
+              : 'opacity-50 cursor-not-allowed border-white/10'
+          }`}
         >
           {/* Glow effect on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-pink-600/0 to-orange-600/0 group-hover:from-pink-600/20 group-hover:to-orange-600/20 transition-all duration-500" />
@@ -235,11 +259,17 @@ export default function KioskHomePage() {
             </p>
             
             {/* CTA */}
-            <div className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-pink-600 to-orange-500 rounded-full text-white font-semibold text-lg shadow-lg shadow-pink-500/40 group-hover:shadow-pink-500/60 transition-all duration-300">
-              <span>Create Now</span>
-              <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
+            <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
+              stickersEnabled
+                ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow-lg shadow-pink-500/40 group-hover:shadow-pink-500/60'
+                : 'bg-gray-600/50 text-gray-400'
+            }`}>
+              <span>{stickersEnabled ? 'Create Now' : 'Coming Soon'}</span>
+              {stickersEnabled && (
+                <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              )}
             </div>
           </div>
         </button>
