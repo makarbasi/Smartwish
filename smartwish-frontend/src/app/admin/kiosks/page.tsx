@@ -19,6 +19,7 @@ import {
   UserGroupIcon,
   UserPlusIcon,
   DocumentIcon,
+  GiftIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 
@@ -49,6 +50,7 @@ type KioskConfig = {
   theme?: string;
   featuredTemplateIds?: string[];
   micEnabled?: boolean;
+  giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
   ads?: {
     playlist?: Array<{ url: string; duration?: number; weight?: number }>;
   };
@@ -95,6 +97,7 @@ const DEFAULT_CONFIG: KioskConfig = {
   theme: "default",
   featuredTemplateIds: [],
   micEnabled: true,
+  giftCardRibbonEnabled: true, // Show gift card marketplace ribbon by default
   ads: { playlist: [] },
   printerProfile: "default",
   printerName: "HP OfficeJet Pro 9130e Series [HPIE4B65B]",
@@ -510,6 +513,12 @@ export default function KiosksAdminPage() {
                       <MicrophoneIcon className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-600">
                         Mic: {kiosk.config?.micEnabled !== false ? "On" : "Off"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <GiftIcon className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-600">
+                        Gift Cards: {kiosk.config?.giftCardRibbonEnabled !== false ? "On" : "Off"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -1061,6 +1070,42 @@ function KioskFormModal({
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                             formData.config.micEnabled
+                              ? "translate-x-5"
+                              : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          Gift Card Ribbon
+                        </label>
+                        <p className="text-xs text-gray-500">
+                          Show gift card marketplace ribbon on cards
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            config: {
+                              ...formData.config,
+                              giftCardRibbonEnabled: !formData.config.giftCardRibbonEnabled,
+                            },
+                          })
+                        }
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                          formData.config.giftCardRibbonEnabled !== false
+                            ? "bg-indigo-600"
+                            : "bg-gray-200"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            formData.config.giftCardRibbonEnabled !== false
                               ? "translate-x-5"
                               : "translate-x-0"
                           }`}

@@ -2266,16 +2266,18 @@ export default function CustomizeCardPage() {
           </div>
         )}
 
-        {/* Gift Card Panel - Above Card */}
-        <div className="absolute top-0 left-0 right-0 z-10 px-4 pt-20 sm:pt-4">
-          <div className="max-w-5xl mx-auto">
-            <MarketplaceGiftCarousel
-              cardId={cardId}
-              giftCardData={giftCardData}
-              onRemove={handleRemoveGiftCard}
-            />
+        {/* Gift Card Panel - Above Card (respects kiosk config setting) */}
+        {(!isKiosk || kioskConfig?.giftCardRibbonEnabled !== false) && (
+          <div className="absolute top-0 left-0 right-0 z-10 px-4 pt-20 sm:pt-4">
+            <div className="max-w-5xl mx-auto">
+              <MarketplaceGiftCarousel
+                cardId={cardId}
+                giftCardData={giftCardData}
+                onRemove={handleRemoveGiftCard}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Center - Card Editor */}
         <div
