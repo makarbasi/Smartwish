@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { MagnifyingGlassIcon, XMarkIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import useSWR from "swr";
 
 export interface Sticker {
@@ -10,10 +10,13 @@ export interface Sticker {
   title: string;
   slug?: string;
   category?: string;
+  description?: string;
   imageUrl: string;
   thumbnailUrl?: string;
   tags?: string[];
+  searchKeywords?: string[];
   popularity?: number;
+  similarity?: number;
 }
 
 interface StickersApiResponse {
@@ -23,12 +26,21 @@ interface StickersApiResponse {
     title: string;
     slug?: string;
     category?: string;
-    imageUrl: string;
+    description?: string;
+    imageUrl?: string;
+    image_url?: string;
     thumbnailUrl?: string;
+    thumbnail_url?: string;
     tags?: string[];
+    search_keywords?: string[];
+    searchKeywords?: string[];
     popularity?: number;
+    similarity?: number;
   }>;
-  total: number;
+  total?: number;
+  count?: number;
+  query?: string;
+  mode?: string;
 }
 
 interface StickerGalleryProps {
@@ -40,6 +52,7 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 /**
  * StickerGallery - Search and browse stickers in a 3-column grid
+ * Uses semantic search (AI-powered) when a search query is provided
  * All stickers are displayed in round containers
  */
 export default function StickerGallery({
@@ -49,32 +62,38 @@ export default function StickerGallery({
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  // Debounce search query
+  // Debounce search query (slightly longer delay for semantic search)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
-    }, 300);
+    }, 400);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Build API URL
+  // Build API URL - use semantic search when query provided
   const apiUrl = debouncedQuery
-    ? `/api/stickers?q=${encodeURIComponent(debouncedQuery)}&limit=50`
+    ? `/api/stickers/search?q=${encodeURIComponent(debouncedQuery)}&limit=50&mode=hybrid`
     : "/api/stickers?limit=50";
 
   // Fetch stickers
   const { data, error, isLoading } = useSWR<StickersApiResponse>(apiUrl, fetcher);
 
-  // Transform API response to Sticker format
+  // Check if using semantic search
+  const isSemanticSearch = !!debouncedQuery && data?.mode === 'hybrid';
+
+  // Transform API response to Sticker format (handle both snake_case and camelCase)
   const stickers: Sticker[] = (data?.data || []).map((s) => ({
     id: s.id,
     title: s.title,
     slug: s.slug,
     category: s.category,
-    imageUrl: s.imageUrl,
-    thumbnailUrl: s.thumbnailUrl,
+    description: s.description,
+    imageUrl: s.imageUrl || s.image_url || '',
+    thumbnailUrl: s.thumbnailUrl || s.thumbnail_url,
     tags: s.tags,
+    searchKeywords: s.searchKeywords || s.search_keywords,
     popularity: s.popularity,
+    similarity: s.similarity,
   }));
 
   const handleSelectSticker = useCallback(
@@ -120,16 +139,26 @@ export default function StickerGallery({
         </div>
 
         {/* Results count */}
-        <div className="mt-3 px-2">
+        <div className="mt-3 px-2 flex items-center gap-2">
           {isLoading ? (
-            <span className="text-sm text-gray-500">Searching...</span>
+            <span className="text-sm text-gray-500">
+              {debouncedQuery ? "🔍 AI searching..." : "Loading..."}
+            </span>
           ) : error ? (
             <span className="text-sm text-red-500">Error loading stickers</span>
           ) : (
-            <span className="text-sm text-gray-500">
-              {stickers.length} sticker{stickers.length !== 1 ? "s" : ""} found
-              {debouncedQuery && ` for "${debouncedQuery}"`}
-            </span>
+            <>
+              <span className="text-sm text-gray-500">
+                {stickers.length} sticker{stickers.length !== 1 ? "s" : ""} found
+                {debouncedQuery && ` for "${debouncedQuery}"`}
+              </span>
+              {isSemanticSearch && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 text-xs font-medium rounded-full">
+                  <SparklesIcon className="w-3 h-3" />
+                  AI Search
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>

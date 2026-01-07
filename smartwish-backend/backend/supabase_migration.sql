@@ -474,18 +474,154 @@ EXECUTE FUNCTION update_stickers_updated_at();
 GRANT SELECT ON stickers TO authenticated;
 GRANT SELECT ON stickers TO anon;
 
--- Insert some sample stickers for testing
-INSERT INTO stickers (title, slug, category, image_url, tags, popularity) VALUES
-    ('Happy Birthday Balloon', 'happy-birthday-balloon', 'birthday', 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=400', ARRAY['birthday', 'balloon', 'celebration'], 100),
-    ('Love Heart', 'love-heart', 'love', 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=400', ARRAY['love', 'heart', 'romantic'], 95),
-    ('Star Burst', 'star-burst', 'celebration', 'https://images.unsplash.com/photo-1489945052260-4f21c52268b9?w=400', ARRAY['star', 'celebration', 'sparkle'], 90),
-    ('Cute Emoji Smile', 'cute-emoji-smile', 'emoji', 'https://images.unsplash.com/photo-1508558936510-0af1e3cccbab?w=400', ARRAY['emoji', 'smile', 'happy'], 88),
-    ('Rainbow Colors', 'rainbow-colors', 'nature', 'https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=400', ARRAY['rainbow', 'colors', 'nature'], 85),
-    ('Flower Bloom', 'flower-bloom', 'nature', 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400', ARRAY['flower', 'nature', 'spring'], 82),
-    ('Coffee Cup', 'coffee-cup', 'food', 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400', ARRAY['coffee', 'drink', 'morning'], 80),
-    ('Pizza Slice', 'pizza-slice', 'food', 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400', ARRAY['pizza', 'food', 'yummy'], 78),
-    ('Cute Cat', 'cute-cat', 'animals', 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400', ARRAY['cat', 'cute', 'pet'], 92),
-    ('Puppy Dog', 'puppy-dog', 'animals', 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400', ARRAY['dog', 'puppy', 'pet'], 91),
-    ('Sun Shine', 'sun-shine', 'nature', 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400', ARRAY['sun', 'sunshine', 'bright'], 75),
-    ('Moon Stars', 'moon-stars', 'nature', 'https://images.unsplash.com/photo-1532693322450-2cb5c511067d?w=400', ARRAY['moon', 'stars', 'night'], 73)
-ON CONFLICT (slug) DO NOTHING;
+-- ----------------------------------------
+-- Stickers Semantic Search Enhancement
+-- ----------------------------------------
+
+-- Add new columns for semantic search (run as ALTER if table exists)
+ALTER TABLE stickers ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE stickers ADD COLUMN IF NOT EXISTS search_keywords TEXT[] DEFAULT '{}';
+ALTER TABLE stickers ADD COLUMN IF NOT EXISTS embedding_vector vector(768);
+ALTER TABLE stickers ADD COLUMN IF NOT EXISTS embedding_updated_at TIMESTAMP WITH TIME ZONE;
+
+-- Create index for vector similarity search (requires pgvector extension)
+CREATE INDEX IF NOT EXISTS idx_stickers_embedding_vector 
+ON stickers 
+USING ivfflat (embedding_vector vector_cosine_ops)
+WITH (lists = 50);
+
+-- Create index for keyword search
+CREATE INDEX IF NOT EXISTS idx_stickers_search_keywords ON stickers USING GIN(search_keywords);
+
+-- RPC function for stickers semantic search
+CREATE OR REPLACE FUNCTION match_stickers_by_embedding(
+  query_embedding vector(768),
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 20
+)
+RETURNS TABLE (
+  id uuid,
+  title text,
+  slug text,
+  description text,
+  category text,
+  image_url text,
+  thumbnail_url text,
+  tags text[],
+  search_keywords text[],
+  popularity integer,
+  num_downloads integer,
+  status text,
+  created_at timestamptz,
+  updated_at timestamptz,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    stickers.id,
+    stickers.title,
+    stickers.slug,
+    stickers.description,
+    stickers.category,
+    stickers.image_url,
+    stickers.thumbnail_url,
+    stickers.tags,
+    stickers.search_keywords,
+    stickers.popularity,
+    stickers.num_downloads,
+    stickers.status,
+    stickers.created_at,
+    stickers.updated_at,
+    1 - (stickers.embedding_vector <=> query_embedding) AS similarity
+  FROM stickers
+  WHERE 
+    stickers.embedding_vector IS NOT NULL
+    AND stickers.status = 'active'
+    AND 1 - (stickers.embedding_vector <=> query_embedding) > match_threshold
+  ORDER BY stickers.embedding_vector <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
+-- RPC function for stickers semantic search with category filter
+CREATE OR REPLACE FUNCTION match_stickers_by_embedding_and_category(
+  query_embedding vector(768),
+  filter_category text,
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 20
+)
+RETURNS TABLE (
+  id uuid,
+  title text,
+  slug text,
+  description text,
+  category text,
+  image_url text,
+  thumbnail_url text,
+  tags text[],
+  search_keywords text[],
+  popularity integer,
+  num_downloads integer,
+  status text,
+  created_at timestamptz,
+  updated_at timestamptz,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    stickers.id,
+    stickers.title,
+    stickers.slug,
+    stickers.description,
+    stickers.category,
+    stickers.image_url,
+    stickers.thumbnail_url,
+    stickers.tags,
+    stickers.search_keywords,
+    stickers.popularity,
+    stickers.num_downloads,
+    stickers.status,
+    stickers.created_at,
+    stickers.updated_at,
+    1 - (stickers.embedding_vector <=> query_embedding) AS similarity
+  FROM stickers
+  WHERE 
+    stickers.embedding_vector IS NOT NULL
+    AND stickers.status = 'active'
+    AND stickers.category = filter_category
+    AND 1 - (stickers.embedding_vector <=> query_embedding) > match_threshold
+  ORDER BY stickers.embedding_vector <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
+-- Helper function to set sticker embedding (for Python script)
+CREATE OR REPLACE FUNCTION set_sticker_embedding(
+  sticker_id uuid,
+  embedding float[]
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE stickers 
+  SET 
+    embedding_vector = embedding::vector(768),
+    embedding_updated_at = NOW()
+  WHERE id = sticker_id;
+END;
+$$;
+
+-- Grant execute permissions on RPC functions
+GRANT EXECUTE ON FUNCTION match_stickers_by_embedding TO authenticated;
+GRANT EXECUTE ON FUNCTION match_stickers_by_embedding TO anon;
+GRANT EXECUTE ON FUNCTION match_stickers_by_embedding_and_category TO authenticated;
+GRANT EXECUTE ON FUNCTION match_stickers_by_embedding_and_category TO anon;
+GRANT EXECUTE ON FUNCTION set_sticker_embedding TO authenticated;
