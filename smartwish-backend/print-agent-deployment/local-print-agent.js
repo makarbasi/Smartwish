@@ -162,51 +162,74 @@ async function createPdf(pdfPath, side1Path, side2Path, config) {
   return pdfPath;
 }
 
-async function printPdf(pdfPath, printerName, trayNumber = null) {
+async function printPdf(pdfPath, printerName, options = {}) {
+  const { trayNumber, paperType } = options;
+  
   console.log(`  🖨️ Printing to: ${printerName}`);
-  if (trayNumber) {
-    console.log(`  📥 Using tray: ${trayNumber}`);
-  }
-  console.log(`  📄 Settings: Letter, Landscape, Duplex (flip short edge), Color`);
+  console.log(`  📄 Paper Type: ${paperType || 'greeting-card'}`);
+  console.log(`  📥 Tray: ${trayNumber || 'Auto (printer default)'}`);
+
+  // Determine print settings based on paper type
+  const isSticker = paperType === 'sticker';
+  
+  // For stickers: single-sided, no duplex
+  // For greeting cards: duplex (flip on short edge)
+  const duplexSetting = isSticker ? 'simplex' : 'duplexshort';
+  
+  console.log(`  📄 Settings: Letter, ${isSticker ? 'Portrait, Simplex' : 'Landscape, Duplex (flip short edge)'}, Color`);
 
   // Print options for pdf-to-printer (uses SumatraPDF on Windows)
   // https://github.com/artiebits/pdf-to-printer
   const printOptions = {
     printer: printerName,
     // Duplex options: 'simplex', 'duplex', 'duplexshort', 'duplexlong'
-    // For landscape greeting cards: use 'duplexshort' (flip on short edge)
-    side: 'duplexshort',
+    side: duplexSetting,
     // Scale: 'noscale', 'shrink', 'fit'
     scale: 'noscale',
     // Color printing (not monochrome)
     monochrome: false,
   };
 
-  // Add tray selection if specified
-  // Note: Tray selection support depends on printer driver
-  // Common tray names: 'Tray 1', 'Tray 2', 'Auto', 'Manual Feed'
+  // Add tray/input bin selection for HP printers
+  // HP OfficeJet Pro uses these tray mappings:
+  // Tray 1 = "Tray1" or input bin 1 (sticker paper)
+  // Tray 2 = "Tray2" or input bin 2 (card stock)
   if (trayNumber) {
-    printOptions.paperSource = `Tray ${trayNumber}`;
+    // For pdf-to-printer with SumatraPDF, we can use the -print-settings option
+    // Format: "bin=<tray>" where tray is the input bin name
+    // HP printers typically use: "Tray1", "Tray2", "Auto"
+    const trayName = `Tray${trayNumber}`;
+    printOptions.printSettings = `bin=${trayName}`;
+    console.log(`  📥 Input Bin: ${trayName}`);
   }
 
   try {
     await print(pdfPath, printOptions);
-    console.log('  ✅ Print job sent successfully (duplex: flip on short edge)!');
+    console.log(`  ✅ Print job sent successfully (${isSticker ? 'simplex' : 'duplex: flip on short edge'})!`);
   } catch (err) {
-    console.warn('  ⚠️ Print with duplex options failed:', err.message);
-    console.warn('  📝 Trying basic print...');
-    // Fallback: try basic print (duplex should be set in printer defaults)
+    console.warn('  ⚠️ Print with full options failed:', err.message);
+    console.warn('  📝 Trying basic print with tray selection...');
+    
+    // Fallback: try with just printer and tray
     const fallbackOptions = { printer: printerName };
     if (trayNumber) {
-      fallbackOptions.paperSource = `Tray ${trayNumber}`;
+      fallbackOptions.printSettings = `bin=Tray${trayNumber}`;
     }
-    await print(pdfPath, fallbackOptions);
-    console.log('  ✅ Print job sent using printer defaults');
+    
+    try {
+      await print(pdfPath, fallbackOptions);
+      console.log('  ✅ Print job sent using basic options');
+    } catch (err2) {
+      console.warn('  ⚠️ Basic print also failed:', err2.message);
+      // Last resort: just printer name
+      await print(pdfPath, { printer: printerName });
+      console.log('  ✅ Print job sent using printer defaults only');
+    }
     console.log('');
-    console.log('  ⚠️  If not printing two-sided, set duplex in Windows:');
+    console.log('  ⚠️  If printing from wrong tray, manually set in Windows:');
     console.log('     Control Panel → Devices and Printers');
     console.log('     Right-click printer → Printing Preferences');
-    console.log('     Set "Two-sided" to "Flip on Short Edge"');
+    console.log('     Set "Paper Source" to the correct tray');
   }
 }
 
@@ -301,8 +324,11 @@ async function processJob(job) {
       throw new Error('Job has no PDF URL and no valid image paths');
     }
 
-    // Print the PDF
-    await printPdf(pdfPath, printerName, trayNumber);
+    // Print the PDF with tray and paper type options
+    await printPdf(pdfPath, printerName, { 
+      trayNumber, 
+      paperType: job.paperType || 'greeting-card' 
+    });
 
     // Update job status on server
     await updateJobStatus(job.id, 'completed');

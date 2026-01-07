@@ -297,14 +297,15 @@ export default function StickersPage() {
 
   // Print sticker sheet function
   const printStickerSheet = async () => {
-    // Get printer settings from kiosk config
-    const printerName = kioskConfig?.printerName || "HP OfficeJet Pro 9130e Series";
-    const trays = kioskConfig?.printerTrays || [];
-    const tray = trays.find((t) => t.paperType === "sticker");
-    const trayNumber = tray?.trayNumber;
-    const paperSize = tray?.paperSize || "letter";
+    // Get printer name from kiosk config
+    const printerName = kioskConfig?.printerName || "HP OfficeJet Pro 9135e Series";
+    
+    // IMPORTANT: Stickers ALWAYS print from Tray 1 (contains sticker paper)
+    // Greeting cards use Tray 2 (contains card stock)
+    const trayNumber = 1;
+    const paperSize = "letter";
 
-    console.log(`🖨️ Printing sticker sheet to: ${printerName}`);
+    console.log(`🖨️ Printing sticker sheet to: ${printerName}, Tray: ${trayNumber}`);
 
     // Convert blob URLs to base64 for all filled slots
     const imageBase64Array: (string | null)[] = await Promise.all(
