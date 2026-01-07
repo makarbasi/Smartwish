@@ -698,6 +698,145 @@ export class AppController {
     }
   }
 
+  /**
+   * Print stickers endpoint - generates a sticker sheet with 6 circular stickers
+   * Layout matches Avery Presta 94513 (3" diameter, 2x3 grid on letter paper)
+   */
+  @Post('print-stickers')
+  async printStickers(@Req() req: Request, @Res() res: Response) {
+    let savedPaths: (string | null)[] = [];
+
+    try {
+      const { stickers, printerName, paperSize, trayNumber, layout } = req.body;
+
+      if (!stickers || !Array.isArray(stickers)) {
+        return res.status(400).json({ message: 'Stickers array is required' });
+      }
+
+      if (!printerName) {
+        return res.status(400).json({ message: 'Printer name is required' });
+      }
+
+      const selectedPaperSize = paperSize || 'letter';
+      const timestamp = Date.now();
+      const jobId = `sticker_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+
+      console.log(
+        `🖨️ Sticker print request: ${stickers.filter(s => s).length} stickers to ${printerName}, layout: ${layout || 'avery-94513'}`,
+      );
+
+      // Save sticker images
+      const stickersDir = path.join(downloadsDir, 'stickers');
+      if (!fs.existsSync(stickersDir)) {
+        fs.mkdirSync(stickersDir, { recursive: true });
+      }
+
+      savedPaths = [];
+      for (let i = 0; i < 6; i++) {
+        const stickerData = stickers[i];
+        if (!stickerData) {
+          savedPaths.push(null);
+          continue;
+        }
+
+        const fileName = `${jobId}_sticker_${i + 1}.png`;
+        const filePath = path.join(stickersDir, fileName);
+
+        // Handle base64 image data
+        const base64Data = stickerData.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(filePath, buffer);
+        savedPaths.push(filePath);
+        console.log(`Saved sticker ${i + 1} to ${filePath}`);
+      }
+
+      // Generate composite sticker sheet
+      const compositePath = path.join(stickersDir, `${jobId}_sheet.png`);
+      await this.createStickerSheetComposite(compositePath, savedPaths);
+
+      // Generate PDF from composite
+      const pdfPath = path.join(stickersDir, `${jobId}_stickers.pdf`);
+      await this.createStickerPdf(pdfPath, compositePath);
+
+      // Cloud mode: Queue for local print agent
+      const isCloudEnvironment = process.env.NODE_ENV === 'production' ||
+        process.env.RENDER === 'true' ||
+        !process.env.LOCAL_PRINTING;
+
+      let pdfUrl: string | undefined;
+
+      if (isCloudEnvironment) {
+        // Upload PDF to Supabase
+        try {
+          const pdfBuffer = fs.readFileSync(pdfPath);
+          const supabasePdfPath = `print-pdfs/${jobId}_stickers.pdf`;
+          pdfUrl = await this.storageService.uploadBuffer(pdfBuffer, supabasePdfPath, 'application/pdf');
+          console.log(`✅ Sticker PDF uploaded to Supabase: ${pdfUrl}`);
+        } catch (uploadErr) {
+          const baseUrl = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || getBaseUrl();
+          pdfUrl = `${baseUrl}/downloads/stickers/${jobId}_stickers.pdf`;
+          console.warn(`⚠️ Supabase upload failed, using local URL: ${pdfUrl}`);
+        }
+
+        // Create print job for local agent
+        const printJob = {
+          id: jobId,
+          printerName,
+          imagePaths: [], // Stickers use PDF directly, no separate image paths
+          paperSize: selectedPaperSize,
+          paperType: 'sticker',
+          trayNumber: trayNumber || null,
+          pdfUrl,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (!global.printJobQueue) {
+          global.printJobQueue = [];
+        }
+        global.printJobQueue.push(printJob as any);
+
+        console.log(`✅ Sticker print job ${jobId} queued for local print agent`);
+
+        // Cleanup temp files
+        const validPaths = savedPaths.filter((p): p is string => p !== null);
+        for (const p of validPaths) {
+          try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch { /* ignore */ }
+        }
+        try { if (fs.existsSync(compositePath)) fs.unlinkSync(compositePath); } catch { /* ignore */ }
+        try { if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath); } catch { /* ignore */ }
+
+        res.json({
+          message: 'Sticker print job queued successfully',
+          jobId,
+          status: 'pending',
+          pdfUrl,
+        });
+      } else {
+        // Local mode: Direct print
+        console.log('🏠 Local environment - attempting direct sticker print');
+        // For now, just return success with PDF path
+        res.json({
+          message: 'Sticker print job created',
+          jobId,
+          pdfPath,
+        });
+      }
+    } catch (error) {
+      console.error('Error in sticker printing:', error);
+      // Cleanup
+      const validPaths = savedPaths.filter((p): p is string => p !== null);
+      for (const p of validPaths) {
+        try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch { /* ignore */ }
+      }
+      res.status(500).json({
+        message: 'Failed to print stickers',
+        error: error.message,
+      });
+    }
+  }
+
   @Get('get-printers')
   async getPrinters(@Res() res: Response) {
     try {
@@ -1019,6 +1158,138 @@ export class AppController {
       return pdfPath;
     } catch (error) {
       console.error(`Error creating PDF ${pdfPath}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a composite sticker sheet image matching Avery Presta 94513 layout
+   * 6 circular stickers (3" diameter) in 2x3 grid on letter paper
+   * 
+   * Layout specs (at 300 DPI):
+   * - Paper: 8.5" x 11" = 2550px x 3300px
+   * - Sticker diameter: 3" = 900px
+   * - Top margin: 0.75" = 225px
+   * - Left margin: 1.25" = 375px
+   * - Horizontal gap between stickers: 0.5" = 150px
+   * - Vertical gap between stickers: 0.5" = 150px
+   */
+  async createStickerSheetComposite(outputPath: string, stickerPaths: (string | null)[]): Promise<string> {
+    try {
+      console.log('Creating sticker sheet composite...');
+
+      // Paper dimensions at 300 DPI
+      const paperWidthPx = 2550;  // 8.5 inches
+      const paperHeightPx = 3300; // 11 inches
+
+      // Sticker dimensions
+      const stickerDiameterPx = 900; // 3 inches
+
+      // Margins and gaps
+      const topMarginPx = 225;    // 0.75 inches
+      const leftMarginPx = 375;   // 1.25 inches
+      const hGapPx = 150;         // 0.5 inches between columns
+      const vGapPx = 150;         // 0.5 inches between rows
+
+      // Calculate sticker positions (2 columns, 3 rows)
+      const positions = [
+        // Row 1
+        { x: leftMarginPx, y: topMarginPx },
+        { x: leftMarginPx + stickerDiameterPx + hGapPx, y: topMarginPx },
+        // Row 2
+        { x: leftMarginPx, y: topMarginPx + stickerDiameterPx + vGapPx },
+        { x: leftMarginPx + stickerDiameterPx + hGapPx, y: topMarginPx + stickerDiameterPx + vGapPx },
+        // Row 3
+        { x: leftMarginPx, y: topMarginPx + (stickerDiameterPx + vGapPx) * 2 },
+        { x: leftMarginPx + stickerDiameterPx + hGapPx, y: topMarginPx + (stickerDiameterPx + vGapPx) * 2 },
+      ];
+
+      // Create composites array for sharp
+      const composites: any[] = [];
+
+      for (let i = 0; i < 6; i++) {
+        const stickerPath = stickerPaths[i];
+        if (!stickerPath || !fs.existsSync(stickerPath)) {
+          console.log(`Sticker ${i + 1}: empty slot`);
+          continue;
+        }
+
+        const pos = positions[i];
+        console.log(`Sticker ${i + 1}: placing at (${pos.x}, ${pos.y})`);
+
+        // Resize sticker to fit in circle and create circular mask
+        const resizedSticker = await sharp(stickerPath)
+          .resize(stickerDiameterPx, stickerDiameterPx, { fit: 'cover' })
+          .toBuffer();
+
+        // Create circular mask
+        const circleMask = Buffer.from(
+          `<svg width="${stickerDiameterPx}" height="${stickerDiameterPx}">
+            <circle cx="${stickerDiameterPx / 2}" cy="${stickerDiameterPx / 2}" r="${stickerDiameterPx / 2}" fill="white"/>
+          </svg>`
+        );
+
+        // Apply circular mask
+        const circularSticker = await sharp(resizedSticker)
+          .composite([{
+            input: circleMask,
+            blend: 'dest-in',
+          }])
+          .png()
+          .toBuffer();
+
+        composites.push({
+          input: circularSticker,
+          top: pos.y,
+          left: pos.x,
+        });
+      }
+
+      // Create white background and composite all stickers
+      await sharp({
+        create: {
+          width: paperWidthPx,
+          height: paperHeightPx,
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+        },
+      })
+        .composite(composites)
+        .png()
+        .toFile(outputPath);
+
+      console.log(`✅ Sticker sheet composite created: ${outputPath}`);
+      return outputPath;
+    } catch (error) {
+      console.error('Error creating sticker sheet composite:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a PDF from a single sticker sheet image
+   */
+  async createStickerPdf(pdfPath: string, stickerSheetPath: string): Promise<string> {
+    try {
+      console.log(`Creating sticker PDF: ${pdfPath}`);
+      const pdfDoc = await PDFDocument.create();
+      const imageBytes = await fsPromises.readFile(stickerSheetPath);
+
+      // PDF page size in points (1 inch = 72 points) - Letter portrait
+      const paperWidthPoints = 8.5 * 72;  // 612 points
+      const paperHeightPoints = 11 * 72;  // 792 points
+
+      const image = await pdfDoc.embedPng(imageBytes);
+
+      const page = pdfDoc.addPage([paperWidthPoints, paperHeightPoints]);
+      page.drawImage(image, { x: 0, y: 0, width: paperWidthPoints, height: paperHeightPoints });
+
+      const pdfBytes = await pdfDoc.save();
+      await fsPromises.writeFile(pdfPath, pdfBytes);
+      console.log(`✅ Sticker PDF created: ${pdfPath}`);
+      return pdfPath;
+    } catch (error) {
+      console.error(`Error creating sticker PDF ${pdfPath}:`, error);
       throw error;
     }
   }
