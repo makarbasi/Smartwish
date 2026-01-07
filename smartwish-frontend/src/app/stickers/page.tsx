@@ -8,7 +8,7 @@ import useSWR from "swr";
 import StickerSheet, { StickerSlot } from "@/components/stickers/StickerSheet";
 import StickerCarousel, { StickerItem } from "@/components/stickers/StickerCarousel";
 import StickerGallery, { Sticker } from "@/components/stickers/StickerGallery";
-import StickerEditorModal from "@/components/stickers/StickerEditorModal";
+import PinturaEditorModal from "@/components/PinturaEditorModal";
 import StickerPaymentModal from "@/components/stickers/StickerPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
@@ -428,9 +428,9 @@ export default function StickersPage() {
         </div>
       </div>
 
-      {/* Sticker Editor Modal with circular crop */}
+      {/* Sticker Editor Modal - using same Pintura as greeting cards */}
       {showEditor && editorImageSrc && (
-        <StickerEditorModal
+        <PinturaEditorModal
           imageSrc={editorImageSrc}
           isVisible={showEditor}
           onHide={handleEditorHide}
