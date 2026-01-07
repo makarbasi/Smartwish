@@ -37,6 +37,29 @@
 - start-print-agent.ps1 - PowerShell startup script
 - start-print-agent.bat - Batch startup script (alternative)
 - setup-print-agent-service.ps1 - Auto-start setup script
+- print-with-tray.ps1 - Helper script for tray selection
+- list-printer-trays.ps1 - Utility to discover printer tray names
+
+## Tray Selection (HP Printers)
+
+The print agent supports printing to specific trays:
+- Tray 1: Sticker paper (single-sided)
+- Tray 2: Card stock (duplex/two-sided)
+
+For reliable tray selection, install SumatraPDF:
+1. Download from: https://www.sumatrapdfreader.org/download-free-pdf-viewer
+2. Install (portable or regular version)
+3. Restart the print agent
+
+To check your printer trays:
+   powershell -ExecutionPolicy Bypass -File list-printer-trays.ps1 -PrinterName "HP OfficeJet Pro 9135e"
+
+If tray selection doesn't work:
+1. Open Control Panel → Devices and Printers
+2. Right-click your HP printer → Printing Preferences
+3. Go to Paper/Quality tab
+4. Set Paper Source to the desired tray
+5. Click OK
 
 ## Auto-Start Options
 

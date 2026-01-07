@@ -25,6 +25,7 @@ import sharp from 'sharp';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -162,74 +163,184 @@ async function createPdf(pdfPath, side1Path, side2Path, config) {
   return pdfPath;
 }
 
+/**
+ * Print PDF using SumatraPDF directly with tray selection
+ * This is the most reliable method for HP printers
+ */
+async function printWithSumatraPDF(pdfPath, printerName, options = {}) {
+  const { trayNumber, paperType } = options;
+  const isSticker = paperType === 'sticker';
+  
+  // Common SumatraPDF install locations
+  const sumatraPaths = [
+    process.env.LOCALAPPDATA + '\\SumatraPDF\\SumatraPDF.exe',
+    'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe',
+    'C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe',
+  ];
+  
+  let sumatraPath = null;
+  for (const p of sumatraPaths) {
+    try {
+      await fs.access(p);
+      sumatraPath = p;
+      break;
+    } catch {}
+  }
+  
+  if (!sumatraPath) {
+    throw new Error('SumatraPDF not found - install from https://www.sumatrapdfreader.org');
+  }
+  
+  // Build print settings
+  // HP OfficeJet Pro tray names: "Tray 1", "Tray 2"
+  let settings = [];
+  settings.push(isSticker ? 'simplex' : 'duplexshort');
+  settings.push('color');
+  settings.push('noscale');
+  
+  if (trayNumber) {
+    // HP format: "Tray 1" or "Tray 2" (with space)
+    settings.push(`bin=Tray ${trayNumber}`);
+  }
+  
+  const settingsStr = settings.join(',');
+  
+  console.log(`  📜 SumatraPDF: ${sumatraPath}`);
+  console.log(`  📜 Settings: ${settingsStr}`);
+  
+  // Run SumatraPDF
+  const cmd = `"${sumatraPath}" -print-to "${printerName}" -print-settings "${settingsStr}" -silent "${pdfPath}"`;
+  
+  return new Promise((resolve, reject) => {
+    exec(cmd, { timeout: 60000 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`SumatraPDF failed: ${error.message}`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+/**
+ * Print PDF using PowerShell script for tray selection
+ */
+async function printWithPowerShellScript(pdfPath, printerName, options = {}) {
+  const { trayNumber, paperType } = options;
+  
+  // Path to our PowerShell print script (same folder as this agent)
+  const scriptPath = path.join(__dirname, 'print-with-tray.ps1');
+  
+  // Check if script exists
+  try {
+    await fs.access(scriptPath);
+  } catch {
+    throw new Error('print-with-tray.ps1 script not found in print-agent-deployment folder');
+  }
+  
+  // Build PowerShell command
+  const args = [
+    '-ExecutionPolicy', 'Bypass',
+    '-File', `"${scriptPath}"`,
+    '-PdfPath', `"${pdfPath}"`,
+    '-PrinterName', `"${printerName}"`,
+    '-TrayNumber', trayNumber || 0,
+    '-PaperType', `"${paperType || 'greeting-card'}"`
+  ].join(' ');
+  
+  console.log(`  📜 Running: powershell ${args}`);
+  
+  return new Promise((resolve, reject) => {
+    exec(`powershell ${args}`, { timeout: 120000 }, (error, stdout, stderr) => {
+      console.log('  --- PowerShell Output ---');
+      if (stdout) console.log(stdout);
+      if (stderr) console.log(stderr);
+      console.log('  --- End Output ---');
+      
+      if (error && error.code !== 0) {
+        reject(new Error(`PowerShell script failed: ${error.message}`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 async function printPdf(pdfPath, printerName, options = {}) {
   const { trayNumber, paperType } = options;
   
   console.log(`  🖨️ Printing to: ${printerName}`);
   console.log(`  📄 Paper Type: ${paperType || 'greeting-card'}`);
-  console.log(`  📥 Tray: ${trayNumber || 'Auto (printer default)'}`);
+  console.log(`  📥 Requested Tray: ${trayNumber || 'Auto (printer default)'}`);
 
-  // Determine print settings based on paper type
   const isSticker = paperType === 'sticker';
-  
-  // For stickers: single-sided, no duplex
-  // For greeting cards: duplex (flip on short edge)
   const duplexSetting = isSticker ? 'simplex' : 'duplexshort';
   
-  console.log(`  📄 Settings: Letter, ${isSticker ? 'Portrait, Simplex' : 'Landscape, Duplex (flip short edge)'}, Color`);
+  console.log(`  📄 Duplex: ${isSticker ? 'No (simplex)' : 'Yes (flip short edge)'}`);
 
-  // Print options for pdf-to-printer (uses SumatraPDF on Windows)
-  // https://github.com/artiebits/pdf-to-printer
+  // METHOD 1: Try SumatraPDF directly (most reliable for tray selection)
+  if (trayNumber) {
+    console.log('  🔄 METHOD 1: Trying SumatraPDF with tray selection...');
+    try {
+      await printWithSumatraPDF(pdfPath, printerName, options);
+      console.log(`  ✅ Print job sent to Tray ${trayNumber} via SumatraPDF!`);
+      return;
+    } catch (err) {
+      console.warn(`  ⚠️ SumatraPDF method failed: ${err.message}`);
+    }
+  }
+
+  // METHOD 2: Try PowerShell script
+  if (trayNumber) {
+    console.log('  🔄 METHOD 2: Trying PowerShell script...');
+    try {
+      await printWithPowerShellScript(pdfPath, printerName, options);
+      console.log(`  ✅ Print job sent via PowerShell script!`);
+      return;
+    } catch (err) {
+      console.warn(`  ⚠️ PowerShell script failed: ${err.message}`);
+    }
+  }
+
+  // METHOD 3: Use pdf-to-printer library
+  console.log('  🔄 METHOD 3: Using pdf-to-printer library...');
   const printOptions = {
     printer: printerName,
-    // Duplex options: 'simplex', 'duplex', 'duplexshort', 'duplexlong'
     side: duplexSetting,
-    // Scale: 'noscale', 'shrink', 'fit'
     scale: 'noscale',
-    // Color printing (not monochrome)
     monochrome: false,
   };
 
-  // Add tray/input bin selection for HP printers
-  // HP OfficeJet Pro uses these tray mappings:
-  // Tray 1 = "Tray1" or input bin 1 (sticker paper)
-  // Tray 2 = "Tray2" or input bin 2 (card stock)
-  if (trayNumber) {
-    // For pdf-to-printer with SumatraPDF, we can use the -print-settings option
-    // Format: "bin=<tray>" where tray is the input bin name
-    // HP printers typically use: "Tray1", "Tray2", "Auto"
-    const trayName = `Tray${trayNumber}`;
-    printOptions.printSettings = `bin=${trayName}`;
-    console.log(`  📥 Input Bin: ${trayName}`);
-  }
-
   try {
     await print(pdfPath, printOptions);
-    console.log(`  ✅ Print job sent successfully (${isSticker ? 'simplex' : 'duplex: flip on short edge'})!`);
-  } catch (err) {
-    console.warn('  ⚠️ Print with full options failed:', err.message);
-    console.warn('  📝 Trying basic print with tray selection...');
+    console.log(`  ✅ Print job sent via pdf-to-printer (${isSticker ? 'simplex' : 'duplex'})!`);
     
-    // Fallback: try with just printer and tray
-    const fallbackOptions = { printer: printerName };
     if (trayNumber) {
-      fallbackOptions.printSettings = `bin=Tray${trayNumber}`;
+      console.log('');
+      console.log('  ⚠️  WARNING: Tray selection may not have worked with this method!');
+      console.log('     The print job was sent but may use the wrong tray.');
+      console.log('');
+      console.log('  📋 TO FIX TRAY SELECTION:');
+      console.log('     Option A: Install SumatraPDF (recommended)');
+      console.log('        Download from: https://www.sumatrapdfreader.org/download-free-pdf-viewer');
+      console.log('');
+      console.log('     Option B: Set Windows printer default tray');
+      console.log('        1. Open Control Panel → Devices and Printers');
+      console.log('        2. Right-click your HP printer → Printing Preferences');
+      console.log('        3. Go to Paper/Quality tab');
+      console.log('        4. Set Paper Source to the correct tray');
+      console.log('        5. Click OK');
     }
+  } catch (err) {
+    console.warn('  ⚠️ pdf-to-printer failed:', err.message);
     
+    // Last resort: basic print
     try {
-      await print(pdfPath, fallbackOptions);
-      console.log('  ✅ Print job sent using basic options');
-    } catch (err2) {
-      console.warn('  ⚠️ Basic print also failed:', err2.message);
-      // Last resort: just printer name
       await print(pdfPath, { printer: printerName });
       console.log('  ✅ Print job sent using printer defaults only');
+    } catch (err2) {
+      throw new Error(`All print methods failed: ${err2.message}`);
     }
-    console.log('');
-    console.log('  ⚠️  If printing from wrong tray, manually set in Windows:');
-    console.log('     Control Panel → Devices and Printers');
-    console.log('     Right-click printer → Printing Preferences');
-    console.log('     Set "Paper Source" to the correct tray');
   }
 }
 

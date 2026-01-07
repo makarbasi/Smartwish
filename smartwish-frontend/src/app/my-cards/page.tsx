@@ -942,12 +942,15 @@ function MyCardsContent() {
   // Auto-print using kiosk config for printer and tray selection
   const autoPrintToEpson = async (card: MyCard, image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card') => {
     // Get printer settings from kiosk config
-    const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9130e Series [HPIE4B65B]';
+    const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9135e Series';
     const trays = kioskConfig?.printerTrays || [];
     
-    // Find the tray for this paper type
+    // Find the tray for this paper type, with hardcoded defaults:
+    // - Greeting cards: Tray 2 (card stock, duplex)
+    // - Stickers: Tray 1 (sticker paper, simplex)
     const tray = trays.find(t => t.paperType === paperType);
-    const trayNumber = tray?.trayNumber || null;
+    const defaultTrayNumber = paperType === 'greeting-card' ? 2 : paperType === 'sticker' ? 1 : null;
+    const trayNumber = tray?.trayNumber ?? defaultTrayNumber;
     const paperSize = tray?.paperSize || 'letter';
     
     // Get kiosk ID from context for logging
