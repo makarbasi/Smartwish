@@ -126,15 +126,46 @@ export default function StickersPage() {
   }, []);
 
   // Handle edit button click on a sticker slot
-  const handleSlotEdit = useCallback((index: number) => {
+  const handleSlotEdit = useCallback(async (index: number) => {
     const slot = slots[index];
     if (!slot.imageUrl) return;
 
     setSelectedSlotIndex(index);
-    // Use original image URL if available, otherwise use the current imageUrl
-    setEditorImageSrc(slot.originalImageUrl || slot.imageUrl);
     setViewMode("editing");
-    setShowEditor(true);
+    
+    // Use the current imageUrl (which includes any edits) - NOT the original
+    const imageUrl = slot.imageUrl;
+    
+    // If it's already a blob or data URL, use it directly
+    if (imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) {
+      setEditorImageSrc(imageUrl);
+      setShowEditor(true);
+      return;
+    }
+    
+    // For external URLs, use our proxy to avoid CORS issues with Pintura
+    try {
+      // Use the proxy endpoint to fetch the external image
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+      const response = await fetch(proxyUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Proxy failed: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditorImageSrc(reader.result as string);
+        setShowEditor(true);
+      };
+      reader.readAsDataURL(blob);
+    } catch (error) {
+      console.error("Error loading image for edit:", error);
+      // Fallback to direct URL (may not work due to CORS)
+      setEditorImageSrc(imageUrl);
+      setShowEditor(true);
+    }
   }, [slots]);
 
   // Handle editor process (save)

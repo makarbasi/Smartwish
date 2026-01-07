@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
+
+// IMPORTANT: Import Pintura CSS - required for the editor to render
+import "@pqina/pintura/pintura.css";
+
 import {
   setPlugins,
   plugin_crop,
