@@ -107,9 +107,9 @@ export function useKioskInactivity({
             // Clear the flag
             setShouldResetOnExit(false);
 
-            // Navigate to /templates with hard reload
-            console.log("🖥️ [KioskInactivity] ✅ Navigating to /templates");
-            window.location.href = "/templates";
+            // Navigate to /kiosk/home with hard reload so user can choose product type
+            console.log("🖥️ [KioskInactivity] ✅ Navigating to /kiosk/home");
+            window.location.href = "/kiosk/home";
             return;
         }
 

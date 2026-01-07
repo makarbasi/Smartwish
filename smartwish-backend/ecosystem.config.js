@@ -19,7 +19,7 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       CLOUD_SERVER_URL: 'https://smartwish.onrender.com',
-      DEFAULT_PRINTER: 'HPA4CC43 (HP Smart Tank 7600 series)',
+      DEFAULT_PRINTER: 'HP OfficeJet Pro 9130e Series [HPIE4B65B]',
       POLL_INTERVAL: '5000'
     },
     error_file: './logs/print-agent-error.log',
