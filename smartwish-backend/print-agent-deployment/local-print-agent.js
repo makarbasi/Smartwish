@@ -37,7 +37,7 @@ const CONFIG = {
   cloudServerUrl: process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
 
   // Default printer name - set to your actual printer
-  defaultPrinter: process.env.DEFAULT_PRINTER || 'HPA4CC43 (HP Smart Tank 7600 series)',
+  defaultPrinter: process.env.DEFAULT_PRINTER || 'HP OfficeJet Pro 9130e Series [HPIE4B65B]',
 
   // How often to poll for new jobs (milliseconds)
   pollInterval: process.env.POLL_INTERVAL || 5000,
@@ -214,31 +214,64 @@ async function printPdf(pdfPath, printerName, trayNumber = null) {
 // JOB PROCESSING
 // =============================================================================
 
+async function downloadPdf(url, savePath) {
+  console.log(`  📥 Downloading PDF: ${url}`);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download PDF: ${response.status}`);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await fs.writeFile(savePath, buffer);
+  return savePath;
+}
+
 async function processJob(job) {
   console.log(`\n📋 Processing job: ${job.id}`);
-  console.log(`   Printer: ${job.printerName}`);
+  
+  // Use default printer if job doesn't specify one
+  const printerName = job.printerName || CONFIG.defaultPrinter;
+  const trayNumber = job.trayNumber || null;
+  
+  console.log(`   Printer: ${printerName}`);
   console.log(`   Paper Type: ${job.paperType || 'greeting-card'}`);
-  console.log(`   Tray: ${job.trayNumber || 'Auto'}`);
+  console.log(`   Tray: ${trayNumber || 'Auto'}`);
+  console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No (will use images)'}`);
   console.log(`   Images: ${job.imagePaths?.length || 0}`);
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });
 
   try {
-    // Get paper configuration
-    const config = getPaperConfig(job.paperSize || 'letter');
-    console.log(`   Paper: ${config.name}`);
+    let pdfPath;
 
-    // Download or use local paths for images
-    const imageFiles = {
-      front: path.join(jobDir, 'page_1.png'),
-      insideRight: path.join(jobDir, 'page_2.png'),
-      insideLeft: path.join(jobDir, 'page_3.png'),
-      back: path.join(jobDir, 'page_4.png'),
-    };
+    // =========================================================================
+    // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
+    // =========================================================================
+    if (job.pdfUrl) {
+      console.log('  📄 Using server-generated PDF (recommended)');
+      pdfPath = path.join(jobDir, 'card.pdf');
+      await downloadPdf(job.pdfUrl, pdfPath);
+      console.log('  ✅ PDF downloaded successfully');
+    } 
+    // =========================================================================
+    // FALLBACK: Generate PDF from images (legacy support)
+    // =========================================================================
+    else if (job.imagePaths && job.imagePaths.length >= 4) {
+      console.log('  ⚠️  No PDF URL provided - generating from images (slower)');
+      
+      // Get paper configuration
+      const config = getPaperConfig(job.paperSize || 'letter');
+      console.log(`   Paper: ${config.name}`);
 
-    // If imagePaths are URLs, download them
-    if (job.imagePaths && job.imagePaths.length >= 4) {
+      // Download or use local paths for images
+      const imageFiles = {
+        front: path.join(jobDir, 'page_1.png'),
+        insideRight: path.join(jobDir, 'page_2.png'),
+        insideLeft: path.join(jobDir, 'page_3.png'),
+        back: path.join(jobDir, 'page_4.png'),
+      };
+
+      // If imagePaths are URLs, download them
       for (let i = 0; i < 4; i++) {
         const imagePath = job.imagePaths[i];
         const localPath = path.join(jobDir, `page_${i + 1}.png`);
@@ -251,24 +284,24 @@ async function processJob(job) {
           await fs.copyFile(absolutePath, localPath);
         }
       }
+
+      // Create composite images
+      console.log('  🔧 Creating composite images...');
+      const side1Path = path.join(jobDir, 'side1.png');
+      const side2Path = path.join(jobDir, 'side2.png');
+
+      await createCompositeImage(side1Path, imageFiles.back, imageFiles.front, config);
+      await createCompositeImage(side2Path, imageFiles.insideRight, imageFiles.insideLeft, config);
+
+      // Create PDF
+      console.log('  📄 Creating PDF...');
+      pdfPath = path.join(jobDir, 'card.pdf');
+      await createPdf(pdfPath, side1Path, side2Path, config);
+    } else {
+      throw new Error('Job has no PDF URL and no valid image paths');
     }
 
-    // Create composite images
-    console.log('  🔧 Creating composite images...');
-    const side1Path = path.join(jobDir, 'side1.png');
-    const side2Path = path.join(jobDir, 'side2.png');
-
-    await createCompositeImage(side1Path, imageFiles.back, imageFiles.front, config);
-    await createCompositeImage(side2Path, imageFiles.insideRight, imageFiles.insideLeft, config);
-
-    // Create PDF
-    console.log('  📄 Creating PDF...');
-    const pdfPath = path.join(jobDir, 'card.pdf');
-    await createPdf(pdfPath, side1Path, side2Path, config);
-
-    // Print with tray selection
-    const printerName = job.printerName || CONFIG.defaultPrinter;
-    const trayNumber = job.trayNumber || null;
+    // Print the PDF
     await printPdf(pdfPath, printerName, trayNumber);
 
     // Update job status on server

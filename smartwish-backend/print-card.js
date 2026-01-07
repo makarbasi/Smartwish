@@ -348,7 +348,7 @@ async function printPdfWithPdfToPrinter(pdfFilePath, printerName, config) {
         if (config.name === 'Custom 8×6') {
           console.warn("  🔧 TO CREATE CUSTOM 8×6 SIZE IN WINDOWS:");
           console.warn("    • Control Panel → Devices and Printers");
-          console.warn("    • Right-click 'HPA4CC43 (HP Smart Tank 7600 series)'");
+          console.warn("    • Right-click 'HP OfficeJet Pro 9130e Series [HPIE4B65B]'");
           console.warn("    • 'Printing Preferences' → Main/Paper tab");
           console.warn("    • Paper Size → 'User Defined' at bottom of list");
           console.warn("    • Set Width: 8.00 inches, Height: 6.00 inches");

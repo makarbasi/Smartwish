@@ -13,7 +13,7 @@ REM Set your cloud server URL (change if different)
 set CLOUD_SERVER_URL=https://smartwish.onrender.com
 
 REM Set your default printer name (find exact name in Windows printer settings)
-set DEFAULT_PRINTER=HPA4CC43 (HP Smart Tank 7600 series)
+set DEFAULT_PRINTER=HP OfficeJet Pro 9130e Series [HPIE4B65B]
 
 REM How often to check for new jobs (5000 = 5 seconds)
 set POLL_INTERVAL=5000
