@@ -43,12 +43,57 @@ interface StickersApiResponse {
   mode?: string;
 }
 
+interface CategoriesApiResponse {
+  success: boolean;
+  data: string[];
+}
+
 interface StickerGalleryProps {
   onSelectSticker: (sticker: Sticker) => void;
   onClose: () => void;
 }
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+// Category emoji mapping for visual appeal
+const categoryEmojis: Record<string, string> = {
+  Animals: "🐾",
+  Cats: "🐱",
+  Dogs: "🐕",
+  Nature: "🌿",
+  Flowers: "🌸",
+  Love: "💕",
+  Hearts: "❤️",
+  Birthday: "🎂",
+  Holidays: "🎄",
+  Christmas: "🎅",
+  Halloween: "🎃",
+  Easter: "🐰",
+  Thanksgiving: "🦃",
+  Food: "🍕",
+  Drinks: "🍹",
+  Sports: "⚽",
+  Music: "🎵",
+  Stars: "⭐",
+  Emoji: "😊",
+  Cute: "🥰",
+  Funny: "😂",
+  Cool: "😎",
+  Vintage: "📷",
+  Retro: "🕹️",
+  Space: "🚀",
+  Ocean: "🌊",
+  Travel: "✈️",
+  Art: "🎨",
+  School: "📚",
+  Graduation: "🎓",
+  "Thank You": "🙏",
+  Congratulations: "🎉",
+  "Get Well": "💐",
+  Baby: "👶",
+  Wedding: "💒",
+  Anniversary: "💑",
+};
 
 /**
  * StickerGallery - Search and browse stickers in a 3-column grid
@@ -61,6 +106,7 @@ export default function StickerGallery({
 }: StickerGalleryProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Debounce search query (slightly longer delay for semantic search)
   useEffect(() => {
@@ -70,10 +116,24 @@ export default function StickerGallery({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Fetch categories
+  const { data: categoriesData } = useSWR<CategoriesApiResponse>(
+    "/api/stickers/categories",
+    fetcher
+  );
+  const categories = categoriesData?.data || [];
+
   // Build API URL - use semantic search when query provided
-  const apiUrl = debouncedQuery
-    ? `/api/stickers/search?q=${encodeURIComponent(debouncedQuery)}&limit=50&mode=hybrid`
-    : "/api/stickers?limit=50";
+  const buildApiUrl = () => {
+    if (debouncedQuery) {
+      const url = `/api/stickers/search?q=${encodeURIComponent(debouncedQuery)}&mode=hybrid`;
+      return selectedCategory ? `${url}&category=${encodeURIComponent(selectedCategory)}` : url;
+    }
+    const baseUrl = "/api/stickers";
+    return selectedCategory ? `${baseUrl}?category=${encodeURIComponent(selectedCategory)}` : baseUrl;
+  };
+
+  const apiUrl = buildApiUrl();
 
   // Fetch stickers
   const { data, error, isLoading } = useSWR<StickersApiResponse>(apiUrl, fetcher);
@@ -103,10 +163,23 @@ export default function StickerGallery({
     [onSelectSticker]
   );
 
+  const handleCategoryClick = (category: string) => {
+    if (selectedCategory === category) {
+      setSelectedCategory(null); // Deselect
+    } else {
+      setSelectedCategory(category);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedCategory(null);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Search header */}
-      <div className="sticky top-0 bg-white z-10 pb-4 border-b border-gray-200">
+      <div className="flex-shrink-0 bg-white pb-3 border-b border-gray-200">
         <div className="flex items-center gap-3">
           {/* Close button */}
           <button
@@ -123,7 +196,7 @@ export default function StickerGallery({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search stickers..."
+              placeholder="Search stickers... (try 'cute cat' or 'birthday')"
               className="w-full pl-12 pr-4 py-3 bg-gray-100 border border-gray-200 rounded-full text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
               autoFocus
             />
@@ -138,8 +211,44 @@ export default function StickerGallery({
           </div>
         </div>
 
-        {/* Results count */}
-        <div className="mt-3 px-2 flex items-center gap-2">
+        {/* Category filters - horizontal scrollable */}
+        {categories.length > 0 && (
+          <div className="mt-3 -mx-1 overflow-x-auto scrollbar-hide">
+            <div className="flex gap-2 px-1 pb-1">
+              {/* All button */}
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className={`
+                  flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all
+                  ${!selectedCategory 
+                    ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-md" 
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }
+                `}
+              >
+                ✨ All
+              </button>
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  onClick={() => handleCategoryClick(category)}
+                  className={`
+                    flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap
+                    ${selectedCategory === category 
+                      ? "bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-md" 
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }
+                  `}
+                >
+                  {categoryEmojis[category] || "📁"} {category}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Results count and active filters */}
+        <div className="mt-3 px-1 flex items-center gap-2 flex-wrap">
           {isLoading ? (
             <span className="text-sm text-gray-500">
               {debouncedQuery ? "🔍 AI searching..." : "Loading..."}
@@ -149,8 +258,9 @@ export default function StickerGallery({
           ) : (
             <>
               <span className="text-sm text-gray-500">
-                {stickers.length} sticker{stickers.length !== 1 ? "s" : ""} found
-                {debouncedQuery && ` for "${debouncedQuery}"`}
+                {stickers.length} sticker{stickers.length !== 1 ? "s" : ""}
+                {selectedCategory && ` in ${selectedCategory}`}
+                {debouncedQuery && ` matching "${debouncedQuery}"`}
               </span>
               {isSemanticSearch && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 text-xs font-medium rounded-full">
@@ -158,18 +268,26 @@ export default function StickerGallery({
                   AI Search
                 </span>
               )}
+              {(selectedCategory || debouncedQuery) && (
+                <button
+                  onClick={clearFilters}
+                  className="text-sm text-pink-600 hover:text-pink-700 underline"
+                >
+                  Clear filters
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
 
-      {/* Stickers grid - 3 columns of round stickers */}
-      <div className="flex-1 overflow-y-auto pt-4 pb-20">
+      {/* Stickers grid - 3 columns of round stickers, scrollable */}
+      <div className="flex-1 overflow-y-auto pt-4 pb-4">
         {isLoading ? (
-          <div className="grid grid-cols-3 gap-4">
-            {Array.from({ length: 12 }).map((_, i) => (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            {Array.from({ length: 18 }).map((_, i) => (
               <div key={i} className="flex flex-col items-center">
-                <div className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-gray-200 animate-pulse" />
+                <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full bg-gray-200 animate-pulse" />
                 <div className="mt-2 h-3 w-16 bg-gray-200 animate-pulse rounded" />
               </div>
             ))}
@@ -189,14 +307,24 @@ export default function StickerGallery({
             <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
               <MagnifyingGlassIcon className="w-12 h-12 text-gray-400" />
             </div>
-            <p className="text-gray-500">
+            <p className="text-gray-500 mb-4">
               {debouncedQuery
-                ? `No stickers found for "${debouncedQuery}"`
+                ? `No stickers found for "${debouncedQuery}"${selectedCategory ? ` in ${selectedCategory}` : ""}`
+                : selectedCategory
+                ? `No stickers in ${selectedCategory}`
                 : "No stickers available"}
             </p>
+            {(selectedCategory || debouncedQuery) && (
+              <button
+                onClick={clearFilters}
+                className="px-4 py-2 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4 md:gap-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-4">
             {stickers
               .filter((sticker) => sticker.imageUrl && sticker.imageUrl.length > 0)
               .map((sticker) => (
@@ -205,16 +333,16 @@ export default function StickerGallery({
                 onClick={() => handleSelectSticker(sticker)}
                 className="flex flex-col items-center group focus:outline-none"
               >
-                <div className="w-24 h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-full overflow-hidden border-2 border-gray-200 group-hover:border-pink-400 group-focus:border-pink-500 group-focus:ring-4 group-focus:ring-pink-200 transition-all duration-200 shadow-md group-hover:shadow-lg group-hover:scale-105 relative bg-gray-100">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-2 border-gray-200 group-hover:border-pink-400 group-focus:border-pink-500 group-focus:ring-4 group-focus:ring-pink-200 transition-all duration-200 shadow-md group-hover:shadow-lg group-hover:scale-105 relative bg-gray-100">
                   <Image
                     src={sticker.thumbnailUrl || sticker.imageUrl}
                     alt={sticker.title}
                     fill
                     className="object-cover"
-                    sizes="(max-width: 768px) 96px, 128px"
+                    sizes="(max-width: 640px) 80px, (max-width: 768px) 96px, 112px"
                   />
                 </div>
-                <span className="mt-2 text-xs md:text-sm text-gray-600 text-center line-clamp-1 group-hover:text-pink-600 transition-colors">
+                <span className="mt-1.5 text-xs text-gray-600 text-center line-clamp-1 group-hover:text-pink-600 transition-colors max-w-[80px] sm:max-w-[96px]">
                   {sticker.title}
                 </span>
               </button>

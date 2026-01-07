@@ -18,7 +18,7 @@ export class StickersService {
   ) {}
 
   async findAll(options: FindStickersOptions = {}): Promise<{ data: Sticker[]; total: number }> {
-    const { q, category, limit = 50, offset = 0 } = options;
+    const { q, category, limit, offset = 0 } = options;
 
     const queryBuilder = this.stickerRepository
       .createQueryBuilder('sticker')
@@ -43,8 +43,13 @@ export class StickersService {
     // Get total count
     const total = await queryBuilder.getCount();
 
-    // Apply pagination
-    queryBuilder.skip(offset).take(limit);
+    // Apply pagination only if limit is provided
+    if (offset > 0) {
+      queryBuilder.skip(offset);
+    }
+    if (limit) {
+      queryBuilder.take(limit);
+    }
 
     const data = await queryBuilder.getMany();
 
