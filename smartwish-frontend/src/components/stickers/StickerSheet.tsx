@@ -16,6 +16,8 @@ interface StickerSheetProps {
   onSlotClick: (index: number) => void;
   onSlotClear: (index: number) => void;
   onSlotEdit?: (index: number) => void;
+  onSlotCopy?: (index: number) => void;
+  copySourceIndex?: number | null;
 }
 
 /**
@@ -73,6 +75,8 @@ export default function StickerSheet({
   onSlotClick,
   onSlotClear,
   onSlotEdit,
+  onSlotCopy,
+  copySourceIndex = null,
 }: StickerSheetProps) {
   // Ensure we always have 6 slots
   const normalizedSlots = Array.from({ length: 6 }, (_, i) => slots[i] || {
@@ -137,6 +141,9 @@ export default function StickerSheet({
                 onClick={() => onSlotClick(index)}
                 onClear={() => onSlotClear(index)}
                 onEdit={onSlotEdit ? () => onSlotEdit(index) : undefined}
+                onCopy={onSlotCopy ? () => onSlotCopy(index) : undefined}
+                isCopySource={copySourceIndex === index}
+                isCopyTarget={copySourceIndex !== null && copySourceIndex !== index}
                 useFullSize
               />
             </div>

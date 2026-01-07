@@ -14,7 +14,7 @@ import KioskProductSwitcher from '@/components/KioskProductSwitcher'
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const p = usePathname()
   const router = useRouter()
-  const { isKiosk } = useDeviceMode()
+  const { isKiosk, isInitialized } = useDeviceMode()
   
   // Initialize kiosk inactivity tracking and screen saver
   const { showScreenSaver, exitScreenSaver } = useKioskInactivity()
@@ -25,13 +25,13 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const isKioskHome = p === '/kiosk/home'
   const isKioskSetup = p === '/kiosk'
 
-  // Redirect kiosk users from landing page to kiosk home
+  // Redirect kiosk users from landing page to kiosk home (only after initialization)
   useEffect(() => {
-    if (isKiosk && isLanding) {
+    if (isInitialized && isKiosk && isLanding) {
       console.log('🖥️ [AppChrome] Kiosk mode - Redirecting to kiosk home')
       router.replace('/kiosk/home')
     }
-  }, [isKiosk, isLanding, router])
+  }, [isKiosk, isInitialized, isLanding, router])
 
   // Log navigation visibility in kiosk mode
   if (isKiosk) {

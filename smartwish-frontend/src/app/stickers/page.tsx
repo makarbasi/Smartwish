@@ -56,6 +56,9 @@ export default function StickersPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("initial");
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
 
+  // Copy mode state
+  const [copySourceIndex, setCopySourceIndex] = useState<number | null>(null);
+
   // Editor state
   const [showEditor, setShowEditor] = useState(false);
   const [editorImageSrc, setEditorImageSrc] = useState<string>("");
@@ -86,19 +89,65 @@ export default function StickersPage() {
     router.push("/kiosk/home");
   };
 
-  // Handle slot click - enter selection mode
+  // Exit copy mode
+  const handleExitCopyMode = useCallback(() => {
+    setCopySourceIndex(null);
+  }, []);
+
+  // Handle paste to target slot
+  const handleCopyToSlot = useCallback((targetIndex: number) => {
+    if (copySourceIndex === null) return;
+    
+    const sourceSlot = slots[copySourceIndex];
+    if (!sourceSlot.imageUrl) return;
+
+    // Copy the sticker to the target slot
+    setSlots((prev) =>
+      prev.map((slot, i) =>
+        i === targetIndex
+          ? {
+              ...slot,
+              imageUrl: sourceSlot.imageUrl,
+              editedImageBlob: sourceSlot.editedImageBlob,
+              originalImageUrl: sourceSlot.originalImageUrl,
+            }
+          : slot
+      )
+    );
+    // Stay in copy mode to allow multiple pastes
+  }, [copySourceIndex, slots]);
+
+  // Handle slot click - enter selection mode or paste if in copy mode
   const handleSlotClick = useCallback((index: number) => {
+    // If in copy mode, handle paste
+    if (copySourceIndex !== null) {
+      if (index === copySourceIndex) {
+        // Clicking the source exits copy mode
+        handleExitCopyMode();
+      } else {
+        // Paste to this slot
+        handleCopyToSlot(index);
+      }
+      return;
+    }
+    
+    // Normal mode - enter selection
     setSelectedSlotIndex(index);
     setViewMode("selection");
-  }, []);
+  }, [copySourceIndex, handleExitCopyMode, handleCopyToSlot]);
 
   // Handle slot clear
   const handleSlotClear = useCallback((index: number) => {
     setSlots((prev) =>
       prev.map((slot, i) =>
-        i === index ? { ...slot, imageUrl: null, editedImageBlob: null } : slot
+        i === index ? { ...slot, imageUrl: null, editedImageBlob: null, originalImageUrl: null } : slot
       )
     );
+  }, []);
+
+  // Handle copy button click - enter copy mode
+  const handleSlotCopy = useCallback((index: number) => {
+    setCopySourceIndex(index);
   }, []);
 
   // Handle sticker selection from gallery - add directly to slot
@@ -342,6 +391,24 @@ export default function StickersPage() {
             ${viewMode !== "initial" ? "mb-4" : "mb-8"}
           `}
         >
+          {/* Copy Mode Banner */}
+          {copySourceIndex !== null && (
+            <div className="mb-4 flex items-center justify-center gap-4">
+              <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3">
+                <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+                <span className="font-semibold">
+                  Tap any circle to paste sticker #{copySourceIndex + 1}
+                </span>
+                <button
+                  onClick={handleExitCopyMode}
+                  className="ml-2 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm font-medium transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Sticker Sheet - shrinks when in selection mode */}
           <div
             className={`
@@ -356,6 +423,8 @@ export default function StickersPage() {
               onSlotClick={handleSlotClick}
               onSlotClear={handleSlotClear}
               onSlotEdit={handleSlotEdit}
+              onSlotCopy={handleSlotCopy}
+              copySourceIndex={copySourceIndex}
             />
           </div>
         </div>

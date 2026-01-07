@@ -10,14 +10,14 @@ import {
 
 export default function KioskHomePage() {
   const router = useRouter();
-  const { isKiosk } = useDeviceMode();
+  const { isKiosk, isInitialized } = useDeviceMode();
 
-  // Redirect non-kiosk users away from this page
+  // Redirect non-kiosk users away from this page (only after initialization)
   useEffect(() => {
-    if (!isKiosk) {
+    if (isInitialized && !isKiosk) {
       router.replace("/");
     }
-  }, [isKiosk, router]);
+  }, [isKiosk, isInitialized, router]);
 
   const handleSelectGreetingCards = () => {
     router.push("/templates");
