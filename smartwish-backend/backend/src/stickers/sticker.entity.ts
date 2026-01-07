@@ -23,6 +23,9 @@ export class Sticker {
   @Index()
   category?: string;
 
+  @Column({ type: 'text', nullable: true })
+  description?: string;
+
   @Column({ name: 'image_url', type: 'text' })
   imageUrl: string;
 
@@ -31,6 +34,9 @@ export class Sticker {
 
   @Column({ type: 'text', array: true, default: [] })
   tags: string[];
+
+  @Column({ name: 'search_keywords', type: 'text', array: true, default: [] })
+  searchKeywords: string[];
 
   @Column({ type: 'integer', default: 0 })
   @Index()
@@ -42,6 +48,12 @@ export class Sticker {
   @Column({ type: 'varchar', length: 20, default: 'active' })
   @Index()
   status: string;
+
+  // Note: embedding_vector is managed via raw SQL for pgvector compatibility
+  // TypeORM doesn't natively support vector type
+
+  @Column({ name: 'embedding_updated_at', type: 'timestamptz', nullable: true })
+  embeddingUpdatedAt?: Date;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

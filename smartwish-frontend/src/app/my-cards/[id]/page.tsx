@@ -374,6 +374,9 @@ export default function CustomizeCardPage() {
   const [realSavedDesignId, setRealSavedDesignId] = useState<string | null>(null);
   const [savingInBackground, setSavingInBackground] = useState(isTemplateMode);
 
+  // Computed: Are print/send actions blocked because we're waiting for the background save?
+  const isWaitingForSave = isTemplateMode && !realSavedDesignId;
+
   // Load template data from sessionStorage if in template mode
   useEffect(() => {
     if (isTemplateMode && cardId) {
@@ -390,6 +393,15 @@ export default function CustomizeCardPage() {
         setTemplateData(data);
         const loadEnd = performance.now();
         console.log(`⏱️ [EDITOR] Total template load time: ${(loadEnd - loadStart).toFixed(1)}ms`);
+        
+        // ALSO check if background save already completed (race condition fix)
+        // The event might have fired before our listener was set up
+        const existingRealId = sessionStorage.getItem(`tempIdMap_${cardId}`);
+        if (existingRealId) {
+          console.log('✅ Background save already completed, using real ID:', existingRealId);
+          setRealSavedDesignId(existingRealId);
+          setSavingInBackground(false);
+        }
       } else {
         console.warn(`⚠️ [EDITOR] No template data found in sessionStorage for ${cardId}`);
 
@@ -411,30 +423,28 @@ export default function CustomizeCardPage() {
   useEffect(() => {
     if (!isTemplateMode || !cardId) return;
 
+    // Helper function to handle save completion
+    const handleSaveComplete = (savedDesignId: string) => {
+      console.log('✅ Background save completed, transitioning to saved design:', savedDesignId);
+      setRealSavedDesignId(savedDesignId);
+      setSavingInBackground(false);
+
+      // Migrate gift card data from temp ID to real ID
+      const tempGiftCard = localStorage.getItem(`giftCard_${cardId}`);
+      if (tempGiftCard) {
+        console.log('🎁 Migrating gift card from temp ID to real ID:', cardId, '->', savedDesignId);
+        localStorage.setItem(`giftCard_${savedDesignId}`, tempGiftCard);
+        localStorage.removeItem(`giftCard_${cardId}`);
+      }
+
+      // Update URL without reload
+      window.history.replaceState(null, '', `/my-cards/${savedDesignId}`);
+    };
+
     const handleTemplateSaved = (event: CustomEvent) => {
-      const { tempId, savedDesignId, savedDesign } = event.detail;
+      const { tempId, savedDesignId } = event.detail;
       if (tempId === cardId) {
-        console.log('✅ Background save completed, transitioning to saved design:', savedDesignId);
-        setRealSavedDesignId(savedDesignId);
-        setSavingInBackground(false);
-
-        // Migrate gift card data from temp ID to real ID
-        const tempGiftCard = localStorage.getItem(`giftCard_${tempId}`);
-        if (tempGiftCard) {
-          console.log('🎁 Migrating gift card from temp ID to real ID:', tempId, '->', savedDesignId);
-          localStorage.setItem(`giftCard_${savedDesignId}`, tempGiftCard);
-          localStorage.removeItem(`giftCard_${tempId}`);
-        }
-
-        // Store mapping from temp ID to real ID (in case user navigates back with old URL)
-        sessionStorage.setItem(`tempIdMap_${tempId}`, savedDesignId);
-
-        // Keep pendingTemplate for a bit longer in case user navigates away and back
-        // Will clean up on next page load if the real design exists
-        // sessionStorage.removeItem(`pendingTemplate_${tempId}`);
-
-        // Update URL without reload
-        window.history.replaceState(null, '', `/my-cards/${savedDesignId}`);
+        handleSaveComplete(savedDesignId);
       }
     };
 
@@ -451,11 +461,33 @@ export default function CustomizeCardPage() {
     window.addEventListener('templateSaved', handleTemplateSaved as EventListener);
     window.addEventListener('templateSaveFailed', handleTemplateSaveFailed as EventListener);
 
+    // Poll sessionStorage as a fallback (in case event was missed)
+    // This catches race conditions where save completes before listener is set up
+    const pollInterval = setInterval(() => {
+      if (realSavedDesignId) {
+        clearInterval(pollInterval);
+        return;
+      }
+      const existingRealId = sessionStorage.getItem(`tempIdMap_${cardId}`);
+      if (existingRealId) {
+        console.log('🔄 [Poll] Found completed save in sessionStorage:', existingRealId);
+        handleSaveComplete(existingRealId);
+        clearInterval(pollInterval);
+      }
+    }, 500);
+
+    // Stop polling after 30 seconds
+    const pollTimeout = setTimeout(() => {
+      clearInterval(pollInterval);
+    }, 30000);
+
     return () => {
       window.removeEventListener('templateSaved', handleTemplateSaved as EventListener);
       window.removeEventListener('templateSaveFailed', handleTemplateSaveFailed as EventListener);
+      clearInterval(pollInterval);
+      clearTimeout(pollTimeout);
     };
-  }, [isTemplateMode, cardId]);
+  }, [isTemplateMode, cardId, realSavedDesignId]);
 
   // Fetch all saved designs and find the specific one (only if not in template mode or pixshop route)
   const shouldFetch = !isPixshopRoute && !isTemplateMode;
@@ -1037,12 +1069,6 @@ export default function CustomizeCardPage() {
     // Use real saved design ID if we have it (for templates that were saved in background)
     const actualCardId = realSavedDesignId || cardData.id;
     
-    // If still in template mode without real ID, can't send yet
-    if (isTemplateMode && !realSavedDesignId) {
-      alert("Your card is still being prepared. Please wait a moment and try again.");
-      return;
-    }
-    
     console.log('💳 Opening payment modal for send e-card:', actualCardId);
     setPendingAction({
       card: { id: actualCardId, name: cardData.name },
@@ -1120,12 +1146,6 @@ export default function CustomizeCardPage() {
     
     // Use real saved design ID if we have it (for templates that were saved in background)
     const actualCardId = realSavedDesignId || cardData.id;
-    
-    // If still in template mode without real ID, can't print yet
-    if (isTemplateMode && !realSavedDesignId) {
-      alert("Your card is still being prepared. Please wait a moment and try again.");
-      return;
-    }
     
     console.log('💳 Opening payment modal for print:', actualCardId);
     setPendingAction({
@@ -2204,12 +2224,21 @@ export default function CustomizeCardPage() {
             {/* Send E-card Button */}
             <button
               onClick={handleSendECard}
-              className="p-1.5 sm:p-2 rounded-lg bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-200 touch-manipulation"
-              title="Send E-card"
+              disabled={isWaitingForSave}
+              className={`p-1.5 sm:p-2 rounded-lg text-white shadow-md transition-all duration-200 touch-manipulation ${
+                isWaitingForSave 
+                  ? 'bg-gray-400 cursor-not-allowed opacity-60' 
+                  : 'bg-gradient-to-r from-teal-500 to-emerald-500 hover:shadow-lg hover:scale-105 active:scale-95'
+              }`}
+              title={isWaitingForSave ? "Saving design... Please wait" : "Send E-card"}
             >
-              <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
+              {isWaitingForSave ? (
+                <div className="h-4 w-4 sm:h-5 sm:w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              )}
             </button>
 
             {/* Undo Button */}
@@ -2741,15 +2770,21 @@ export default function CustomizeCardPage() {
               {/* Print Button - Elegant purple gradient */}
               <button
                 onClick={handlePrint}
-                disabled={isPrinting}
-                className="group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white rounded-2xl font-semibold text-lg shadow-[0_8px_30px_rgba(124,58,237,0.35)] hover:shadow-[0_12px_40px_rgba(124,58,237,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-[0_8px_30px_rgba(124,58,237,0.35)] overflow-hidden relative"
+                disabled={isPrinting || isWaitingForSave}
+                className={`group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 text-white rounded-2xl font-semibold text-lg transition-all duration-300 ease-out touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden relative ${
+                  isWaitingForSave 
+                    ? 'bg-gray-400 shadow-[0_8px_30px_rgba(156,163,175,0.35)]' 
+                    : 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 shadow-[0_8px_30px_rgba(124,58,237,0.35)] hover:shadow-[0_12px_40px_rgba(124,58,237,0.45)] hover:scale-[1.02] active:scale-[0.98]'
+                }`}
               >
                 {/* Shine effect on hover */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
-                {isPrinting ? (
+                {!isWaitingForSave && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
+                )}
+                {isPrinting || isWaitingForSave ? (
                   <>
                     <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span className="relative">Preparing...</span>
+                    <span className="relative">{isWaitingForSave ? 'Saving...' : 'Preparing...'}</span>
                   </>
                 ) : (
                   <>
@@ -2764,14 +2799,30 @@ export default function CustomizeCardPage() {
               {/* Send E-card Button - Elegant teal gradient */}
               <button
                 onClick={handleSendECard}
-                className="group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500 text-white rounded-2xl font-semibold text-lg shadow-[0_8px_30px_rgba(20,184,166,0.35)] hover:shadow-[0_12px_40px_rgba(20,184,166,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out touch-manipulation overflow-hidden relative"
+                disabled={isWaitingForSave}
+                className={`group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 text-white rounded-2xl font-semibold text-lg transition-all duration-300 ease-out touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden relative ${
+                  isWaitingForSave 
+                    ? 'bg-gray-400 shadow-[0_8px_30px_rgba(156,163,175,0.35)]' 
+                    : 'bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500 shadow-[0_8px_30px_rgba(20,184,166,0.35)] hover:shadow-[0_12px_40px_rgba(20,184,166,0.45)] hover:scale-[1.02] active:scale-[0.98]'
+                }`}
               >
                 {/* Shine effect on hover */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
-                <svg className="h-6 w-6 relative drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                <span className="relative">Send E-card</span>
+                {!isWaitingForSave && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
+                )}
+                {isWaitingForSave ? (
+                  <>
+                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span className="relative">Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-6 w-6 relative drop-shadow-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <span className="relative">Send E-card</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
