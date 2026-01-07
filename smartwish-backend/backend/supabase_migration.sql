@@ -429,3 +429,63 @@ JOIN kiosk_managers km ON kc.id = km.kiosk_id;
 
 -- Grant access to authenticated users (managers will filter by their user_id)
 GRANT SELECT ON manager_kiosk_print_logs TO authenticated;
+
+-- ----------------------------------------
+-- Stickers Table (for kiosk sticker printing)
+-- ----------------------------------------
+
+CREATE TABLE IF NOT EXISTS stickers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE,
+    category VARCHAR(100),
+    image_url TEXT NOT NULL,
+    thumbnail_url TEXT,
+    tags TEXT[] DEFAULT '{}',
+    popularity INTEGER DEFAULT 0,
+    num_downloads INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_stickers_slug ON stickers(slug);
+CREATE INDEX IF NOT EXISTS idx_stickers_category ON stickers(category);
+CREATE INDEX IF NOT EXISTS idx_stickers_status ON stickers(status);
+CREATE INDEX IF NOT EXISTS idx_stickers_popularity ON stickers(popularity DESC);
+CREATE INDEX IF NOT EXISTS idx_stickers_tags ON stickers USING GIN(tags);
+
+-- Trigger to keep updated_at fresh
+CREATE OR REPLACE FUNCTION update_stickers_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_stickers_updated_at ON stickers;
+CREATE TRIGGER trg_stickers_updated_at
+BEFORE UPDATE ON stickers
+FOR EACH ROW
+EXECUTE FUNCTION update_stickers_updated_at();
+
+-- Grant permissions
+GRANT SELECT ON stickers TO authenticated;
+GRANT SELECT ON stickers TO anon;
+
+-- Insert some sample stickers for testing
+INSERT INTO stickers (title, slug, category, image_url, tags, popularity) VALUES
+    ('Happy Birthday Balloon', 'happy-birthday-balloon', 'birthday', 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=400', ARRAY['birthday', 'balloon', 'celebration'], 100),
+    ('Love Heart', 'love-heart', 'love', 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=400', ARRAY['love', 'heart', 'romantic'], 95),
+    ('Star Burst', 'star-burst', 'celebration', 'https://images.unsplash.com/photo-1489945052260-4f21c52268b9?w=400', ARRAY['star', 'celebration', 'sparkle'], 90),
+    ('Cute Emoji Smile', 'cute-emoji-smile', 'emoji', 'https://images.unsplash.com/photo-1508558936510-0af1e3cccbab?w=400', ARRAY['emoji', 'smile', 'happy'], 88),
+    ('Rainbow Colors', 'rainbow-colors', 'nature', 'https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=400', ARRAY['rainbow', 'colors', 'nature'], 85),
+    ('Flower Bloom', 'flower-bloom', 'nature', 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400', ARRAY['flower', 'nature', 'spring'], 82),
+    ('Coffee Cup', 'coffee-cup', 'food', 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400', ARRAY['coffee', 'drink', 'morning'], 80),
+    ('Pizza Slice', 'pizza-slice', 'food', 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400', ARRAY['pizza', 'food', 'yummy'], 78),
+    ('Cute Cat', 'cute-cat', 'animals', 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400', ARRAY['cat', 'cute', 'pet'], 92),
+    ('Puppy Dog', 'puppy-dog', 'animals', 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400', ARRAY['dog', 'puppy', 'pet'], 91),
+    ('Sun Shine', 'sun-shine', 'nature', 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400', ARRAY['sun', 'sunshine', 'bright'], 75),
+    ('Moon Stars', 'moon-stars', 'nature', 'https://images.unsplash.com/photo-1532693322450-2cb5c511067d?w=400', ARRAY['moon', 'stars', 'night'], 73)
+ON CONFLICT (slug) DO NOTHING;
