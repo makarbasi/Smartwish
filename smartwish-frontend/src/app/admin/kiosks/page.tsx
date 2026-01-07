@@ -20,6 +20,8 @@ import {
   UserPlusIcon,
   DocumentIcon,
   GiftIcon,
+  EnvelopeIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 
@@ -51,6 +53,8 @@ type KioskConfig = {
   featuredTemplateIds?: string[];
   micEnabled?: boolean;
   giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
+  greetingCardsEnabled?: boolean; // Enable greeting cards tile on kiosk home (default true)
+  stickersEnabled?: boolean; // Enable stickers tile on kiosk home (default true)
   ads?: {
     playlist?: Array<{ url: string; duration?: number; weight?: number }>;
   };
@@ -98,6 +102,8 @@ const DEFAULT_CONFIG: KioskConfig = {
   featuredTemplateIds: [],
   micEnabled: true,
   giftCardRibbonEnabled: true, // Show gift card marketplace ribbon by default
+  greetingCardsEnabled: true, // Enable greeting cards tile by default
+  stickersEnabled: true, // Enable stickers tile by default
   ads: { playlist: [] },
   printerProfile: "default",
   printerName: "HP OfficeJet Pro 9130e Series [HPIE4B65B]",
@@ -519,6 +525,18 @@ export default function KiosksAdminPage() {
                       <GiftIcon className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-600">
                         Gift Cards: {kiosk.config?.giftCardRibbonEnabled !== false ? "On" : "Off"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <EnvelopeIcon className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-600">
+                        Cards: {kiosk.config?.greetingCardsEnabled !== false ? "On" : "Off"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <SparklesIcon className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-600">
+                        Stickers: {kiosk.config?.stickersEnabled !== false ? "On" : "Off"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -1106,6 +1124,78 @@ function KioskFormModal({
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                             formData.config.giftCardRibbonEnabled !== false
+                              ? "translate-x-5"
+                              : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          Greeting Cards
+                        </label>
+                        <p className="text-xs text-gray-500">
+                          Enable greeting cards tile on kiosk home
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            config: {
+                              ...formData.config,
+                              greetingCardsEnabled: !formData.config.greetingCardsEnabled,
+                            },
+                          })
+                        }
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                          formData.config.greetingCardsEnabled !== false
+                            ? "bg-indigo-600"
+                            : "bg-gray-200"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            formData.config.greetingCardsEnabled !== false
+                              ? "translate-x-5"
+                              : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          Stickers
+                        </label>
+                        <p className="text-xs text-gray-500">
+                          Enable stickers tile on kiosk home
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            config: {
+                              ...formData.config,
+                              stickersEnabled: !formData.config.stickersEnabled,
+                            },
+                          })
+                        }
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                          formData.config.stickersEnabled !== false
+                            ? "bg-indigo-600"
+                            : "bg-gray-200"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            formData.config.stickersEnabled !== false
                               ? "translate-x-5"
                               : "translate-x-0"
                           }`}
