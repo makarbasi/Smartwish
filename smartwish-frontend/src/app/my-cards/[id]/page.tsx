@@ -1353,39 +1353,23 @@ export default function CustomizeCardPage() {
     }
   };
 
-  // Auto-print using kiosk config for printer and tray selection
+  // Auto-print - sends images to backend with printer name from kiosk config
+  // Print agent handles duplex, borderless, paper size settings locally
   const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card') => {
-    // Get printer settings from kiosk config
-    const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9135e Series';
-    const trays = kioskConfig?.printerTrays || [];
-    
-    // Find the tray for this paper type, with hardcoded defaults:
-    // - Greeting cards: Tray 2 (card stock, duplex)
-    // - Stickers: Tray 1 (sticker paper, simplex)
-    const tray = trays.find(t => t.paperType === paperType);
-    const defaultTrayNumber = paperType === 'greeting-card' ? 2 : paperType === 'sticker' ? 1 : null;
-    const trayNumber = tray?.trayNumber ?? defaultTrayNumber;
-    const paperSize = tray?.paperSize || 'letter'; // Default to letter if no tray configured
+    // Get printer name from kiosk config
+    const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9130e Series [HPIE4B65B]';
     
     // Get kiosk ID from context for logging
     const kioskId = localStorage.getItem('smartwish_kiosk_id');
     
-    console.log(`🖨️ Auto-printing to: ${printerName} (Direct backend print - NO popup)`);
-    console.log(`📥 Paper type: ${paperType}, Tray: ${trayNumber || 'Auto'}, Size: ${paperSize}`);
+    console.log(`🖨️ Sending print job to: ${printerName}`);
 
     let printLogId: string | null = null;
 
     try {
       // Log the print job for manager tracking (if kiosk is activated)
       if (kioskId) {
-        // Default prices per product type (can be customized in future)
-        const defaultPrices: Record<string, number> = {
-          'greeting-card': 5.00,
-          'sticker': 2.00,
-          'photo': 3.00,
-          'label': 1.00,
-        };
-        const price = defaultPrices[paperType] || 5.00;
+        const price = paperType === 'greeting-card' ? 5.00 : 2.00;
         
         const logResult = await logPrintJob({
           kioskId,
@@ -1394,8 +1378,8 @@ export default function CustomizeCardPage() {
           productName: cardData?.name || 'Greeting Card',
           price,
           paperType,
-          paperSize,
-          trayNumber,
+          paperSize: 'letter',
+          trayNumber: null,
           copies: 1,
         });
         printLogId = logResult?.id || null;
@@ -1415,9 +1399,10 @@ export default function CustomizeCardPage() {
         fetchImageAsBase64(image4)
       ]);
 
-      console.log('Images converted, sending to backend printer...');
+      console.log('Images converted, sending to backend...');
 
-      // Send to backend /print-pc endpoint with tray info
+      // Send to backend /print-pc endpoint with printer name
+      // Print agent handles duplex, borderless, paper size locally
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
         headers: {
@@ -1426,9 +1411,6 @@ export default function CustomizeCardPage() {
         body: JSON.stringify({
           images: imageBase64Array,
           printerName: printerName,
-          paperSize: paperSize,
-          paperType: paperType,
-          trayNumber: trayNumber,
         }),
       });
 
@@ -1438,7 +1420,7 @@ export default function CustomizeCardPage() {
       }
 
       const result = await response.json();
-      console.log('✅ Print job sent successfully!', result);
+      console.log('✅ Print job queued successfully!', result);
       
       // Update status to completed (include PDF URL if available)
       if (printLogId) {
@@ -1448,7 +1430,7 @@ export default function CustomizeCardPage() {
         await updatePrintLogStatus(printLogId, 'completed', undefined, result.pdfUrl);
       }
       
-      alert(`Print job sent to ${printerName}${trayNumber ? ` (Tray ${trayNumber})` : ''}!\nCheck your printer for output.`);
+      alert(`Print job sent to ${printerName}!\nCheck your printer for output.`);
 
     } catch (err) {
       console.error('Auto-print error:', err);
