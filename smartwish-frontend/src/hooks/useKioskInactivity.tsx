@@ -6,8 +6,8 @@ import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useVirtualKeyboard } from "@/contexts/VirtualKeyboardContext";
 
 interface UseKioskInactivityOptions {
-    screenSaverTimeout?: number; // milliseconds (default: 30 seconds)
-    resetTimeout?: number; // milliseconds (default: 60 seconds)
+    screenSaverTimeout?: number; // milliseconds (default: 60 seconds)
+    resetTimeout?: number; // milliseconds (default: 90 seconds)
     enabled?: boolean;
 }
 
@@ -20,8 +20,8 @@ const TOUCH_MOVE_THROTTLE = 5000; // milliseconds
 const EXCLUDED_PATHS = ['/admin', '/managers'];
 
 export function useKioskInactivity({
-    screenSaverTimeout = 30000, // 30 seconds
-    resetTimeout = 60000, // 60 seconds (1 minute)
+    screenSaverTimeout = 60000, // 60 seconds (1 minute)
+    resetTimeout = 90000, // 90 seconds (1.5 minutes)
     enabled = true,
 }: UseKioskInactivityOptions = {}) {
     const { isKiosk } = useDeviceMode();
@@ -60,19 +60,19 @@ export function useKioskInactivity({
         lastActivityRef.current = Date.now();
         clearTimers();
 
-        // Set screen saver timer (30 seconds)
-        console.log("🖥️ [KioskInactivity] ⏱️ Setting 30s screen saver timer");
+        // Set screen saver timer (60 seconds)
+        console.log("🖥️ [KioskInactivity] ⏱️ Setting 60s screen saver timer");
         screenSaverTimerRef.current = setTimeout(() => {
-            console.log("🖥️ [KioskInactivity] ⏰ 30s TIMER FIRED - showing screen saver");
+            console.log("🖥️ [KioskInactivity] ⏰ 60s TIMER FIRED - showing screen saver");
             isExitingRef.current = false; // Reset exit guard for new screen saver session
             setShowScreenSaver(true);
             hideKeyboard();
         }, screenSaverTimeout);
 
-        // Set reset timer (60 seconds total) - navigate to home in background while screen saver is showing
-        console.log("🖥️ [KioskInactivity] ⏱️ Setting 60s reset timer");
+        // Set reset timer (90 seconds total) - navigate to home in background while screen saver is showing
+        console.log("🖥️ [KioskInactivity] ⏱️ Setting 90s reset timer");
         resetTimerRef.current = setTimeout(() => {
-            console.log("🖥️ [KioskInactivity] ⏰ 60s TIMER FIRED - current path:", pathname);
+            console.log("🖥️ [KioskInactivity] ⏰ 90s TIMER FIRED - current path:", pathname);
             
             // If not on /kiosk/home, navigate there in the background (screen saver stays on top)
             if (pathname !== '/kiosk/home') {
