@@ -84,6 +84,7 @@ export function useKioskInactivity({
 
             // Clear all localStorage and sessionStorage for a fresh start
             // But keep kiosk-related keys so the device remains in kiosk mode
+            // Also keep API cache keys so kiosk home loads instantly
             try {
                 const keysToKeep = [
                     'nextauth.message', 
@@ -92,14 +93,22 @@ export function useKioskInactivity({
                     'smartwish_kiosk_id',      // Keep kiosk activation
                     'smartwish_kiosk_config',  // Keep kiosk config cache
                 ];
+                // Also keep SWR cache keys that start with these prefixes for instant kiosk home loading
+                const cachePrefixesToKeep = [
+                    'swr_cache_/api/templates',  // Keep templates cache
+                    'swr_cache_/api/stickers',   // Keep stickers cache
+                    'kiosk_sticker_properties',  // Keep sticker animation properties
+                ];
                 const allKeys = Object.keys(localStorage);
                 allKeys.forEach(key => {
-                    if (!keysToKeep.includes(key)) {
+                    const shouldKeep = keysToKeep.includes(key) || 
+                        cachePrefixesToKeep.some(prefix => key.startsWith(prefix));
+                    if (!shouldKeep) {
                         localStorage.removeItem(key);
                     }
                 });
                 sessionStorage.clear();
-                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data (preserved kiosk activation)");
+                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data (preserved kiosk activation + API cache)");
             } catch (error) {
                 console.error("🖥️ [KioskInactivity] Error clearing storage:", error);
             }
