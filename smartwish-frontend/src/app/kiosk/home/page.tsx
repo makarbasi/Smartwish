@@ -357,12 +357,14 @@ export default function KioskHomePage() {
                       '--fall-delay': `${delay}s`,
                       '--min-scale': `${minScale}`,
                       '--max-scale': `${maxScale}`,
-                      transform: `translateX(calc(-50% + var(--start-x, 0px))) translateY(-120px) rotate(var(--rotation, 0deg)) scale(var(--min-scale, 1))`,
+                      transform: `translate3d(calc(-50% + var(--start-x, 0px)), -120px, 0) rotate(var(--rotation, 0deg)) scale(var(--min-scale, 1))`,
                       zIndex: stableZIndex,
-                      animation: `stickerRain var(--fall-duration, 4s) ease-in-out infinite`,
+                      animation: `stickerRain var(--fall-duration, 4s) linear infinite`,
                       animationDelay: `var(--fall-delay, 0s)`,
-                      animationFillMode: 'both',
+                      animationFillMode: 'forwards',
                       willChange: 'transform, opacity',
+                      backfaceVisibility: 'hidden',
+                      WebkitBackfaceVisibility: 'hidden',
                       opacity: '0',
                     } as React.CSSProperties}
                   >
@@ -433,47 +435,53 @@ export default function KioskHomePage() {
         </p>
       </div>
 
-      {/* Sticker rain animation styles - smooth, continuous fall */}
+      {/* Sticker rain animation styles - smooth, continuous fall with linear timing */}
       <style jsx global>{`
         @keyframes stickerRain {
           0% {
-            transform: translateX(calc(-50% + var(--start-x, 0px))) translateY(-120px) rotate(var(--rotation, 0deg)) scale(var(--min-scale, 1));
+            transform: translate3d(calc(-50% + var(--start-x, 0px)), -120px, 0) rotate(var(--rotation, 0deg)) scale(var(--min-scale, 1));
             opacity: 0;
           }
-          3% {
-            opacity: 0.2;
+          2% {
+            opacity: 0.3;
           }
-          6% {
-            opacity: 0.6;
+          5% {
+            opacity: 0.8;
           }
-          10% {
+          8% {
             opacity: 1;
-            transform: translateX(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.15)) translateY(-50px) rotate(calc(var(--rotation, 0deg) + 15deg)) scale(calc(var(--min-scale, 1) + (var(--max-scale, 1) - var(--min-scale, 1)) * 0.1));
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.1), -60px, 0) rotate(calc(var(--rotation, 0deg) + 12deg)) scale(calc(var(--min-scale, 1) + (var(--max-scale, 1) - var(--min-scale, 1)) * 0.08));
           }
-          20% {
-            transform: translateX(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.3)) translateY(60px) rotate(calc(var(--rotation, 0deg) + 40deg)) scale(calc(var(--min-scale, 1) + (var(--max-scale, 1) - var(--min-scale, 1)) * 0.3));
+          15% {
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.25), 40px, 0) rotate(calc(var(--rotation, 0deg) + 35deg)) scale(calc(var(--min-scale, 1) + (var(--max-scale, 1) - var(--min-scale, 1)) * 0.25));
           }
-          40% {
-            transform: translateX(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.5)) translateY(220px) rotate(calc(var(--rotation, 0deg) + 80deg)) scale(var(--max-scale, 1));
+          30% {
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.4), 180px, 0) rotate(calc(var(--rotation, 0deg) + 70deg)) scale(calc(var(--min-scale, 1) + (var(--max-scale, 1) - var(--min-scale, 1)) * 0.5));
           }
-          60% {
-            transform: translateX(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.65)) translateY(350px) rotate(calc(var(--rotation, 0deg) + 120deg)) scale(calc(var(--max-scale, 1) - (var(--max-scale, 1) - var(--min-scale, 1)) * 0.2));
+          50% {
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.55), 300px, 0) rotate(calc(var(--rotation, 0deg) + 100deg)) scale(var(--max-scale, 1));
           }
-          80% {
-            transform: translateX(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.8)) translateY(460px) rotate(calc(var(--rotation, 0deg) + 150deg)) scale(calc(var(--min-scale, 1) + (var(--max-scale, 1) - var(--min-scale, 1)) * 0.3));
+          70% {
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.7), 420px, 0) rotate(calc(var(--rotation, 0deg) + 130deg)) scale(calc(var(--max-scale, 1) - (var(--max-scale, 1) - var(--min-scale, 1)) * 0.15));
+          }
+          85% {
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.85), 490px, 0) rotate(calc(var(--rotation, 0deg) + 155deg)) scale(calc(var(--min-scale, 1) + (var(--max-scale, 1) - var(--min-scale, 1)) * 0.2));
           }
           92% {
             opacity: 1;
-            transform: translateX(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.9)) translateY(520px) rotate(calc(var(--rotation, 0deg) + 165deg)) scale(var(--min-scale, 1));
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px) * 0.92), 520px, 0) rotate(calc(var(--rotation, 0deg) + 170deg)) scale(var(--min-scale, 1));
           }
-          96% {
-            opacity: 0.7;
+          95% {
+            opacity: 0.8;
           }
-          98% {
-            opacity: 0.3;
+          97% {
+            opacity: 0.5;
+          }
+          99% {
+            opacity: 0.2;
           }
           100% {
-            transform: translateX(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px))) translateY(550px) rotate(calc(var(--rotation, 0deg) + 180deg)) scale(calc(var(--min-scale, 1) * 0.85));
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px)), 550px, 0) rotate(calc(var(--rotation, 0deg) + 180deg)) scale(calc(var(--min-scale, 1) * 0.85));
             opacity: 0;
           }
         }
