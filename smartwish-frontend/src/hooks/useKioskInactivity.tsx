@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useVirtualKeyboard } from "@/contexts/VirtualKeyboardContext";
 
@@ -26,6 +26,7 @@ export function useKioskInactivity({
 }: UseKioskInactivityOptions = {}) {
     const { isKiosk } = useDeviceMode();
     const pathname = usePathname();
+    const router = useRouter();
     const { hideKeyboard } = useVirtualKeyboard();
 
     // Disable screen saver on admin pages and setup pages
@@ -33,7 +34,6 @@ export function useKioskInactivity({
     const effectiveEnabled = enabled && !isExcludedPath;
 
     const [showScreenSaver, setShowScreenSaver] = useState(false);
-    const [shouldResetOnExit, setShouldResetOnExit] = useState(false); // Flag for 60s timeout
     const screenSaverTimerRef = useRef<NodeJS.Timeout | null>(null);
     const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastActivityRef = useRef<number>(Date.now());
@@ -69,21 +69,60 @@ export function useKioskInactivity({
             hideKeyboard();
         }, screenSaverTimeout);
 
-        // Set reset timer (60 seconds total)
+        // Set reset timer (60 seconds total) - navigate to home in background while screen saver is showing
         console.log("🖥️ [KioskInactivity] ⏱️ Setting 60s reset timer");
         resetTimerRef.current = setTimeout(() => {
-            console.log("🖥️ [KioskInactivity] ⏰ 60s TIMER FIRED - setting shouldResetOnExit=true");
-            // Just set the flag - don't navigate yet
-            setShouldResetOnExit(true);
+            console.log("🖥️ [KioskInactivity] ⏰ 60s TIMER FIRED - current path:", pathname);
+            
+            // If not on /kiosk/home, navigate there in the background (screen saver stays on top)
+            if (pathname !== '/kiosk/home') {
+                console.log("🖥️ [KioskInactivity] 🔄 Navigating to /kiosk/home in background (screen saver stays visible)");
+                
+                // Clear user data first
+                try {
+                    const keysToKeep = [
+                        'nextauth.message', 
+                        'next-auth.session-token', 
+                        'next-auth.csrf-token',
+                        'smartwish_kiosk_id',
+                        'smartwish_kiosk_config',
+                    ];
+                    const cachePrefixesToKeep = [
+                        'swr_cache_/api/templates',
+                        'swr_cache_/api/stickers',
+                        'kiosk_sticker_properties',
+                    ];
+                    const allKeys = Object.keys(localStorage);
+                    allKeys.forEach(key => {
+                        const shouldKeep = keysToKeep.includes(key) || 
+                            cachePrefixesToKeep.some(prefix => key.startsWith(prefix));
+                        if (!shouldKeep) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+                    sessionStorage.clear();
+                    console.log("🖥️ [KioskInactivity] 🧹 Cleared user data");
+                } catch (error) {
+                    console.error("🖥️ [KioskInactivity] Error clearing storage:", error);
+                }
+                
+                // Soft navigate to /kiosk/home (no page reload, screen saver stays on top)
+                router.replace('/kiosk/home');
+                console.log("🖥️ [KioskInactivity] ✅ Background navigation complete - /kiosk/home is now loaded behind screen saver");
+            } else {
+                console.log("🖥️ [KioskInactivity] ✅ Already on /kiosk/home - no navigation needed");
+            }
+            
         }, resetTimeout);
-    }, [isKiosk, effectiveEnabled, clearTimers, screenSaverTimeout, resetTimeout, hideKeyboard]);
+    }, [isKiosk, effectiveEnabled, clearTimers, screenSaverTimeout, resetTimeout, hideKeyboard, pathname, router]);
 
     // Exit screen saver and reset timers
+    // Note: Navigation to /kiosk/home happens in the background when 60s timer fires
+    // So when user taps, we just hide the screen saver - the home page is already loaded!
     const exitScreenSaver = useCallback(() => {
         console.log("🖥️ [KioskInactivity] exitScreenSaver() called:", {
             isExitingRef: isExitingRef.current,
-            shouldResetOnExit,
-            showScreenSaver,
+            currentPath: pathname,
             timestamp: new Date().toISOString(),
         });
         
@@ -94,68 +133,12 @@ export function useKioskInactivity({
         }
         isExitingRef.current = true;
         
-        console.log("🖥️ [KioskInactivity] ✅ Processing exit...");
-
-        // Check if we need to reset
-        if (shouldResetOnExit) {
-            // If already on /kiosk/home, NO NEED to hard reset - just hide screen saver
-            if (pathname === '/kiosk/home') {
-                console.log("🖥️ [KioskInactivity] ✅ Already on /kiosk/home - skipping hard reset, just hiding screen saver");
-                setShouldResetOnExit(false);
-                setShowScreenSaver(false);
-                isExitingRef.current = false;
-                resetActivity();
-                return;
-            }
-            
-            console.log("🖥️ [KioskInactivity] 🔄 60s timeout - HARD RESET to /kiosk/home (was on:", pathname, ")");
-
-            // Clear all localStorage and sessionStorage for a fresh start
-            // But keep kiosk-related keys so the device remains in kiosk mode
-            // Also keep API cache keys so kiosk home loads instantly
-            try {
-                const keysToKeep = [
-                    'nextauth.message', 
-                    'next-auth.session-token', 
-                    'next-auth.csrf-token',
-                    'smartwish_kiosk_id',      // Keep kiosk activation
-                    'smartwish_kiosk_config',  // Keep kiosk config cache
-                ];
-                // Also keep SWR cache keys that start with these prefixes for instant kiosk home loading
-                const cachePrefixesToKeep = [
-                    'swr_cache_/api/templates',  // Keep templates cache
-                    'swr_cache_/api/stickers',   // Keep stickers cache
-                    'kiosk_sticker_properties',  // Keep sticker animation properties
-                ];
-                const allKeys = Object.keys(localStorage);
-                allKeys.forEach(key => {
-                    const shouldKeep = keysToKeep.includes(key) || 
-                        cachePrefixesToKeep.some(prefix => key.startsWith(prefix));
-                    if (!shouldKeep) {
-                        localStorage.removeItem(key);
-                    }
-                });
-                sessionStorage.clear();
-                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data (preserved kiosk activation + API cache)");
-            } catch (error) {
-                console.error("🖥️ [KioskInactivity] Error clearing storage:", error);
-            }
-
-            // Clear the flag
-            setShouldResetOnExit(false);
-
-            // Navigate to /kiosk/home with hard reload so user can choose product type
-            console.log("🖥️ [KioskInactivity] ✅ Navigating to /kiosk/home");
-            window.location.href = "/kiosk/home";
-            return;
-        }
-
-        // Normal exit - just hide screen saver and reset timers
-        console.log("🖥️ [KioskInactivity] 👋 Normal exit - hiding screen saver (no hard reset)");
+        // Just hide screen saver - if 60s timer fired, we've already navigated to /kiosk/home in background
+        console.log("🖥️ [KioskInactivity] 👋 Hiding screen saver - current path:", pathname);
         setShowScreenSaver(false);
         isExitingRef.current = false; // Reset for next time
         resetActivity();
-    }, [shouldResetOnExit, resetActivity, showScreenSaver, pathname]);
+    }, [resetActivity, pathname]);
 
     // Activity event handler
     const handleActivity = useCallback((event?: Event) => {
@@ -249,9 +232,8 @@ export function useKioskInactivity({
     // Reset timers when pathname changes (navigation)
     useEffect(() => {
         if (isKiosk && effectiveEnabled) {
-            console.log("🖥️ [KioskInactivity] Page changed, resetting activity");
+            console.log("🖥️ [KioskInactivity] Page changed to:", pathname, "- resetting activity");
             setShowScreenSaver(false);
-            setShouldResetOnExit(false);
             resetActivity();
         }
     }, [pathname, isKiosk, effectiveEnabled, resetActivity]);
