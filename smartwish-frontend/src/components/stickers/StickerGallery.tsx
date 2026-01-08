@@ -333,14 +333,16 @@ export default function StickerGallery({
                 onClick={() => handleSelectSticker(sticker)}
                 className="flex flex-col items-center group focus:outline-none"
               >
-                <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-2 border-gray-200 group-hover:border-pink-400 group-focus:border-pink-500 group-focus:ring-4 group-focus:ring-pink-200 transition-all duration-200 shadow-md group-hover:shadow-lg group-hover:scale-105 relative bg-gray-100">
-                  <Image
-                    src={sticker.thumbnailUrl || sticker.imageUrl}
-                    alt={sticker.title}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 640px) 80px, (max-width: 768px) 96px, 112px"
-                  />
+                <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-2 border-gray-200 group-hover:border-pink-400 group-focus:border-pink-500 group-focus:ring-4 group-focus:ring-pink-200 transition-all duration-200 shadow-md group-hover:shadow-lg group-hover:scale-105 bg-white flex items-center justify-center">
+                  <div className="relative" style={{ width: '80%', height: '80%' }}>
+                    <Image
+                      src={sticker.thumbnailUrl || sticker.imageUrl}
+                      alt={sticker.title}
+                      fill
+                      className="object-contain"
+                      sizes="(max-width: 640px) 80px, (max-width: 768px) 96px, 112px"
+                    />
+                  </div>
                 </div>
                 <span className="mt-1.5 text-xs text-gray-600 text-center line-clamp-1 group-hover:text-pink-600 transition-colors max-w-[80px] sm:max-w-[96px]">
                   {sticker.title}

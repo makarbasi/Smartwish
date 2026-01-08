@@ -102,14 +102,16 @@ export default function StickerCarousel({
             key={`${sticker.id}-${index}`}
             className="flex-shrink-0 group cursor-pointer"
           >
-            <div className="w-20 h-20 md:w-24 md:h-24 rounded-full overflow-hidden border-2 border-gray-200 group-hover:border-pink-400 transition-all duration-200 shadow-md group-hover:shadow-lg group-hover:scale-110 relative">
-              <Image
-                src={sticker.thumbnailUrl || sticker.imageUrl}
-                alt={sticker.title}
-                fill
-                className="object-cover"
-                sizes="96px"
-              />
+            <div className="w-20 h-20 md:w-24 md:h-24 rounded-full overflow-hidden border-2 border-gray-200 group-hover:border-pink-400 transition-all duration-200 shadow-md group-hover:shadow-lg group-hover:scale-110 bg-white flex items-center justify-center">
+              <div className="relative" style={{ width: '80%', height: '80%' }}>
+                <Image
+                  src={sticker.thumbnailUrl || sticker.imageUrl}
+                  alt={sticker.title}
+                  fill
+                  className="object-contain"
+                  sizes="96px"
+                />
+              </div>
             </div>
           </div>
         ))}
