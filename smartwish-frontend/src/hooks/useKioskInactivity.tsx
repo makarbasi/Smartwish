@@ -39,6 +39,7 @@ export function useKioskInactivity({
     const lastActivityRef = useRef<number>(Date.now());
     const lastMouseMoveRef = useRef<number>(0); // Track last mousemove processing time
     const lastTouchMoveRef = useRef<number>(0); // Track last touchmove processing time
+    const isExitingRef = useRef<boolean>(false); // Prevent multiple exit calls
 
     // Clear all timers
     const clearTimers = useCallback(() => {
@@ -60,15 +61,18 @@ export function useKioskInactivity({
         clearTimers();
 
         // Set screen saver timer (30 seconds)
+        console.log("🖥️ [KioskInactivity] ⏱️ Setting 30s screen saver timer");
         screenSaverTimerRef.current = setTimeout(() => {
-            console.log("🖥️ [KioskInactivity] ⏰ 30s inactivity - showing screen saver");
+            console.log("🖥️ [KioskInactivity] ⏰ 30s TIMER FIRED - showing screen saver");
+            isExitingRef.current = false; // Reset exit guard for new screen saver session
             setShowScreenSaver(true);
             hideKeyboard();
         }, screenSaverTimeout);
 
         // Set reset timer (60 seconds total)
+        console.log("🖥️ [KioskInactivity] ⏱️ Setting 60s reset timer");
         resetTimerRef.current = setTimeout(() => {
-            console.log("🖥️ [KioskInactivity] ⏰ 60s inactivity - setting reset flag");
+            console.log("🖥️ [KioskInactivity] ⏰ 60s TIMER FIRED - setting shouldResetOnExit=true");
             // Just set the flag - don't navigate yet
             setShouldResetOnExit(true);
         }, resetTimeout);
@@ -76,11 +80,35 @@ export function useKioskInactivity({
 
     // Exit screen saver and reset timers
     const exitScreenSaver = useCallback(() => {
-        console.log("🖥️ [KioskInactivity] Exiting screen saver");
+        console.log("🖥️ [KioskInactivity] exitScreenSaver() called:", {
+            isExitingRef: isExitingRef.current,
+            shouldResetOnExit,
+            showScreenSaver,
+            timestamp: new Date().toISOString(),
+        });
+        
+        // Prevent multiple exit calls (can happen on touch devices)
+        if (isExitingRef.current) {
+            console.log("🖥️ [KioskInactivity] ⚠️ BLOCKED - exit already in progress");
+            return;
+        }
+        isExitingRef.current = true;
+        
+        console.log("🖥️ [KioskInactivity] ✅ Processing exit...");
 
-        // Check if we need to reset to /templates
+        // Check if we need to reset
         if (shouldResetOnExit) {
-            console.log("🖥️ [KioskInactivity] 🔄 60s timeout reached - resetting to /templates");
+            // If already on /kiosk/home, NO NEED to hard reset - just hide screen saver
+            if (pathname === '/kiosk/home') {
+                console.log("🖥️ [KioskInactivity] ✅ Already on /kiosk/home - skipping hard reset, just hiding screen saver");
+                setShouldResetOnExit(false);
+                setShowScreenSaver(false);
+                isExitingRef.current = false;
+                resetActivity();
+                return;
+            }
+            
+            console.log("🖥️ [KioskInactivity] 🔄 60s timeout - HARD RESET to /kiosk/home (was on:", pathname, ")");
 
             // Clear all localStorage and sessionStorage for a fresh start
             // But keep kiosk-related keys so the device remains in kiosk mode
@@ -123,9 +151,11 @@ export function useKioskInactivity({
         }
 
         // Normal exit - just hide screen saver and reset timers
+        console.log("🖥️ [KioskInactivity] 👋 Normal exit - hiding screen saver (no hard reset)");
         setShowScreenSaver(false);
+        isExitingRef.current = false; // Reset for next time
         resetActivity();
-    }, [shouldResetOnExit, resetActivity]);
+    }, [shouldResetOnExit, resetActivity, showScreenSaver, pathname]);
 
     // Activity event handler
     const handleActivity = useCallback((event?: Event) => {
@@ -138,7 +168,7 @@ export function useKioskInactivity({
                 // (Don't log to reduce console noise)
                 return;
             }
-            console.log("🖥️ [KioskInactivity] 👆 User interaction during screen saver:", event?.type, "- Exiting screen saver");
+            console.log("🖥️ [KioskInactivity] 👆 handleActivity detected interaction:", event?.type, "- calling exitScreenSaver()");
             exitScreenSaver();
             return;
         }
