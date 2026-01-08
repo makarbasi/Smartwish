@@ -7,7 +7,35 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import useSWR from "swr";
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+// Custom fetcher with caching support
+const fetcher = async (url: string) => {
+  // Check localStorage cache first
+  const cacheKey = `swr_cache_${url}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    const { data, timestamp } = JSON.parse(cached);
+    // Use cache if less than 24 hours old (1 day)
+    if (Date.now() - timestamp < 86400000) {
+      return data;
+    }
+  }
+  
+  // Fetch fresh data
+  const response = await fetch(url, {
+    cache: 'default', // Use browser cache
+  });
+  const data = await response.json();
+  
+  // Store in localStorage cache
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
+  } catch (e) {
+    // localStorage might be full, ignore error
+    console.warn('Failed to cache data:', e);
+  }
+  
+  return data;
+};
 
 // API response types
 interface Template {
@@ -43,16 +71,30 @@ export default function KioskHomePage() {
   const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;
   const stickersEnabled = kioskConfig?.stickersEnabled !== false;
 
-  // Fetch popular templates
+  // Fetch popular templates with aggressive caching
   const { data: templatesData } = useSWR<TemplatesResponse>(
     "/api/templates?limit=5&sort=popularity",
-    fetcher
+    fetcher,
+    {
+      revalidateOnFocus: false, // Don't revalidate when window regains focus
+      revalidateOnReconnect: false, // Don't revalidate on reconnect
+      dedupingInterval: 60000, // Dedupe requests within 60 seconds
+      refreshInterval: 0, // Don't auto-refresh
+      keepPreviousData: true, // Keep showing old data while fetching new
+    }
   );
 
-  // Fetch stickers
+  // Fetch stickers with aggressive caching
   const { data: stickersData } = useSWR<StickersResponse>(
     "/api/stickers?limit=6",
-    fetcher
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      dedupingInterval: 60000,
+      refreshInterval: 0,
+      keepPreviousData: true,
+    }
   );
 
   const templates = templatesData?.data || [];
@@ -142,6 +184,9 @@ export default function KioskHomePage() {
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-700"
                       sizes="128px"
+                      priority={i < 2} // Prioritize first 2 images
+                      loading={i < 2 ? "eager" : "lazy"}
+                      unoptimized={false}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
                   </div>
@@ -194,39 +239,93 @@ export default function KioskHomePage() {
           {/* Glow effect on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-pink-600/0 to-orange-600/0 group-hover:from-pink-600/20 group-hover:to-orange-600/20 transition-all duration-500" />
           
-          {/* Stickers Display - Hexagonal/honeycomb pattern */}
+          {/* Stickers Display - Professional overlapping design with breakout effect */}
           <div className="absolute top-8 left-1/2 -translate-x-1/2 w-full flex justify-center">
             <div className="relative w-80 h-56 lg:w-96 lg:h-64">
               {stickers.slice(0, 6).map((sticker, i) => {
-                // Honeycomb-style layout
+                // Refined overlapping positions with varied sizes for depth
                 const positions = [
-                  { x: -70, y: -50, size: 72 },
-                  { x: 0, y: -65, size: 80 },
-                  { x: 70, y: -50, size: 68 },
-                  { x: -55, y: 30, size: 64 },
-                  { x: 25, y: 20, size: 88 },
-                  { x: 85, y: 35, size: 60 },
+                  { x: -90, y: -50, size: 82, rotate: -8, breakout: false },
+                  { x: 0, y: -70, size: 100, rotate: 0, breakout: true }, // Center top - breakout sticker
+                  { x: 90, y: -50, size: 85, rotate: 8, breakout: false },
+                  { x: -75, y: 40, size: 80, rotate: -5, breakout: false },
+                  { x: 35, y: 30, size: 88, rotate: 5, breakout: false },
+                  { x: 105, y: 45, size: 78, rotate: 10, breakout: false },
                 ];
                 const pos = positions[i] || positions[0];
+                const isBreakout = pos.breakout;
+                
+                // Animation delays for scatter effect (different for each sticker)
+                const animationDelays = [0, 0.3, 0.6, 0.9, 1.2, 1.5];
+                const animationDurations = [4, 5, 4.5, 5.5, 4.8, 5.2];
+                // Scatter offsets for each sticker (different directions)
+                const scatterOffsets = [
+                  { x: 5, y: -8 }, { x: -6, y: -10 }, { x: 8, y: -5 },
+                  { x: -5, y: 7 }, { x: 6, y: 9 }, { x: -8, y: 6 }
+                ];
+                const scatter = scatterOffsets[i] || { x: 0, y: 0 };
                 
                 return (
                   <div
                     key={sticker.id}
-                    className="absolute left-1/2 top-1/2 rounded-full shadow-xl overflow-hidden border-4 border-white/50 transition-all duration-500 group-hover:shadow-pink-500/40 group-hover:scale-110 group-hover:border-white/70"
+                    className="absolute left-1/2 top-1/2 transition-all duration-500 group-hover:scale-105 sticker-float"
                     style={{
                       width: pos.size,
                       height: pos.size,
-                      transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))`,
-                      zIndex: 6 - i,
-                    }}
+                      '--base-x': `${pos.x}px`,
+                      '--base-y': `${pos.y}px`,
+                      '--base-rotate': `${pos.rotate}deg`,
+                      '--scatter-x': `${scatter.x}px`,
+                      '--scatter-y': `${scatter.y}px`,
+                      transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px)) rotate(${pos.rotate}deg)`,
+                      zIndex: isBreakout ? 10 : 6 - i,
+                      animation: `stickerFloat ${animationDurations[i]}s ease-in-out infinite`,
+                      animationDelay: `${animationDelays[i]}s`,
+                    } as React.CSSProperties}
                   >
-                    <Image
-                      src={sticker.imageUrl || sticker.thumbnailUrl || '/placeholder-sticker.png'}
-                      alt={sticker.title}
-                      fill
-                      className="object-cover"
-                      sizes="88px"
-                    />
+                    {/* Circle container with subtle border */}
+                    <div 
+                      className={`
+                        w-full h-full rounded-full overflow-visible
+                        ${isBreakout 
+                          ? 'border-[3px] border-white/60 shadow-2xl shadow-pink-500/30' 
+                          : 'border-2 border-white/40 shadow-lg'
+                        }
+                        transition-all duration-500
+                        group-hover:border-white/80
+                        ${isBreakout ? 'group-hover:shadow-pink-500/50' : 'group-hover:shadow-xl'}
+                        bg-white/5 backdrop-blur-sm
+                      `}
+                    >
+                      {/* Image container - allows breakout for center sticker */}
+                      <div 
+                        className={`
+                          absolute inset-0 rounded-full
+                          ${isBreakout ? 'scale-110' : 'scale-100'}
+                          transition-transform duration-500
+                        `}
+                      >
+                        <div className="absolute inset-0 flex items-center justify-center p-1.5">
+                          <div className="relative w-full h-full">
+                            <Image
+                              src={sticker.imageUrl || sticker.thumbnailUrl || '/placeholder-sticker.png'}
+                              alt={sticker.title}
+                              fill
+                              className="object-contain"
+                              sizes="(max-width: 1024px) 85px, 96px"
+                              priority={i < 3}
+                              loading={i < 3 ? "eager" : "lazy"}
+                              unoptimized={false}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Decorative glow for breakout sticker */}
+                      {isBreakout && (
+                        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-pink-500/20 via-purple-500/20 to-orange-500/20 blur-xl -z-10 animate-pulse" />
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -236,7 +335,7 @@ export default function KioskHomePage() {
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
-                      className="absolute left-1/2 top-1/2 rounded-full bg-gradient-to-br from-pink-400/30 to-orange-400/30 border-4 border-white/20"
+                      className="absolute left-1/2 top-1/2 rounded-full bg-gradient-to-br from-pink-400/30 to-orange-400/30 border-2 border-white/20"
                       style={{
                         width: 70 - i * 10,
                         height: 70 - i * 10,
@@ -283,6 +382,32 @@ export default function KioskHomePage() {
           <span className="inline-block w-12 h-[1px] bg-gradient-to-l from-transparent to-gray-600" />
         </p>
       </div>
+
+      {/* Sticker floating animation styles */}
+      <style jsx global>{`
+        @keyframes stickerFloat {
+          0%, 100% {
+            transform: translate(calc(-50% + var(--base-x, 0px)), calc(-50% + var(--base-y, 0px))) 
+                       rotate(var(--base-rotate, 0deg)) 
+                       translate(0px, 0px);
+          }
+          25% {
+            transform: translate(calc(-50% + var(--base-x, 0px)), calc(-50% + var(--base-y, 0px))) 
+                       rotate(var(--base-rotate, 0deg)) 
+                       translate(calc(var(--scatter-x, 0px) * 0.7), calc(var(--scatter-y, 0px) * 0.7));
+          }
+          50% {
+            transform: translate(calc(-50% + var(--base-x, 0px)), calc(-50% + var(--base-y, 0px))) 
+                       rotate(var(--base-rotate, 0deg)) 
+                       translate(calc(var(--scatter-x, 0px) * -0.5), calc(var(--scatter-y, 0px) * -0.5));
+          }
+          75% {
+            transform: translate(calc(-50% + var(--base-x, 0px)), calc(-50% + var(--base-y, 0px))) 
+                       rotate(var(--base-rotate, 0deg)) 
+                       translate(calc(var(--scatter-x, 0px) * 0.9), calc(var(--scatter-y, 0px) * 0.9));
+          }
+        }
+      `}</style>
     </div>
   );
 }
