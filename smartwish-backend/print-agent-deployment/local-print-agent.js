@@ -25,6 +25,10 @@ import sharp from 'sharp';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -276,6 +280,75 @@ function resolveScale(job) {
   return CONFIG.defaultScale;
 }
 
+/**
+ * Print PDF using SumatraPDF with tray selection
+ * Tries multiple tray name formats to match different printer models
+ */
+async function printWithSumatraPDF(pdfPath, printerName, trayNumber, side = 'duplexshort') {
+  // Common SumatraPDF install locations
+  const sumatraPaths = [
+    path.join(process.env.LOCALAPPDATA || '', 'SumatraPDF', 'SumatraPDF.exe'),
+    'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe',
+    'C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe',
+  ];
+
+  let sumatraPath = null;
+  for (const p of sumatraPaths) {
+    try {
+      await fs.access(p);
+      sumatraPath = p;
+      break;
+    } catch { }
+  }
+
+  if (!sumatraPath) {
+    throw new Error('SumatraPDF not found');
+  }
+
+  const isSimplex = side === 'simplex';
+
+  // Try different tray name formats that printers might use
+  const trayFormats = [
+    `tray-${trayNumber}`,      // User's printer format: "tray-1", "tray-2"
+    `Tray ${trayNumber}`,       // HP format: "Tray 1", "Tray 2"
+    `Tray${trayNumber}`,        // Alternative: "Tray1", "Tray2"
+    `tray${trayNumber}`,        // Lowercase: "tray1", "tray2"
+  ];
+
+  // Build print settings
+  const settings = [
+    isSimplex ? 'simplex' : 'duplexshort',
+    'color',
+    'noscale',
+  ];
+
+  // Try each tray format until one works - no fallbacks, exact tray required
+  const errors = [];
+  for (const trayFormat of trayFormats) {
+    try {
+      const settingsWithTray = [...settings, `bin=${trayFormat}`];
+      const settingsStr = settingsWithTray.join(',');
+
+      console.log(`  📜 Trying tray format: ${trayFormat}`);
+      console.log(`  📜 SumatraPDF settings: ${settingsStr}`);
+
+      const cmd = `"${sumatraPath}" -print-to "${printerName}" -print-settings "${settingsStr}" -silent "${pdfPath}"`;
+
+      await execAsync(cmd, { timeout: 60000 });
+      console.log(`  ✅ Print job sent to ${trayFormat} via SumatraPDF!`);
+      return; // Success - exit function
+    } catch (err) {
+      const errorMsg = `Tray format "${trayFormat}" failed: ${err.message}`;
+      console.error(`  ❌ ${errorMsg}`);
+      errors.push(errorMsg);
+      // Continue to next format
+    }
+  }
+
+  // All tray formats failed - throw error with details
+  throw new Error(`Failed to print to tray-${trayNumber}. All tray formats failed:\n${errors.join('\n')}`);
+}
+
 async function printPdf(pdfPath, printerName, job = {}) {
   const printers = await getAllPrintersSafe();
   const matched = pickBestMatchingPrinter(printers, printerName);
@@ -292,38 +365,22 @@ async function printPdf(pdfPath, printerName, job = {}) {
   const side = resolveDuplexSide(job);
   console.log(`  📄 Duplex: ${side}`);
 
-  const printOptions = {
-    ...(effectivePrinterName ? { printer: effectivePrinterName } : {}),
-    side,
-    scale: 'noscale',
-    monochrome: false,
-  };
+  // Get tray number from job (required for printing)
+  const trayNumber = job.trayNumber;
+  if (!trayNumber) {
+    throw new Error('Tray number is required but not provided in print job');
+  }
 
+  console.log(`  📥 Tray: ${trayNumber} (required)`);
+
+  // Use SumatraPDF with tray selection (no fallbacks - exact tray required)
+  console.log('  🔄 Using SumatraPDF with tray selection (no fallbacks)...');
   try {
-    await print(pdfPath, printOptions);
-    console.log(`  ✅ Print job sent to ${effectivePrinterName || 'Windows default printer'}!`);
+    await printWithSumatraPDF(pdfPath, effectivePrinterName, trayNumber, side);
+    console.log(`  ✅ Print job sent to tray-${trayNumber} via SumatraPDF!`);
   } catch (err) {
-    console.warn('  ⚠️ Print with options failed:', err.message);
-
-    // Fallback: try without printer name (use Windows default)
-    if (effectivePrinterName) {
-      console.warn('  📝 Trying Windows default printer...');
-      try {
-        await print(pdfPath, { side, scale: 'noscale', monochrome: false });
-        console.log('  ✅ Print job sent (using Windows default)');
-      } catch (err2) {
-        // Last resort: basic print
-        await print(pdfPath);
-        console.log('  ✅ Print job sent (basic mode)');
-      }
-    } else {
-      throw new Error(`Print failed: ${err.message}`);
-    }
-
-    console.log('');
-    console.log('  💡 TIP: Set duplex in Windows Printer Preferences:');
-    console.log('     Settings → Printers → Your Printer → Printing Preferences');
-    console.log('     Set "Two-sided" to "Flip on Short Edge"');
+    console.error(`  ❌ Failed to print to tray-${trayNumber}: ${err.message}`);
+    throw new Error(`Print failed: Could not print to tray-${trayNumber}. ${err.message}`);
   }
 }
 
@@ -343,6 +400,11 @@ async function processJob(job) {
   }
   console.log(`   PDF: ${job.pdfUrl ? 'pdfUrl' : job.pdfData ? 'pdfData' : 'none'}`);
   console.log(`   Images: ${job.imagePaths?.length || 0}`);
+  if (job.trayNumber) {
+    console.log(`   Tray: ${job.trayNumber}`);
+  } else {
+    console.log(`   Tray: Auto (printer default)`);
+  }
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });

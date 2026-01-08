@@ -349,6 +349,7 @@ export default function CustomizeCardPage() {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [selectedTray, setSelectedTray] = useState<'tray-1' | 'tray-2'>('tray-1');
 
 
   // Swipe functionality state
@@ -1177,7 +1178,7 @@ export default function CustomizeCardPage() {
 
       // Always use direct printing to default printer (no dialog)
       console.log('🖨️ Direct printing to default printer (no dialog)...');
-      await autoPrintToEpson(image1, image2, image3, image4);
+      await autoPrintToEpson(image1, image2, image3, image4, 'greeting-card', selectedTray);
 
       setIsPrinting(false);
     } catch (error) {
@@ -1355,7 +1356,7 @@ export default function CustomizeCardPage() {
 
   // Auto-print - sends images to backend with printer name from kiosk config
   // Print agent handles duplex, borderless, paper size settings locally
-  const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card') => {
+  const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card', trayNumber: string | null = null) => {
     // Get printer name from kiosk config (must be set in /admin/kiosks)
     if (!kioskConfig?.printerName) {
       alert('Printer not configured. Please set printer name in /admin/kiosks');
@@ -1383,7 +1384,7 @@ export default function CustomizeCardPage() {
           price,
           paperType,
           paperSize: 'letter',
-          trayNumber: null,
+          trayNumber: trayNumber ? parseInt(trayNumber.replace('tray-', '')) : null,
           copies: 1,
         });
         printLogId = logResult?.id || null;
@@ -1405,7 +1406,7 @@ export default function CustomizeCardPage() {
 
       console.log('Images converted, sending to backend...');
 
-      // Send to backend /print-pc endpoint with printer name
+      // Send to backend /print-pc endpoint with printer name and tray number
       // Print agent handles duplex, borderless, paper size locally
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
@@ -1415,6 +1416,7 @@ export default function CustomizeCardPage() {
         body: JSON.stringify({
           images: imageBase64Array,
           printerName: printerName,
+          trayNumber: trayNumber ? parseInt(trayNumber.replace('tray-', '')) : null,
         }),
       });
 
@@ -1486,7 +1488,7 @@ export default function CustomizeCardPage() {
 
       // Send images directly to backend printer - no PDF generation needed
       // The backend will handle compositing and printing automatically
-      await autoPrintToEpson(image1, image2, image3, image4);
+      await autoPrintToEpson(image1, image2, image3, image4, 'greeting-card', selectedTray);
       setIsPrinting(false);
       setPaymentModalOpen(false);
       setPendingAction(null);
@@ -2757,17 +2759,31 @@ export default function CustomizeCardPage() {
       {isKiosk && (
         <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-50 to-white border-t border-gray-100 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-40">
           <div className="max-w-4xl mx-auto px-4 py-5 sm:px-6 lg:px-8">
-            <div className="flex gap-5 justify-center">
-              {/* Print Button - Elegant purple gradient */}
-              <button
-                onClick={handlePrint}
-                disabled={isPrinting || isWaitingForSave}
-                className={`group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 text-white rounded-2xl font-semibold text-lg transition-all duration-300 ease-out touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden relative ${
-                  isWaitingForSave 
-                    ? 'bg-gray-400 shadow-[0_8px_30px_rgba(156,163,175,0.35)]' 
-                    : 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 shadow-[0_8px_30px_rgba(124,58,237,0.35)] hover:shadow-[0_12px_40px_rgba(124,58,237,0.45)] hover:scale-[1.02] active:scale-[0.98]'
-                }`}
-              >
+            <div className="flex gap-5 justify-center items-center">
+              {/* Print Button Group - Tray Dropdown + Print Button */}
+              <div className="flex items-center gap-3">
+                {/* Tray Selection Dropdown - Next to Print Button */}
+                <select
+                  value={selectedTray}
+                  onChange={(e) => setSelectedTray(e.target.value as 'tray-1' | 'tray-2')}
+                  disabled={isPrinting || isWaitingForSave}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  title="Select paper tray"
+                >
+                  <option value="tray-1">Tray 1</option>
+                  <option value="tray-2">Tray 2</option>
+                </select>
+
+                {/* Print Button - Elegant purple gradient */}
+                <button
+                  onClick={handlePrint}
+                  disabled={isPrinting || isWaitingForSave}
+                  className={`group flex-1 max-w-xs flex items-center justify-center gap-3 px-8 py-4 text-white rounded-2xl font-semibold text-lg transition-all duration-300 ease-out touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden relative ${
+                    isWaitingForSave 
+                      ? 'bg-gray-400 shadow-[0_8px_30px_rgba(156,163,175,0.35)]' 
+                      : 'bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 shadow-[0_8px_30px_rgba(124,58,237,0.35)] hover:shadow-[0_12px_40px_rgba(124,58,237,0.45)] hover:scale-[1.02] active:scale-[0.98]'
+                  }`}
+                >
                 {/* Shine effect on hover */}
                 {!isWaitingForSave && (
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out" />
@@ -2786,6 +2802,7 @@ export default function CustomizeCardPage() {
                   </>
                 )}
               </button>
+              </div>
 
               {/* Send E-card Button - Elegant teal gradient */}
               <button
