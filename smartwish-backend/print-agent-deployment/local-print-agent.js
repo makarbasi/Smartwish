@@ -36,8 +36,9 @@ const CONFIG = {
   // Cloud server URL - change this to your deployed backend
   cloudServerUrl: process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
 
-  // Default printer name - set to your actual printer
-  defaultPrinter: process.env.DEFAULT_PRINTER || 'HP OfficeJet Pro 9130e Series [HPIE4B65B]',
+  // Printer name comes from kiosk config via job.printerName
+  // This is just a fallback if job doesn't specify printer
+  defaultPrinter: process.env.DEFAULT_PRINTER || null,
 
   // How often to poll for new jobs (milliseconds)
   pollInterval: process.env.POLL_INTERVAL || 5000,
@@ -276,66 +277,52 @@ function resolveScale(job) {
 }
 
 async function printPdf(pdfPath, printerName, job = {}) {
-  const debugPrint = (process.env.DEBUG_PRINT || '').toLowerCase() === 'true';
-
   const printers = await getAllPrintersSafe();
   const matched = pickBestMatchingPrinter(printers, printerName);
   const effectivePrinterName = matched?.name || printerName;
 
-  if (!matched) {
-    console.warn(
-      `  ⚠️ Printer "${printerName}" not found on this machine. Will try Windows default printer instead.`,
-    );
+  if (printerName && !matched) {
+    console.warn(`  ⚠️ Printer "${printerName}" not found. Available printers:`);
+    printers.slice(0, 3).forEach(p => console.warn(`     - ${p.name}`));
+    console.warn(`  Will try to print anyway...`);
   }
 
-  console.log(`  🖨️ Printing to: ${matched ? effectivePrinterName : '(Windows default printer)'}`);
+  console.log(`  🖨️ Printing to: ${effectivePrinterName || '(Windows default printer)'}`);
 
-  const paperSize = resolvePaperSizeForJob(job, matched);
   const side = resolveDuplexSide(job);
-  const scale = resolveScale(job);
-  const copies = Number(job.copies || CONFIG.defaultCopies || 1);
+  console.log(`  📄 Duplex: ${side}`);
 
-  console.log(
-    `  📄 Settings: paper="${paperSize}", duplex="${side}", scale="${scale}", copies=${copies}, borderless=${Boolean(
-      job.borderless ?? CONFIG.defaultBorderless,
-    )}`,
-  );
-
-  // Print options for pdf-to-printer (uses SumatraPDF on Windows)
-  // https://github.com/artiebits/pdf-to-printer
   const printOptions = {
-    ...(matched ? { printer: effectivePrinterName } : {}),
-    // Duplex options: 'simplex', 'duplex', 'duplexshort', 'duplexlong'
-    // For landscape greeting cards: use 'duplexshort' (flip on short edge)
+    ...(effectivePrinterName ? { printer: effectivePrinterName } : {}),
     side,
-    // Scale: 'noscale', 'shrink', 'fit'
-    scale,
-    // Color printing (not monochrome)
+    scale: 'noscale',
     monochrome: false,
-    paperSize,
-    copies,
-    silent: !debugPrint,
   };
 
   try {
     await print(pdfPath, printOptions);
-    console.log('  ✅ Print job sent successfully!');
+    console.log(`  ✅ Print job sent to ${effectivePrinterName || 'Windows default printer'}!`);
   } catch (err) {
-    const e = err || {};
-    console.warn('  ⚠️ Print with options failed:', e.message || e);
-    if (e.code !== undefined) console.warn('  ↳ exit code:', e.code);
-    if (e.signal) console.warn('  ↳ signal:', e.signal);
-    if (e.stdout) console.warn('  ↳ stdout:', String(e.stdout).trim());
-    if (e.stderr) console.warn('  ↳ stderr:', String(e.stderr).trim());
+    console.warn('  ⚠️ Print with options failed:', err.message);
 
-    console.warn('  📝 Trying basic print (no options)...');
-    // Fallback: try basic print (uses printer defaults; if printer not found, uses Windows default)
-    await print(pdfPath, matched ? { printer: effectivePrinterName } : {});
-    console.log('  ✅ Print job sent using printer defaults');
+    // Fallback: try without printer name (use Windows default)
+    if (effectivePrinterName) {
+      console.warn('  📝 Trying Windows default printer...');
+      try {
+        await print(pdfPath, { side, scale: 'noscale', monochrome: false });
+        console.log('  ✅ Print job sent (using Windows default)');
+      } catch (err2) {
+        // Last resort: basic print
+        await print(pdfPath);
+        console.log('  ✅ Print job sent (basic mode)');
+      }
+    } else {
+      throw new Error(`Print failed: ${err.message}`);
+    }
+
     console.log('');
-    console.log('  ⚠️  If not printing two-sided, set duplex in Windows:');
-    console.log('     Control Panel → Devices and Printers');
-    console.log('     Right-click printer → Printing Preferences');
+    console.log('  💡 TIP: Set duplex in Windows Printer Preferences:');
+    console.log('     Settings → Printers → Your Printer → Printing Preferences');
     console.log('     Set "Two-sided" to "Flip on Short Edge"');
   }
 }
@@ -346,7 +333,14 @@ async function printPdf(pdfPath, printerName, job = {}) {
 
 async function processJob(job) {
   console.log(`\n📋 Processing job: ${job.id}`);
-  console.log(`   Printer: ${job.printerName || CONFIG.defaultPrinter}`);
+  const printerName = job.printerName || CONFIG.defaultPrinter;
+  if (job.printerName) {
+    console.log(`   Printer: ${job.printerName} (from kiosk config)`);
+  } else if (CONFIG.defaultPrinter) {
+    console.log(`   Printer: ${CONFIG.defaultPrinter} (fallback from config)`);
+  } else {
+    console.log(`   Printer: Windows default (no printer in kiosk config)`);
+  }
   console.log(`   PDF: ${job.pdfUrl ? 'pdfUrl' : job.pdfData ? 'pdfData' : 'none'}`);
   console.log(`   Images: ${job.imagePaths?.length || 0}`);
 
@@ -354,7 +348,6 @@ async function processJob(job) {
   await fs.mkdir(jobDir, { recursive: true });
 
   try {
-    const printerName = job.printerName || CONFIG.defaultPrinter;
 
     let pdfPath = path.join(jobDir, 'card.pdf');
 
@@ -503,7 +496,12 @@ async function listPrinters() {
   }
 
   console.log('─'.repeat(50));
-  console.log(`  Default: ${CONFIG.defaultPrinter}`);
+  console.log(`  Printer: Will use printer from each job's kiosk config`);
+  if (CONFIG.defaultPrinter) {
+    console.log(`  Fallback (if job has no printer): ${CONFIG.defaultPrinter}`);
+  } else {
+    console.log(`  Fallback (if job has no printer): Windows default printer`);
+  }
   console.log('');
 }
 

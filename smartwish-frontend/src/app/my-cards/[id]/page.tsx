@@ -1356,13 +1356,17 @@ export default function CustomizeCardPage() {
   // Auto-print - sends images to backend with printer name from kiosk config
   // Print agent handles duplex, borderless, paper size settings locally
   const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card') => {
-    // Get printer name from kiosk config
-    const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9130e Series [HPIE4B65B]';
+    // Get printer name from kiosk config (must be set in /admin/kiosks)
+    if (!kioskConfig?.printerName) {
+      alert('Printer not configured. Please set printer name in /admin/kiosks');
+      return;
+    }
+    const printerName = kioskConfig.printerName;
     
     // Get kiosk ID from context for logging
     const kioskId = localStorage.getItem('smartwish_kiosk_id');
     
-    console.log(`🖨️ Sending print job to: ${printerName}`);
+    console.log(`🖨️ Sending print job to: ${printerName} (from kiosk config)`);
 
     let printLogId: string | null = null;
 

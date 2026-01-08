@@ -62,7 +62,7 @@ const DEFAULT_CONFIG: KioskConfig = {
   micEnabled: true,
   ads: { playlist: [] },
   printerProfile: 'default',
-  printerName: 'HP OfficeJet Pro 9130e Series [HPIE4B65B]',
+  printerName: '', // Must be set in /admin/kiosks - no hardcoded fallback
   printerTrays: [
     { trayNumber: 1, trayName: 'Tray 1', paperType: 'greeting-card', paperSize: 'letter' },
     { trayNumber: 2, trayName: 'Tray 2', paperType: 'sticker', paperSize: 'letter' },
