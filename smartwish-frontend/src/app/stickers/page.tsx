@@ -407,10 +407,14 @@ export default function StickersPage() {
   // Print sticker sheet function (for backend printing)
   // Print agent handles duplex, paper size settings locally
   const printStickerSheet = async () => {
-    // Get printer name from kiosk config
-    const printerName = kioskConfig?.printerName || "HP OfficeJet Pro 9130e Series [HPIE4B65B]";
+    // Get printer name from kiosk config (must be set in /admin/kiosks)
+    if (!kioskConfig?.printerName) {
+      alert('Printer not configured. Please set printer name in /admin/kiosks');
+      return;
+    }
+    const printerName = kioskConfig.printerName;
     
-    console.log(`🖨️ Sending sticker print job to: ${printerName}`);
+    console.log(`🖨️ Sending sticker print job to: ${printerName} (from kiosk config)`);
 
     // Convert blob URLs to base64 for all filled slots
     const imageBase64Array: (string | null)[] = await Promise.all(

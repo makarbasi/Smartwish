@@ -8,28 +8,30 @@ Write-Host ""
 # Configuration - Edit these values
 $env:CLOUD_SERVER_URL = "http://localhost:3001"
 # $env:CLOUD_SERVER_URL = "https://smartwish.onrender.com"
-$env:DEFAULT_PRINTER = "HP OfficeJet Pro 9130e Series [HPIE4B65B]"
 $env:POLL_INTERVAL = "5000"
 
-# Printing defaults (can be overridden per job)
-# Duplex: simplex | duplex | duplexshort | duplexlong
+# Printer name comes from kiosk config (/admin/kiosks) via the print job
+# Only set this if you want a fallback when job doesn't specify printer
+# $env:DEFAULT_PRINTER = "HPIE4B65B (HP OfficeJet Pro 9130e Series)"
+
+# Explicitly clear any previously set DEFAULT_PRINTER to ensure we use kiosk config
+if ($env:DEFAULT_PRINTER) {
+  Remove-Item Env:\DEFAULT_PRINTER -ErrorAction SilentlyContinue
+}
+
+# Duplex setting: simplex | duplex | duplexshort | duplexlong
+# For greeting cards (landscape fold): use duplexshort
 $env:DEFAULT_DUPLEX_SIDE = "duplexshort"
-# Borderless: true/false. True tries to select a borderless paper size if available.
-$env:BORDERLESS = "true"
-# Optional: exact paper size name exposed by your printer driver (recommended).
-# Examples: "Letter (Borderless)", "A4 (Borderless)"
-$env:BORDERLESS_PAPER_SIZE = "Letter (Borderless)"
-# Default paper size when BORDERLESS paper isn't available
-$env:DEFAULT_PAPER_SIZE = "Letter"
 
 Write-Host "Configuration:" -ForegroundColor Yellow
 Write-Host "  Server: $env:CLOUD_SERVER_URL"
-Write-Host "  Printer: $env:DEFAULT_PRINTER"
 Write-Host "  Poll Interval: $env:POLL_INTERVAL ms"
 Write-Host "  Duplex: $env:DEFAULT_DUPLEX_SIDE"
-Write-Host "  Borderless: $env:BORDERLESS"
-Write-Host "  Borderless Paper: $env:BORDERLESS_PAPER_SIZE"
-Write-Host "  Default Paper: $env:DEFAULT_PAPER_SIZE"
+if ($env:DEFAULT_PRINTER) {
+  Write-Host "  Fallback Printer: $env:DEFAULT_PRINTER" -ForegroundColor Gray
+}
+Write-Host ""
+Write-Host "NOTE: Printer name comes from kiosk config (/admin/kiosks)" -ForegroundColor Cyan
 Write-Host ""
 
 # Ensure dependencies are installed (node_modules)
