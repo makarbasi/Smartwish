@@ -3,9 +3,70 @@
 import { useRouter } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskConfig } from "@/hooks/useKioskConfig";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import useSWR from "swr";
+
+// Cache keys
+const TEMPLATES_CACHE_KEY = 'swr_cache_/api/templates?limit=5&sort=popularity';
+const STICKERS_CACHE_KEY = 'swr_cache_/api/stickers?limit=200';
+const STICKER_PROPS_CACHE_KEY = 'kiosk_sticker_properties_v2';
+
+// Deterministic pseudo-random number generator based on seed
+// This ensures consistent properties for each sticker index
+const seededRandom = (seed: number) => {
+  const x = Math.sin(seed * 9999) * 10000;
+  return x - Math.floor(x);
+};
+
+// Generate sticker properties deterministically based on index
+// This allows instant rendering without waiting for data
+const generateStickerProps = (index: number, stickerId?: string) => {
+  const seed = stickerId ? stickerId.charCodeAt(0) * 1000 + index : index * 12345;
+  const r1 = seededRandom(seed);
+  const r2 = seededRandom(seed + 1);
+  const r3 = seededRandom(seed + 2);
+  const r4 = seededRandom(seed + 3);
+  const r5 = seededRandom(seed + 4);
+  const r6 = seededRandom(seed + 5);
+  
+  return {
+    xPos: Math.round((r1 * 300 - 150) * 100) / 100,
+    size: Math.round(100 + (r2 * 40)),
+    minScale: Math.round((0.8 + (r3 * 0.2)) * 1000) / 1000,
+    maxScale: Math.round((1.0 + (r4 * 0.25)) * 1000) / 1000,
+    rotation: Math.round((r5 * 70 - 35) * 100) / 100,
+    delay: Math.round((r6 * 20) * 100) / 100,
+    duration: Math.round((4 + (r1 * 3)) * 100) / 100,
+    driftAmount: Math.round((r2 * 60 - 30) * 100) / 100,
+    speedVariation: Math.round((0.8 + (r3 * 0.4)) * 1000) / 1000,
+    zIndex: 10 + (index % 10),
+  };
+};
+
+// Pre-generate properties for 30 stickers (used as fallback)
+const DEFAULT_STICKER_PROPERTIES: Record<string, ReturnType<typeof generateStickerProps>> = {};
+for (let i = 0; i < 30; i++) {
+  DEFAULT_STICKER_PROPERTIES[`sticker-${i}`] = generateStickerProps(i);
+}
+
+// Synchronous cache getter for initial data
+const getCachedData = <T>(cacheKey: string): T | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      // Use cache if less than 24 hours old
+      if (Date.now() - timestamp < 86400000) {
+        return data;
+      }
+    }
+  } catch (e) {
+    // Ignore cache read errors
+  }
+  return undefined;
+};
 
 // Custom fetcher with caching support
 const fetcher = async (url: string) => {
@@ -71,7 +132,29 @@ export default function KioskHomePage() {
   const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;
   const stickersEnabled = kioskConfig?.stickersEnabled !== false;
 
-  // Fetch popular templates with aggressive caching
+  // Track if component has mounted (for hydration-safe rendering)
+  const [hasMounted, setHasMounted] = useState(false);
+  
+  // Get cached data on first client render using a ref (avoids re-computation)
+  // This is initialized to undefined on server, then populated on client mount
+  const cachedDataRef = useRef<{
+    templates?: TemplatesResponse;
+    stickers?: StickersResponse;
+  } | null>(null);
+  
+  // Initialize cached data ref on first client render
+  if (typeof window !== 'undefined' && cachedDataRef.current === null) {
+    cachedDataRef.current = {
+      templates: getCachedData<TemplatesResponse>(TEMPLATES_CACHE_KEY),
+      stickers: getCachedData<StickersResponse>(STICKERS_CACHE_KEY),
+    };
+  }
+  
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  // Fetch popular templates with aggressive caching and fallback data
   const { data: templatesData } = useSWR<TemplatesResponse>(
     "/api/templates?limit=5&sort=popularity",
     fetcher,
@@ -81,19 +164,13 @@ export default function KioskHomePage() {
       dedupingInterval: 60000, // Dedupe requests within 60 seconds
       refreshInterval: 0, // Don't auto-refresh
       keepPreviousData: true, // Keep showing old data while fetching new
+      fallbackData: cachedDataRef.current?.templates, // Use cached data immediately
     }
   );
 
-  // Fetch categories first
-  const { data: categoriesData } = useSWR<{ success: boolean; data: string[] }>(
-    "/api/stickers/categories",
-    fetcher
-  );
-  const categories = categoriesData?.data || [];
-
-  // Fetch stickers from multiple categories to get 30 unique ones
+  // Fetch stickers directly - NO LONGER waiting for categories
   const { data: stickersDataAll } = useSWR<StickersResponse>(
-    categories.length > 0 ? `/api/stickers?limit=200` : null, // Fetch more to get variety
+    `/api/stickers?limit=200`, // Fetch directly without waiting
     fetcher,
     {
       revalidateOnFocus: false,
@@ -101,6 +178,7 @@ export default function KioskHomePage() {
       dedupingInterval: 60000,
       refreshInterval: 0,
       keepPreviousData: true,
+      fallbackData: cachedDataRef.current?.stickers, // Use cached data immediately
     }
   );
 
@@ -157,6 +235,85 @@ export default function KioskHomePage() {
   }, [allStickers]);
   
   const stickers = uniqueStickers;
+
+  // Sticker properties - computed deterministically for instant rendering
+  // Uses memoization to generate properties once per sticker set
+  const stickerProperties = useMemo(() => {
+    if (stickers.length === 0) {
+      // Return default properties for placeholders while loading
+      return DEFAULT_STICKER_PROPERTIES;
+    }
+    
+    // Try to load cached properties first
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(STICKER_PROPS_CACHE_KEY);
+        if (cached) {
+          const { props, stickerIds } = JSON.parse(cached);
+          const currentIds = stickers.slice(0, 30).map(s => s.id).join(',');
+          if (stickerIds === currentIds) {
+            return props;
+          }
+        }
+      } catch (e) {
+        // Ignore cache errors
+      }
+    }
+    
+    // Generate properties deterministically based on sticker IDs
+    const props: Record<string, ReturnType<typeof generateStickerProps>> = {};
+    stickers.slice(0, 30).forEach((sticker, i) => {
+      const key = sticker.id || `sticker-${i}`;
+      props[key] = generateStickerProps(i, sticker.id);
+    });
+    
+    // Cache the generated properties
+    if (typeof window !== 'undefined') {
+      try {
+        const stickerIds = stickers.slice(0, 30).map(s => s.id).join(',');
+        localStorage.setItem(STICKER_PROPS_CACHE_KEY, JSON.stringify({ props, stickerIds }));
+      } catch (e) {
+        // Ignore cache errors
+      }
+    }
+    
+    return props;
+  }, [stickers]);
+
+  // Preload images for faster display
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Preload first 5 template images
+    templates.slice(0, 5).forEach((template) => {
+      const img = template.cover_image || template.image_1;
+      if (img) {
+        const link = document.createElement('link');
+        link.rel = 'preload';
+        link.as = 'image';
+        link.href = img;
+        // Don't add duplicate preloads
+        if (!document.querySelector(`link[href="${img}"]`)) {
+          document.head.appendChild(link);
+        }
+      }
+    });
+    
+    // Preload first 10 sticker images (most visible ones)
+    stickers.slice(0, 10).forEach((sticker) => {
+      const img = sticker.imageUrl || sticker.thumbnailUrl;
+      if (img) {
+        const link = document.createElement('link');
+        link.rel = 'preload';
+        link.as = 'image';
+        link.href = img;
+        // Don't add duplicate preloads
+        if (!document.querySelector(`link[href="${img}"]`)) {
+          document.head.appendChild(link);
+        }
+      }
+    });
+  }, [templates, stickers]);
 
   // Redirect non-kiosk users away from this page (only after initialization)
   useEffect(() => {
@@ -216,7 +373,8 @@ export default function KioskHomePage() {
           {/* Greeting Cards Display - Fanned cards */}
           <div className="absolute top-8 left-1/2 -translate-x-1/2 w-full flex justify-center perspective-1000">
             <div className="relative w-80 h-56 lg:w-96 lg:h-64">
-              {templates.slice(0, 5).map((template, i) => {
+              {/* Only render templates after mount to avoid hydration mismatch */}
+              {hasMounted && templates.slice(0, 5).map((template, i) => {
                 const totalCards = Math.min(templates.length, 5);
                 const middleIndex = Math.floor(totalCards / 2);
                 const offset = i - middleIndex;
@@ -242,16 +400,16 @@ export default function KioskHomePage() {
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-700"
                       sizes="128px"
-                      priority={i < 2} // Prioritize first 2 images
-                      loading={i < 2 ? "eager" : "lazy"}
+                      priority={true} // Prioritize all template images
+                      loading="eager"
                       unoptimized={false}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
                   </div>
                 );
               })}
-              {/* Fallback if no templates loaded */}
-              {templates.length === 0 && (
+              {/* Fallback shown during SSR and while loading */}
+              {(!hasMounted || templates.length === 0) && (
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-28 lg:w-32 rounded-xl bg-gradient-to-br from-indigo-400/30 to-purple-400/30 border-2 border-white/20 flex items-center justify-center" style={{ aspectRatio: '5 / 7' }}>
                   <div className="text-white/60 text-4xl">🎴</div>
                 </div>
@@ -300,45 +458,24 @@ export default function KioskHomePage() {
           {/* Stickers Display - Rain effect: falling from top, fading in/out */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full flex justify-center overflow-hidden">
             <div className="relative w-full h-full min-h-[400px] lg:min-h-[480px]">
-              {(stickers.length > 0 ? stickers.slice(0, 30) : Array.from({ length: 30 }).map((_, i) => ({ id: `placeholder-${i}`, imageUrl: null }))).map((sticker, i) => {
-                // Generate stable random values based only on sticker index (not time-based)
-                // Round all values to avoid floating-point precision issues between server/client
-                const seed = i * 137.5; // Prime number for better distribution
-                const random1 = Math.abs(Math.sin(seed)) % 1;
-                const random2 = Math.abs(Math.sin(seed * 2.7)) % 1;
-                const random3 = Math.abs(Math.sin(seed * 3.1)) % 1;
-                const random4 = Math.abs(Math.sin(seed * 4.3)) % 1;
-                const random5 = Math.abs(Math.sin(seed * 5.9)) % 1;
-                const random6 = Math.abs(Math.sin(seed * 7.2)) % 1;
+              {/* Only render sticker rain after mount to avoid hydration mismatch */}
+              {hasMounted && (stickers.length > 0 ? stickers.slice(0, 30) : Array.from({ length: 30 }).map((_, i) => ({ id: `sticker-${i}`, imageUrl: null, title: `Sticker ${i + 1}` } as Sticker))).map((sticker, i) => {
+                // Get properties for this sticker - use fallback if not found
+                const key = sticker.id || `sticker-${i}`;
+                const props = stickerProperties[key] || DEFAULT_STICKER_PROPERTIES[`sticker-${i}`] || generateStickerProps(i);
                 
-                // Random horizontal positions - wider spread for 30 stickers (rounded)
-                const xPos = Math.round((random1 * 300 - 150) * 100) / 100;
-                
-                // Random base sizes (100-140px) - some bigger than others (rounded to integer)
-                const baseSize = Math.round(100 + (random2 * 40));
-                const size = baseSize;
-                
-                // Size variation during fall (scale changes) - rounded to 3 decimals
-                const minScale = Math.round((0.8 + (random3 * 0.2)) * 1000) / 1000;
-                const maxScale = Math.round((1.0 + (random4 * 0.25)) * 1000) / 1000;
-                
-                // More varied rotations - rounded to 2 decimals
-                const rotation = Math.round((random5 * 70 - 35) * 100) / 100;
-                
-                // Random delays - distributed across 0-20 seconds (rounded to 2 decimals)
-                const delay = Math.round((random6 * 20) * 100) / 100;
-                
-                // More varied fall durations (4-7 seconds) - rounded to 2 decimals
-                const duration = Math.round((4 + (random1 * 3)) * 100) / 100;
-                
-                // Random horizontal drift during fall (swaying effect) - rounded
-                const driftAmount = Math.round((random2 * 60 - 30) * 100) / 100;
-                
-                // Random vertical speed variation - rounded to 3 decimals
-                const speedVariation = Math.round((0.8 + (random3 * 0.4)) * 1000) / 1000;
-                
-                // Stable z-index based on index (not random) to prevent flickering
-                const stableZIndex = 10 + (i % 10);
+                const {
+                  xPos,
+                  size,
+                  minScale,
+                  maxScale,
+                  rotation,
+                  delay,
+                  duration,
+                  driftAmount,
+                  speedVariation,
+                  zIndex: stableZIndex,
+                } = props;
                 
                 // Calculate final duration with speed variation - rounded
                 const finalDuration = Math.round((duration / speedVariation) * 100) / 100;
@@ -383,12 +520,13 @@ export default function KioskHomePage() {
                                 fill
                                 className="object-contain"
                                 sizes="(max-width: 1024px) 85px, 96px"
-                                priority={i < 3}
-                                loading={i < 3 ? "eager" : "lazy"}
+                                priority={i < 10} // Prioritize first 10 images
+                                loading={i < 10 ? "eager" : "lazy"}
                                 unoptimized={false}
                               />
                             ) : (
-                              <div className="w-full h-full rounded-full bg-gradient-to-br from-pink-400/30 to-orange-400/30" />
+                              // Show animated placeholder while loading
+                              <div className="w-full h-full rounded-full bg-gradient-to-br from-pink-400/30 to-orange-400/30 animate-pulse" />
                             )}
                           </div>
                         </div>
