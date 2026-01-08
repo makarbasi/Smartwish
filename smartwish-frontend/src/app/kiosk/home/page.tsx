@@ -127,6 +127,13 @@ export default function KioskHomePage() {
   const router = useRouter();
   const { isKiosk, isInitialized } = useDeviceMode();
   const { config: kioskConfig } = useKioskConfig();
+  
+  // Debug logging for page lifecycle
+  console.log("🏠 [KioskHome] Render:", {
+    isKiosk,
+    isInitialized,
+    timestamp: new Date().toISOString(),
+  });
 
   // Check if features are enabled (default to true if not set)
   const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;
@@ -151,7 +158,12 @@ export default function KioskHomePage() {
   }
   
   useEffect(() => {
+    console.log("🏠 [KioskHome] Component MOUNTED");
     setHasMounted(true);
+    
+    return () => {
+      console.log("🏠 [KioskHome] Component UNMOUNTED");
+    };
   }, []);
 
   // Fetch popular templates with aggressive caching and fallback data
@@ -317,7 +329,9 @@ export default function KioskHomePage() {
 
   // Redirect non-kiosk users away from this page (only after initialization)
   useEffect(() => {
+    console.log("🏠 [KioskHome] Redirect check:", { isInitialized, isKiosk });
     if (isInitialized && !isKiosk) {
+      console.log("🏠 [KioskHome] ⚠️ NOT KIOSK MODE - redirecting to /");
       router.replace("/");
     }
   }, [isKiosk, isInitialized, router]);

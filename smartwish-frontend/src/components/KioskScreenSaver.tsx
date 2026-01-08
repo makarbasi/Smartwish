@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Image from "next/image";
 
 interface KioskScreenSaverProps {
@@ -643,20 +643,49 @@ export default function KioskScreenSaver({
     });
   }, [marqueeCards]);
 
-  const handleInteraction = () => {
+  // Prevent double-triggering on touch devices (both touchstart and click fire)
+  const hasExitedRef = useRef(false);
+  
+  const handleInteraction = useCallback((e: React.MouseEvent | React.TouchEvent | React.KeyboardEvent) => {
+    console.log("🖼️ [ScreenSaver] handleInteraction called:", {
+      eventType: e.type,
+      hasExitedRef: hasExitedRef.current,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Prevent double-exit on touch devices
+    if (hasExitedRef.current) {
+      console.log("🖼️ [ScreenSaver] ⚠️ BLOCKED - already exiting");
+      return;
+    }
+    hasExitedRef.current = true;
+    
+    // Prevent event bubbling to avoid duplicate handlers
+    e.stopPropagation();
+    e.preventDefault();
+    
+    console.log("🖼️ [ScreenSaver] ✅ Calling onExit()");
     onExit();
-  };
+  }, [onExit]);
+
+  // Reset the exit flag when screen saver becomes visible again
+  useEffect(() => {
+    if (isVisible) {
+      console.log("🖼️ [ScreenSaver] Screen saver visible - resetting hasExitedRef");
+      hasExitedRef.current = false;
+    }
+  }, [isVisible]);
 
   if (!isVisible) return null;
 
   return (
     <div
       // Must sit above everything (Pintura modal + virtual keyboard use very high z-index values)
-      className="fixed inset-0 z-[2147483647] cursor-pointer select-none"
+      className="fixed inset-0 z-[2147483647] cursor-pointer select-none touch-none"
       onClick={handleInteraction}
-      onTouchStart={handleInteraction}
+      onTouchEnd={handleInteraction}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " " || e.key === "Escape") handleInteraction();
+        if (e.key === "Enter" || e.key === " " || e.key === "Escape") handleInteraction(e);
       }}
       tabIndex={0}
     >
