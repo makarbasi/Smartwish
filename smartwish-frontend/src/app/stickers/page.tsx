@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftIcon, PrinterIcon } from "@heroicons/react/24/outline";
 import useSWR from "swr";
+import jsPDF from "jspdf";
 
 import StickerSheet, { StickerSlot } from "@/components/stickers/StickerSheet";
 import StickerCarousel, { StickerItem } from "@/components/stickers/StickerCarousel";
@@ -257,13 +258,26 @@ export default function StickersPage() {
     setViewMode("initial");
   }, []);
 
-  // Handle print button click
-  const handlePrintClick = () => {
+  // Handle print button click - generate PDF and open payment modal
+  const handlePrintClick = async () => {
     if (filledSlotsCount === 0) {
       alert("Please add at least one sticker before printing.");
       return;
     }
-    setShowPaymentModal(true);
+    
+    setIsPrinting(true);
+    try {
+      // Generate and save PDF immediately
+      await generateStickerPDF();
+      setIsPrinting(false);
+      
+      // Also open the payment modal for payment flow
+      setShowPaymentModal(true);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Failed to generate PDF. Please try again.");
+      setIsPrinting(false);
+    }
   };
 
   // Handle payment success
@@ -295,7 +309,102 @@ export default function StickersPage() {
     }
   };
 
-  // Print sticker sheet function
+  // Generate and save sticker sheet PDF
+  const generateStickerPDF = async () => {
+    console.log("📄 Generating sticker sheet PDF...");
+
+    // Avery 94513 specifications (in inches)
+    const PAPER_WIDTH = 8.5;
+    const PAPER_HEIGHT = 11;
+    const STICKER_DIAMETER = 3;
+    const STICKER_RADIUS = STICKER_DIAMETER / 2;
+
+    // Column centers (in inches from left edge)
+    const COL_1_CENTER = 1.25 + 1.5; // 2.75"
+    const COL_2_CENTER = PAPER_WIDTH - 1.25 - 1.5; // 5.75"
+
+    // Row centers (in inches from top edge)
+    const TOP_MARGIN = 0.75;
+    const VERTICAL_PITCH = 3.5;
+    const ROW_1_CENTER = TOP_MARGIN + 1.5; // 2.25"
+    const ROW_2_CENTER = TOP_MARGIN + 1.5 + VERTICAL_PITCH; // 5.75"
+    const ROW_3_CENTER = TOP_MARGIN + 1.5 + VERTICAL_PITCH * 2; // 9.25"
+
+    // Circle positions: [centerX, centerY] for each of 6 slots
+    const CIRCLE_POSITIONS = [
+      [COL_1_CENTER, ROW_1_CENTER],
+      [COL_2_CENTER, ROW_1_CENTER],
+      [COL_1_CENTER, ROW_2_CENTER],
+      [COL_2_CENTER, ROW_2_CENTER],
+      [COL_1_CENTER, ROW_3_CENTER],
+      [COL_2_CENTER, ROW_3_CENTER],
+    ];
+
+    // Create PDF with letter size in inches
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "in",
+      format: "letter",
+    });
+
+    // Convert all slot images to base64
+    const imageBase64Array: (string | null)[] = await Promise.all(
+      slots.map(async (slot) => {
+        if (!slot.imageUrl) return null;
+
+        try {
+          const response = await fetch(slot.imageUrl);
+          const blob = await response.blob();
+          return new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch (error) {
+          console.error("Error converting image to base64:", error);
+          return null;
+        }
+      })
+    );
+
+    // Add each sticker to the PDF
+    for (let i = 0; i < 6; i++) {
+      const imageData = imageBase64Array[i];
+      const [centerX, centerY] = CIRCLE_POSITIONS[i];
+
+      if (imageData) {
+        // Calculate position so that image is centered in the circle
+        // For object-contain behavior, we place a square image area and let the image fit
+        const x = centerX - STICKER_RADIUS;
+        const y = centerY - STICKER_RADIUS;
+
+        // Add the image - jsPDF will scale it to fit the dimensions
+        // Using addImage with fit option to contain the entire image within the circle area
+        try {
+          pdf.addImage(
+            imageData,
+            "PNG",
+            x,
+            y,
+            STICKER_DIAMETER,
+            STICKER_DIAMETER
+          );
+        } catch (error) {
+          console.error(`Error adding sticker ${i + 1} to PDF:`, error);
+        }
+      }
+    }
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const filename = `sticker-sheet-${timestamp}.pdf`;
+
+    // Save the PDF
+    pdf.save(filename);
+    console.log(`✅ PDF saved as ${filename}`);
+  };
+
+  // Print sticker sheet function (for backend printing)
   const printStickerSheet = async () => {
     // Get printer name from kiosk config
     const printerName = kioskConfig?.printerName || "HP OfficeJet Pro 9135e Series";

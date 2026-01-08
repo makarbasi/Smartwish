@@ -96,13 +96,18 @@ export default function StickerCircle({
         `}
       >
         {hasImage ? (
-          <Image
-            src={imageUrl}
-            alt={`Sticker ${index + 1}`}
-            fill
-            className="object-cover rounded-full"
-            sizes="(max-width: 768px) 128px, 192px"
-          />
+          <div className="absolute inset-0 bg-white flex items-center justify-center">
+            {/* Scale down the image to fit entirely within the circle with padding */}
+            <div className="relative" style={{ width: '75%', height: '75%' }}>
+              <Image
+                src={imageUrl}
+                alt={`Sticker ${index + 1}`}
+                fill
+                className="object-contain"
+                sizes="(max-width: 768px) 128px, 192px"
+              />
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center w-full h-full">
             {/* Glowing + icon */}
