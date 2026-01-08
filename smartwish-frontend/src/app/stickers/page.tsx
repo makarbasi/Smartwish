@@ -405,16 +405,12 @@ export default function StickersPage() {
   };
 
   // Print sticker sheet function (for backend printing)
+  // Print agent handles duplex, paper size settings locally
   const printStickerSheet = async () => {
     // Get printer name from kiosk config
-    const printerName = kioskConfig?.printerName || "HP OfficeJet Pro 9135e Series";
+    const printerName = kioskConfig?.printerName || "HP OfficeJet Pro 9130e Series [HPIE4B65B]";
     
-    // IMPORTANT: Stickers ALWAYS print from Tray 1 (contains sticker paper)
-    // Greeting cards use Tray 2 (contains card stock)
-    const trayNumber = 1;
-    const paperSize = "letter";
-
-    console.log(`🖨️ Printing sticker sheet to: ${printerName}, Tray: ${trayNumber}`);
+    console.log(`🖨️ Sending sticker print job to: ${printerName}`);
 
     // Convert blob URLs to base64 for all filled slots
     const imageBase64Array: (string | null)[] = await Promise.all(
@@ -436,7 +432,8 @@ export default function StickersPage() {
       })
     );
 
-    // Send to backend print endpoint
+    // Send to backend print endpoint with printer name
+    // Print agent handles duplex, paper size locally
     const response = await fetch(
       `${process.env.NEXT_PUBLIC_API_BASE || "https://smartwish.onrender.com"}/print-stickers`,
       {
@@ -446,9 +443,7 @@ export default function StickersPage() {
         },
         body: JSON.stringify({
           stickers: imageBase64Array,
-          printerName,
-          paperSize,
-          trayNumber,
+          printerName: printerName,
           layout: "avery-94513", // 6 circles, 3" diameter, 2x3 grid
         }),
       }
@@ -460,7 +455,7 @@ export default function StickersPage() {
     }
 
     const result = await response.json();
-    console.log("✅ Sticker print job sent successfully!", result);
+    console.log("✅ Sticker print job queued successfully!", result);
   };
 
   // Cleanup blob URLs on unmount

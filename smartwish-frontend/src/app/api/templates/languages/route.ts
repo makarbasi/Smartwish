@@ -1,4 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+
+// Cache languages for 10 minutes - they rarely change
+export const revalidate = 600
 
 export async function GET() {
     try {
@@ -10,6 +13,8 @@ export async function GET() {
             headers: {
                 'Content-Type': 'application/json',
             },
+            // Cache on server side
+            next: { revalidate: 600 }
         })
 
         if (!response.ok) {
@@ -32,7 +37,11 @@ export async function GET() {
         // Convert to array and sort
         const languagesList = ['Any language', ...Array.from(languages).sort()]
 
-        return NextResponse.json({ languages: languagesList })
+        return NextResponse.json({ languages: languagesList }, {
+            headers: {
+                'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200',
+            },
+        })
     } catch (error) {
         console.error('Error fetching languages:', error)
         return NextResponse.json(

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Cache template searches for 1 minute
+export const revalidate = 60
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -47,6 +50,8 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
       },
+      // Cache for 1 minute
+      next: { revalidate: 60 }
     })
 
     if (!response.ok) {

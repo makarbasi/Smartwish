@@ -1,4 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+
+// Cache regions for 10 minutes - they rarely change
+export const revalidate = 600
 
 export async function GET() {
     try {
@@ -10,6 +13,8 @@ export async function GET() {
             headers: {
                 'Content-Type': 'application/json',
             },
+            // Cache on server side
+            next: { revalidate: 600 }
         })
 
         if (!response.ok) {
@@ -32,7 +37,11 @@ export async function GET() {
         // Convert to array and sort
         const regionsList = ['Any region', ...Array.from(regions).sort()]
 
-        return NextResponse.json({ regions: regionsList })
+        return NextResponse.json({ regions: regionsList }, {
+            headers: {
+                'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200',
+            },
+        })
     } catch (error) {
         console.error('Error fetching regions:', error)
         return NextResponse.json(
