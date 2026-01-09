@@ -856,8 +856,8 @@ export class AppController {
   }
 
   /**
-   * Print sticker JPG using IPP (Internet Printing Protocol)
-   * Receives JPG as base64 and prints directly to printer
+   * Print sticker JPG - queues for local print agent (cloud) or prints directly (local)
+   * Receives JPG as base64 and either queues it or prints via IPP
    */
   @Post('print-sticker-jpg')
   async printStickerJPG(@Req() req: Request, @Res() res: Response) {
@@ -872,69 +872,141 @@ export class AppController {
         return res.status(400).json({ message: 'Printer name is required' });
       }
 
-      console.log(`🖨️ Printing sticker JPG to: ${printerName}`);
+      console.log(`🖨️ Processing sticker JPG print request for: ${printerName}`);
 
-      // Get printer IP from kiosk configuration
-      let printerIP = process.env.PRINTER_IP || '192.168.1.239'; // Fallback to default
-      
-      if (kioskId) {
+      // Check if we're in cloud environment
+      const isCloudEnvironment = process.env.NODE_ENV === 'production' ||
+        process.env.RENDER === 'true' ||
+        !process.env.LOCAL_PRINTING;
+
+      if (isCloudEnvironment) {
+        // Cloud mode: Upload JPG and queue for local print agent
+        const timestamp = Date.now();
+        const jobId = `sticker_jpg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Convert base64 to buffer
+        const base64Data = jpgBase64.replace(/^data:image\/\w+;base64,/, '');
+        const imageBuffer = Buffer.from(base64Data, 'base64');
+
+        // Upload JPG to Supabase
+        let jpgUrl: string | undefined;
         try {
-          const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
-          // Check if printerIP is stored in the config (config is Record<string, any>)
-          const configPrinterIP = (kioskConfig.config as Record<string, any>)?.printerIP;
-          if (configPrinterIP) {
-            printerIP = configPrinterIP;
-            console.log(`📡 Using printer IP from kiosk config: ${printerIP}`);
-          } else {
-            console.log(`⚠️ printerIP not found in kiosk config, using default: ${printerIP}`);
-          }
-        } catch (error) {
-          console.warn(`⚠️ Failed to fetch kiosk config for ${kioskId}, using default IP:`, error.message);
-        }
-      } else {
-        console.log(`⚠️ No kioskId provided, using default IP: ${printerIP}`);
-      }
-
-      const printerUrl = `http://${printerIP}:631/ipp/print`;
-
-      // Convert base64 to buffer
-      const base64Data = jpgBase64.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
-
-      // Print using IPP
-      const ipp = require('ipp');
-      const printer = ipp.Printer(printerUrl);
-
-      const printJob = {
-        'operation-attributes-tag': {
-          'requesting-user-name': 'Admin',
-          'job-name': 'Sticker Sheet',
-          'document-format': 'image/jpeg',
-        },
-        'job-attributes-tag': {
-          copies: 1,
-          media: 'iso_a4_210x297mm',
-          'print-quality': 5, // High quality
-        },
-        data: imageBuffer,
-      };
-
-      // Execute print job
-      printer.execute('Print-Job', printJob, (err: any, result: any) => {
-        if (err) {
-          console.error('❌ IPP Print failed:', err.message);
+          const supabaseJpgPath = `print-jpgs/${jobId}_stickers.jpg`;
+          jpgUrl = await this.storageService.uploadBuffer(imageBuffer, supabaseJpgPath, 'image/jpeg');
+          console.log(`✅ Sticker JPG uploaded to Supabase: ${jpgUrl}`);
+        } catch (uploadErr) {
+          console.error('❌ Failed to upload JPG to Supabase:', uploadErr);
           return res.status(500).json({
-            message: 'Failed to print sticker JPG',
-            error: err.message,
+            message: 'Failed to upload sticker JPG',
+            error: uploadErr.message,
           });
         }
 
-        console.log('✅ Print job sent. Status:', result.statusCode);
+        // Get printer IP from kiosk configuration (for local agent)
+        let printerIP = process.env.PRINTER_IP || '192.168.1.239';
+        if (kioskId) {
+          try {
+            const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
+            const configPrinterIP = (kioskConfig.config as Record<string, any>)?.printerIP;
+            if (configPrinterIP) {
+              printerIP = configPrinterIP;
+              console.log(`📡 Using printer IP from kiosk config: ${printerIP}`);
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to fetch kiosk config, using default IP`);
+          }
+        }
+
+        // Create print job for local agent
+        const printJob = {
+          id: jobId,
+          printerName,
+          printerIP, // Include IP for local agent to use
+          imagePaths: [], // Stickers use JPG directly, no separate image paths
+          paperSize: 'letter',
+          paperType: 'sticker',
+          trayNumber: null,
+          jpgUrl, // JPG URL for local agent to download and print
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (!global.printJobQueue) {
+          global.printJobQueue = [];
+        }
+        global.printJobQueue.push(printJob as any);
+
+        console.log(`✅ Sticker print job ${jobId} queued for local print agent`);
+        console.log(`   Run 'node local-print-agent.js' on your local PC to process this job`);
+
         res.json({
-          message: 'Sticker print job sent successfully',
-          status: 'sent',
+          message: 'Sticker print job queued successfully',
+          jobId,
+          status: 'pending',
+          jpgUrl,
+          note: 'Job queued for local print agent. Make sure local-print-agent.js is running on your PC.',
         });
-      });
+      } else {
+        // Local mode: Print directly using IPP
+        console.log('🏠 Local environment - printing directly via IPP');
+
+        // Get printer IP from kiosk configuration
+        let printerIP = process.env.PRINTER_IP || '192.168.1.239';
+        if (kioskId) {
+          try {
+            const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
+            const configPrinterIP = (kioskConfig.config as Record<string, any>)?.printerIP;
+            if (configPrinterIP) {
+              printerIP = configPrinterIP;
+              console.log(`📡 Using printer IP from kiosk config: ${printerIP}`);
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to fetch kiosk config, using default IP`);
+          }
+        }
+
+        const printerUrl = `http://${printerIP}:631/ipp/print`;
+
+        // Convert base64 to buffer
+        const base64Data = jpgBase64.replace(/^data:image\/\w+;base64,/, '');
+        const imageBuffer = Buffer.from(base64Data, 'base64');
+
+        // Print using IPP
+        const ipp = require('ipp');
+        const printer = ipp.Printer(printerUrl);
+
+        const ippPrintJob = {
+          'operation-attributes-tag': {
+            'requesting-user-name': 'Admin',
+            'job-name': 'Sticker Sheet',
+            'document-format': 'image/jpeg',
+          },
+          'job-attributes-tag': {
+            copies: 1,
+            media: 'iso_a4_210x297mm',
+            'print-quality': 5, // High quality
+          },
+          data: imageBuffer,
+        };
+
+        // Execute print job
+        printer.execute('Print-Job', ippPrintJob, (err: any, result: any) => {
+          if (err) {
+            console.error('❌ IPP Print failed:', err.message);
+            return res.status(500).json({
+              message: 'Failed to print sticker JPG',
+              error: err.message,
+            });
+          }
+
+          console.log('✅ Print job sent. Status:', result.statusCode);
+          res.json({
+            message: 'Sticker print job sent successfully',
+            status: 'sent',
+          });
+        });
+      }
     } catch (error) {
       console.error('Error in print-sticker-jpg:', error);
       res.status(500).json({
