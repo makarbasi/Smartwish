@@ -216,24 +216,59 @@ function CardPaymentModalContent({
       if (!giftCardAmount) {
         try {
           const storedGiftData = localStorage.getItem(`giftCard_${cardId}`)
+          console.log('🎁 Checking localStorage for gift card:', `giftCard_${cardId}`)
+          console.log('🎁 Stored data:', storedGiftData ? storedGiftData.substring(0, 100) + '...' : 'null')
+          
           if (storedGiftData) {
-            const giftData = JSON.parse(storedGiftData)
-            const parsedAmount = parseFloat(giftData.amount || 0)
-
-            // ✅ FIX: Validate parsed amount (same as mobile payment page)
-            if (!isNaN(parsedAmount) && parsedAmount >= 0 && parsedAmount <= 1000) {
-              giftCardAmount = parsedAmount
-              giftCardProductName = giftData.storeName || giftData.productName || ''
-              giftCardRedemptionLink = giftData.redemptionLink || ''
-              console.log('🎁 Loaded gift card from localStorage:', {
-                amount: giftCardAmount,
-                store: giftCardProductName,
-                hasRedemptionLink: !!giftCardRedemptionLink
-              })
+            let giftData: any = null
+            
+            // ✅ FIX: Handle both encrypted and unencrypted gift card data
+            if (storedGiftData.startsWith('{') || storedGiftData.startsWith('[')) {
+              // Unencrypted JSON format (legacy or pre-payment)
+              console.log('🎁 Detected unencrypted JSON format')
+              giftData = JSON.parse(storedGiftData)
             } else {
-              console.warn('⚠️ Invalid gift card amount:', giftData.amount, '(parsed:', parsedAmount, ')')
-              // Continue without gift card - invalid data
+              // Encrypted format - decrypt via API
+              console.log('🎁 Detected encrypted format, decrypting...')
+              try {
+                const decryptResponse = await fetch('/api/giftcard/decrypt', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ encryptedData: storedGiftData })
+                })
+                
+                if (decryptResponse.ok) {
+                  const { giftCardData } = await decryptResponse.json()
+                  giftData = giftCardData
+                  console.log('🎁 Decrypted gift card data successfully')
+                } else {
+                  console.warn('⚠️ Failed to decrypt gift card data')
+                }
+              } catch (decryptError) {
+                console.warn('⚠️ Decryption error:', decryptError)
+              }
             }
+            
+            if (giftData) {
+              const parsedAmount = parseFloat(giftData.amount || 0)
+
+              // ✅ FIX: Validate parsed amount
+              if (!isNaN(parsedAmount) && parsedAmount >= 0 && parsedAmount <= 1000) {
+                giftCardAmount = parsedAmount
+                giftCardProductName = giftData.storeName || giftData.productName || ''
+                giftCardRedemptionLink = giftData.redemptionLink || ''
+                console.log('🎁 Loaded gift card from localStorage:', {
+                  amount: giftCardAmount,
+                  store: giftCardProductName,
+                  hasRedemptionLink: !!giftCardRedemptionLink
+                })
+              } else {
+                console.warn('⚠️ Invalid gift card amount:', giftData.amount, '(parsed:', parsedAmount, ')')
+                // Continue without gift card - invalid data
+              }
+            }
+          } else {
+            console.log('🎁 No gift card data found in localStorage')
           }
         } catch (error) {
           console.warn('⚠️ Failed to parse gift card data from localStorage:', error)
