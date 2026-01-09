@@ -448,7 +448,8 @@ export default function StickersPage() {
     const IMAGE_WIDTH = 1275; // pixels
     const IMAGE_HEIGHT = 1650; // pixels
     const DPI = 150;
-    const CIRCLE_DIAMETER_PX = 453; // Circle bounding box is 453 × 453 px
+    // Sticker size: 2.5 inches at 150 DPI = 375px
+    const CIRCLE_DIAMETER_PX = 375; // 2.5 in × 150 dpi = 375 px
     const CIRCLE_RADIUS_PX = CIRCLE_DIAMETER_PX / 2;
 
     // Exact center coordinates for each circle (in pixels, top-left origin)
@@ -494,7 +495,7 @@ export default function StickersPage() {
           // Calculate aspect ratio
           const imgAspect = img.width / img.height;
 
-          // Calculate scale factor to fit within 453px circle
+          // Calculate scale factor to fit within 375px circle (2.5 inches at 150 DPI)
           // Both width and height must fit within the circle diameter
           // Image should be centered at (centerX, centerY)
           let drawWidth: number;
@@ -503,15 +504,15 @@ export default function StickersPage() {
           let drawY: number;
 
           if (imgAspect > 1) {
-            // Image is wider than tall - fit to width (453px) to ensure it fits
-            // This ensures width = 453px and height < 453px
+            // Image is wider than tall - fit to width (375px) to ensure it fits
+            // This ensures width = 375px and height < 375px
             drawWidth = CIRCLE_DIAMETER_PX;
             drawHeight = CIRCLE_DIAMETER_PX / imgAspect;
             drawX = centerX - drawWidth / 2; // Center horizontally at circle center
             drawY = centerY - drawHeight / 2; // Center vertically at circle center
           } else {
-            // Image is taller than wide or square - fit to height (453px) to ensure it fits
-            // This ensures height = 453px and width < 453px
+            // Image is taller than wide or square - fit to height (375px) to ensure it fits
+            // This ensures height = 375px and width < 375px
             drawHeight = CIRCLE_DIAMETER_PX;
             drawWidth = CIRCLE_DIAMETER_PX * imgAspect;
             drawX = centerX - drawWidth / 2; // Center horizontally at circle center
