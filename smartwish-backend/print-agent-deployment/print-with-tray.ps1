@@ -34,63 +34,104 @@ $duplexMode = if ($isSticker) { "OneSided" } else { "TwoSidedShortEdge" }
 
 Write-Host "   Duplex: $duplexMode"
 
-# Method 1: Try using SumatraPDF with command-line tray selection
-$sumatraPaths = @(
-    "C:\Users\makar\AppData\Local\SumatraPDF\SumatraPDF.exe",
-    "C:\Program Files\SumatraPDF\SumatraPDF.exe",
-    "C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe"
-)
-
-$sumatraPath = $null
-foreach ($path in $sumatraPaths) {
-    if (Test-Path $path) {
-        $sumatraPath = $path
-        break
+# METHOD 0: Set printer tray via PowerShell PrintConfiguration (most reliable)
+if ($TrayNumber -gt 0) {
+    Write-Host ""
+    Write-Host "   Setting printer tray via Set-PrintConfiguration..."
+    try {
+        # First, try using Set-PrintConfiguration with InputBin
+        $trayNames = @(
+            "Tray $TrayNumber",
+            "Tray$TrayNumber",
+            "tray-$TrayNumber",
+            "$TrayNumber"
+        )
+        
+        $traySet = $false
+        foreach ($trayName in $trayNames) {
+            try {
+                Write-Host "   Trying tray format: $trayName"
+                Set-PrintConfiguration -PrinterName $PrinterName -InputBin $trayName -ErrorAction Stop
+                Write-Host "   ✅ Set tray to: $trayName"
+                $traySet = $true
+                break
+            } catch {
+                Write-Host "   ⚠️  Tray format '$trayName' failed: $_"
+            }
+        }
+        
+        if (-not $traySet) {
+            Write-Host "   ⚠️  Set-PrintConfiguration failed, trying WMI..."
+            
+            # Fallback to WMI
+            $printer = Get-WmiObject -Class Win32_Printer -Filter "Name='$PrinterName'" -ErrorAction Stop
+            if (-not $printer) {
+                Write-Host "   ❌ Printer not found: $PrinterName"
+                throw "Printer not found"
+            }
+            
+            Write-Host "   ✅ Printer found: $($printer.Name)"
+            
+            # Get printer configuration
+            $config = Get-WmiObject -Class Win32_PrinterConfiguration -Filter "Name='$PrinterName'" -ErrorAction Stop
+            if (-not $config) {
+                Write-Host "   ❌ Could not get printer configuration"
+                throw "Could not get printer configuration"
+            }
+            
+            $traySet = $false
+            foreach ($trayName in $trayNames) {
+                try {
+                    Write-Host "   Trying WMI tray format: $trayName"
+                    $config.PaperSource = $trayName
+                    $result = $config.Put()
+                    if ($result.ReturnValue -eq 0) {
+                        Write-Host "   ✅ Set tray via WMI to: $trayName (ReturnValue: $($result.ReturnValue))"
+                        $traySet = $true
+                        break
+                    } else {
+                        Write-Host "   ⚠️  WMI tray format '$trayName' failed (ReturnValue: $($result.ReturnValue))"
+                    }
+                } catch {
+                    Write-Host "   ⚠️  WMI tray format '$trayName' error: $_"
+                }
+            }
+        }
+        
+        if (-not $traySet) {
+            Write-Host "   ❌ Could not set tray - all methods and formats failed"
+            throw "Could not set tray"
+        }
+        
+        # Verify the setting was applied
+        try {
+            $verifyConfig = Get-PrintConfiguration -PrinterName $PrinterName -ErrorAction Stop
+            Write-Host "   📋 Verified InputBin setting: $($verifyConfig.InputBin)"
+        } catch {
+            $verifyConfig = Get-WmiObject -Class Win32_PrinterConfiguration -Filter "Name='$PrinterName'" -ErrorAction Stop
+            Write-Host "   📋 Verified PaperSource setting: $($verifyConfig.PaperSource)"
+        }
+        
+    } catch {
+        Write-Host "   ❌ Tray setting failed: $_"
+        throw "Failed to set tray: $_"
     }
 }
 
-if ($sumatraPath) {
-    Write-Host "   Using SumatraPDF: $sumatraPath"
+# Method 1: Print using Windows Print API with tray selection
+Write-Host "   Printing via Windows Print API..."
+try {
+    # Use Start-Process with PrintTo verb - this respects printer tray settings
+    $process = Start-Process -FilePath $PdfPath -Verb PrintTo -ArgumentList "`"$PrinterName`"" -Wait -PassThru -NoNewWindow
     
-    # Build print settings
-    $settings = @()
-    
-    if ($isSticker) {
-        $settings += "simplex"
+    if ($process.ExitCode -eq 0 -or $process.ExitCode -eq $null) {
+        Write-Host "✅ Print job sent successfully via Windows Print API!"
+        exit 0
     } else {
-        $settings += "duplexshort"
+        Write-Host "⚠️ Print command exited with code: $($process.ExitCode)"
     }
-    
-    $settings += "color"
-    $settings += "noscale"
-    
-    # HP tray names - try different formats
-    if ($TrayNumber -gt 0) {
-        # HP OfficeJet Pro uses "Tray 1", "Tray 2"
-        $settings += "bin=Tray $TrayNumber"
-    }
-    
-    $settingsStr = $settings -join ","
-    
-    Write-Host "   Print settings: $settingsStr"
-    
-    try {
-        $process = Start-Process -FilePath $sumatraPath -ArgumentList @(
-            "-print-to", "`"$PrinterName`"",
-            "-print-settings", "`"$settingsStr`"",
-            "-silent",
-            "`"$PdfPath`""
-        ) -Wait -PassThru -NoNewWindow
-        
-        if ($process.ExitCode -eq 0) {
-            Write-Host "✅ Print job sent successfully via SumatraPDF!"
-            exit 0
-        } else {
-            Write-Host "⚠️ SumatraPDF exited with code: $($process.ExitCode)"
-        }
-    } catch {
-        Write-Host "⚠️ SumatraPDF error: $_"
-    }
+} catch {
+    Write-Host "⚠️ Windows Print API error: $_"
 }
 
 # Method 2: Try using Adobe Reader (if installed)
@@ -124,19 +165,17 @@ if ($adobePath) {
     }
 }
 
-# Method 3: Use Windows built-in print command
-Write-Host "   Falling back to Windows print command..."
-
+# Method 3: Use default PDF handler
+Write-Host "   Trying default PDF handler..."
 try {
-    # Use Start-Process with the default PDF handler
-    Start-Process -FilePath $PdfPath -Verb PrintTo -ArgumentList $PrinterName -Wait
-    Write-Host "✅ Print job sent via Windows default handler!"
+    Start-Process -FilePath $PdfPath -Verb Print -Wait
+    Write-Host "✅ Print job sent via default PDF handler!"
     exit 0
 } catch {
-    Write-Host "⚠️ Windows print error: $_"
+    Write-Host "⚠️ Default handler error: $_"
 }
 
-# Method 4: Last resort - PowerShell Out-Printer (text only, won't work for PDFs)
+# All methods failed
 Write-Host "❌ All print methods failed. Please print manually."
 Write-Host ""
 Write-Host "To set tray manually:"
