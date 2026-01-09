@@ -34,6 +34,144 @@ export class OrdersController {
   }
 
   /**
+   * ✅ Guest endpoint: Get order details for mobile payment (no auth required)
+   * Used by QR code payment flow to fetch existing order created by kiosk
+   */
+  @Get('/:orderId/guest')
+  @UseGuards() // Override JWT guard - no auth required
+  async getOrderForGuest(
+    @Param('orderId') orderId: string,
+    @Res() res: Response,
+  ) {
+    try {
+      console.log('👤 Guest fetching order:', orderId);
+
+      // Validate UUID format
+      if (!isValidUUID(orderId)) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const order = await this.ordersService.getOrder(orderId);
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      // Check if order is not too old (security: only allow recent orders)
+      const orderAge = Date.now() - new Date(order.createdAt).getTime();
+      const maxAge = 60 * 60 * 1000; // 1 hour
+      if (orderAge > maxAge) {
+        return res.status(410).json({ error: 'Payment link expired. Please scan a new QR code.' });
+      }
+
+      // Return limited order info (don't expose sensitive data)
+      res.json({
+        success: true,
+        order: {
+          id: order.id,
+          status: order.status,
+          cardId: order.cardId,
+          cardName: order.cardName,
+          cardPrice: order.cardPrice,
+          giftCardAmount: order.giftCardAmount,
+          processingFee: order.processingFee,
+          totalAmount: order.totalAmount,
+          currency: order.currency,
+          userId: order.userId, // Needed for payment intent metadata
+          createdAt: order.createdAt,
+        },
+      });
+    } catch (error: any) {
+      console.error('❌ Guest Get Order Error:', error);
+      res.status(500).json({ error: error.message || 'Failed to get order' });
+    }
+  }
+
+  /**
+   * ✅ Guest endpoint: Update order after mobile payment (no auth required)
+   * Used by QR code payment flow to mark order as paid after Stripe confirms payment
+   */
+  @Post('/:orderId/guest-payment')
+  @UseGuards() // Override JWT guard - no auth required
+  async updateOrderFromGuestPayment(
+    @Param('orderId') orderId: string,
+    @Body() body: {
+      status: string;
+      stripePaymentIntentId: string;
+      amount: number;
+      cardLast4?: string;
+      cardBrand?: string;
+    },
+    @Res() res: Response,
+  ) {
+    try {
+      console.log('👤 Guest updating order after payment:', orderId, body.status);
+
+      // Validate UUID format
+      if (!isValidUUID(orderId)) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      // Validate required fields
+      if (!body.stripePaymentIntentId || body.status !== 'paid') {
+        return res.status(400).json({ error: 'Invalid payment data' });
+      }
+
+      const order = await this.ordersService.getOrder(orderId);
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      // Security check: Only allow updating pending orders
+      if (order.status !== 'pending' && order.status !== 'payment_processing') {
+        console.log('⚠️ Order already processed:', order.status);
+        // Don't fail - just return success (idempotent)
+        return res.json({ success: true, order, alreadyProcessed: true });
+      }
+
+      // Check order age
+      const orderAge = Date.now() - new Date(order.createdAt).getTime();
+      const maxAge = 60 * 60 * 1000; // 1 hour
+      if (orderAge > maxAge) {
+        return res.status(410).json({ error: 'Payment link expired' });
+      }
+
+      // Create transaction record
+      try {
+        await this.ordersService.createTransaction({
+          orderId,
+          userId: order.userId,
+          amount: body.amount || order.totalAmount,
+          currency: order.currency,
+          stripePaymentIntentId: body.stripePaymentIntentId,
+          status: TransactionStatus.SUCCEEDED,
+          paymentMethodType: 'card',
+          cardLast4: body.cardLast4,
+          cardBrand: body.cardBrand,
+          metadata: { source: 'mobile_qr_guest' },
+        });
+        console.log('✅ Guest transaction recorded');
+      } catch (txError) {
+        console.error('⚠️ Failed to create transaction (continuing):', txError);
+        // Don't fail - order status update is more important
+      }
+
+      // Update order status to paid
+      const updatedOrder = await this.ordersService.updateOrderStatus(
+        orderId,
+        OrderStatus.PAID,
+      );
+
+      console.log('✅ Order updated to paid by guest');
+      res.json({ success: true, order: updatedOrder });
+    } catch (error: any) {
+      console.error('❌ Guest Payment Update Error:', error);
+      res.status(500).json({ error: error.message || 'Failed to update order' });
+    }
+  }
+
+  /**
    * Create a new order
    */
   @Post()
