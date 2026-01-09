@@ -21,6 +21,7 @@ export interface KioskConfig {
   };
   printerProfile: string;
   printerName: string;
+  printerIP?: string; // Printer IP address for IPP printing
   printerTrays: PrinterTray[];
   revenueSharePercent: number; // Store owner's share of net profit (default 30%)
   [key: string]: unknown;

@@ -41,7 +41,7 @@ const STICKER_SHEET_PRICE = 3.99;
 export default function StickersPage() {
   const router = useRouter();
   const { isKiosk } = useDeviceMode();
-  const { config: kioskConfig } = useKiosk();
+  const { config: kioskConfig, kioskInfo } = useKiosk();
 
   // Sticker slots state (6 slots for Avery 94513)
   const [slots, setSlots] = useState<StickerSlot[]>(
@@ -258,24 +258,23 @@ export default function StickersPage() {
     setViewMode("initial");
   }, []);
 
-  // Handle print button click - generate PDF and open payment modal
+  // Handle print button click - generate JPG and open payment modal
   const handlePrintClick = async () => {
     if (filledSlotsCount === 0) {
-      alert("Please add at least one sticker before printing.");
+      console.log("⚠️ Please add at least one sticker before printing.");
       return;
     }
     
     setIsPrinting(true);
     try {
-      // Generate and save PDF immediately
-      await generateStickerPDF();
+      // Generate JPG (no PDF for stickers)
+      await generateStickerJPGOnly();
       setIsPrinting(false);
       
       // Also open the payment modal for payment flow
       setShowPaymentModal(true);
     } catch (error) {
-      console.error("Error generating PDF:", error);
-      alert("Failed to generate PDF. Please try again.");
+      console.error("❌ Error generating JPG:", error);
       setIsPrinting(false);
     }
   };
@@ -285,7 +284,7 @@ export default function StickersPage() {
     setIsPrinting(true);
     
     try {
-      // Generate composite image and print
+      // Generate JPG and print
       await printStickerSheet();
       
       setShowPaymentModal(false);
@@ -301,12 +300,134 @@ export default function StickersPage() {
         }))
       );
       
-      alert("Your sticker sheet is printing!");
+      console.log("✅ Your sticker sheet is printing!");
     } catch (error) {
-      console.error("Print error:", error);
+      console.error("❌ Print error:", error);
       setIsPrinting(false);
-      alert("Failed to print. Please try again.");
     }
+  };
+
+  // Generate JPG only (no PDF) - returns blob for printing
+  const generateStickerJPGOnly = async (): Promise<Blob> => {
+    console.log("🖼️ Generating sticker sheet JPG...");
+
+    // Exact specifications for JPG
+    const IMAGE_WIDTH = 1275; // pixels
+    const IMAGE_HEIGHT = 1650; // pixels
+    const DPI = 150;
+    // Sticker size: 2.5 inches at 150 DPI = 375px
+    const CIRCLE_DIAMETER_PX = 375; // 2.5 in × 150 dpi = 375 px
+    const CIRCLE_RADIUS_PX = CIRCLE_DIAMETER_PX / 2;
+
+    // Exact center coordinates for each circle (in pixels, top-left origin)
+    const CIRCLE_CENTERS = [
+      [318.5, 318.5],   // Row 1, Top-Left
+      [956.5, 318.5],   // Row 1, Top-Right
+      [318.5, 825.0],   // Row 2, Middle-Left
+      [956.5, 825.0],   // Row 2, Middle-Right
+      [318.5, 1331.5],  // Row 3, Bottom-Left
+      [956.5, 1331.5],  // Row 3, Bottom-Right
+    ];
+
+    // Convert all slot images to base64
+    const imageBase64Array: (string | null)[] = await Promise.all(
+      slots.map(async (slot) => {
+        if (!slot.imageUrl) return null;
+
+        try {
+          const response = await fetch(slot.imageUrl);
+          const blob = await response.blob();
+          return new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch (error) {
+          console.error("Error converting image to base64:", error);
+          return null;
+        }
+      })
+    );
+
+    // Create canvas with exact dimensions
+    const canvas = document.createElement("canvas");
+    canvas.width = IMAGE_WIDTH;
+    canvas.height = IMAGE_HEIGHT;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      throw new Error("Failed to get canvas context");
+    }
+
+    // Fill white background
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw each sticker on the canvas
+    for (let i = 0; i < 6; i++) {
+      const imageData = imageBase64Array[i];
+      const [centerX, centerY] = CIRCLE_CENTERS[i];
+
+      if (imageData) {
+        try {
+          // Load image
+          const img = new Image();
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = reject;
+            img.src = imageData;
+          });
+
+          // Calculate aspect ratio
+          const imgAspect = img.width / img.height;
+
+          // Calculate scale factor to fit within 375px circle (2.5 inches at 150 DPI)
+          // Both width and height must fit within the circle diameter
+          // Image should be centered at (centerX, centerY)
+          let drawWidth: number;
+          let drawHeight: number;
+          let drawX: number;
+          let drawY: number;
+
+          if (imgAspect > 1) {
+            // Image is wider than tall - fit to width (375px) to ensure it fits
+            // This ensures width = 375px and height < 375px
+            drawWidth = CIRCLE_DIAMETER_PX;
+            drawHeight = CIRCLE_DIAMETER_PX / imgAspect;
+            drawX = centerX - drawWidth / 2; // Center horizontally at circle center
+            drawY = centerY - drawHeight / 2; // Center vertically at circle center
+          } else {
+            // Image is taller than wide or square - fit to height (375px) to ensure it fits
+            // This ensures height = 375px and width < 375px
+            drawHeight = CIRCLE_DIAMETER_PX;
+            drawWidth = CIRCLE_DIAMETER_PX * imgAspect;
+            drawX = centerX - drawWidth / 2; // Center horizontally at circle center
+            drawY = centerY - drawHeight / 2; // Center vertically at circle center
+          }
+
+          // Draw image perfectly centered in the 3" circle
+          ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+        } catch (error) {
+          console.error(`Error adding sticker ${i + 1} to JPG:`, error);
+        }
+      }
+    }
+
+    // Convert canvas to JPG blob
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Failed to convert canvas to blob"));
+            return;
+          }
+          console.log(`✅ JPG generated successfully`);
+          resolve(blob);
+        },
+        "image/jpeg",
+        0.95 // High quality (95%)
+      );
+    });
   };
 
   // Generate and save sticker sheet PDF and JPG
@@ -552,51 +673,43 @@ export default function StickersPage() {
     );
   };
 
-  // Print sticker sheet function (for backend printing)
-  // Print agent handles duplex, paper size settings locally
+  // Print sticker sheet function - generates JPG and sends to backend for IPP printing
   const printStickerSheet = async () => {
     // Get printer name from kiosk config (must be set in /admin/kiosks)
     if (!kioskConfig?.printerName) {
-      alert('Printer not configured. Please set printer name in /admin/kiosks');
+      console.error('❌ Printer not configured. Please set printer name in /admin/kiosks');
       return;
     }
     const printerName = kioskConfig.printerName;
     
-    console.log(`🖨️ Sending sticker print job to: ${printerName} (from kiosk config)`);
+    console.log(`🖨️ Generating JPG and sending to printer: ${printerName}`);
 
-    // Convert blob URLs to base64 for all filled slots
-    const imageBase64Array: (string | null)[] = await Promise.all(
-      slots.map(async (slot) => {
-        if (!slot.imageUrl) return null;
-        
-        try {
-          const response = await fetch(slot.imageUrl);
-          const blob = await response.blob();
-          return new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-          });
-        } catch (error) {
-          console.error("Error converting image to base64:", error);
-          return null;
-        }
-      })
-    );
+    // Generate JPG blob
+    const jpgBlob = await generateStickerJPGOnly();
 
-    // Send to backend print endpoint with printer name
-    // Print agent handles duplex, paper size locally
+    // Convert blob to base64 for sending to backend
+    const base64Jpg = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(jpgBlob);
+    });
+
+    // Send to backend print endpoint for IPP printing
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE || "https://smartwish.onrender.com"}/print-stickers`,
+      `${process.env.NEXT_PUBLIC_API_BASE || "https://smartwish.onrender.com"}/print-sticker-jpg`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          stickers: imageBase64Array,
+          jpgBase64: base64Jpg,
           printerName: printerName,
-          layout: "avery-94513", // 6 circles, 3" diameter, 2x3 grid
+          kioskId: kioskInfo?.id, // Send kiosk UUID to fetch printer IP from config
         }),
       }
     );
@@ -607,7 +720,7 @@ export default function StickersPage() {
     }
 
     const result = await response.json();
-    console.log("✅ Sticker print job queued successfully!", result);
+    console.log("✅ Sticker print job sent successfully!", result);
   };
 
   // Cleanup blob URLs on unmount

@@ -26,6 +26,7 @@ import { SharingService } from './sharing/sharing.service';
 import { SupabaseStorageService } from './saved-designs/supabase-storage.service';
 import { SavedDesignsService } from './saved-designs/saved-designs.service';
 import { SupabaseTemplatesEnhancedService } from './templates/supabase-templates-enhanced.service';
+import { KioskConfigService } from './kiosks/kiosk-config.service';
 
 // After TypeScript compilation, __dirname will be in dist/backend/src/
 // So we need to go up 4 levels to reach smartwish-backend root
@@ -116,6 +117,7 @@ export class AppController {
     private readonly storageService: SupabaseStorageService,
     private readonly templatesService: SupabaseTemplatesEnhancedService,
     private readonly savedDesignsService: SavedDesignsService,
+    private readonly kioskConfigService: KioskConfigService,
   ) {
     console.log('AppController instantiated');
   }
@@ -848,6 +850,95 @@ export class AppController {
       console.error('Error getting printers:', error);
       res.status(500).json({
         message: 'Failed to get printers',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * Print sticker JPG using IPP (Internet Printing Protocol)
+   * Receives JPG as base64 and prints directly to printer
+   */
+  @Post('print-sticker-jpg')
+  async printStickerJPG(@Req() req: Request, @Res() res: Response) {
+    try {
+      const { jpgBase64, printerName, kioskId } = req.body;
+
+      if (!jpgBase64) {
+        return res.status(400).json({ message: 'JPG base64 data is required' });
+      }
+
+      if (!printerName) {
+        return res.status(400).json({ message: 'Printer name is required' });
+      }
+
+      console.log(`🖨️ Printing sticker JPG to: ${printerName}`);
+
+      // Get printer IP from kiosk configuration
+      let printerIP = process.env.PRINTER_IP || '192.168.1.239'; // Fallback to default
+      
+      if (kioskId) {
+        try {
+          const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
+          // Check if printerIP is stored in the config (config is Record<string, any>)
+          const configPrinterIP = (kioskConfig.config as Record<string, any>)?.printerIP;
+          if (configPrinterIP) {
+            printerIP = configPrinterIP;
+            console.log(`📡 Using printer IP from kiosk config: ${printerIP}`);
+          } else {
+            console.log(`⚠️ printerIP not found in kiosk config, using default: ${printerIP}`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to fetch kiosk config for ${kioskId}, using default IP:`, error.message);
+        }
+      } else {
+        console.log(`⚠️ No kioskId provided, using default IP: ${printerIP}`);
+      }
+
+      const printerUrl = `http://${printerIP}:631/ipp/print`;
+
+      // Convert base64 to buffer
+      const base64Data = jpgBase64.replace(/^data:image\/\w+;base64,/, '');
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+
+      // Print using IPP
+      const ipp = require('ipp');
+      const printer = ipp.Printer(printerUrl);
+
+      const printJob = {
+        'operation-attributes-tag': {
+          'requesting-user-name': 'Admin',
+          'job-name': 'Sticker Sheet',
+          'document-format': 'image/jpeg',
+        },
+        'job-attributes-tag': {
+          copies: 1,
+          media: 'iso_a4_210x297mm',
+          'print-quality': 5, // High quality
+        },
+        data: imageBuffer,
+      };
+
+      // Execute print job
+      printer.execute('Print-Job', printJob, (err: any, result: any) => {
+        if (err) {
+          console.error('❌ IPP Print failed:', err.message);
+          return res.status(500).json({
+            message: 'Failed to print sticker JPG',
+            error: err.message,
+          });
+        }
+
+        console.log('✅ Print job sent. Status:', result.statusCode);
+        res.json({
+          message: 'Sticker print job sent successfully',
+          status: 'sent',
+        });
+      });
+    } catch (error) {
+      console.error('Error in print-sticker-jpg:', error);
+      res.status(500).json({
+        message: 'Failed to print sticker JPG',
         error: error.message,
       });
     }
