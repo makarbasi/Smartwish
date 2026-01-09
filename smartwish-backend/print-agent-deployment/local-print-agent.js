@@ -238,12 +238,28 @@ async function processJob(job) {
       const printerIP = job.printerIP || '192.168.1.239';
       const printerUrl = `http://${printerIP}:631/ipp/print`;
 
-      console.log(`  📡 Printing to: ${printerUrl}`);
+      console.log(`  📡 Printer IP: ${printerIP}`);
+      console.log(`  📡 Printer URL: ${printerUrl}`);
+
+      // Verify printer is reachable (optional check)
+      try {
+        const testUrl = `http://${printerIP}:631`;
+        const testResponse = await fetch(testUrl, {
+          method: 'GET',
+          signal: AbortSignal.timeout(3000) // 3 second timeout
+        });
+        console.log(`  ✅ Printer is reachable (HTTP ${testResponse.status})`);
+      } catch (testErr) {
+        console.warn(`  ⚠️  Could not verify printer reachability: ${testErr.message}`);
+        console.warn(`  ⚠️  Continuing anyway - printer might still work...`);
+      }
 
       // Read JPG file
       const jpgBuffer = await fs.readFile(jpgPath);
+      console.log(`  📄 JPG file size: ${(jpgBuffer.length / 1024).toFixed(2)} KB`);
 
       // Print using IPP
+      console.log('  🔌 Connecting to printer via IPP...');
       const printer = ipp.Printer(printerUrl);
 
       const printJob = {
@@ -260,12 +276,17 @@ async function processJob(job) {
         data: jpgBuffer,
       };
 
+      console.log(`  📤 Sending print job (${(jpgBuffer.length / 1024).toFixed(2)} KB)...`);
       await new Promise((resolve, reject) => {
         printer.execute('Print-Job', printJob, (err, result) => {
           if (err) {
-            reject(new Error(`IPP Print failed: ${err.message}`));
+            console.error('  ❌ IPP Error details:', err);
+            reject(new Error(`IPP Print failed: ${err.message || JSON.stringify(err)}`));
           } else {
             console.log('  ✅ Print job sent. Status:', result.statusCode);
+            if (result.statusCode !== 'successful-ok') {
+              console.warn('  ⚠️  Warning: Status code is not "successful-ok":', result.statusCode);
+            }
             resolve(result);
           }
         });
@@ -350,7 +371,12 @@ async function processJob(job) {
     console.log(`  ✅ Job ${job.id} completed successfully!`);
 
   } catch (error) {
-    console.error(`  ❌ Job ${job.id} failed:`, error.message);
+    console.error(`  ❌ Job ${job.id} failed:`);
+    console.error(`     Error: ${error.message}`);
+    console.error(`     Stack: ${error.stack}`);
+    if (error.cause) {
+      console.error(`     Cause: ${error.cause}`);
+    }
     await updateJobStatus(job.id, 'failed', error.message);
 
     // Cleanup on error too

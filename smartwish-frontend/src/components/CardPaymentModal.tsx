@@ -185,11 +185,12 @@ function CardPaymentModalContent({
 
   // Generate QR code and start monitoring after session is created
   useEffect(() => {
-    if (paymentSessionId && priceData && priceData.total > 0) {
+    // ✅ FIX: Also wait for orderId to be set before generating QR
+    if (paymentSessionId && orderId && priceData && priceData.total > 0) {
       generatePaymentQRCode()
       startPaymentMonitoring()
     }
-  }, [paymentSessionId, priceData])
+  }, [paymentSessionId, orderId, priceData])
 
   /**
    * Initialize the complete payment flow
@@ -407,10 +408,11 @@ function CardPaymentModalContent({
    * Generate QR code for mobile payment
    */
   const generatePaymentQRCode = async () => {
-    if (!paymentSessionId) return
+    if (!paymentSessionId || !orderId) return
 
     try {
-      const paymentUrl = `${window.location.origin}/payment?session=${paymentSessionId}&cardId=${cardId}&action=${action}`
+      // ✅ FIX: Include orderId in QR code so mobile uses the SAME order as kiosk
+      const paymentUrl = `${window.location.origin}/payment?session=${paymentSessionId}&cardId=${cardId}&action=${action}&orderId=${orderId}`
 
       const qrCode = await QRCode.toDataURL(paymentUrl, {
         width: 250,
