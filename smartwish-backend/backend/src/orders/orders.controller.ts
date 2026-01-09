@@ -12,6 +12,7 @@ import {
 import { Request, Response } from 'express';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator'; // ✅ Import Public decorator
 import { OrderType, OrderStatus } from './order.entity';
 import { PaymentSessionStatus } from './payment-session.entity';
 import { TransactionStatus } from './transaction.entity';
@@ -38,7 +39,7 @@ export class OrdersController {
    * Used by QR code payment flow to fetch existing order created by kiosk
    */
   @Get('/:orderId/guest')
-  @UseGuards() // Override JWT guard - no auth required
+  @Public() // ✅ No auth required - guest checkout
   async getOrderForGuest(
     @Param('orderId') orderId: string,
     @Res() res: Response,
@@ -92,7 +93,7 @@ export class OrdersController {
    * Used by QR code payment flow to mark order as paid after Stripe confirms payment
    */
   @Post('/:orderId/guest-payment')
-  @UseGuards() // Override JWT guard - no auth required
+  @Public() // ✅ No auth required - guest checkout
   async updateOrderFromGuestPayment(
     @Param('orderId') orderId: string,
     @Body() body: {
@@ -350,7 +351,7 @@ export class OrdersController {
    * ✅ No auth required (webhook doesn't have JWT)
    */
   @Get('/transactions/by-stripe/:paymentIntentId')
-  @UseGuards() // ✅ Override JWT guard for this endpoint
+  @Public() // ✅ No auth required - for webhook
   async getTransactionByStripeIntent(
     @Param('paymentIntentId') paymentIntentId: string,
     @Res() res: Response,
@@ -376,7 +377,7 @@ export class OrdersController {
    * ✅ Used by Stripe webhook as backup when frontend fails
    */
   @Post('/transactions/webhook')
-  @UseGuards() // ✅ Override JWT guard for this endpoint
+  @Public() // ✅ No auth required - for webhook
   async createTransactionFromWebhook(
     @Body() txData: any,
     @Res() res: Response,

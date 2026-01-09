@@ -86,7 +86,7 @@ function PaymentForm() {
       }
 
       // ✅ FIX: Fetch the existing order details (guest endpoint - no auth required)
-      console.log('📦 Fetching existing order details...')
+      console.log('📦 Fetching existing order details from:', `${backendUrl}/orders/${urlOrderId}/guest`)
       const orderResponse = await fetch(`${backendUrl}/orders/${urlOrderId}/guest`, {
         method: 'GET',
         headers: {
@@ -95,9 +95,19 @@ function PaymentForm() {
       })
 
       if (!orderResponse.ok) {
-        const errorText = await orderResponse.text()
-        console.error('Failed to fetch order:', errorText)
-        throw new Error('Order not found or expired. Please scan the QR code again.')
+        const errorData = await orderResponse.json().catch(() => ({}))
+        console.error('Failed to fetch order:', orderResponse.status, errorData)
+        
+        // Show specific error message based on status
+        if (orderResponse.status === 404) {
+          throw new Error('Order not found. Please scan the QR code again.')
+        } else if (orderResponse.status === 410) {
+          throw new Error(errorData.error || 'Payment link expired. Please scan a new QR code.')
+        } else if (orderResponse.status === 401 || orderResponse.status === 403) {
+          throw new Error('Authentication error. The payment system may need to be restarted.')
+        } else {
+          throw new Error(errorData.error || 'Failed to load order. Please try again.')
+        }
       }
 
       const orderData = await orderResponse.json()
