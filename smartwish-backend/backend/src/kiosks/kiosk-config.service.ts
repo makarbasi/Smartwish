@@ -21,6 +21,8 @@ const DEFAULT_KIOSK_CONFIG = {
     playlist: [] as Array<{ url: string; duration?: number; weight?: number }>,
   },
   printerProfile: 'default',
+  printerName: '' as string,
+  printerIP: '' as string, // Printer IP address for IPP printing
 };
 
 @Injectable()

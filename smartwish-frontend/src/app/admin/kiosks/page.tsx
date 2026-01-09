@@ -60,6 +60,7 @@ type KioskConfig = {
   };
   printerProfile?: string;
   printerName?: string;
+  printerIP?: string; // Printer IP address for IPP printing
   printerTrays?: PrinterTray[];
   revenueSharePercent?: number; // Store owner's share of net profit (default 30%)
 };
@@ -107,6 +108,7 @@ const DEFAULT_CONFIG: KioskConfig = {
   ads: { playlist: [] },
   printerProfile: "default",
   printerName: "HP OfficeJet Pro 9130e Series [HPIE4B65B]",
+  printerIP: "192.168.1.239", // Default printer IP for IPP printing
   printerTrays: [
     { trayNumber: 1, trayName: "Tray 1", paperType: "greeting-card", paperSize: "letter" },
     { trayNumber: 2, trayName: "Tray 2", paperType: "sticker", paperSize: "letter" },
@@ -543,6 +545,9 @@ export default function KiosksAdminPage() {
                       <PrinterIcon className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-600">
                         Printer: {kiosk.config?.printerName || "Not set"}
+                        {kiosk.config?.printerIP && (
+                          <span className="text-gray-500"> ({kiosk.config.printerIP})</span>
+                        )}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -1232,6 +1237,30 @@ function KioskFormModal({
                       </datalist>
                       <p className="mt-1 text-xs text-gray-500">
                         Type the exact printer name as it appears in your system, or select from suggestions
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Printer IP Address
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.config.printerIP || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            config: {
+                              ...formData.config,
+                              printerIP: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="192.168.1.239"
+                        className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        IP address of the printer for IPP (Internet Printing Protocol) printing. Used for sticker printing.
                       </p>
                     </div>
 
