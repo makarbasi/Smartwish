@@ -2259,7 +2259,7 @@ export default function CustomizeCardPage() {
           <div className="absolute top-0 left-0 right-0 z-10 px-4 pt-20 sm:pt-4">
             <div className="max-w-5xl mx-auto">
               <MarketplaceGiftCarousel
-                cardId={cardId}
+                cardId={realSavedDesignId || cardId} // ✅ FIX: Use actual saved ID if available
                 giftCardData={giftCardData}
                 onRemove={handleRemoveGiftCard}
               />
