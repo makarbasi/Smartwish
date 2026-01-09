@@ -25,38 +25,25 @@ import sharp from 'sharp';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // =============================================================================
-// CONFIGURATION - Modify these values in start-print-agent.ps1 or here
+// CONFIGURATION - Modify these values
 // =============================================================================
 const CONFIG = {
   // Cloud server URL - change this to your deployed backend
   cloudServerUrl: process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
 
-  // Printer name comes from kiosk config via job.printerName
-  // This is just a fallback if job doesn't specify printer
-  defaultPrinter: process.env.DEFAULT_PRINTER || null,
+  // Default printer name - set to your actual printer
+  defaultPrinter: process.env.DEFAULT_PRINTER || 'HPA4CC43 (HP Smart Tank 7600 series)',
 
   // How often to poll for new jobs (milliseconds)
   pollInterval: process.env.POLL_INTERVAL || 5000,
 
   // Temporary directory for downloaded files
   tempDir: path.join(__dirname, 'temp-print-jobs'),
-
-  // Printing defaults (can be overridden per-job)
-  defaultDuplexSide: process.env.DEFAULT_DUPLEX_SIDE || 'duplexshort', // simplex|duplex|duplexshort|duplexlong
-  defaultPaperSize: process.env.DEFAULT_PAPER_SIZE || 'Letter',
-  defaultBorderless: (process.env.BORDERLESS || 'false').toLowerCase() === 'true',
-  borderlessPaperSize: process.env.BORDERLESS_PAPER_SIZE || '',
-  defaultScale: process.env.DEFAULT_SCALE || 'noscale', // noscale|shrink|fit
-  defaultCopies: Number(process.env.DEFAULT_COPIES || 1),
 
   // Paper configuration
   dpi: 300,
@@ -127,18 +114,11 @@ async function downloadImage(url, savePath) {
   return savePath;
 }
 
-function parseDataUrl(dataUrl) {
-  // Supports: data:application/pdf;base64,.... and data:image/...;base64,...
-  const match = /^data:([^;]+);base64,(.*)$/i.exec(dataUrl || '');
-  if (!match) return null;
-  return { mime: match[1], base64: match[2] };
-}
-
-async function downloadFile(url, savePath) {
-  console.log(`  📥 Downloading: ${url}`);
+async function downloadPdf(url, savePath) {
+  console.log(`  📥 Downloading PDF: ${url}`);
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to download file: ${response.status}`);
+    throw new Error(`Failed to download PDF: ${response.status}`);
   }
   const buffer = Buffer.from(await response.arrayBuffer());
   await fs.writeFile(savePath, buffer);
@@ -193,172 +173,37 @@ async function createPdf(pdfPath, side1Path, side2Path, config) {
   return pdfPath;
 }
 
-async function getPrinterInfoByName(printerName) {
-  try {
-    const printers = await getPrinters();
-    return printers?.find((p) => p.name === printerName) || null;
-  } catch {
-    return null;
-  }
-}
+async function printPdf(pdfPath, printerName) {
+  console.log(`  🖨️ Printing to: ${printerName}`);
+  console.log(`  📄 Settings: Letter, Landscape, Duplex (flip short edge), Color`);
 
-async function getAllPrintersSafe() {
-  try {
-    const printers = await getPrinters();
-    return Array.isArray(printers) ? printers : [];
-  } catch {
-    return [];
-  }
-}
-
-function pickBestMatchingPrinter(printers, requestedName) {
-  if (!requestedName) return null;
-  const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  const req = normalize(requestedName);
-  if (!req) return null;
-
-  // Exact match (case-insensitive)
-  const exact = printers.find((p) => normalize(p.name) === req);
-  if (exact) return exact;
-
-  // Substring match (helps when Windows appends "Copy 1", etc.)
-  const contains = printers.find((p) => normalize(p.name).includes(req) || req.includes(normalize(p.name)));
-  if (contains) return contains;
-
-  return null;
-}
-
-function resolvePaperSizeForJob(job, printerInfo) {
-  const requestedPaperSize = job.paperSize || CONFIG.defaultPaperSize;
-  const wantsBorderless = Boolean(job.borderless ?? CONFIG.defaultBorderless);
-
-  if (!wantsBorderless) return requestedPaperSize;
-
-  // If caller explicitly provided a borderless paper size name, prefer it.
-  const explicitBorderlessPaper =
-    job.borderlessPaperSize ||
-    job.borderlessPaper ||
-    CONFIG.borderlessPaperSize ||
-    '';
-
-  const normalize = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  const paperSizes = Array.isArray(printerInfo?.paperSizes) ? printerInfo.paperSizes : [];
-
-  if (explicitBorderlessPaper) {
-    // Try to match printer-reported casing exactly when possible.
-    const exact = paperSizes.find((p) => normalize(p) === normalize(explicitBorderlessPaper));
-    if (exact) return exact;
-    return explicitBorderlessPaper;
-  }
-
-  // Best effort: pick the first paper size that looks borderless and matches base size
-  const base = normalize(requestedPaperSize);
-  const candidate = paperSizes.find((p) => {
-    const n = normalize(p);
-    return n.includes('borderless') && (base ? n.includes(base) : true);
-  });
-  if (candidate) return candidate;
-
-  console.warn(
-    `  ⚠️ Borderless requested but no borderless paper size found for printer. Using paperSize="${requestedPaperSize}".`,
-  );
-  return requestedPaperSize;
-}
-
-function resolveDuplexSide(job) {
-  // Accept a few aliases
-  const side = (job.duplexSide || job.duplex || job.side || CONFIG.defaultDuplexSide || '').toLowerCase();
-  const valid = new Set(['simplex', 'duplex', 'duplexshort', 'duplexlong']);
-  if (valid.has(side)) return side;
-  return CONFIG.defaultDuplexSide;
-}
-
-function resolveScale(job) {
-  const scale = (job.scale || CONFIG.defaultScale || '').toLowerCase();
-  const valid = new Set(['noscale', 'shrink', 'fit']);
-  if (valid.has(scale)) return scale;
-  return CONFIG.defaultScale;
-}
-
-/**
- * Print PDF using PowerShell script (sets tray via WMI, then prints)
- * NO FALLBACKS - exact tray or error
- */
-async function printWithPowerShell(pdfPath, printerName, trayNumber, side = 'duplexshort') {
-  // Use the print-with-tray.ps1 script
-  const psScriptPath = path.join(__dirname, 'print-with-tray.ps1');
-
-  // Check if script exists
-  try {
-    await fs.access(psScriptPath);
-  } catch {
-    throw new Error('print-with-tray.ps1 script not found');
-  }
-
-  const isSimplex = side === 'simplex';
-  const paperType = isSimplex ? 'sticker' : 'greeting-card';
-
-  console.log(`  📜 Using PowerShell to set tray and print`);
-  console.log(`  📜 Tray: ${trayNumber}`);
-  console.log(`  📜 Paper type: ${paperType}`);
-
-  // Execute PowerShell script
-  const cmd = `powershell -ExecutionPolicy Bypass -File "${psScriptPath}" -PdfPath "${pdfPath}" -PrinterName "${printerName}" -TrayNumber ${trayNumber} -PaperType "${paperType}"`;
+  // Print options for pdf-to-printer (uses SumatraPDF on Windows)
+  // https://github.com/artiebits/pdf-to-printer
+  const printOptions = {
+    printer: printerName,
+    // Duplex options: 'simplex', 'duplex', 'duplexshort', 'duplexlong'
+    // For landscape greeting cards: use 'duplexshort' (flip on short edge)
+    side: 'duplexshort',
+    // Scale: 'noscale', 'shrink', 'fit'
+    scale: 'noscale',
+    // Color printing (not monochrome)
+    monochrome: false,
+  };
 
   try {
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 120000 });
-
-    if (stdout) {
-      const lines = stdout.split('\n');
-      lines.forEach(line => {
-        if (line.trim()) {
-          console.log(`  ${line.trim()}`);
-        }
-      });
-    }
-
-    if (stderr) {
-      console.error(`  ⚠️  PowerShell stderr: ${stderr}`);
-    }
-
-    console.log(`  ✅ Print job sent to tray-${trayNumber} via PowerShell!`);
+    await print(pdfPath, printOptions);
+    console.log('  ✅ Print job sent successfully (duplex: flip on short edge)!');
   } catch (err) {
-    throw new Error(`Failed to print to tray-${trayNumber}: ${err.message}`);
-  }
-}
-
-async function printPdf(pdfPath, printerName, job = {}) {
-  const printers = await getAllPrintersSafe();
-  const matched = pickBestMatchingPrinter(printers, printerName);
-  const effectivePrinterName = matched?.name || printerName;
-
-  if (printerName && !matched) {
-    console.warn(`  ⚠️ Printer "${printerName}" not found. Available printers:`);
-    printers.slice(0, 3).forEach(p => console.warn(`     - ${p.name}`));
-    console.warn(`  Will try to print anyway...`);
-  }
-
-  console.log(`  🖨️ Printing to: ${effectivePrinterName || '(Windows default printer)'}`);
-
-  const side = resolveDuplexSide(job);
-  console.log(`  📄 Duplex: ${side}`);
-
-  // Get tray number from job (required for printing)
-  const trayNumber = job.trayNumber;
-  if (!trayNumber) {
-    throw new Error('Tray number is required but not provided in print job');
-  }
-
-  console.log(`  📥 Tray: ${trayNumber} (required)`);
-
-  // Use PowerShell to set tray and print (no fallbacks - exact tray required)
-  console.log('  🔄 Using PowerShell to set tray and print (no fallbacks)...');
-  try {
-    await printWithPowerShell(pdfPath, effectivePrinterName, trayNumber, side);
-    console.log(`  ✅ Print job sent to tray-${trayNumber} via PowerShell!`);
-  } catch (err) {
-    console.error(`  ❌ Failed to print to tray-${trayNumber}: ${err.message}`);
-    throw new Error(`Print failed: Could not print to tray-${trayNumber}. ${err.message}`);
+    console.warn('  ⚠️ Print with duplex options failed:', err.message);
+    console.warn('  📝 Trying basic print...');
+    // Fallback: try basic print (duplex should be set in printer defaults)
+    await print(pdfPath, { printer: printerName });
+    console.log('  ✅ Print job sent using printer defaults');
+    console.log('');
+    console.log('  ⚠️  If not printing two-sided, set duplex in Windows:');
+    console.log('     Control Panel → Devices and Printers');
+    console.log('     Right-click printer → Printing Preferences');
+    console.log('     Set "Two-sided" to "Flip on Short Edge"');
   }
 }
 
@@ -368,45 +213,33 @@ async function printPdf(pdfPath, printerName, job = {}) {
 
 async function processJob(job) {
   console.log(`\n📋 Processing job: ${job.id}`);
-  const printerName = job.printerName || CONFIG.defaultPrinter;
-  if (job.printerName) {
-    console.log(`   Printer: ${job.printerName} (from kiosk config)`);
-  } else if (CONFIG.defaultPrinter) {
-    console.log(`   Printer: ${CONFIG.defaultPrinter} (fallback from config)`);
-  } else {
-    console.log(`   Printer: Windows default (no printer in kiosk config)`);
-  }
-  console.log(`   PDF: ${job.pdfUrl ? 'pdfUrl' : job.pdfData ? 'pdfData' : 'none'}`);
+  console.log(`   Printer: ${job.printerName}`);
+  console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No (will use images)'}`);
   console.log(`   Images: ${job.imagePaths?.length || 0}`);
-  if (job.trayNumber) {
-    console.log(`   Tray: ${job.trayNumber}`);
-  } else {
-    console.log(`   Tray: Auto (printer default)`);
-  }
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });
 
   try {
-
     let pdfPath = path.join(jobDir, 'card.pdf');
 
-    // Preferred path: server-generated PDF
-    if (job.pdfUrl || job.pdfData) {
-      console.log('  📄 Using server-generated PDF...');
-      if (job.pdfUrl) {
-        await downloadFile(job.pdfUrl, pdfPath);
-      } else {
-        const parsed = job.pdfData.startsWith('data:') ? parseDataUrl(job.pdfData) : null;
-        const base64 = parsed ? parsed.base64 : job.pdfData;
-        const pdfBuffer = Buffer.from(base64, 'base64');
-        await fs.writeFile(pdfPath, pdfBuffer);
-      }
-    } else {
-      // Legacy path: build PDF from 4 images
-      // Get paper configuration (used for PDF page size and compositing dimensions)
+    // =========================================================================
+    // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
+    // =========================================================================
+    if (job.pdfUrl) {
+      console.log('  📄 Using server-generated PDF (recommended)');
+      await downloadPdf(job.pdfUrl, pdfPath);
+      console.log('  ✅ PDF downloaded successfully');
+    }
+    // =========================================================================
+    // FALLBACK: Generate PDF from images (legacy support)
+    // =========================================================================
+    else if (job.imagePaths && job.imagePaths.length >= 4) {
+      console.log('  ⚠️  No PDF URL provided - generating from images (slower)');
+
+      // Get paper configuration
       const config = getPaperConfig(job.paperSize || 'letter');
-      console.log(`   Paper (compose): ${config.name}`);
+      console.log(`   Paper: ${config.name}`);
 
       // Download or use local paths for images
       const imageFiles = {
@@ -416,20 +249,18 @@ async function processJob(job) {
         back: path.join(jobDir, 'page_4.png'),
       };
 
-      if (job.imagePaths && job.imagePaths.length >= 4) {
-        for (let i = 0; i < 4; i++) {
-          const imagePath = job.imagePaths[i];
-          const localPath = path.join(jobDir, `page_${i + 1}.png`);
+      // If imagePaths are URLs, download them
+      for (let i = 0; i < 4; i++) {
+        const imagePath = job.imagePaths[i];
+        const localPath = path.join(jobDir, `page_${i + 1}.png`);
 
-          if (imagePath.startsWith('http')) {
-            await downloadImage(imagePath, localPath);
-          } else {
-            const absolutePath = path.resolve(imagePath);
-            await fs.copyFile(absolutePath, localPath);
-          }
+        if (imagePath.startsWith('http')) {
+          await downloadImage(imagePath, localPath);
+        } else {
+          // Copy local file
+          const absolutePath = path.resolve(imagePath);
+          await fs.copyFile(absolutePath, localPath);
         }
-      } else {
-        throw new Error('Job missing pdfUrl/pdfData and does not contain 4 imagePaths');
       }
 
       // Create composite images
@@ -443,10 +274,13 @@ async function processJob(job) {
       // Create PDF
       console.log('  📄 Creating PDF...');
       await createPdf(pdfPath, side1Path, side2Path, config);
+    } else {
+      throw new Error('Job has no PDF URL and no valid image paths');
     }
 
-    // Print using local CONFIG settings (duplex, borderless, etc.)
-    await printPdf(pdfPath, printerName, job);
+    // Print
+    const printerName = job.printerName || CONFIG.defaultPrinter;
+    await printPdf(pdfPath, printerName);
 
     // Update job status on server
     await updateJobStatus(job.id, 'completed');
@@ -536,12 +370,7 @@ async function listPrinters() {
   }
 
   console.log('─'.repeat(50));
-  console.log(`  Printer: Will use printer from each job's kiosk config`);
-  if (CONFIG.defaultPrinter) {
-    console.log(`  Fallback (if job has no printer): ${CONFIG.defaultPrinter}`);
-  } else {
-    console.log(`  Fallback (if job has no printer): Windows default printer`);
-  }
+  console.log(`  Default: ${CONFIG.defaultPrinter}`);
   console.log('');
 }
 
