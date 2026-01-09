@@ -309,9 +309,9 @@ export default function StickersPage() {
     }
   };
 
-  // Generate and save sticker sheet PDF
+  // Generate and save sticker sheet PDF and JPG
   const generateStickerPDF = async () => {
-    console.log("📄 Generating sticker sheet PDF...");
+    console.log("📄 Generating sticker sheet PDF and JPG...");
 
     // Avery 94513 specifications (in inches)
     const PAPER_WIDTH = 8.5;
@@ -340,13 +340,6 @@ export default function StickersPage() {
       [COL_2_CENTER, ROW_3_CENTER],
     ];
 
-    // Create PDF with letter size in inches
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "in",
-      format: "letter",
-    });
-
     // Convert all slot images to base64
     const imageBase64Array: (string | null)[] = await Promise.all(
       slots.map(async (slot) => {
@@ -367,27 +360,66 @@ export default function StickersPage() {
       })
     );
 
+    // Generate timestamp for filenames
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+    // Create PDF with letter size in inches
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "in",
+      format: "letter",
+    });
+
     // Add each sticker to the PDF
     for (let i = 0; i < 6; i++) {
       const imageData = imageBase64Array[i];
       const [centerX, centerY] = CIRCLE_POSITIONS[i];
 
       if (imageData) {
-        // Calculate position so that image is centered in the circle
-        // For object-contain behavior, we place a square image area and let the image fit
-        const x = centerX - STICKER_RADIUS;
-        const y = centerY - STICKER_RADIUS;
-
-        // Add the image - jsPDF will scale it to fit the dimensions
-        // Using addImage with fit option to contain the entire image within the circle area
         try {
+          // Load image to get dimensions for proper centering
+          const img = new Image();
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = reject;
+            img.src = imageData;
+          });
+
+          // Calculate aspect ratio
+          const imgAspect = img.width / img.height;
+          
+          // Calculate scale factor to fit within 3" circle
+          // Both width and height must fit within the 3" diameter
+          // Scale based on the larger dimension to ensure both fit
+          let drawWidth: number;
+          let drawHeight: number;
+          let x: number;
+          let y: number;
+
+          if (imgAspect > 1) {
+            // Image is wider than tall - fit to width (3") to ensure it fits
+            // This ensures width = 3" and height < 3"
+            drawWidth = STICKER_DIAMETER;
+            drawHeight = STICKER_DIAMETER / imgAspect;
+            x = centerX - drawWidth / 2; // Center horizontally at circle center
+            y = centerY - drawHeight / 2; // Center vertically at circle center
+          } else {
+            // Image is taller than wide or square - fit to height (3") to ensure it fits
+            // This ensures height = 3" and width < 3"
+            drawHeight = STICKER_DIAMETER;
+            drawWidth = STICKER_DIAMETER * imgAspect;
+            x = centerX - drawWidth / 2; // Center horizontally at circle center
+            y = centerY - drawHeight / 2; // Center vertically at circle center
+          }
+
+          // Add the image perfectly centered in the 3" circle
           pdf.addImage(
             imageData,
             "PNG",
             x,
             y,
-            STICKER_DIAMETER,
-            STICKER_DIAMETER
+            drawWidth,
+            drawHeight
           );
         } catch (error) {
           console.error(`Error adding sticker ${i + 1} to PDF:`, error);
@@ -395,13 +427,120 @@ export default function StickersPage() {
       }
     }
 
-    // Generate filename with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const filename = `sticker-sheet-${timestamp}.pdf`;
-
     // Save the PDF
-    pdf.save(filename);
-    console.log(`✅ PDF saved as ${filename}`);
+    const pdfFilename = `sticker-sheet-${timestamp}.pdf`;
+    pdf.save(pdfFilename);
+    console.log(`✅ PDF saved as ${pdfFilename}`);
+
+    // Generate JPG from canvas
+    await generateStickerJPG(imageBase64Array, CIRCLE_POSITIONS, STICKER_RADIUS, STICKER_DIAMETER, PAPER_WIDTH, PAPER_HEIGHT, timestamp);
+  };
+
+  // Generate and save sticker sheet JPG
+  const generateStickerJPG = async (
+    imageBase64Array: (string | null)[],
+    circlePositions: number[][],
+    stickerRadius: number,
+    stickerDiameter: number,
+    paperWidth: number,
+    paperHeight: number,
+    timestamp: string
+  ) => {
+    console.log("🖼️ Generating sticker sheet JPG...");
+
+    // Create canvas with high resolution (300 DPI for print quality)
+    const DPI = 300;
+    const canvas = document.createElement("canvas");
+    canvas.width = paperWidth * DPI;
+    canvas.height = paperHeight * DPI;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      console.error("Failed to get canvas context");
+      return;
+    }
+
+    // Fill white background
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw each sticker on the canvas
+    for (let i = 0; i < 6; i++) {
+      const imageData = imageBase64Array[i];
+      const [centerX, centerY] = circlePositions[i];
+
+      if (imageData) {
+        try {
+          // Load image
+          const img = new Image();
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = reject;
+            img.src = imageData;
+          });
+
+          // Calculate aspect ratio
+          const imgAspect = img.width / img.height;
+          const size = stickerDiameter * DPI;
+          const centerXPx = centerX * DPI;
+          const centerYPx = centerY * DPI;
+
+          // Calculate scale factor to fit within 3" circle
+          // Both width and height must fit within the 3" diameter
+          // This matches the PDF logic exactly for perfect alignment
+          // Image should be centered at (centerXPx, centerYPx)
+          let drawWidth: number;
+          let drawHeight: number;
+          let drawX: number;
+          let drawY: number;
+
+          if (imgAspect > 1) {
+            // Image is wider than tall - fit to width (3") to ensure it fits
+            // This ensures width = 3" and height < 3"
+            drawWidth = size;
+            drawHeight = size / imgAspect;
+            drawX = centerXPx - drawWidth / 2; // Center horizontally at circle center
+            drawY = centerYPx - drawHeight / 2; // Center vertically at circle center
+          } else {
+            // Image is taller than wide or square - fit to height (3") to ensure it fits
+            // This ensures height = 3" and width < 3"
+            drawHeight = size;
+            drawWidth = size * imgAspect;
+            drawX = centerXPx - drawWidth / 2; // Center horizontally at circle center
+            drawY = centerYPx - drawHeight / 2; // Center vertically at circle center
+          }
+
+          // Draw image perfectly centered in the 3" circle
+          ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+        } catch (error) {
+          console.error(`Error adding sticker ${i + 1} to JPG:`, error);
+        }
+      }
+    }
+
+    // Convert canvas to JPG blob
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          console.error("Failed to convert canvas to blob");
+          return;
+        }
+
+        // Create download link for JPG
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `sticker-sheet-${timestamp}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        console.log(`✅ JPG saved as sticker-sheet-${timestamp}.jpg`);
+      },
+      "image/jpeg",
+      0.95 // High quality (95%)
+    );
   };
 
   // Print sticker sheet function (for backend printing)
