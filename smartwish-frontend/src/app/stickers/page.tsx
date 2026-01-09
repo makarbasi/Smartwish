@@ -432,27 +432,39 @@ export default function StickersPage() {
     pdf.save(pdfFilename);
     console.log(`✅ PDF saved as ${pdfFilename}`);
 
-    // Generate JPG from canvas
-    await generateStickerJPG(imageBase64Array, CIRCLE_POSITIONS, STICKER_RADIUS, STICKER_DIAMETER, PAPER_WIDTH, PAPER_HEIGHT, timestamp);
+    // Generate JPG from canvas using exact pixel coordinates
+    await generateStickerJPG(imageBase64Array, timestamp);
   };
 
   // Generate and save sticker sheet JPG
+  // Uses exact pixel coordinates: 1275 × 1650 px at 150 DPI
   const generateStickerJPG = async (
     imageBase64Array: (string | null)[],
-    circlePositions: number[][],
-    stickerRadius: number,
-    stickerDiameter: number,
-    paperWidth: number,
-    paperHeight: number,
     timestamp: string
   ) => {
     console.log("🖼️ Generating sticker sheet JPG...");
 
-    // Create canvas with high resolution (300 DPI for print quality)
-    const DPI = 300;
+    // Exact specifications for JPG
+    const IMAGE_WIDTH = 1275; // pixels
+    const IMAGE_HEIGHT = 1650; // pixels
+    const DPI = 150;
+    const CIRCLE_DIAMETER_PX = 453; // Circle bounding box is 453 × 453 px
+    const CIRCLE_RADIUS_PX = CIRCLE_DIAMETER_PX / 2;
+
+    // Exact center coordinates for each circle (in pixels, top-left origin)
+    const CIRCLE_CENTERS = [
+      [318.5, 318.5],   // Row 1, Top-Left
+      [956.5, 318.5],   // Row 1, Top-Right
+      [318.5, 825.0],   // Row 2, Middle-Left
+      [956.5, 825.0],   // Row 2, Middle-Right
+      [318.5, 1331.5],  // Row 3, Bottom-Left
+      [956.5, 1331.5],  // Row 3, Bottom-Right
+    ];
+
+    // Create canvas with exact dimensions
     const canvas = document.createElement("canvas");
-    canvas.width = paperWidth * DPI;
-    canvas.height = paperHeight * DPI;
+    canvas.width = IMAGE_WIDTH;
+    canvas.height = IMAGE_HEIGHT;
     const ctx = canvas.getContext("2d");
 
     if (!ctx) {
@@ -467,7 +479,7 @@ export default function StickersPage() {
     // Draw each sticker on the canvas
     for (let i = 0; i < 6; i++) {
       const imageData = imageBase64Array[i];
-      const [centerX, centerY] = circlePositions[i];
+      const [centerX, centerY] = CIRCLE_CENTERS[i];
 
       if (imageData) {
         try {
@@ -481,36 +493,32 @@ export default function StickersPage() {
 
           // Calculate aspect ratio
           const imgAspect = img.width / img.height;
-          const size = stickerDiameter * DPI;
-          const centerXPx = centerX * DPI;
-          const centerYPx = centerY * DPI;
 
-          // Calculate scale factor to fit within 3" circle
-          // Both width and height must fit within the 3" diameter
-          // This matches the PDF logic exactly for perfect alignment
-          // Image should be centered at (centerXPx, centerYPx)
+          // Calculate scale factor to fit within 453px circle
+          // Both width and height must fit within the circle diameter
+          // Image should be centered at (centerX, centerY)
           let drawWidth: number;
           let drawHeight: number;
           let drawX: number;
           let drawY: number;
 
           if (imgAspect > 1) {
-            // Image is wider than tall - fit to width (3") to ensure it fits
-            // This ensures width = 3" and height < 3"
-            drawWidth = size;
-            drawHeight = size / imgAspect;
-            drawX = centerXPx - drawWidth / 2; // Center horizontally at circle center
-            drawY = centerYPx - drawHeight / 2; // Center vertically at circle center
+            // Image is wider than tall - fit to width (453px) to ensure it fits
+            // This ensures width = 453px and height < 453px
+            drawWidth = CIRCLE_DIAMETER_PX;
+            drawHeight = CIRCLE_DIAMETER_PX / imgAspect;
+            drawX = centerX - drawWidth / 2; // Center horizontally at circle center
+            drawY = centerY - drawHeight / 2; // Center vertically at circle center
           } else {
-            // Image is taller than wide or square - fit to height (3") to ensure it fits
-            // This ensures height = 3" and width < 3"
-            drawHeight = size;
-            drawWidth = size * imgAspect;
-            drawX = centerXPx - drawWidth / 2; // Center horizontally at circle center
-            drawY = centerYPx - drawHeight / 2; // Center vertically at circle center
+            // Image is taller than wide or square - fit to height (453px) to ensure it fits
+            // This ensures height = 453px and width < 453px
+            drawHeight = CIRCLE_DIAMETER_PX;
+            drawWidth = CIRCLE_DIAMETER_PX * imgAspect;
+            drawX = centerX - drawWidth / 2; // Center horizontally at circle center
+            drawY = centerY - drawHeight / 2; // Center vertically at circle center
           }
 
-          // Draw image perfectly centered in the 3" circle
+          // Draw image perfectly centered in the circle
           ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
         } catch (error) {
           console.error(`Error adding sticker ${i + 1} to JPG:`, error);
