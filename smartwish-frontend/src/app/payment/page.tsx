@@ -387,8 +387,27 @@ function PaymentForm() {
             <span className="text-sm text-gray-600">Order ID</span>
             <span className="text-xs font-mono text-gray-900">{sessionData?.orderId?.substring(0, 8)}...</span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">Amount</span>
+          
+          {/* Price Breakdown */}
+          <div className="space-y-1 text-sm mb-3">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Greeting Card</span>
+              <span>${sessionData?.priceBreakdown?.cardPrice?.toFixed(2) || '0.00'}</span>
+            </div>
+            {sessionData?.priceBreakdown?.giftCardAmount > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>🎁 Gift Card</span>
+                <span>${sessionData.priceBreakdown.giftCardAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-gray-500 text-xs">
+              <span>Processing Fee (5%)</span>
+              <span>${sessionData?.priceBreakdown?.processingFee?.toFixed(2) || '0.00'}</span>
+            </div>
+          </div>
+          
+          <div className="flex justify-between items-center border-t border-gray-200 pt-2">
+            <span className="text-sm font-semibold text-gray-900">Total</span>
             <span className="text-2xl font-bold text-indigo-600">${sessionData?.amount?.toFixed(2) || '0.00'}</span>
           </div>
         </div>
