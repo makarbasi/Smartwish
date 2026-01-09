@@ -25,6 +25,7 @@ import sharp from 'sharp';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import ipp from 'ipp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -243,7 +244,6 @@ async function processJob(job) {
       const jpgBuffer = await fs.readFile(jpgPath);
 
       // Print using IPP
-      const ipp = require('ipp');
       const printer = ipp.Printer(printerUrl);
 
       const printJob = {
