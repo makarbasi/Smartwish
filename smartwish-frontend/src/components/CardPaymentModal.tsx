@@ -215,7 +215,19 @@ function CardPaymentModalContent({
 
       if (!giftCardAmount) {
         try {
-          const storedGiftData = localStorage.getItem(`giftCard_${cardId}`)
+          // Debug: List all localStorage keys containing "giftCard"
+          const allKeys = Object.keys(localStorage).filter(k => k.includes('giftCard') && !k.includes('Meta'))
+          console.log('🎁 DEBUG: All giftCard keys in localStorage:', allKeys)
+          console.log('🎁 DEBUG: Looking for key:', `giftCard_${cardId}`)
+          
+          // Try to find gift card - check both exact match and any matching key
+          let storedGiftData = localStorage.getItem(`giftCard_${cardId}`)
+          
+          // ✅ Fallback: If not found and only one gift card exists, use it (likely a migration issue)
+          if (!storedGiftData && allKeys.length === 1) {
+            console.log('🎁 DEBUG: Exact key not found, trying fallback to:', allKeys[0])
+            storedGiftData = localStorage.getItem(allKeys[0])
+          }
           console.log('🎁 Checking localStorage for gift card:', `giftCard_${cardId}`)
           console.log('🎁 Stored data:', storedGiftData ? storedGiftData.substring(0, 100) + '...' : 'null')
           
@@ -277,6 +289,7 @@ function CardPaymentModalContent({
       }
 
       console.log('💰 Calculating price for card:', cardId, 'Gift card amount:', giftCardAmount)
+      console.log('🎁 DEBUG: Gift card amount being sent to backend:', giftCardAmount, typeof giftCardAmount)
 
       // Step 2: ✅ Fetch price calculation from BACKEND (not Next.js API)
       const priceResponse = await fetch(`${backendUrl}/saved-designs/calculate-price`, {
@@ -298,6 +311,7 @@ function CardPaymentModalContent({
 
       const priceResult = await priceResponse.json()
       console.log('💰 Price calculation (from backend):', priceResult)
+      console.log('🎁 DEBUG: Backend returned giftCardAmount:', priceResult.giftCardAmount)
 
       // ✅ FIX: Handle zero-dollar case properly
       if (priceResult.total < 0.01) {
