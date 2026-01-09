@@ -281,72 +281,50 @@ function resolveScale(job) {
 }
 
 /**
- * Print PDF using SumatraPDF with tray selection
- * Tries multiple tray name formats to match different printer models
+ * Print PDF using PowerShell script (sets tray via WMI, then prints)
+ * NO FALLBACKS - exact tray or error
  */
-async function printWithSumatraPDF(pdfPath, printerName, trayNumber, side = 'duplexshort') {
-  // Common SumatraPDF install locations
-  const sumatraPaths = [
-    path.join(process.env.LOCALAPPDATA || '', 'SumatraPDF', 'SumatraPDF.exe'),
-    'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe',
-    'C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe',
-  ];
+async function printWithPowerShell(pdfPath, printerName, trayNumber, side = 'duplexshort') {
+  // Use the print-with-tray.ps1 script
+  const psScriptPath = path.join(__dirname, 'print-with-tray.ps1');
 
-  let sumatraPath = null;
-  for (const p of sumatraPaths) {
-    try {
-      await fs.access(p);
-      sumatraPath = p;
-      break;
-    } catch { }
-  }
-
-  if (!sumatraPath) {
-    throw new Error('SumatraPDF not found');
+  // Check if script exists
+  try {
+    await fs.access(psScriptPath);
+  } catch {
+    throw new Error('print-with-tray.ps1 script not found');
   }
 
   const isSimplex = side === 'simplex';
+  const paperType = isSimplex ? 'sticker' : 'greeting-card';
 
-  // Try different tray name formats that printers might use
-  const trayFormats = [
-    `tray-${trayNumber}`,      // User's printer format: "tray-1", "tray-2"
-    `Tray ${trayNumber}`,       // HP format: "Tray 1", "Tray 2"
-    `Tray${trayNumber}`,        // Alternative: "Tray1", "Tray2"
-    `tray${trayNumber}`,        // Lowercase: "tray1", "tray2"
-  ];
+  console.log(`  📜 Using PowerShell to set tray and print`);
+  console.log(`  📜 Tray: ${trayNumber}`);
+  console.log(`  📜 Paper type: ${paperType}`);
 
-  // Build print settings
-  const settings = [
-    isSimplex ? 'simplex' : 'duplexshort',
-    'color',
-    'noscale',
-  ];
+  // Execute PowerShell script
+  const cmd = `powershell -ExecutionPolicy Bypass -File "${psScriptPath}" -PdfPath "${pdfPath}" -PrinterName "${printerName}" -TrayNumber ${trayNumber} -PaperType "${paperType}"`;
 
-  // Try each tray format until one works - no fallbacks, exact tray required
-  const errors = [];
-  for (const trayFormat of trayFormats) {
-    try {
-      const settingsWithTray = [...settings, `bin=${trayFormat}`];
-      const settingsStr = settingsWithTray.join(',');
+  try {
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 120000 });
 
-      console.log(`  📜 Trying tray format: ${trayFormat}`);
-      console.log(`  📜 SumatraPDF settings: ${settingsStr}`);
-
-      const cmd = `"${sumatraPath}" -print-to "${printerName}" -print-settings "${settingsStr}" -silent "${pdfPath}"`;
-
-      await execAsync(cmd, { timeout: 60000 });
-      console.log(`  ✅ Print job sent to ${trayFormat} via SumatraPDF!`);
-      return; // Success - exit function
-    } catch (err) {
-      const errorMsg = `Tray format "${trayFormat}" failed: ${err.message}`;
-      console.error(`  ❌ ${errorMsg}`);
-      errors.push(errorMsg);
-      // Continue to next format
+    if (stdout) {
+      const lines = stdout.split('\n');
+      lines.forEach(line => {
+        if (line.trim()) {
+          console.log(`  ${line.trim()}`);
+        }
+      });
     }
-  }
 
-  // All tray formats failed - throw error with details
-  throw new Error(`Failed to print to tray-${trayNumber}. All tray formats failed:\n${errors.join('\n')}`);
+    if (stderr) {
+      console.error(`  ⚠️  PowerShell stderr: ${stderr}`);
+    }
+
+    console.log(`  ✅ Print job sent to tray-${trayNumber} via PowerShell!`);
+  } catch (err) {
+    throw new Error(`Failed to print to tray-${trayNumber}: ${err.message}`);
+  }
 }
 
 async function printPdf(pdfPath, printerName, job = {}) {
@@ -373,11 +351,11 @@ async function printPdf(pdfPath, printerName, job = {}) {
 
   console.log(`  📥 Tray: ${trayNumber} (required)`);
 
-  // Use SumatraPDF with tray selection (no fallbacks - exact tray required)
-  console.log('  🔄 Using SumatraPDF with tray selection (no fallbacks)...');
+  // Use PowerShell to set tray and print (no fallbacks - exact tray required)
+  console.log('  🔄 Using PowerShell to set tray and print (no fallbacks)...');
   try {
-    await printWithSumatraPDF(pdfPath, effectivePrinterName, trayNumber, side);
-    console.log(`  ✅ Print job sent to tray-${trayNumber} via SumatraPDF!`);
+    await printWithPowerShell(pdfPath, effectivePrinterName, trayNumber, side);
+    console.log(`  ✅ Print job sent to tray-${trayNumber} via PowerShell!`);
   } catch (err) {
     console.error(`  ❌ Failed to print to tray-${trayNumber}: ${err.message}`);
     throw new Error(`Print failed: Could not print to tray-${trayNumber}. ${err.message}`);

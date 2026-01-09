@@ -13,6 +13,7 @@
     "ipp": "^1.1.0",
     "pdf-poppler": "^0.2.3",
     "pdf-to-printer": "^5.6.1",
+    "pdfkit": "^0.17.2",
     "sharp": "^0.34.5",
     "tiff": "^7.1.3"
   }

@@ -1,216 +1,217 @@
 const ipp = require('ipp');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
-const PRINTER_IP = "192.168.1.239"; 
+// --- 1. CRITICAL FIX: PATCH IPP LIBRARY ---
+// This attempts to register 'media-type' attribute, but the library may still reject it.
+// If it fails, the code will automatically retry without media-type.
+console.log("🔧 Patching IPP library attributes...");
+ipp.attributes['media-type'] = { tag: 0x44 }; // 0x44 = Keyword
+console.log(`   Patch status: 'media-type' is now ${ipp.attributes['media-type'] ? 'REGISTERED' : 'MISSING'}`);
+console.log(`   Note: If printing fails, will automatically retry without media-type attribute`);
+// ------------------------------------------
+
+// --- CONFIGURATION ---
+const PRINTER_IP = "192.168.1.239";
+const FILE_NAME = "test.pdf";
+
+// SELECT PAPER TYPE HERE:
+// Options: 'matt-brochure', 'professional', 'photo-glossy', 'plain'
+const SELECTED_PAPER = 'matt-brochure';
+// ---------------------
+
 const printerUrl = `http://${PRINTER_IP}:631/ipp/print`;
 const printer = ipp.Printer(printerUrl);
-const filePath = path.join(__dirname, "test.pdf");
+const filePath = path.join(__dirname, FILE_NAME);
 
-// Check printer capabilities before printing
-function getPrinterAttributes() {
-    return new Promise((resolve, reject) => {
-        const msg = {
-            "operation-attributes-tag": {
-                "requesting-user-name": "Admin",
-                "requested-attributes": [
-                    "document-format-supported",
-                    "printer-state",
-                    "printer-state-reasons",
-                    "sides-supported",
-                    "print-color-mode-supported"
-                ]
-            }
-        };
-        
-        printer.execute("Get-Printer-Attributes", msg, (err, res) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(res);
-            }
-        });
-    });
+/**
+ * Returns the correct IPP media-type keyword based on your selection
+ */
+function getMediaType(selection) {
+    switch (selection) {
+        case 'matt-brochure':
+            return 'stationery-coated'; // Standard for Matte/Brochure
+        case 'professional':
+            return 'stationery-heavyweight'; // Standard for Cardstock
+        case 'photo-matte':
+            return 'photographic-matte';
+        case 'photo-glossy':
+            return 'photographic-glossy';
+        default:
+            return 'stationery'; // Plain paper
+    }
 }
 
-function printPdf(pdfBuffer, jobName, documentFormat = "application/pdf") {
+function sendToPrinter(buffer, jobName, format, useMinimalAttributes = false) {
     return new Promise((resolve, reject) => {
+        const mediaType = getMediaType(SELECTED_PAPER);
+
+        const jobAttributes = {
+            "copies": 1,
+            "sides": "one-sided",
+            "media": "na_letter_8.5x11in",  // Letter size (8.5" x 11")
+            "print-quality": 5,      // 5 = High
+            "orientation-requested": 3  // 3 = Portrait
+        };
+
+        // Only add optional attributes if not using minimal set
+        if (!useMinimalAttributes) {
+            jobAttributes["media-type"] = mediaType;
+            // Removed print-scaling as it's not supported by the library
+        }
+
         const msg = {
             "operation-attributes-tag": {
                 "requesting-user-name": "Admin",
                 "job-name": jobName,
-                "document-format": documentFormat
+                "document-format": format
             },
-            "job-attributes-tag": {
-                "sides": "two-sided-long-edge",
-                "print-color-mode": "color",
-                "print-quality": 5,  // IPP uses integers: 3=draft, 4=normal, 5=high
-                "copies": 1,
-                "media": "iso_a4_210x297mm"  // or "na_letter_8.5x11in" for US Letter
-            },
-            data: pdfBuffer
+            "job-attributes-tag": jobAttributes,
+            data: buffer
         };
 
-        console.log(`Sending PDF (${(pdfBuffer.length / 1024).toFixed(2)} KB) with duplex enabled...`);
-        console.log(`Document format: ${documentFormat}`);
+        console.log(`\n📤 Sending Job: ${jobName}`);
+        console.log(`   Format: ${format}`);
+        if (!useMinimalAttributes) {
+            console.log(`   Paper:  ${mediaType} (${SELECTED_PAPER})`);
+        } else {
+            console.log(`   Paper:  (using minimal attributes due to library limitations)`);
+        }
 
-        printer.execute("Print-Job", msg, (err, res) => {
-            if (err) {
-                console.error(`PRINTER ERROR:`, JSON.stringify(err, null, 2));
-                reject(err);
-            } else {
-                console.log(`Printer response code:`, res.statusCode);
-                
-                // Store job ID if available
-                const jobId = res["job-id"] || res["job-attributes-tag"]?.["job-id"];
-                if (jobId) {
-                    console.log(`Job ID: ${jobId}`);
-                }
-                
-                if (res.statusCode !== 'successful-ok') {
-                    console.log("Details:", JSON.stringify(res, null, 2));
-                    reject(new Error(`Print failed: ${res.statusCode}`));
-                } else {
-                    console.log(`PDF sent successfully.`);
-                    
-                    // Try to get job status after a short delay
-                    if (jobId) {
-                        setTimeout(() => {
-                            checkJobStatus(jobId);
-                        }, 2000);
+        // We wrap execute in a try-catch because the serializer throws synchronous errors
+        try {
+            printer.execute("Print-Job", msg, (err, res) => {
+                if (err) {
+                    // If error is about unknown attribute and we haven't retried, retry with minimal attributes
+                    const errorMsg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+                    if (!useMinimalAttributes && errorMsg.includes("Unknown attribute")) {
+                        console.log("   ⚠️  Some attributes not supported, retrying with minimal attributes...");
+                        return sendToPrinter(buffer, jobName, format, true).then(resolve).catch(reject);
                     }
-                    
-                    resolve(res);
-                }
-            }
-        });
-    });
-}
-
-function checkJobStatus(jobId) {
-    const msg = {
-        "operation-attributes-tag": {
-            "requesting-user-name": "Admin",
-            "job-id": jobId,
-            "requested-attributes": ["job-state", "job-state-message", "job-state-reasons"]
-        }
-    };
-    
-    printer.execute("Get-Job-Attributes", msg, (err, res) => {
-        if (err) {
-            console.log("Could not check job status:", err.message);
-        } else {
-            const jobState = res["job-attributes-tag"]?.["job-state"];
-            const jobStateMessage = res["job-attributes-tag"]?.["job-state-message"];
-            const jobStateReasons = res["job-attributes-tag"]?.["job-state-reasons"];
-            
-            console.log("\n📊 Job Status:");
-            console.log(`   State: ${jobState}`);
-            if (jobStateMessage) {
-                console.log(`   Message: ${jobStateMessage}`);
-            }
-            if (jobStateReasons) {
-                const reasons = Array.isArray(jobStateReasons) ? jobStateReasons : [jobStateReasons];
-                if (reasons.length > 0) {
-                    console.log(`   Reasons: ${reasons.join(", ")}`);
-                }
-            }
-        }
-    });
-}
-
-async function tryDifferentFormats(pdfBuffer) {
-    // application/pdf is the correct MIME type for native PDF printing on HP printers
-    const formats = [
-        "application/pdf",
-        "application/octet-stream"
-    ];
-    
-    for (const format of formats) {
-        console.log(`\n--- Trying format: ${format} ---`);
-        try {
-            await printPdf(pdfBuffer, "SmartWish-Card-PDF", format);
-            console.log(`✅ Success with format: ${format}`);
-            return;
-        } catch (error) {
-            console.log(`❌ Failed with ${format}: ${error.message}`);
-            // Wait a bit before trying next format
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-    }
-    
-    throw new Error("All formats failed");
-}
-
-async function startPrint() {
-    try {
-        // First, check printer capabilities
-        console.log("🔍 Checking printer capabilities...\n");
-        try {
-            const printerInfo = await getPrinterAttributes();
-            const attrs = printerInfo["printer-attributes-tag"];
-            
-            console.log("📋 Printer Status:");
-            console.log(`   State: ${attrs["printer-state"]}`);
-            console.log(`   State Reasons: ${attrs["printer-state-reasons"]}`);
-            
-            const supportedFormats = attrs["document-format-supported"];
-            console.log(`\n📄 Supported Document Formats:`);
-            if (Array.isArray(supportedFormats)) {
-                supportedFormats.forEach(f => console.log(`   - ${f}`));
-                
-                if (supportedFormats.includes("application/pdf")) {
-                    console.log("\n✅ Printer supports native PDF printing!");
+                    reject(err);
                 } else {
-                    console.log("\n⚠️ application/pdf not in supported formats list");
-                    console.log("   Will try application/octet-stream as fallback");
+                    if (res.statusCode === 'successful-ok' || res.statusCode === 'successful-ok-ignored-or-substituted-attributes') {
+                        resolve(res);
+                    } else {
+                        reject({
+                            message: `Printer returned status: ${res.statusCode}`,
+                            ippResponse: res
+                        });
+                    }
                 }
-            } else if (supportedFormats) {
-                console.log(`   - ${supportedFormats}`);
+            });
+        } catch (syncError) {
+            // Catch "Unknown attribute" error here specifically
+            const errorMsg = syncError?.message || (typeof syncError === 'string' ? syncError : JSON.stringify(syncError));
+            if (!useMinimalAttributes && errorMsg.includes("Unknown attribute")) {
+                console.log("   ⚠️  Some attributes not supported, retrying with minimal attributes...");
+                return sendToPrinter(buffer, jobName, format, true).then(resolve).catch(reject);
             }
-            
-            console.log("");
+            reject(syncError);
+        }
+    });
+}
+
+/**
+ * Converts PDF to JPEG image using Ghostscript (gs command)
+ * Falls back to other methods if Ghostscript is not available
+ */
+function convertPdfToImage(pdfPath) {
+    return new Promise((resolve, reject) => {
+        const outputPath = path.join(__dirname, 'temp_pdf_page.jpg');
+
+        try {
+            // Method 1: Try Ghostscript (most reliable)
+            console.log("   🔄 Converting PDF to image using Ghostscript...");
+            try {
+                // Ghostscript command to convert first page of PDF to JPEG at 300 DPI
+                // Letter size: 8.5x11 inches at 300 DPI = 2550x3300 pixels
+                execSync(`gs -dNOPAUSE -dBATCH -sDEVICE=jpeg -r300 -dFirstPage=1 -dLastPage=1 -sOutputFile="${outputPath}" "${pdfPath}"`, {
+                    stdio: 'ignore'
+                });
+
+                if (fs.existsSync(outputPath)) {
+                    const imageBuffer = fs.readFileSync(outputPath);
+                    // Clean up temp file
+                    fs.unlinkSync(outputPath);
+                    console.log(`   ✅ PDF converted to image (${imageBuffer.length} bytes)`);
+                    resolve(imageBuffer);
+                    return;
+                }
+            } catch (gsError) {
+                console.log("   ⚠️  Ghostscript not available, trying alternative method...");
+            }
+
+            // Method 2: Try ImageMagick (convert command)
+            try {
+                console.log("   🔄 Trying ImageMagick...");
+                execSync(`convert -density 300 "${pdfPath}[0]" -quality 95 "${outputPath}"`, {
+                    stdio: 'ignore'
+                });
+
+                if (fs.existsSync(outputPath)) {
+                    const imageBuffer = fs.readFileSync(outputPath);
+                    fs.unlinkSync(outputPath);
+                    console.log(`   ✅ PDF converted to image (${imageBuffer.length} bytes)`);
+                    resolve(imageBuffer);
+                    return;
+                }
+            } catch (imError) {
+                console.log("   ⚠️  ImageMagick not available...");
+            }
+
+            reject(new Error("No PDF conversion tool available. Please install Ghostscript (gs) or ImageMagick (convert)"));
         } catch (err) {
-            console.log("⚠️ Could not query printer capabilities:", err.message);
-            console.log("   Proceeding with print attempt anyway...\n");
+            // Clean up on error
+            if (fs.existsSync(outputPath)) {
+                try { fs.unlinkSync(outputPath); } catch (e) { }
+            }
+            reject(err);
         }
+    });
+}
 
-        if (!fs.existsSync(filePath)) {
-            console.error(`ERROR: File not found at ${filePath}`);
-            return;
-        }
+async function start() {
+    if (!fs.existsSync(filePath)) {
+        console.error(`❌ Error: PDF file not found at ${filePath}`);
+        process.exit(1);
+    }
 
+    // Read PDF file, convert to image, and print
+    try {
+        console.log("🔹 Reading PDF file...");
         const pdfBuffer = fs.readFileSync(filePath);
-        console.log(`📄 Reading PDF file: ${filePath}`);
-        console.log(`   File size: ${(pdfBuffer.length / 1024).toFixed(2)} KB`);
-        
-        // Check PDF version
-        const pdfHeader = pdfBuffer.toString('utf8', 0, Math.min(100, pdfBuffer.length));
-        const versionMatch = pdfHeader.match(/%PDF-(\d\.\d)/);
-        if (versionMatch) {
-            console.log(`   PDF version: ${versionMatch[1]}`);
-        }
-        
-        console.log("\n🖨️ Sending PDF to printer...\n");
-        await tryDifferentFormats(pdfBuffer);
-        console.log("\n✅ Print job completed successfully!");
-        console.log("\n⚠️ If the printer makes noises but doesn't print, check:");
-        console.log("   1. Printer display for error messages or paper prompts");
-        console.log("   2. Paper tray settings match the job requirements");
-        console.log("   3. Printer is not in a paused or error state");
+        console.log(`   PDF file loaded (${pdfBuffer.length} bytes).`);
 
-    } catch (error) {
-        if (error.message === "All formats failed") {
-            console.error("\n❌ All print formats failed");
-            console.log("\n💡 Troubleshooting tips:");
-            console.log("   1. Check if printer is online and ready");
-            console.log("   2. Verify PDF file is not corrupted");
-            console.log("   3. Try a simpler PDF file");
-        } else {
-            console.error("SYSTEM ERROR:", error);
-            console.error("Error details:", error.stack);
+        // Try PDF first, but if it fails, convert to image
+        try {
+            console.log("\n🔹 Attempt 1: Trying to print PDF directly...");
+            const res = await sendToPrinter(pdfBuffer, "PDF-Print", "application/pdf");
+            console.log(`✅ Success! Job ID: ${res["job-attributes-tag"]?.["job-id"]}`);
+            return;
+        } catch (pdfErr) {
+            const errorMsg = pdfErr?.message || (typeof pdfErr === 'string' ? pdfErr : JSON.stringify(pdfErr));
+            if (errorMsg.includes("document-format-not-supported")) {
+                console.log("   ⚠️  PDF format not supported by printer.");
+                console.log("\n🔹 Attempt 2: Converting PDF to image and printing...");
+
+                // Convert PDF to image
+                const imageBuffer = await convertPdfToImage(filePath);
+
+                // Print as JPEG
+                const res = await sendToPrinter(imageBuffer, "PDF-As-Image", "image/jpeg");
+                console.log(`✅ Success! Job ID: ${res["job-attributes-tag"]?.["job-id"]}`);
+            } else {
+                throw pdfErr;
+            }
         }
+    } catch (err) {
+        console.error("❌ Print Failed.");
+        const errorMsg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+        console.error(`   Reason: ${errorMsg}`);
+        process.exit(1);
     }
 }
 
-startPrint();
+start();
