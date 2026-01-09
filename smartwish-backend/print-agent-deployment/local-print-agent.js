@@ -214,26 +214,85 @@ async function printPdf(pdfPath, printerName) {
 async function processJob(job) {
   console.log(`\n📋 Processing job: ${job.id}`);
   console.log(`   Printer: ${job.printerName}`);
-  console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No (will use images)'}`);
+  console.log(`   Paper Type: ${job.paperType || 'greeting-card'}`);
+  console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No'}`);
+  console.log(`   JPG URL: ${job.jpgUrl ? 'Yes ✓' : 'No'}`);
   console.log(`   Images: ${job.imagePaths?.length || 0}`);
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });
 
   try {
-    let pdfPath = path.join(jobDir, 'card.pdf');
+    // =========================================================================
+    // STICKER PRINTING: Use JPG URL and print via IPP
+    // =========================================================================
+    if (job.jpgUrl && job.paperType === 'sticker') {
+      console.log('  🖼️  Using sticker JPG (IPP printing)');
+
+      const jpgPath = path.join(jobDir, 'stickers.jpg');
+      await downloadImage(job.jpgUrl, jpgPath);
+      console.log('  ✅ JPG downloaded successfully');
+
+      // Get printer IP from job or use default
+      const printerIP = job.printerIP || '192.168.1.239';
+      const printerUrl = `http://${printerIP}:631/ipp/print`;
+
+      console.log(`  📡 Printing to: ${printerUrl}`);
+
+      // Read JPG file
+      const jpgBuffer = await fs.readFile(jpgPath);
+
+      // Print using IPP
+      const ipp = require('ipp');
+      const printer = ipp.Printer(printerUrl);
+
+      const printJob = {
+        'operation-attributes-tag': {
+          'requesting-user-name': 'Admin',
+          'job-name': 'Sticker Sheet',
+          'document-format': 'image/jpeg',
+        },
+        'job-attributes-tag': {
+          copies: 1,
+          media: 'iso_a4_210x297mm',
+          'print-quality': 5, // High quality
+        },
+        data: jpgBuffer,
+      };
+
+      await new Promise((resolve, reject) => {
+        printer.execute('Print-Job', printJob, (err, result) => {
+          if (err) {
+            reject(new Error(`IPP Print failed: ${err.message}`));
+          } else {
+            console.log('  ✅ Print job sent. Status:', result.statusCode);
+            resolve(result);
+          }
+        });
+      });
+
+      // Update job status on server
+      await updateJobStatus(job.id, 'completed');
+
+      // Cleanup
+      await fs.rm(jobDir, { recursive: true, force: true });
+
+      console.log(`  ✅ Job ${job.id} completed successfully!`);
+      return;
+    }
 
     // =========================================================================
-    // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
+    // GREETING CARDS: Use PDF or generate from images
     // =========================================================================
+    let pdfPath = path.join(jobDir, 'card.pdf');
+
+    // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
     if (job.pdfUrl) {
       console.log('  📄 Using server-generated PDF (recommended)');
       await downloadPdf(job.pdfUrl, pdfPath);
       console.log('  ✅ PDF downloaded successfully');
     }
-    // =========================================================================
     // FALLBACK: Generate PDF from images (legacy support)
-    // =========================================================================
     else if (job.imagePaths && job.imagePaths.length >= 4) {
       console.log('  ⚠️  No PDF URL provided - generating from images (slower)');
 
