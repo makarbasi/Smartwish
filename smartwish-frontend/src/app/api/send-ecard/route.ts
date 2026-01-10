@@ -133,9 +133,11 @@ export async function POST(request: NextRequest) {
     // Create the card view URL using shareId
     const cardViewUrl = `${process.env.NEXTAUTH_URL}/ecard/${shareId}`;
 
-    // Configure nodemailer transporter
+    // Configure nodemailer transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD,

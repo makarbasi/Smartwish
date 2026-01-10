@@ -51,6 +51,7 @@ type PrinterTray = {
 type KioskConfig = {
   theme?: string;
   featuredTemplateIds?: string[];
+  promotedGiftCardIds?: string[]; // Gift card brand IDs/slugs to feature in Gift Hub
   micEnabled?: boolean;
   giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
   greetingCardsEnabled?: boolean; // Enable greeting cards tile on kiosk home (default true)
@@ -105,6 +106,7 @@ const PAPER_SIZES = [
 const DEFAULT_CONFIG: KioskConfig = {
   theme: "default",
   featuredTemplateIds: [],
+  promotedGiftCardIds: [], // No promoted gift cards by default
   micEnabled: true,
   giftCardRibbonEnabled: true, // Show gift card marketplace ribbon by default
   greetingCardsEnabled: true, // Enable greeting cards tile by default
@@ -209,7 +211,7 @@ export default function KiosksAdminPage() {
       setKiosks([...kiosks, newKiosk]);
       setShowCreateModal(false);
       resetForm();
-      
+
       // Show the new API key
       alert(`Kiosk created successfully!\n\nAPI Key: ${newKiosk.apiKey}\n\nPlease save this key securely.`);
     } catch (err) {
@@ -295,7 +297,7 @@ export default function KiosksAdminPage() {
 
       const updated = await response.json();
       setKiosks(kiosks.map((k) => (k.kioskId === kiosk.kioskId ? updated : k)));
-      
+
       alert(`API key rotated successfully!\n\nNew API Key: ${updated.apiKey}\n\nPlease update your kiosk configuration.`);
     } catch (err) {
       console.error("Error rotating API key:", err);
@@ -994,7 +996,7 @@ function KioskFormModal({
                     <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
                       Basic Information
                     </h4>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Kiosk ID <span className="text-red-500">*</span>
@@ -1092,18 +1094,16 @@ function KioskFormModal({
                             },
                           })
                         }
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
-                          formData.config.micEnabled
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.micEnabled
                             ? "bg-indigo-600"
                             : "bg-gray-200"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            formData.config.micEnabled
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.micEnabled
                               ? "translate-x-5"
                               : "translate-x-0"
-                          }`}
+                            }`}
                         />
                       </button>
                     </div>
@@ -1128,18 +1128,16 @@ function KioskFormModal({
                             },
                           })
                         }
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
-                          formData.config.giftCardRibbonEnabled !== false
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.giftCardRibbonEnabled !== false
                             ? "bg-indigo-600"
                             : "bg-gray-200"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            formData.config.giftCardRibbonEnabled !== false
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.giftCardRibbonEnabled !== false
                               ? "translate-x-5"
                               : "translate-x-0"
-                          }`}
+                            }`}
                         />
                       </button>
                     </div>
@@ -1164,18 +1162,16 @@ function KioskFormModal({
                             },
                           })
                         }
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
-                          formData.config.greetingCardsEnabled !== false
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.greetingCardsEnabled !== false
                             ? "bg-indigo-600"
                             : "bg-gray-200"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            formData.config.greetingCardsEnabled !== false
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.greetingCardsEnabled !== false
                               ? "translate-x-5"
                               : "translate-x-0"
-                          }`}
+                            }`}
                         />
                       </button>
                     </div>
@@ -1200,18 +1196,16 @@ function KioskFormModal({
                             },
                           })
                         }
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
-                          formData.config.stickersEnabled !== false
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.stickersEnabled !== false
                             ? "bg-indigo-600"
                             : "bg-gray-200"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            formData.config.stickersEnabled !== false
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.stickersEnabled !== false
                               ? "translate-x-5"
                               : "translate-x-0"
-                          }`}
+                            }`}
                         />
                       </button>
                     </div>
@@ -1221,7 +1215,7 @@ function KioskFormModal({
                       <h5 className="text-sm font-semibold text-gray-800 mb-3">
                         ⌨️ Virtual Keyboard
                       </h5>
-                      
+
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <label className="text-sm font-medium text-gray-700">
@@ -1246,18 +1240,16 @@ function KioskFormModal({
                               },
                             })
                           }
-                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
-                            formData.config.virtualKeyboard?.enabled !== false
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.virtualKeyboard?.enabled !== false
                               ? "bg-indigo-600"
                               : "bg-gray-200"
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              formData.config.virtualKeyboard?.enabled !== false
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.virtualKeyboard?.enabled !== false
                                 ? "translate-x-5"
                                 : "translate-x-0"
-                            }`}
+                              }`}
                           />
                         </button>
                       </div>
@@ -1288,18 +1280,16 @@ function KioskFormModal({
                                 },
                               })
                             }
-                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
-                              formData.config.virtualKeyboard?.showBuiltInKeyboard !== false
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.virtualKeyboard?.showBuiltInKeyboard !== false
                                 ? "bg-indigo-600"
                                 : "bg-gray-200"
-                            }`}
+                              }`}
                           >
                             <span
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                formData.config.virtualKeyboard?.showBuiltInKeyboard !== false
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.virtualKeyboard?.showBuiltInKeyboard !== false
                                   ? "translate-x-5"
                                   : "translate-x-0"
-                              }`}
+                                }`}
                             />
                           </button>
                         </div>
@@ -1389,6 +1379,34 @@ function KioskFormModal({
                       </p>
                     </div>
 
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        🎁 Promoted Gift Cards
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.config.promotedGiftCardIds?.join(", ") || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            config: {
+                              ...formData.config,
+                              promotedGiftCardIds: e.target.value
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean),
+                            },
+                          })
+                        }
+                        placeholder="amazon-com-usa, starbucks-usa, target-usa"
+                        className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Comma-separated list of gift card brand slugs to promote in the Gift Hub.
+                        These appear in a featured section above the main list.
+                      </p>
+                    </div>
+
                     {/* Printer Trays Configuration */}
                     <div className="col-span-2 border-t pt-4 mt-2">
                       <div className="flex items-center justify-between mb-3">
@@ -1399,8 +1417,8 @@ function KioskFormModal({
                           type="button"
                           onClick={() => {
                             const trays = formData.config.printerTrays || [];
-                            const nextTrayNumber = trays.length > 0 
-                              ? Math.max(...trays.map(t => t.trayNumber)) + 1 
+                            const nextTrayNumber = trays.length > 0
+                              ? Math.max(...trays.map(t => t.trayNumber)) + 1
                               : 1;
                             setFormData({
                               ...formData,
@@ -1408,11 +1426,11 @@ function KioskFormModal({
                                 ...formData.config,
                                 printerTrays: [
                                   ...trays,
-                                  { 
-                                    trayNumber: nextTrayNumber, 
-                                    trayName: `Tray ${nextTrayNumber}`, 
-                                    paperType: "plain", 
-                                    paperSize: "letter" 
+                                  {
+                                    trayNumber: nextTrayNumber,
+                                    trayName: `Tray ${nextTrayNumber}`,
+                                    paperType: "plain",
+                                    paperSize: "letter"
                                   },
                                 ],
                               },
@@ -1426,7 +1444,7 @@ function KioskFormModal({
                       <p className="text-xs text-gray-500 mb-3">
                         Configure paper trays for different print jobs. The system will automatically select the correct tray based on paper type.
                       </p>
-                      
+
                       {(!formData.config.printerTrays || formData.config.printerTrays.length === 0) ? (
                         <div className="text-center py-4 text-gray-500 text-sm border border-dashed border-gray-300 rounded-lg">
                           No trays configured. Click &quot;+ Add Tray&quot; to add one.
@@ -1530,7 +1548,7 @@ function KioskFormModal({
                         Revenue Share %
                       </label>
                       <p className="text-xs text-gray-500 mb-2">
-                        Percentage of net profit (after transaction fees) to share with the store owner. 
+                        Percentage of net profit (after transaction fees) to share with the store owner.
                         Transaction fee = $0.50 + 3% of sale price.
                       </p>
                       <div className="flex items-center gap-2">
@@ -1574,8 +1592,8 @@ function KioskFormModal({
                         ? "Creating..."
                         : "Saving..."
                       : isCreate
-                      ? "Create Kiosk"
-                      : "Save Changes"}
+                        ? "Create Kiosk"
+                        : "Save Changes"}
                   </button>
                 </div>
               </Dialog.Panel>

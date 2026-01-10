@@ -223,6 +223,48 @@ function MarketplaceContent() {
     }
   }, [productsData])
 
+  // Get promoted gift card IDs from kiosk config
+  // Use sample promoted cards for demo/testing when none are configured
+  const configuredPromotedIds = kioskConfig?.promotedGiftCardIds || []
+  const promotedGiftCardIds = configuredPromotedIds.length > 0 
+    ? configuredPromotedIds 
+    : ['amazon-com-usa', 'starbucks-usa', 'target-usa', 'uber-usa', 'doordash-usa'] // Default samples
+
+  // Debug: Log kiosk config and promoted IDs
+  useEffect(() => {
+    console.log('🌟 Gift Hub - Promoted Config:', {
+      hasKioskConfig: !!kioskConfig,
+      configuredPromotedIds,
+      promotedGiftCardIds,
+      usingDefaults: configuredPromotedIds.length === 0
+    })
+  }, [kioskConfig, configuredPromotedIds, promotedGiftCardIds])
+
+  // Get promoted products (always visible, unaffected by search/filter)
+  const promotedProducts = useMemo(() => {
+    const items = productsData?.brands || productsData?.products || []
+    if (items.length === 0 || promotedGiftCardIds.length === 0) return []
+
+    // Find products that match the promoted IDs (by id, slug, or name)
+    const promoted = promotedGiftCardIds
+      .map(promotedId => {
+        const normalizedId = promotedId.toLowerCase()
+        const found = items.find(product => 
+          product.id?.toLowerCase() === normalizedId ||
+          product.slug?.toLowerCase() === normalizedId ||
+          product.name?.toLowerCase().includes(normalizedId.replace(/-/g, ' '))
+        )
+        if (!found) {
+          console.log(`🌟 Promoted "${promotedId}" not found in brands`)
+        }
+        return found
+      })
+      .filter(Boolean) as Product[]
+
+    console.log('🌟 Promoted gift cards found:', promoted.length, 'of', promotedGiftCardIds.length)
+    return promoted
+  }, [productsData, promotedGiftCardIds])
+
   // Filter products based on search and category filter
   const displayProducts = useMemo(() => {
     const items = productsData?.brands || productsData?.products || []
@@ -467,6 +509,52 @@ function MarketplaceContent() {
           ))}
         </div>
       </div>
+
+      {/* Promoted Gift Cards Section - Always visible, unaffected by search/filter */}
+      {promotedProducts.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
+              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Featured Gift Cards</h2>
+            <span className="text-sm text-gray-500">({promotedProducts.length} featured)</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {promotedProducts.map(product => (
+              <div key={`promoted-${product.id}`} className="relative">
+                {/* Featured badge */}
+                <div className="absolute top-2 right-2 z-10">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-2 py-0.5 text-xs font-semibold text-white shadow-sm">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    Featured
+                  </span>
+                </div>
+                <ProductCard p={product} />
+              </div>
+            ))}
+          </div>
+          {/* Divider */}
+          <div className="mt-8 border-t border-gray-200" />
+        </div>
+      )}
+
+      {/* All Gift Cards Section Header */}
+      {promotedProducts.length > 0 && (
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600">
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900">All Gift Cards</h2>
+          <span className="text-sm text-gray-500">({displayProducts.length} available)</span>
+        </div>
+      )}
 
       {/* Products Grid */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">

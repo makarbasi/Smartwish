@@ -105,17 +105,18 @@ export class SharingService {
 
   private async sendShareEmail(sharedCard: SharedCard): Promise<boolean> {
     try {
-      // Create transporter (you'll need to configure this with your email service)
+      // Create transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
       const transporter = nodemailer.createTransport({
-        service: 'gmail', // or your preferred email service
+        host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
+        secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
         auth: {
-          user: process.env.EMAIL_USER || 'your-email@gmail.com',
-          pass: process.env.EMAIL_PASS || 'your-app-password',
+          user: process.env.EMAIL_USER || 'your-email@smartwish.us',
+          pass: process.env.EMAIL_PASS || 'your-email-password',
         },
         tls: {
           rejectUnauthorized: false, // This will bypass SSL certificate validation
         },
-        secure: true, // Use SSL
       });
 
       const shareUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/view/${sharedCard.id}`;
