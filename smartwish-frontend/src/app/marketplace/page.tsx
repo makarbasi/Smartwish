@@ -43,55 +43,114 @@ let filteredProducts: Product[] = []
 let selectedProduct: Product | null = null
 const selectedAmount: number | null = null
 
-function ProductCard({ p }: { p: Product }) {
+// Category icons mapping
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  'all': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>,
+  'food-and-drink': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  'supermarket': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>,
+  'fashion': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>,
+  'beauty': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>,
+  'gaming': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>,
+  'electronics': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>,
+  'travel-and-leisure': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  'tv-and-movies': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" /></svg>,
+  'music': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>,
+  'sports': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  'home': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+  'other': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>,
+}
+
+// Premium Product Card Component
+function ProductCard({ p, variant = 'default' }: { p: Product; variant?: 'default' | 'featured' }) {
   const selectProduct = (productId: string) => {
-    // Get product data
     selectedProduct = allProducts.find(prod => prod.id === productId) || null
-
-    // Show checkout modal
     showCheckout()
-
-    // Update selected product info
     updateSelectedProductInfo()
-
-    // Generate amount options
     generateAmountOptions()
   }
 
   const imageUrl = p.image || p.logo || null
+  const isFeatured = variant === 'featured'
 
   return (
     <div
-      className="group overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm cursor-pointer"
+      className={`group relative overflow-hidden bg-white cursor-pointer transition-all duration-300 ${
+        isFeatured 
+          ? 'rounded-2xl shadow-lg hover:shadow-2xl hover:-translate-y-1 ring-1 ring-gray-100' 
+          : 'rounded-xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 ring-1 ring-gray-100 hover:ring-indigo-200'
+      }`}
       onClick={() => selectProduct(p.id)}
     >
-      <div className="relative aspect-[3/2] w-full bg-gradient-to-br from-indigo-50 to-purple-50">
+      {/* Hover glow effect */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+        <div className="absolute inset-0 bg-gradient-to-t from-indigo-500/5 to-transparent" />
+      </div>
+      
+      {/* Image container */}
+      <div className={`relative w-full bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 ${
+        isFeatured ? 'aspect-[4/3]' : 'aspect-[3/2]'
+      }`}>
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={p.name}
-            // Full-bleed logo in tile
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             onError={(e) => {
-              // If logo fails to load, show placeholder
               const target = e.target as HTMLImageElement
               target.style.display = 'none'
-              target.parentElement!.innerHTML = '<span class="text-5xl">🎁</span>'
+              target.parentElement!.innerHTML = `
+                <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-100 to-purple-100">
+                  <span class="text-4xl">🎁</span>
+                </div>
+              `
             }}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-5xl">🎁</span>
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-100 to-purple-100">
+            <span className={isFeatured ? 'text-5xl' : 'text-4xl'}>🎁</span>
           </div>
         )}
-      </div>
-      <div className="px-4 pt-3 pb-4 text-left">
-        <div className="flex items-center justify-between">
-          <h3 className="line-clamp-1 text-[15px] font-semibold leading-6 text-gray-900">{p.name}</h3>
-          <div className="text-sm text-gray-700 font-medium">${p.minAmount}-${p.maxAmount}</div>
+        
+        {/* Price badge */}
+        <div className="absolute bottom-2 right-2">
+          <span className="inline-flex items-center px-2 py-1 rounded-lg bg-white/90 backdrop-blur-sm text-xs font-semibold text-gray-900 shadow-sm">
+            ${p.minAmount}–${p.maxAmount}
+          </span>
         </div>
-        <div className="mt-1.5 text-[12px] text-gray-600">{(p.category || 'Gift Card').replace(/[-_]/g, ' ')} · Gift Card</div>
       </div>
+      
+      {/* Content */}
+      <div className={`${isFeatured ? 'p-4' : 'p-3'}`}>
+        <h3 className={`font-semibold text-gray-900 line-clamp-1 group-hover:text-indigo-600 transition-colors ${
+          isFeatured ? 'text-base' : 'text-sm'
+        }`}>
+          {p.name}
+        </h3>
+        <p className="mt-1 text-xs text-gray-500 capitalize">
+          {(p.category || 'Gift Card').replace(/[-_]/g, ' ')}
+        </p>
+      </div>
+      
+      {/* Hover action hint */}
+      <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
+    </div>
+  )
+}
+
+// Featured Card with Badge
+function FeaturedProductCard({ p, badge = 'Featured' }: { p: Product; badge?: string }) {
+  return (
+    <div className="relative flex-shrink-0 w-[280px] sm:w-[320px]">
+      {/* Badge */}
+      <div className="absolute top-3 left-3 z-10">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-xs font-bold text-white shadow-lg shadow-orange-500/25">
+          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          </svg>
+          {badge}
+        </span>
+      </div>
+      <ProductCard p={p} variant="featured" />
     </div>
   )
 }
@@ -366,48 +425,65 @@ function MarketplaceContent() {
   // Show loading state
   if (isLoading) {
     return (
-      <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">GiftCard Hub</h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm sm:text-base text-gray-500">Generate redeemable gift card links instantly with beautiful QR codes.</p>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+        {/* Hero skeleton */}
+        <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-indigo-700 py-12 px-4">
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="h-10 w-64 bg-white/20 rounded-lg mx-auto mb-4 animate-pulse" />
+            <div className="h-6 w-96 bg-white/10 rounded-lg mx-auto animate-pulse" />
+          </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {Array(15).fill(0).map((_, index) => (
-            <div key={`skeleton-${index}`} className="group overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200">
-              <div className="relative">
-                <div className="aspect-[3/2] w-full bg-gray-200 animate-pulse" />
+        
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          {/* Skeleton grid */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {Array(15).fill(0).map((_, index) => (
+              <div key={`skeleton-${index}`} className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-100">
+                <div className="aspect-[3/2] w-full bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse" />
+                <div className="p-3">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4 mb-2" />
+                  <div className="h-3 bg-gray-100 rounded animate-pulse w-1/2" />
+                </div>
               </div>
-              <div className="px-4 pt-3 pb-4 text-left">
-                <div className="h-5 bg-gray-200 rounded animate-pulse w-3/4 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </main>
+            ))}
+          </div>
+        </main>
+      </div>
     )
   }
 
   // Show error state
   if (error || !productsData) {
     return (
-      <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">GiftCard Hub</h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm sm:text-base text-gray-500">Generate redeemable gift card links instantly with beautiful QR codes.</p>
-        </div>
-
-        <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center">
-          <div className="text-red-400 mb-4">
-            <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+        <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-indigo-700 py-16 px-4">
+          <div className="max-w-4xl mx-auto text-center">
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3">GiftCard Hub</h1>
+            <p className="text-indigo-100">Choose the perfect gift in seconds</p>
           </div>
-          <h3 className="text-lg font-medium text-red-800 mb-2">Failed to load gift cards</h3>
-          <p className="text-red-600">There was an error loading the available gift cards. Please try again later.</p>
         </div>
-      </main>
+        
+        <main className="mx-auto max-w-2xl px-4 py-16">
+          <div className="rounded-2xl border border-red-100 bg-red-50 p-8 text-center shadow-sm">
+            <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <svg className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-red-900 mb-2">Unable to load gift cards</h3>
+            <p className="text-red-600 mb-6">We couldn't load the available gift cards. Please try again.</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Try Again
+            </button>
+          </div>
+        </main>
+      </div>
     )
   }
 
@@ -423,155 +499,263 @@ function MarketplaceContent() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-      {/* Back Button */}
-      <div className="mb-6">
-        <button
-          onClick={handleBack}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
+      {/* ==================== HERO SECTION ==================== */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-purple-600 to-indigo-700">
+        {/* Background pattern */}
+        <div className="absolute inset-0 opacity-10">
+          <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="hero-pattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                <circle cx="20" cy="20" r="2" fill="white" />
+              </pattern>
+            </defs>
+            <rect fill="url(#hero-pattern)" width="100%" height="100%" />
           </svg>
-          Back
-        </button>
-      </div>
-
-      {/* Header */}
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">GiftCard Hub</h1>
-        <p className="mx-auto mt-3 max-w-2xl text-sm sm:text-base text-gray-500">Generate redeemable gift card links instantly with beautiful QR codes.</p>
-      </div>
-
-      {/* Floating Search Bar */}
-      <div className="sticky top-4 z-30 mb-6">
-        <div className="mx-auto max-w-3xl">
-          <div className="relative">
-            <div className="flex items-center gap-1 sm:gap-2 rounded-2xl bg-white/95 p-1.5 sm:p-2 shadow-sm ring-1 ring-gray-300 backdrop-blur transition focus-within:ring-indigo-400">
-              <VirtualInput
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search for gift cards..."
-                className="flex-1 min-w-0 rounded-2xl bg-transparent px-2 sm:px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
-              />
-
-              {/* Voice Input Button - hidden when micEnabled is false */}
-              {micEnabled && (
-                <button
-                  type="button"
-                  onClick={startVoiceSearch}
-                  className={`flex-shrink-0 mr-1 sm:mr-2 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full shadow-xs transition-all ${isVoiceRecording
-                    ? 'bg-red-600 text-white hover:bg-red-500'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  aria-label="Voice search"
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="currentColor" aria-hidden="true">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-              )}
-
-              {/* Search Button */}
-              <button
-                type="button"
-                className="flex-shrink-0 mr-0.5 sm:mr-1 grid h-8 w-8 sm:h-10 sm:w-10 place-items-center rounded-full bg-indigo-600 text-white shadow-xs hover:bg-indigo-500 transition-all"
-                aria-label="Search"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="m21 21-4.35-4.35" />
-                </svg>
-              </button>
-            </div>
-          </div>
         </div>
-      </div>
-
-      {/* Filters */}
-      <div className="mb-6 flex justify-center">
-        <div className="flex max-w-full gap-2 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {categoryTabs.map((tab) => (
-            <button
-              key={tab.key}
-              className={`filter-btn whitespace-nowrap px-4 py-2 text-sm font-medium rounded-full border transition-colors ${activeFilter === tab.key
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              onClick={() => filterProducts(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Promoted Gift Cards Section - Always visible, unaffected by search/filter */}
-      {promotedProducts.length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
-              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+        
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+          {/* Back button */}
+          <button
+            onClick={handleBack}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all mb-6"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back
+          </button>
+          
+          {/* Hero content */}
+          <div className="text-center max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white/90 text-sm font-medium mb-4">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
+              Over {displayProducts.length}+ brands available
             </div>
-            <h2 className="text-xl font-bold text-gray-900">Featured Gift Cards</h2>
-            <span className="text-sm text-gray-500">({promotedProducts.length} featured)</span>
-          </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {promotedProducts.map(product => (
-              <div key={`promoted-${product.id}`} className="relative">
-                {/* Featured badge */}
-                <div className="absolute top-2 right-2 z-10">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-2 py-0.5 text-xs font-semibold text-white shadow-sm">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+            
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-3 tracking-tight">
+              GiftCard Hub
+            </h1>
+            <p className="text-lg sm:text-xl text-indigo-100 mb-8 max-w-2xl mx-auto">
+              Choose the perfect gift in seconds. Browse top brands and send instantly.
+            </p>
+            
+            {/* Premium Search Bar */}
+            <div className="max-w-2xl mx-auto">
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl blur opacity-25 group-hover:opacity-40 transition-opacity" />
+                <div className="relative flex items-center gap-2 rounded-xl bg-white p-2 shadow-2xl shadow-indigo-900/20">
+                  <div className="flex-1 flex items-center gap-2 px-3">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
                     </svg>
-                    Featured
-                  </span>
+                    <VirtualInput
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Search for gift cards..."
+                      className="flex-1 min-w-0 py-2 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none bg-transparent"
+                    />
+                  </div>
+                  
+                  {/* Voice Input Button */}
+                  {micEnabled && (
+                    <button
+                      type="button"
+                      onClick={startVoiceSearch}
+                      className={`flex-shrink-0 grid h-10 w-10 place-items-center rounded-lg transition-all ${
+                        isVoiceRecording
+                          ? 'bg-red-500 text-white animate-pulse'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                      }`}
+                      aria-label="Voice search"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  )}
+                  
+                  {/* Search Button */}
+                  <button
+                    type="button"
+                    className="flex-shrink-0 grid h-10 w-10 place-items-center rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                    aria-label="Search"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
+                    </svg>
+                  </button>
                 </div>
-                <ProductCard p={product} />
               </div>
-            ))}
-          </div>
-          {/* Divider */}
-          <div className="mt-8 border-t border-gray-200" />
-        </div>
-      )}
-
-      {/* All Gift Cards Section Header */}
-      {promotedProducts.length > 0 && (
-        <div className="flex items-center gap-2 mb-4">
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-gray-900">All Gift Cards</h2>
-          <span className="text-sm text-gray-500">({displayProducts.length} available)</span>
-        </div>
-      )}
-
-      {/* Products Grid */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {displayProducts.length === 0 ? (
-          <div className="col-span-full text-center py-12">
-            <div className="text-gray-400 mb-4">
-              <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No gift cards found</h3>
-            <p className="text-gray-500">Try adjusting your search or filters</p>
           </div>
-        ) : (
-          displayProducts.map(product => <ProductCard key={product.id} p={product} />)
-        )}
+        </div>
+        
+        {/* Wave divider */}
+        <div className="absolute bottom-0 left-0 right-0">
+          <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+            <path d="M0 60V30C240 50 480 60 720 45C960 30 1200 0 1440 15V60H0Z" fill="white" fillOpacity="0.1" />
+            <path d="M0 60V40C240 55 480 60 720 50C960 40 1200 20 1440 30V60H0Z" className="fill-slate-50" />
+          </svg>
+        </div>
       </div>
+
+      {/* ==================== MAIN CONTENT ==================== */}
+      <main className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 -mt-2">
+        
+        {/* ==================== CATEGORY PILLS ==================== */}
+        <div className="py-6">
+          <div className="flex justify-center">
+            <div className="inline-flex max-w-full gap-2 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {categoryTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  className={`group inline-flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium rounded-full transition-all duration-200 ${
+                    activeFilter === tab.key
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
+                      : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 ring-1 ring-gray-200 hover:ring-gray-300'
+                  }`}
+                  onClick={() => filterProducts(tab.key)}
+                >
+                  <span className={`transition-colors ${activeFilter === tab.key ? 'text-indigo-200' : 'text-gray-400 group-hover:text-gray-500'}`}>
+                    {CATEGORY_ICONS[tab.key] || CATEGORY_ICONS['other']}
+                  </span>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ==================== FEATURED GIFT CARDS SECTION ==================== */}
+        {promotedProducts.length > 0 && (
+          <section className="py-8">
+            {/* Section header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-500/25">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Featured Gift Cards</h2>
+                  <p className="text-sm text-gray-500">Hand-picked top brands for you</p>
+                </div>
+              </div>
+              <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-sm font-medium">
+                {promotedProducts.length} curated
+              </span>
+            </div>
+            
+            {/* Horizontal scroll carousel */}
+            <div className="relative -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+              <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {promotedProducts.map((product, idx) => (
+                  <FeaturedProductCard 
+                    key={`featured-${product.id}`} 
+                    p={product} 
+                    badge={idx === 0 ? 'Top Pick' : idx === 1 ? 'Popular' : 'Featured'}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ==================== SECTION DIVIDER ==================== */}
+        {promotedProducts.length > 0 && (
+          <div className="py-4">
+            <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
+          </div>
+        )}
+
+        {/* ==================== ALL GIFT CARDS SECTION ==================== */}
+        <section className="py-8">
+          {/* Section header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/25">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
+                  {searchTerm || activeFilter !== 'all' ? 'Search Results' : 'All Gift Cards'}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {searchTerm ? `Showing results for "${searchTerm}"` : 'Browse our complete collection'}
+                </p>
+              </div>
+            </div>
+            <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
+              {displayProducts.length} available
+            </span>
+          </div>
+          
+          {/* Products Grid */}
+          {displayProducts.length === 0 ? (
+            <div className="text-center py-16 px-4">
+              <div className="mx-auto w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+                <svg className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No gift cards found</h3>
+              <p className="text-gray-500 mb-6 max-w-sm mx-auto">
+                We couldn't find any gift cards matching your search. Try different keywords or browse all categories.
+              </p>
+              <button
+                onClick={() => { setSearchTerm(''); setActiveFilter('all'); }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Clear Filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {displayProducts.map(product => (
+                <ProductCard key={product.id} p={product} />
+              ))}
+            </div>
+          )}
+        </section>
+        
+        {/* ==================== TRUST FOOTER ==================== */}
+        <div className="py-12 border-t border-gray-100">
+          <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-gray-400">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span>Secure Payments</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>Instant Delivery</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              <span>500+ Brands</span>
+            </div>
+          </div>
+        </div>
+      </main>
 
       {/* Checkout Modal */}
       <CheckoutModal
@@ -600,7 +784,7 @@ function MarketplaceContent() {
         successData={successData}
         qrCodeDataUrl={qrCodeDataUrl}
       />
-    </main>
+    </div>
   )
 }
 
@@ -1565,10 +1749,15 @@ function PaymentModalContent({
 
 export default function MarketplacePage() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Suspense fallback={<div>Loading...</div>}>
-        <MarketplaceContent />
-      </Suspense>
-    </div>
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-500">Loading gift cards...</p>
+        </div>
+      </div>
+    }>
+      <MarketplaceContent />
+    </Suspense>
   )
 }
