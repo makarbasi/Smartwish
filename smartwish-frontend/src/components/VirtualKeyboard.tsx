@@ -5,18 +5,25 @@ import Keyboard from 'react-simple-keyboard'
 import 'react-simple-keyboard/build/css/index.css'
 import { useVirtualKeyboard } from '@/contexts/VirtualKeyboardContext'
 import { useDeviceMode } from '@/contexts/DeviceModeContext'
+import { useKioskSafe } from '@/contexts/KioskContext'
 import { usePathname } from 'next/navigation'
 
 export default function VirtualKeyboard() {
   const { isKeyboardVisible, inputValue, inputType, updateInputValue, hideKeyboard, currentInputRef } = useVirtualKeyboard()
   const { isKiosk } = useDeviceMode()
+  const kioskContext = useKioskSafe()
+  const kioskConfig = kioskContext?.config ?? null
   const pathname = usePathname()
   const keyboardRef = useRef<any>(null)
   const isUpdatingFromKeyboard = useRef(false)
   const [layoutName, setLayoutName] = React.useState('default')
   const [capsLock, setCapsLock] = React.useState(false)
 
-  console.log('🎹 [VirtualKeyboard] Component rendering...', { isKeyboardVisible, isKiosk })
+  // Get virtual keyboard config (with defaults - if no config, assume enabled)
+  const virtualKeyboardEnabled = kioskConfig?.virtualKeyboard?.enabled !== false
+  const showBuiltInKeyboard = kioskConfig?.virtualKeyboard?.showBuiltInKeyboard !== false
+
+  console.log('🎹 [VirtualKeyboard] Component rendering...', { isKeyboardVisible, isKiosk, virtualKeyboardEnabled, showBuiltInKeyboard })
 
   // Reset layout when keyboard is hidden or input type changes
   useEffect(() => {
@@ -158,31 +165,79 @@ export default function VirtualKeyboard() {
   // Check if we're on login page (only login, not signup/forgot-password)
   const isLoginPage = pathname?.includes('/sign-in')
 
-  // Show keyboard if: Kiosk mode OR on login page (need keyboard to login as kiosk)
-  const shouldShowKeyboard = isKiosk || isLoginPage
+  // Show keyboard area if: (Kiosk mode AND virtualKeyboard enabled) OR on login page
+  const shouldEnableKeyboardSupport = (isKiosk && virtualKeyboardEnabled) || isLoginPage
+  
+  // Only show our built-in keyboard if the setting is enabled (or on login page where we always need it)
+  const shouldShowBuiltInKeyboard = shouldEnableKeyboardSupport && (showBuiltInKeyboard || isLoginPage)
 
   // Debug logging
   console.log('[VirtualKeyboard] Debug Info:', {
     pathname,
     isLoginPage,
     isKiosk,
-    shouldShowKeyboard,
+    virtualKeyboardEnabled,
+    showBuiltInKeyboard,
+    shouldEnableKeyboardSupport,
+    shouldShowBuiltInKeyboard,
     isKeyboardVisible
   })
 
-  if (!shouldShowKeyboard) {
-    console.log('[VirtualKeyboard] ❌ Keyboard disabled - Not in Kiosk mode and not on login page')
+  // If virtual keyboard support is disabled entirely, return null (no shrinking, no keyboard)
+  if (!shouldEnableKeyboardSupport) {
+    console.log('[VirtualKeyboard] ❌ Keyboard support disabled in kiosk config')
     return null
   }
 
   if (!isKeyboardVisible) {
+    // If keyboard support is enabled but keyboard isn't visible, render a placeholder for page shrinking
+    // This allows the CSS to shrink the page when an input is focused, even if using Windows touch keyboard
+    if (shouldEnableKeyboardSupport && !showBuiltInKeyboard && isKiosk) {
+      // Return just the CSS without the keyboard UI - page will still shrink
+      return (
+        <style jsx global>{`
+          /* Page shrinking for Windows Touch Keyboard mode - always shrink when virtual keyboard support is enabled */
+          body.keyboard-space-reserved {
+            padding-top: 380px !important;
+            transition: padding-top 0.2s ease-out;
+          }
+          @media (max-width: 768px) {
+            body.keyboard-space-reserved {
+              padding-top: 340px !important;
+            }
+          }
+        `}</style>
+      )
+    }
     return null
+  }
+
+  // If keyboard is visible but we shouldn't show our built-in keyboard, just add page shrinking
+  if (!shouldShowBuiltInKeyboard) {
+    console.log('[VirtualKeyboard] Page shrinking only - using Windows Touch Keyboard')
+    return (
+      <>
+        {/* Invisible placeholder to trigger page shrinking CSS */}
+        <div className="virtual-keyboard-container" style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '350px', pointerEvents: 'none', zIndex: -1 }} />
+        <style jsx global>{`
+          body:has(.virtual-keyboard-container) {
+            padding-top: 380px !important;
+            transition: padding-top 0.2s ease-out;
+          }
+          @media (max-width: 768px) {
+            body:has(.virtual-keyboard-container) {
+              padding-top: 340px !important;
+            }
+          }
+        `}</style>
+      </>
+    )
   }
 
   if (isLoginPage && !isKiosk) {
     console.log('[VirtualKeyboard] Rendering keyboard - Login page')
   } else {
-    console.log('[VirtualKeyboard] Rendering keyboard - Kiosk mode active')
+    console.log('[VirtualKeyboard] Rendering keyboard - Kiosk mode active with built-in keyboard')
   }
 
   return (
