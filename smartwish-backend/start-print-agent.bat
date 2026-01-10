@@ -6,13 +6,16 @@ echo.
 echo This agent polls the cloud server for print jobs
 echo and prints them to your local printer.
 echo.
-echo Make sure you have set the correct printer name!
+echo IMPORTANT: Printer name is now set per-kiosk in
+echo /admin/kiosks - no need to change DEFAULT_PRINTER here.
+echo The printer from kiosk config is used for each job.
 echo.
 
 REM Set your cloud server URL (change if different)
 set CLOUD_SERVER_URL=https://smartwish.onrender.com
 
-REM Set your default printer name (find exact name in Windows printer settings)
+REM Fallback default printer (only used if job has no printerName)
+REM Each job now gets printerName from its kiosk config in /admin/kiosks
 set DEFAULT_PRINTER=HP OfficeJet Pro 9130e Series [HPIE4B65B]
 
 REM How often to check for new jobs (5000 = 5 seconds)
@@ -20,8 +23,9 @@ set POLL_INTERVAL=5000
 
 echo Configuration:
 echo   Server: %CLOUD_SERVER_URL%
-echo   Printer: %DEFAULT_PRINTER%
+echo   Fallback Printer: %DEFAULT_PRINTER%
 echo   Poll Interval: %POLL_INTERVAL%ms
+echo   Note: Printer name from /admin/kiosks config is used per-job
 echo.
 
 REM ===============================================

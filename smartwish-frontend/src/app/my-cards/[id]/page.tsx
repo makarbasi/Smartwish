@@ -1409,6 +1409,7 @@ export default function CustomizeCardPage() {
     giftCardBrand?: string;
     giftCardAmount?: number;
     giftCardCode?: string;
+    printerName?: string;
     paperType?: string;
     paperSize?: string;
     trayNumber?: number | null;
@@ -1484,6 +1485,7 @@ export default function CustomizeCardPage() {
           productId: cardData?.id,
           productName: cardData?.name || 'Greeting Card',
           price,
+          printerName, // Include printer name for local agent to use
           paperType,
           paperSize: 'letter',
           trayNumber: trayNumber ? parseInt(trayNumber.replace('tray-', '')) : null,
