@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
           }
           
           // Call backend to record transaction (use server-side auth)
-          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001'
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'
           
           // Check if transaction already exists (frontend might have succeeded)
           const checkResponse = await fetch(`${backendUrl}/orders/transactions/by-stripe/${paymentIntent.id}`, {
