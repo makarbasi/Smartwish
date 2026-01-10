@@ -307,5 +307,44 @@
     "expiresAt": "2026-04-10T17:55:25.575Z",
     "cardData": null,
     "giftCardData": null
+  },
+  {
+    "id": "7de33e22-6606-4677-9276-d80b496d58da",
+    "cardId": "46ebf7b4-c1e1-4e6a-860e-fa945feca8ac",
+    "userId": "5934ceee-181a-4258-9fed-5ff536e5464e",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Smartwish",
+    "senderEmail": "kiosk@smartwish.us",
+    "message": "hi",
+    "createdAt": "2026-01-10T18:42:43.994Z",
+    "expiresAt": "2026-04-10T18:42:43.994Z",
+    "cardData": null,
+    "giftCardData": null
+  },
+  {
+    "id": "3464a2cd-7858-455c-89a3-8291893bfaeb",
+    "cardId": "5c11147e-2650-492a-a2e9-606e688bd816",
+    "userId": "5934ceee-181a-4258-9fed-5ff536e5464e",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Smartwish",
+    "senderEmail": "kiosk@smartwish.us",
+    "message": "hi",
+    "createdAt": "2026-01-10T18:57:40.859Z",
+    "expiresAt": "2026-04-10T18:57:40.859Z",
+    "cardData": null,
+    "giftCardData": null
+  },
+  {
+    "id": "06a4306f-2012-4615-9aeb-1d3ffa3e6bcc",
+    "cardId": "2f4a0202-2844-4052-9817-4744b996ff70",
+    "userId": "5934ceee-181a-4258-9fed-5ff536e5464e",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Smartwish",
+    "senderEmail": "kiosk@smartwish.us",
+    "message": "",
+    "createdAt": "2026-01-10T19:09:09.552Z",
+    "expiresAt": "2026-04-10T19:09:09.552Z",
+    "cardData": null,
+    "giftCardData": null
   }
 ]

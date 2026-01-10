@@ -58,12 +58,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if email configuration is available
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    // Check if email configuration is available (support both EMAIL_PASSWORD and EMAIL_PASS)
+    const emailPass = process.env.EMAIL_PASSWORD || process.env.EMAIL_PASS;
+    if (!process.env.EMAIL_USER || !emailPass) {
       return NextResponse.json(
         { 
           error: "Email service not configured. Please contact administrator to set up email credentials.",
-          details: "EMAIL_USER and EMAIL_PASSWORD environment variables are required"
+          details: "EMAIL_USER and EMAIL_PASSWORD (or EMAIL_PASS) environment variables are required"
         },
         { status: 503 }
       );
@@ -133,17 +134,19 @@ export async function POST(request: NextRequest) {
     // Create the card view URL using shareId
     const cardViewUrl = `${process.env.NEXTAUTH_URL}/ecard/${shareId}`;
 
-    // Configure nodemailer transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
+    // Configure nodemailer transporter with SMTP configuration (supports Office 365, Gmail, GoDaddy, and other SMTP servers)
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+      host: process.env.SMTP_HOST || 'smtp.office365.com',
       port: parseInt(process.env.SMTP_PORT || '587', 10),
       secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
+        pass: emailPass, // Use the email password from either EMAIL_PASSWORD or EMAIL_PASS
       },
       tls: {
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
+        // Office 365 uses TLS 1.2+, no need for SSLv3 (which is deprecated)
+        minVersion: 'TLSv1.2'
       }
     });
 
@@ -290,10 +293,20 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("Send e-card error:", error);
+    console.error("Error details:", {
+      message: error?.message,
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+      stack: error?.stack
+    });
     return NextResponse.json(
-      { error: "Failed to send e-card" },
+      { 
+        error: "Failed to send e-card",
+        details: error?.message || "Unknown error occurred"
+      },
       { status: 500 }
     );
   }

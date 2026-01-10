@@ -493,6 +493,9 @@ export class AppController {
           qrCodeLength: giftCardData.qrCode?.length || 0,
           qrCodePrefix: giftCardData.qrCode?.substring(0, 50) || 'N/A',
           hasStoreLogo: !!giftCardData.storeLogo,
+          storeLogoType: typeof giftCardData.storeLogo,
+          storeLogoValue: giftCardData.storeLogo || 'EMPTY/UNDEFINED',
+          storeLogoLength: giftCardData.storeLogo?.length || 0,
           hasRedemptionLink: !!giftCardData.redemptionLink
         });
       } else {
@@ -605,21 +608,43 @@ export class AppController {
               if (qrBuffer) {
                 // Process store logo if present
                 let storeLogo = '';
+                console.log('[print-pc] 🏪 Store logo check:', {
+                  hasStoreLogo: !!giftCardData.storeLogo,
+                  storeLogoType: typeof giftCardData.storeLogo,
+                  storeLogoPrefix: giftCardData.storeLogo?.substring(0, 50) || 'N/A'
+                });
+                
                 if (giftCardData.storeLogo) {
                   try {
                     if (giftCardData.storeLogo.startsWith('data:')) {
+                      console.log('[print-pc] 🏪 Store logo is already base64 data URL');
                       storeLogo = giftCardData.storeLogo;
                     } else {
+                      console.log('[print-pc] 🏪 Fetching store logo from URL:', giftCardData.storeLogo);
                       const response = await fetch(giftCardData.storeLogo);
+                      console.log('[print-pc] 🏪 Store logo fetch response:', {
+                        ok: response.ok,
+                        status: response.status,
+                        contentType: response.headers.get('content-type')
+                      });
                       if (response.ok) {
                         const logoBuffer = await response.buffer();
+                        // Detect image type from content-type header or URL
+                        const contentType = response.headers.get('content-type') || 'image/png';
+                        const mimeType = contentType.split(';')[0].trim();
                         const logoBase64 = logoBuffer.toString('base64');
-                        storeLogo = `data:image/png;base64,${logoBase64}`;
+                        storeLogo = `data:${mimeType};base64,${logoBase64}`;
+                        console.log('[print-pc] ✅ Store logo converted to base64, length:', logoBase64.length);
+                      } else {
+                        console.warn('[print-pc] ⚠️ Store logo fetch failed with status:', response.status);
                       }
                     }
                   } catch (logoError) {
-                    console.warn('[print-pc] Failed to process store logo:', logoError?.message);
+                    console.warn('[print-pc] ❌ Failed to process store logo:', logoError?.message);
+                    console.warn('[print-pc] Logo URL was:', giftCardData.storeLogo);
                   }
+                } else {
+                  console.log('[print-pc] ⚠️ No store logo provided in gift card data');
                 }
 
                 // Convert QR code to base64 for SVG embedding
@@ -1706,25 +1731,40 @@ export class AppController {
           if (qrBuffer) {
             // Create gift card overlay SVG with QR code, logo, and info
             let storeLogo = '';
+            console.log('[generate-print-jpegs] 🏪 Store logo check:', {
+              hasStoreLogo: !!giftCardData.storeLogo,
+              storeLogoType: typeof giftCardData.storeLogo,
+              storeLogoPrefix: giftCardData.storeLogo?.substring(0, 50) || 'N/A'
+            });
+            
             if (giftCardData.storeLogo) {
               try {
                 if (giftCardData.storeLogo.startsWith('data:')) {
                   // Already a base64 data URL
                   storeLogo = giftCardData.storeLogo;
-                  console.log('[generate-print-jpegs] Store logo is already base64 encoded');
+                  console.log('[generate-print-jpegs] ✅ Store logo is already base64 encoded');
                 } else {
                   // Handle HTTP URL with fallback
                   try {
+                    console.log('[generate-print-jpegs] 🏪 Fetching store logo from URL:', giftCardData.storeLogo);
                     const response = await fetch(giftCardData.storeLogo);
+                    console.log('[generate-print-jpegs] 🏪 Store logo fetch response:', {
+                      ok: response.ok,
+                      status: response.status,
+                      contentType: response.headers.get('content-type')
+                    });
                     if (!response.ok) {
                       throw new Error(`Failed to download store logo from ${giftCardData.storeLogo}`);
                     }
                     const logoBuffer = await response.buffer();
+                    // Detect image type from content-type header
+                    const contentType = response.headers.get('content-type') || 'image/png';
+                    const mimeType = contentType.split(';')[0].trim();
                     const logoBase64 = logoBuffer.toString('base64');
-                    storeLogo = `data:image/png;base64,${logoBase64}`;
-                    console.log('[generate-print-jpegs] Store logo downloaded and encoded');
+                    storeLogo = `data:${mimeType};base64,${logoBase64}`;
+                    console.log('[generate-print-jpegs] ✅ Store logo downloaded and encoded, length:', logoBase64.length);
                   } catch (logoError) {
-                    console.warn('[generate-print-jpegs] Failed to download store logo, skipping:', logoError.message);
+                    console.warn('[generate-print-jpegs] ❌ Failed to download store logo, skipping:', logoError.message);
                   }
                 }
               } catch (logoError) {

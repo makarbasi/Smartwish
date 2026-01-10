@@ -208,17 +208,18 @@ async function bootstrap() {
   expressApp.use(bodyParser.json({ limit: '50mb' }));
   expressApp.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-  // Create nodemailer transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
+  // Create nodemailer transporter with SMTP configuration (supports Office 365, Gmail, GoDaddy, and other SMTP servers)
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || process.env.EMAIL_USER ? 'smtpout.secureserver.net' : 'smtp.gmail.com',
+    host: process.env.SMTP_HOST || 'smtp.office365.com',
     port: parseInt(process.env.SMTP_PORT || '587', 10),
     secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
     auth: {
-      user: process.env.EMAIL_USER || process.env.GMAIL_USER || 'ma.karbasi@gmail.com',
-      pass: process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || 'xzkyuniylijauvas'
+      user: process.env.EMAIL_USER || process.env.GMAIL_USER || 'amin@smartwish.us',
+      pass: process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD
     },
     tls: {
-      rejectUnauthorized: false
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2' // Office 365 requires TLS 1.2+
     }
   });
 
