@@ -431,27 +431,29 @@ export default function KioskHomePage() {
             </div>
           </div>
           
-          {/* Content */}
-          <div className="relative pt-72 lg:pt-80 pb-10 px-8 flex flex-col items-center text-center">
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-3 group-hover:text-indigo-200 transition-colors duration-300">
-              Greeting Cards
-            </h2>
-            <p className="text-base md:text-lg text-gray-400 max-w-sm mb-6">
-              Personalized cards for birthdays, holidays & special occasions
-            </p>
-            
-            {/* CTA */}
-            <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
-              greetingCardsEnabled
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/40 group-hover:shadow-indigo-500/60'
-                : 'bg-gray-600/50 text-gray-400'
-            }`}>
-              <span>{greetingCardsEnabled ? 'Create Now' : 'Coming Soon'}</span>
-              {greetingCardsEnabled && (
-                <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              )}
+          {/* Content with semi-transparent overlay for readability */}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-32 pb-10 px-8">
+            <div className="flex flex-col items-center text-center">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-3 group-hover:text-indigo-200 transition-colors duration-300 drop-shadow-lg">
+                Greeting Cards
+              </h2>
+              <p className="text-base md:text-lg text-gray-200 max-w-sm mb-6 drop-shadow-md">
+                Personalized cards for birthdays, holidays & special occasions
+              </p>
+              
+              {/* CTA */}
+              <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
+                greetingCardsEnabled
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/40 group-hover:shadow-indigo-500/60'
+                  : 'bg-gray-600/50 text-gray-400'
+              }`}>
+                <span>{greetingCardsEnabled ? 'Create Now' : 'Coming Soon'}</span>
+                {greetingCardsEnabled && (
+                  <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                )}
+              </div>
             </div>
           </div>
         </button>
@@ -552,27 +554,29 @@ export default function KioskHomePage() {
             </div>
           </div>
           
-          {/* Content */}
-          <div className="relative pt-72 lg:pt-80 pb-10 px-8 flex flex-col items-center text-center">
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-3 group-hover:text-pink-200 transition-colors duration-300">
-              Stickers
-            </h2>
-            <p className="text-base md:text-lg text-gray-400 max-w-sm mb-6">
-              Custom round stickers for decorations, labels & fun designs
-            </p>
-            
-            {/* CTA */}
-            <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
-              stickersEnabled
-                ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow-lg shadow-pink-500/40 group-hover:shadow-pink-500/60'
-                : 'bg-gray-600/50 text-gray-400'
-            }`}>
-              <span>{stickersEnabled ? 'Create Now' : 'Coming Soon'}</span>
-              {stickersEnabled && (
-                <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              )}
+          {/* Content with semi-transparent overlay for readability */}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-32 pb-10 px-8">
+            <div className="flex flex-col items-center text-center">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-3 group-hover:text-pink-200 transition-colors duration-300 drop-shadow-lg">
+                Stickers
+              </h2>
+              <p className="text-base md:text-lg text-gray-200 max-w-sm mb-6 drop-shadow-md">
+                Custom round stickers for decorations, labels & fun designs
+              </p>
+              
+              {/* CTA */}
+              <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
+                stickersEnabled
+                  ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow-lg shadow-pink-500/40 group-hover:shadow-pink-500/60'
+                  : 'bg-gray-600/50 text-gray-400'
+              }`}>
+                <span>{stickersEnabled ? 'Create Now' : 'Coming Soon'}</span>
+                {stickersEnabled && (
+                  <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                )}
+              </div>
             </div>
           </div>
         </button>
