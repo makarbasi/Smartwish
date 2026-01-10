@@ -49,9 +49,10 @@ async function bootstrap() {
   }));
 
   // Rate limiting - CRITICAL FOR PRODUCTION
+  // Increased limits for development and payment polling
   const globalRateLimit = rateLimit.default({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000') || 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100') || 100, // limit each IP to 100 requests per windowMs
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000') || 60 * 1000, // 1 minute window
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '300') || 300, // 300 requests per minute (allows for payment status polling)
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -73,7 +74,34 @@ async function bootstrap() {
     }
   });
 
-  // Apply global rate limiting
+  // Configure CORS FIRST (before rate limiting so 429 responses include CORS headers)
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://hotels.localhost:3001']; // Default to localhost for development
+
+  // Add production origins
+  const productionOrigins = process.env.PRODUCTION_ORIGINS
+    ? process.env.PRODUCTION_ORIGINS.split(',')
+    : ['https://frontend-smartwish.onrender.com', 'https://smartwish.onrender.com', 'https://app.smartwish.us', 'https://hotels.smartwish.us'];
+  allowedOrigins.push(...productionOrigins);
+
+  const corsConfig = {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    maxAge: 86400, // 24 hours
+  };
+
+  // Enable CORS before rate limiting
+  app.enableCors(corsConfig);
+
+  console.log('CORS Configuration:', {
+    environment: process.env.NODE_ENV,
+    allowedOrigins: corsConfig.origin,
+  });
+
+  // Apply global rate limiting (AFTER CORS)
   app.use(globalRateLimit);
 
   // Apply stricter rate limiting to auth endpoints
@@ -173,28 +201,7 @@ async function bootstrap() {
     next();
   });
 
-  // Configure CORS with production security
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://hotels.localhost:3001']; // Default to localhost for development
-
-  // Add production origins only if not in development mode
-  if (process.env.NODE_ENV !== 'development') {
-    const productionOrigins = process.env.PRODUCTION_ORIGINS
-      ? process.env.PRODUCTION_ORIGINS.split(',')
-      : ['https://frontend-smartwish.onrender.com/', 'https://smartwish.onrender.com', 'https://app.smartwish.us', 'https://hotels.smartwish.us'];
-    allowedOrigins.push(...productionOrigins);
-  }
-
-  const corsConfig = {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-    maxAge: 86400, // 24 hours
-  };
-
-  // Contact form endpoint (before CORS to ensure proper handling)
+  // Contact form endpoint
   const expressApp = app.getHttpAdapter().getInstance();
 
   // Configure body parser before endpoints
@@ -266,15 +273,6 @@ async function bootstrap() {
     res.header('Access-Control-Allow-Credentials', 'true');
     res.sendStatus(200);
   });
-
-  app.enableCors(corsConfig);
-
-  console.log('CORS Configuration:', {
-    environment: process.env.NODE_ENV,
-    allowedOrigins: corsConfig.origin,
-  });
-
-  // Body parser already configured above for Express routes
 
   const port = process.env.PORT ?? 3001;
   console.log(

@@ -294,5 +294,18 @@
       "storeLogo": "https://assets.tillo.io/v2/images/brands/logos/180x180/the-home-depot-us.jpg",
       "redemptionLink": "https://revealyourgift.com/90d06c14-39ee-4132-a1e9-cd26d3271f18/f7c6f247-59c4-4f9a-8a15-87f1d2b8687d"
     }
+  },
+  {
+    "id": "23b3e0ba-15ed-4792-9807-dcfe06abbc10",
+    "cardId": "36617fab-d020-4754-bf25-f5dd78a1a800",
+    "userId": "5934ceee-181a-4258-9fed-5ff536e5464e",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Smartwish",
+    "senderEmail": "kiosk@smartwish.us",
+    "message": "Amin karbasi",
+    "createdAt": "2026-01-10T17:55:25.575Z",
+    "expiresAt": "2026-04-10T17:55:25.575Z",
+    "cardData": null,
+    "giftCardData": null
   }
 ]

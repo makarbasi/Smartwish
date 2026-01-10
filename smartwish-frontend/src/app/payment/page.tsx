@@ -114,6 +114,12 @@ function PaymentForm() {
   const [loadingSession, setLoadingSession] = useState(true)
   const [sessionData, setSessionData] = useState<any>(null)
   
+  // ✅ Helper function to safely format currency values
+  const formatCurrency = (value: any): string => {
+    const num = parseFloat(value)
+    return isNaN(num) ? '0.00' : num.toFixed(2)
+  }
+  
   // 🔍 DEBUG: Log every render to see if component updates
   console.log('🔍 RENDER: PaymentForm - paymentComplete:', paymentComplete, 'isProcessing:', isProcessing)
 
@@ -200,13 +206,26 @@ function PaymentForm() {
       const order = orderData.order
       console.log('✅ Order loaded:', order.id, 'Status:', order.status)
 
+      // ✅ FIX: Parse all numeric values to ensure they are numbers (backend may return strings)
+      const totalAmount = parseFloat(order.totalAmount) || 0
+      const cardPrice = parseFloat(order.cardPrice) || 0
+      const giftCardAmount = parseFloat(order.giftCardAmount) || 0
+      const processingFee = parseFloat(order.processingFee) || 0
+
+      console.log('💰 Parsed amounts:', { totalAmount, cardPrice, giftCardAmount, processingFee })
+
+      // Validate total amount
+      if (totalAmount < 0.01) {
+        throw new Error('Invalid order amount. Please try again.')
+      }
+
       // Check if order is already paid
       if (order.status === 'paid' || order.status === 'completed') {
         setPaymentComplete(true)
         setSessionData({
           cardId,
           action,
-          amount: order.totalAmount,
+          amount: totalAmount,
           orderId: order.id
         })
         setLoadingSession(false)
@@ -217,13 +236,13 @@ function PaymentForm() {
       setSessionData({
         cardId,
         action,
-        amount: order.totalAmount,
+        amount: totalAmount,
         orderId: order.id,
         priceBreakdown: {
-          cardPrice: order.cardPrice,
-          giftCardAmount: order.giftCardAmount,
-          processingFee: order.processingFee,
-          total: order.totalAmount
+          cardPrice: cardPrice,
+          giftCardAmount: giftCardAmount,
+          processingFee: processingFee,
+          total: totalAmount
         }
       })
 
@@ -233,7 +252,7 @@ function PaymentForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: order.totalAmount,
+          amount: totalAmount,
           currency: 'usd',
           metadata: {
             orderId: order.id,
@@ -242,9 +261,9 @@ function PaymentForm() {
             cardId,
             action,
             source: 'mobile_qr_payment',
-            cardPrice: order.cardPrice,
-            giftCardAmount: order.giftCardAmount,
-            processingFee: order.processingFee
+            cardPrice: cardPrice,
+            giftCardAmount: giftCardAmount,
+            processingFee: processingFee
           }
         })
       })
@@ -410,7 +429,7 @@ function PaymentForm() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-3">Payment Successful!</h1>
           <p className="text-gray-600 mb-6">
-            Your payment of ${sessionData?.amount?.toFixed(2) || '0.00'} has been processed successfully.
+            Your payment of ${formatCurrency(sessionData?.amount)} has been processed successfully.
           </p>
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
             <p className="text-sm text-green-800">
@@ -483,23 +502,23 @@ function PaymentForm() {
           <div className="space-y-1 text-sm mb-3">
             <div className="flex justify-between">
               <span className="text-gray-600">Greeting Card</span>
-              <span>${sessionData?.priceBreakdown?.cardPrice?.toFixed(2) || '0.00'}</span>
+              <span>${formatCurrency(sessionData?.priceBreakdown?.cardPrice)}</span>
             </div>
-            {sessionData?.priceBreakdown?.giftCardAmount > 0 && (
+            {parseFloat(sessionData?.priceBreakdown?.giftCardAmount) > 0 && (
               <div className="flex justify-between text-green-700">
                 <span>🎁 Gift Card</span>
-                <span>${sessionData.priceBreakdown.giftCardAmount.toFixed(2)}</span>
+                <span>${formatCurrency(sessionData?.priceBreakdown?.giftCardAmount)}</span>
               </div>
             )}
             <div className="flex justify-between text-gray-500 text-xs">
               <span>Processing Fee (5%)</span>
-              <span>${sessionData?.priceBreakdown?.processingFee?.toFixed(2) || '0.00'}</span>
+              <span>${formatCurrency(sessionData?.priceBreakdown?.processingFee)}</span>
             </div>
           </div>
           
           <div className="flex justify-between items-center border-t border-gray-200 pt-2">
             <span className="text-sm font-semibold text-gray-900">Total</span>
-            <span className="text-2xl font-bold text-indigo-600">${sessionData?.amount?.toFixed(2) || '0.00'}</span>
+            <span className="text-2xl font-bold text-indigo-600">${formatCurrency(sessionData?.amount)}</span>
           </div>
         </div>
 
@@ -553,7 +572,7 @@ function PaymentForm() {
                   Processing Payment...
                 </>
               ) : (
-                <>Pay ${sessionData?.amount?.toFixed(2) || '0.00'}</>
+                <>Pay ${formatCurrency(sessionData?.amount)}</>
               )}
             </button>
           </div>
