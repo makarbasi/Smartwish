@@ -24,6 +24,16 @@ echo   Printer: %DEFAULT_PRINTER%
 echo   Poll Interval: %POLL_INTERVAL%ms
 echo.
 
+REM ===============================================
+REM  OPEN BROWSER IN FULLSCREEN KIOSK MODE
+REM ===============================================
+echo Opening manager login page in fullscreen...
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk --start-fullscreen "%CLOUD_SERVER_URL%/managers/login"
+
+REM Wait a moment for browser to launch
+timeout /t 2 /nobreak >nul
+
+REM Start the print agent
 node local-print-agent.js
 
 pause
