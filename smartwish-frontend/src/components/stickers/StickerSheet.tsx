@@ -90,9 +90,15 @@ export default function StickerSheet({
       {/* Paper preview header */}
       {!isCompact && (
         <div className="text-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Sticker Sheet Preview</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            6 round stickers • 3" diameter each • Avery 94513 compatible
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-pink-50 to-purple-50 rounded-full mb-2">
+            <svg className="w-4 h-4 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">Live Preview</span>
+          </div>
+          <p className="text-xs text-gray-400">
+            6 round stickers • 3" diameter • Avery 94513
           </p>
         </div>
       )}
@@ -102,10 +108,10 @@ export default function StickerSheet({
         className={`
           relative
           bg-white
-          rounded-lg
+          rounded-xl
           shadow-lg
-          border-2
-          border-gray-300
+          ring-1
+          ring-gray-200
           transition-all
           duration-500
           ease-in-out
@@ -115,8 +121,9 @@ export default function StickerSheet({
           aspectRatio: `${PAPER_WIDTH_INCHES} / ${PAPER_HEIGHT_INCHES}`,
         }}
       >
-        {/* Paper texture/pattern hint */}
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-50 to-white rounded-lg opacity-50" />
+        {/* Premium paper texture/pattern */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white via-gray-50/30 to-white rounded-xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(0,0,0,0.02)_1px,transparent_1px)] bg-[length:8px_8px] rounded-xl" />
         
         {/* Sticker circles - absolutely positioned with perfect 1:1 aspect ratio */}
         {normalizedSlots.map((slot, index) => {
@@ -157,12 +164,14 @@ export default function StickerSheet({
         <div className="absolute bottom-1 right-1 w-2 h-2 border-b border-r border-gray-300 rounded-br" />
       </div>
 
-      {/* Filled count indicator */}
-      <div className={`text-center ${isCompact ? "mt-2" : "mt-4"}`}>
-        <span className="text-sm text-gray-500">
-          {normalizedSlots.filter((s) => s.imageUrl).length} of 6 stickers filled
-        </span>
-      </div>
+      {/* Filled count indicator - only show in compact mode (initial view uses side panel) */}
+      {isCompact && (
+        <div className="text-center mt-2">
+          <span className="text-xs text-gray-400">
+            {normalizedSlots.filter((s) => s.imageUrl).length} of 6 stickers
+          </span>
+        </div>
+      )}
     </div>
   );
 }
