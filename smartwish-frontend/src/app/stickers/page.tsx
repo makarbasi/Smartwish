@@ -68,9 +68,9 @@ export default function StickersPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // Fetch stickers for carousel
+  // Fetch stickers for carousel - get all 200 for variety across 4 rows
   const { data: stickersData, isLoading: isLoadingStickers } = useSWR<StickersApiResponse>(
-    "/api/stickers?limit=20",
+    "/api/stickers?limit=200",
     fetcher
   );
 
@@ -735,30 +735,61 @@ export default function StickersPage() {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-pink-50 via-white to-purple-50 overflow-hidden">
-      {/* Header */}
-      <div className="flex-shrink-0 bg-white/90 backdrop-blur-sm border-b border-gray-200 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
+    <div className="h-screen flex flex-col bg-gradient-to-b from-slate-50 via-white to-slate-50 overflow-hidden">
+      {/* ==================== PREMIUM HEADER ==================== */}
+      <div className="flex-shrink-0 relative overflow-hidden">
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600" />
+        
+        {/* Subtle pattern */}
+        <div className="absolute inset-0 opacity-10">
+          <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="sticker-dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+                <circle cx="12" cy="12" r="1.5" fill="white" />
+              </pattern>
+            </defs>
+            <rect fill="url(#sticker-dots)" width="100%" height="100%" />
+          </svg>
+        </div>
+        
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            {/* Back button */}
             <button
               onClick={handleBackToHome}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all"
             >
-              <ArrowLeftIcon className="w-5 h-5" />
-              <span className="font-medium">Back</span>
+              <ArrowLeftIcon className="w-4 h-4" />
+              <span className="font-medium text-sm">Back</span>
             </button>
-            <h1 className="text-lg font-bold text-gray-900">Create Stickers</h1>
-            <div className="w-20" /> {/* Spacer for centering */}
+            
+            {/* Title */}
+            <div className="text-center">
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                Sticker Studio
+              </h1>
+              <p className="text-xs sm:text-sm text-white/70 hidden sm:block">
+                Design your custom sticker sheet
+              </p>
+            </div>
+            
+            {/* Price badge */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-lg">
+              <span className="text-white/70 text-xs">Sheet</span>
+              <span className="text-white font-bold">${STICKER_SHEET_PRICE.toFixed(2)}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main content - flex column to fill remaining space */}
-      <div className="flex-1 flex flex-col min-h-0 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4">
+      {/* ==================== MAIN CONTENT ==================== */}
+      <div className="flex-1 flex flex-col min-h-0 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 overflow-y-auto">
+        
         {/* Copy Mode Banner */}
         {copySourceIndex !== null && (
           <div className="flex-shrink-0 mb-3 flex items-center justify-center">
-            <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-2.5 rounded-full shadow-lg flex items-center gap-3">
+            <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-2.5 rounded-full shadow-lg shadow-blue-500/25 flex items-center gap-3">
               <div className="w-2.5 h-2.5 bg-white rounded-full animate-pulse" />
               <span className="font-semibold text-sm">
                 Tap any circle to paste sticker #{copySourceIndex + 1}
@@ -773,87 +804,190 @@ export default function StickersPage() {
           </div>
         )}
 
-        {/* Sticker Sheet - compact when in selection mode */}
+        {/* ==================== STICKER SHEET SECTION ==================== */}
         <div
           className={`
             flex-shrink-0 transition-all duration-500 ease-in-out
             ${viewMode === "selection" ? "transform scale-[0.6] origin-top -mb-20" : ""}
           `}
         >
-          <StickerSheet
-            slots={slots}
-            selectedIndex={selectedSlotIndex}
-            isCompact={viewMode === "selection"}
-            onSlotClick={handleSlotClick}
-            onSlotClear={handleSlotClear}
-            onSlotEdit={handleSlotEdit}
-            onSlotCopy={handleSlotCopy}
-            copySourceIndex={copySourceIndex}
-          />
+          {/* Premium card wrapper for the sticker sheet */}
+          {viewMode === "initial" && (
+            <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6 justify-center">
+              {/* Sheet container - LARGER for portrait displays */}
+              <div className="relative">
+                {/* Decorative glow */}
+                <div className="absolute -inset-6 bg-gradient-to-r from-pink-200 via-purple-200 to-indigo-200 rounded-3xl blur-2xl opacity-50" />
+                
+                <div className="relative bg-white rounded-2xl shadow-2xl p-5 ring-1 ring-gray-100">
+                  {/* Make sheet larger on portrait/kiosk displays */}
+                  <div className="[&>div]:!w-80 [&>div]:sm:!w-96 [&>div]:lg:!w-[420px]">
+                    <StickerSheet
+                      slots={slots}
+                      selectedIndex={selectedSlotIndex}
+                      isCompact={viewMode === "selection"}
+                      onSlotClick={handleSlotClick}
+                      onSlotClear={handleSlotClear}
+                      onSlotEdit={handleSlotEdit}
+                      onSlotCopy={handleSlotCopy}
+                      copySourceIndex={copySourceIndex}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Side panel with instructions - NOW VISIBLE on all screens, below on mobile */}
+              <div className="flex flex-col gap-4 w-full max-w-sm lg:w-64">
+                {/* Progress card - always visible */}
+                <div className="bg-gradient-to-br from-pink-50 to-purple-50 rounded-xl p-4 ring-1 ring-pink-100/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700">Your Progress</span>
+                    <span className="text-lg font-bold text-gray-900">{filledSlotsCount}/6</span>
+                  </div>
+                  <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
+                    <div 
+                      className="h-full bg-gradient-to-r from-pink-500 to-purple-600 rounded-full transition-all duration-500"
+                      style={{ width: `${(filledSlotsCount / 6) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    {filledSlotsCount === 0 ? 'Tap a circle to get started!' : 
+                     filledSlotsCount === 6 ? '🎉 Sheet complete! Ready to print!' :
+                     `${6 - filledSlotsCount} more sticker${6 - filledSlotsCount === 1 ? '' : 's'} to fill`}
+                  </p>
+                </div>
+                
+                {/* How it works - horizontal on mobile, vertical on desktop */}
+                <div className="bg-white rounded-xl shadow-md p-4 ring-1 ring-gray-100">
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm">
+                    <span className="w-6 h-6 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">?</span>
+                    How it works
+                  </h3>
+                  <div className="grid grid-cols-2 lg:grid-cols-1 gap-2 text-xs lg:text-sm text-gray-600">
+                    <div className="flex items-center gap-2 p-2 bg-pink-50/50 rounded-lg">
+                      <span className="w-5 h-5 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
+                      <span>Tap circle to add</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-purple-50/50 rounded-lg">
+                      <span className="w-5 h-5 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
+                      <span>Browse designs</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-indigo-50/50 rounded-lg">
+                      <span className="w-5 h-5 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
+                      <span>Edit or copy</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-green-50/50 rounded-lg">
+                      <span className="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">4</span>
+                      <span>Print instantly!</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Compact view for selection mode */}
+          {viewMode === "selection" && (
+            <StickerSheet
+              slots={slots}
+              selectedIndex={selectedSlotIndex}
+              isCompact={viewMode === "selection"}
+              onSlotClick={handleSlotClick}
+              onSlotClear={handleSlotClear}
+              onSlotEdit={handleSlotEdit}
+              onSlotCopy={handleSlotCopy}
+              copySourceIndex={copySourceIndex}
+            />
+          )}
         </div>
 
-        {/* Print button - below the sheet */}
+        {/* ==================== PRINT BUTTON ==================== */}
         {viewMode === "initial" && (
-          <div className="flex-shrink-0 mt-4 mb-4">
-            <div className="max-w-md mx-auto">
-              <button
-                onClick={handlePrintClick}
-                disabled={filledSlotsCount === 0 || isPrinting}
-                className={`
-                  w-full
-                  flex
-                  items-center
-                  justify-center
-                  gap-3
-                  px-6
-                  py-3
-                  rounded-xl
-                  font-semibold
-                  text-base
-                  shadow-lg
-                  transition-all
-                  duration-300
-                  ${
-                    filledSlotsCount > 0
-                      ? "bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:from-pink-600 hover:to-purple-700 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
-                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                  }
-                `}
-              >
-                {isPrinting ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Printing...</span>
-                  </>
-                ) : (
-                  <>
-                    <PrinterIcon className="w-5 h-5" />
-                    <span>Print Sticker Sheet • ${STICKER_SHEET_PRICE.toFixed(2)}</span>
-                  </>
+          <div className="flex-shrink-0 mt-8 mb-6">
+            <div className="max-w-lg mx-auto">
+              {/* Button with glow effect - LARGER */}
+              <div className="relative group">
+                {filledSlotsCount > 0 && (
+                  <div className="absolute -inset-2 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 rounded-2xl blur-lg opacity-40 group-hover:opacity-60 transition-opacity" />
                 )}
-              </button>
+                <button
+                  onClick={handlePrintClick}
+                  disabled={filledSlotsCount === 0 || isPrinting}
+                  className={`
+                    relative w-full flex items-center justify-center gap-4 px-8 py-5 rounded-2xl font-bold text-lg transition-all duration-300
+                    ${filledSlotsCount > 0
+                      ? "bg-gradient-to-r from-pink-500 via-purple-600 to-indigo-600 text-white shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98]"
+                      : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    }
+                  `}
+                >
+                  {isPrinting ? (
+                    <>
+                      <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Printing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <PrinterIcon className="w-6 h-6" />
+                      <span>Print Sticker Sheet</span>
+                      <span className="ml-2 px-3 py-1 bg-white/20 rounded-full text-base">
+                        ${STICKER_SHEET_PRICE.toFixed(2)}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+              
               {filledSlotsCount === 0 && (
-                <p className="text-center text-xs text-gray-500 mt-1.5">
-                  Tap a circle to add stickers
+                <p className="text-center text-sm text-gray-500 mt-4 flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Tap any circle above to add your first sticker
                 </p>
               )}
             </div>
           </div>
         )}
 
-        {/* Carousel - only show in initial mode */}
+        {/* ==================== CAROUSEL SECTION - MULTI-ROW ==================== */}
         {viewMode === "initial" && (
-          <div className="flex-shrink-0 mt-2">
-            <StickerCarousel
-              stickers={carouselStickers}
-              isLoading={isLoadingStickers}
-            />
+          <div className="flex-1 min-h-0 flex flex-col mt-6">
+            {/* Section header */}
+            <div className="flex-shrink-0 flex items-center justify-center gap-3 mb-4">
+              <div className="h-px w-12 sm:w-20 bg-gradient-to-r from-transparent via-pink-200 to-transparent" />
+              <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-50 to-purple-50 rounded-full shadow-sm">
+                <svg className="w-5 h-5 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                <span className="text-sm font-semibold text-gray-700">Popular Designs</span>
+              </div>
+              <div className="h-px w-12 sm:w-20 bg-gradient-to-r from-transparent via-purple-200 to-transparent" />
+            </div>
+            
+            {/* Carousel container - multi-row, fills remaining space */}
+            <div className="flex-1 flex flex-col justify-center overflow-hidden">
+              <StickerCarousel
+                stickers={carouselStickers}
+                isLoading={isLoadingStickers}
+              />
+            </div>
+            
+            {/* Helpful tip */}
+            <div className="flex-shrink-0 text-center py-3">
+              <p className="text-sm text-gray-400 flex items-center justify-center gap-2">
+                <svg className="w-4 h-4 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
+                </svg>
+                Tap a circle above to browse & add stickers
+              </p>
+            </div>
           </div>
         )}
 
-        {/* Gallery - takes the rest of the screen in selection mode */}
+        {/* ==================== GALLERY (Selection Mode) ==================== */}
         {viewMode === "selection" && (
-          <div className="flex-1 min-h-0 bg-white rounded-2xl shadow-lg border border-gray-200 p-4 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 flex flex-col overflow-hidden">
             <StickerGallery
               onSelectSticker={handleSelectSticker}
               onClose={handleGalleryClose}
@@ -861,6 +995,32 @@ export default function StickersPage() {
           </div>
         )}
       </div>
+      
+      {/* ==================== TRUST FOOTER ==================== */}
+      {viewMode === "initial" && (
+        <div className="flex-shrink-0 py-3 border-t border-gray-100 bg-white/50">
+          <div className="flex items-center justify-center gap-6 text-xs text-gray-400">
+            <div className="flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span>Premium Quality</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>Instant Print</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              <span>3" Round Stickers</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticker Editor Modal - using same Pintura as greeting cards */}
       {showEditor && editorImageSrc && (
