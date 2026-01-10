@@ -17,7 +17,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { cardId, cardName, recipientEmail, message, senderName } = body;
+    const { cardId, cardName, recipientEmail, message, senderName, giftCardData } = body;
+    
+    // Log gift card data if present
+    if (giftCardData) {
+      console.log('🎁 E-card includes gift card:', {
+        storeName: giftCardData.storeName,
+        amount: giftCardData.amount,
+        hasQrCode: !!giftCardData.qrCode
+      });
+    }
 
     // Validate required fields
     if (!cardId || !cardName || !recipientEmail || !senderName) {
@@ -82,7 +91,9 @@ export async function POST(request: NextRequest) {
       message: message || "",
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days
-      cardData
+      cardData,
+      // Include gift card data if present
+      giftCardData: giftCardData || null
     };
     
     // Store ecard record in JSON file
@@ -218,9 +229,18 @@ export async function POST(request: NextRequest) {
               </div>
             ` : ''}
             
+            ${giftCardData ? `
+              <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; padding: 25px; margin: 25px 0; text-align: center; color: white;">
+                <h3 style="margin: 0 0 10px 0; font-size: 20px;">🎁 This card includes a Gift Card!</h3>
+                <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">${giftCardData.storeName}</p>
+                <p style="margin: 5px 0; font-size: 24px; font-weight: bold;">$${giftCardData.amount}</p>
+                <p style="margin: 15px 0 0 0; font-size: 14px; opacity: 0.9;">View your e-card to reveal the gift card details</p>
+              </div>
+            ` : ''}
+            
             <div style="text-align: center;">
               <a href="${cardViewUrl}" class="cta-button" style="display: inline-block; background: #4f46e5; color: white !important; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0;">
-                View Your E-card
+                View Your E-card${giftCardData ? ' & Gift Card' : ''}
               </a>
             </div>
             
@@ -235,10 +255,14 @@ export async function POST(request: NextRequest) {
     `;
 
     // Send email
+    const emailSubject = giftCardData 
+      ? `🎉 ${senderName} sent you an E-card with a $${giftCardData.amount} Gift Card!`
+      : `🎉 ${senderName} sent you an E-card: ${displayCardName}`;
+      
     await transporter.sendMail({
       from: `"SmartWish" <${process.env.EMAIL_USER}>`,
       to: recipientEmail,
-      subject: `🎉 ${senderName} sent you an E-card: ${displayCardName}`,
+      subject: emailSubject,
       html: emailHtml,
     });
 

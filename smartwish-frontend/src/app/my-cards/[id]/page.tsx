@@ -30,7 +30,7 @@ import PinturaEditorModal from "@/components/PinturaEditorModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import SendECardModal from "@/components/SendECardModal";
 import PrinterSelectionModal from "@/components/PrinterSelectionModal";
-import CardPaymentModal from "@/components/CardPaymentModal";
+import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
 import MarketplaceGiftCarousel from "@/components/MarketplaceGiftCarousel";
 import useSWR from "swr";
 import { saveSavedDesignWithImages } from "@/utils/savedDesignUtils";
@@ -1078,11 +1078,27 @@ export default function CustomizeCardPage() {
     setPaymentModalOpen(true);
   };
 
-  // Execute send e-card after payment
-  const executeSendECard = () => {
+  // State to hold issued gift card data for e-card sending
+  const [issuedGiftCardForEcard, setIssuedGiftCardForEcard] = useState<IssuedGiftCardData | null>(null);
+
+  // Execute send e-card after payment - receives issued gift card data from payment modal
+  const executeSendECard = (issuedGiftCard?: IssuedGiftCardData) => {
     if (!pendingAction || pendingAction.action !== 'send') return;
 
     console.log('📧 Payment successful, showing e-card modal');
+    
+    // Store the issued gift card data so it can be passed when sending
+    if (issuedGiftCard) {
+      console.log('🎁 Gift card to include in e-card:', {
+        storeName: issuedGiftCard.storeName,
+        amount: issuedGiftCard.amount,
+        hasQrCode: !!issuedGiftCard.qrCode
+      });
+      setIssuedGiftCardForEcard(issuedGiftCard);
+      // Also update the local gift card state
+      setGiftCardData(issuedGiftCard);
+    }
+    
     setShowSendModal(true);
     setPaymentModalOpen(false);
     setPendingAction(null);
@@ -1101,6 +1117,17 @@ export default function CustomizeCardPage() {
     // Use real saved design ID if we have it (for templates that were saved in background)
     const actualCardId = realSavedDesignId || cardData.id;
 
+    // Get the gift card data (either from payment or from state)
+    const giftCardToSend = issuedGiftCardForEcard || (giftCardData?.isIssued ? giftCardData : null);
+    
+    if (giftCardToSend) {
+      console.log('🎁 Including gift card in e-card:', {
+        storeName: giftCardToSend.storeName,
+        amount: giftCardToSend.amount,
+        hasQrCode: !!giftCardToSend.qrCode
+      });
+    }
+
     setIsSendingEmail(true);
 
     try {
@@ -1116,6 +1143,16 @@ export default function CustomizeCardPage() {
           recipientEmail: email,
           message: message,
           senderName: session.user.name || session.user.email,
+          // Include gift card data if present
+          giftCardData: giftCardToSend ? {
+            storeName: giftCardToSend.storeName,
+            amount: giftCardToSend.amount,
+            qrCode: giftCardToSend.qrCode,
+            storeLogo: giftCardToSend.storeLogo,
+            redemptionLink: giftCardToSend.redemptionLink,
+            code: giftCardToSend.code,
+            pin: giftCardToSend.pin
+          } : null
         }),
       });
 
@@ -1130,6 +1167,9 @@ export default function CustomizeCardPage() {
 
       setSaveMessage("✅ E-card sent successfully!");
       setTimeout(() => setSaveMessage(""), 3000);
+      
+      // Clear the issued gift card state after sending
+      setIssuedGiftCardForEcard(null);
     } catch (error) {
       console.error("❌ Send e-card failed:", error);
       return;
@@ -1356,7 +1396,16 @@ export default function CustomizeCardPage() {
 
   // Auto-print - sends images to backend with printer name from kiosk config
   // Print agent handles duplex, borderless, paper size settings locally
-  const autoPrintToEpson = async (image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card', trayNumber: string | null = null) => {
+  // Now also handles gift card data to overlay QR code on the printed card
+  const autoPrintToEpson = async (
+    image1: string, 
+    image2: string, 
+    image3: string, 
+    image4: string, 
+    paperType: string = 'greeting-card', 
+    trayNumber: string | null = null,
+    giftCardForPrint?: IssuedGiftCardData | null
+  ) => {
     // Get printer name from kiosk config (must be set in /admin/kiosks)
     if (!kioskConfig?.printerName) {
       alert('Printer not configured. Please set printer name in /admin/kiosks');
@@ -1368,6 +1417,9 @@ export default function CustomizeCardPage() {
     const kioskId = localStorage.getItem('smartwish_kiosk_id');
     
     console.log(`🖨️ Sending print job to: ${printerName} (from kiosk config)`);
+    if (giftCardForPrint) {
+      console.log('🎁 Including gift card in print:', giftCardForPrint.storeName, '$' + giftCardForPrint.amount);
+    }
 
     let printLogId: string | null = null;
 
@@ -1406,8 +1458,33 @@ export default function CustomizeCardPage() {
 
       console.log('Images converted, sending to backend...');
 
-      // Send to backend /print-pc endpoint with printer name and tray number
+      // Prepare gift card data for backend (if present)
+      const giftCardPayload = giftCardForPrint ? {
+        storeName: giftCardForPrint.storeName,
+        amount: giftCardForPrint.amount,
+        qrCode: giftCardForPrint.qrCode,
+        storeLogo: giftCardForPrint.storeLogo,
+        redemptionLink: giftCardForPrint.redemptionLink
+      } : null;
+
+      // Log gift card payload for debugging
+      if (giftCardPayload) {
+        console.log('🎁 Gift card payload for backend:', {
+          storeName: giftCardPayload.storeName,
+          amount: giftCardPayload.amount,
+          hasQrCode: !!giftCardPayload.qrCode,
+          qrCodeLength: giftCardPayload.qrCode?.length || 0,
+          qrCodePrefix: giftCardPayload.qrCode?.substring(0, 50) || 'N/A',
+          hasStoreLogo: !!giftCardPayload.storeLogo,
+          hasRedemptionLink: !!giftCardPayload.redemptionLink
+        });
+      } else {
+        console.log('🎁 No gift card payload - printing without gift card');
+      }
+
+      // Send to backend /print-pc endpoint with printer name, tray number, and gift card data
       // Print agent handles duplex, borderless, paper size locally
+      // Backend will overlay the gift card QR code on the card if provided
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
         headers: {
@@ -1417,6 +1494,7 @@ export default function CustomizeCardPage() {
           images: imageBase64Array,
           printerName: printerName,
           trayNumber: trayNumber ? parseInt(trayNumber.replace('tray-', '')) : null,
+          giftCardData: giftCardPayload, // Pass gift card data for QR overlay
         }),
       });
 
@@ -1462,13 +1540,30 @@ export default function CustomizeCardPage() {
     });
   };
 
-  // Execute print after payment
-  const executePrint = async () => {
+  // Execute print after payment - receives issued gift card data from payment modal
+  const executePrint = async (issuedGiftCard?: IssuedGiftCardData) => {
     if (!pendingAction || pendingAction.action !== 'print') return;
 
     if (!cardData) return;
 
     console.log('🖨️ Payment successful, proceeding with print');
+    
+    // Use the issued gift card data passed from payment modal, or fall back to state
+    const giftCardForPrint = issuedGiftCard || (giftCardData?.isIssued ? giftCardData : null);
+    
+    if (giftCardForPrint) {
+      console.log('🎁 Gift card to print:', {
+        storeName: giftCardForPrint.storeName,
+        amount: giftCardForPrint.amount,
+        hasQrCode: !!giftCardForPrint.qrCode,
+        hasLogo: !!giftCardForPrint.storeLogo
+      });
+      
+      // Update the local gift card state with the issued data
+      if (issuedGiftCard) {
+        setGiftCardData(issuedGiftCard);
+      }
+    }
 
     setIsPrinting(true);
     try {
@@ -1486,9 +1581,9 @@ export default function CustomizeCardPage() {
 
       console.log('Printing directly to EPSON printer via backend...');
 
-      // Send images directly to backend printer - no PDF generation needed
-      // The backend will handle compositing and printing automatically
-      await autoPrintToEpson(image1, image2, image3, image4, 'greeting-card', selectedTray);
+      // Send images directly to backend printer with gift card data
+      // The backend will handle compositing, adding QR overlay, and printing automatically
+      await autoPrintToEpson(image1, image2, image3, image4, 'greeting-card', selectedTray, giftCardForPrint);
       setIsPrinting(false);
       setPaymentModalOpen(false);
       setPendingAction(null);
@@ -2845,11 +2940,11 @@ export default function CustomizeCardPage() {
             setPaymentModalOpen(false);
             setPendingAction(null);
           }}
-          onPaymentSuccess={() => {
+          onPaymentSuccess={(issuedGiftCard) => {
             if (pendingAction.action === 'print') {
-              executePrint();
+              executePrint(issuedGiftCard);
             } else if (pendingAction.action === 'send') {
-              executeSendECard();
+              executeSendECard(issuedGiftCard);
             }
           }}
           cardId={pendingAction.card.id}

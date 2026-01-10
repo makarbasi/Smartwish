@@ -463,7 +463,7 @@ export class AppController {
     let savedPaths: string[] = [];
     
     try {
-      const { images, printerName, paperSize, paperType, trayNumber } = req.body;
+      const { images, printerName, paperSize, paperType, trayNumber, giftCardData } = req.body;
       const flipbookDir = path.join(downloadsDir, 'flipbook');
       if (!fs.existsSync(flipbookDir)) {
         fs.mkdirSync(flipbookDir, { recursive: true });
@@ -483,6 +483,21 @@ export class AppController {
       console.log(
         `PC Print request received for ${images.length} images to printer: ${printerName}, paper size: ${selectedPaperSize}, paper type: ${paperType || 'greeting-card'}, tray: ${trayNumber || 'auto'}`,
       );
+      
+      // Log gift card data for debugging
+      if (giftCardData) {
+        console.log(`🎁 Gift card data received:`, {
+          storeName: giftCardData.storeName,
+          amount: giftCardData.amount,
+          hasQrCode: !!giftCardData.qrCode,
+          qrCodeLength: giftCardData.qrCode?.length || 0,
+          qrCodePrefix: giftCardData.qrCode?.substring(0, 50) || 'N/A',
+          hasStoreLogo: !!giftCardData.storeLogo,
+          hasRedemptionLink: !!giftCardData.redemptionLink
+        });
+      } else {
+        console.log('🎁 No gift card data received in request');
+      }
 
       // Save images with unique timestamped names
       savedPaths = [];
@@ -559,6 +574,117 @@ export class AppController {
 
           await this.createCompositeImage(compositeSide1Path, imageFiles.back, imageFiles.front);
           await this.createCompositeImage(compositeSide2Path, imageFiles.insideRight, imageFiles.insideLeft);
+
+          // 🎁 Add gift card overlay to compositeSide2 if giftCardData exists
+          if (giftCardData && giftCardData.qrCode) {
+            try {
+              console.log('[print-pc] Adding gift card overlay to print:', giftCardData.storeName, '$' + giftCardData.amount);
+
+              // Handle QR code image (base64 data URL or HTTP URL)
+              let qrBuffer;
+              let qrMimeType = 'image/png'; // default
+
+              if (giftCardData.qrCode.startsWith('data:')) {
+                // Handle base64 data URL
+                const [mimeInfo, base64Data] = giftCardData.qrCode.split(',');
+                qrMimeType = mimeInfo.split(':')[1].split(';')[0];
+                qrBuffer = Buffer.from(base64Data, 'base64');
+                console.log('[print-pc] QR code processed from base64, buffer size:', qrBuffer.length);
+              } else {
+                // Handle HTTP URL
+                try {
+                  const response = await fetch(giftCardData.qrCode);
+                  if (response.ok) {
+                    qrBuffer = await response.buffer();
+                  }
+                } catch (qrError) {
+                  console.warn('[print-pc] Failed to download QR code:', qrError?.message);
+                }
+              }
+
+              if (qrBuffer) {
+                // Process store logo if present
+                let storeLogo = '';
+                if (giftCardData.storeLogo) {
+                  try {
+                    if (giftCardData.storeLogo.startsWith('data:')) {
+                      storeLogo = giftCardData.storeLogo;
+                    } else {
+                      const response = await fetch(giftCardData.storeLogo);
+                      if (response.ok) {
+                        const logoBuffer = await response.buffer();
+                        const logoBase64 = logoBuffer.toString('base64');
+                        storeLogo = `data:image/png;base64,${logoBase64}`;
+                      }
+                    }
+                  } catch (logoError) {
+                    console.warn('[print-pc] Failed to process store logo:', logoError?.message);
+                  }
+                }
+
+                // Convert QR code to base64 for SVG embedding
+                const qrBase64 = qrBuffer.toString('base64');
+
+                // Escape special characters for SVG
+                const entities: { [key: string]: string } = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' };
+                const storeName = (giftCardData.storeName || 'Gift Card').replace(/[<>&"']/g, (match: string) => entities[match]);
+                const amount = (giftCardData.amount || '0').toString().replace(/[<>&"']/g, (match: string) => entities[match]);
+
+                // Create gift card overlay SVG for PRINT version (700x550px for 300 DPI print)
+                const giftCardOverlaySvg = `<svg width="700" height="550" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="25"/>
+      <feOffset dx="0" dy="12" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="700" height="550" rx="48" ry="48" fill="rgba(255,255,255,0.95)" stroke="rgba(229,231,235,1)" stroke-width="3" filter="url(#shadow)"/>
+  <rect x="50" y="40" width="280" height="280" rx="24" ry="24" fill="white"/>
+  <image x="50" y="40" width="280" height="280" href="data:${qrMimeType};base64,${qrBase64}" preserveAspectRatio="xMidYMid meet"/>
+  ${storeLogo ? `
+  <rect x="370" y="40" width="280" height="280" rx="24" ry="24" fill="white"/>
+  <image x="370" y="40" width="280" height="280" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>
+  ` : ''}
+  <text x="350" y="390" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="600" fill="#1f2937">${storeName}</text>
+  <text x="350" y="450" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" fill="#4b5563">$${amount}</text>
+</svg>`;
+
+                const giftCardOverlayBuffer = Buffer.from(giftCardOverlaySvg);
+
+                // Position for print: centered on the inside left page (page 3)
+                // Composite is 3300px wide (two 1650px panels), page 3 is the right panel
+                const overlayTop = 2550 - 550 - 100; // Total height - overlay height - bottom margin
+                const overlayLeft = 1650 + (1650 - 700) / 2; // Left panel + centered in right panel
+
+                // Create composite with overlay
+                const tempOverlayPath = path.join(printJpegsDir, `temp_${jobId}_overlay.png`);
+                await sharp(compositeSide2Path)
+                  .composite([{
+                    input: giftCardOverlayBuffer,
+                    top: overlayTop,
+                    left: overlayLeft
+                  }])
+                  .png()
+                  .toFile(tempOverlayPath);
+
+                // Replace original composite with overlayed version
+                await fsPromises.unlink(compositeSide2Path);
+                await fsPromises.rename(tempOverlayPath, compositeSide2Path);
+
+                console.log(`[print-pc] ✅ Gift card overlay added to print composite at position: (${overlayLeft}, ${overlayTop})`);
+              }
+            } catch (giftCardError) {
+              console.error('[print-pc] Failed to add gift card overlay:', giftCardError?.message || giftCardError);
+              // Continue without overlay - don't fail the print
+            }
+          }
 
           const outputPdf = `${jobId}_print.pdf`;
           const pdfPath = path.join(printJpegsDir, outputPdf);

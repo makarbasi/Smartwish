@@ -12,15 +12,35 @@ import QRCode from 'qrcode'
 const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
 
+// Gift card data returned after payment success
+// Exported so consuming components can use the same type
+export interface IssuedGiftCardData {
+  storeName: string
+  amount: number
+  qrCode: string
+  storeLogo?: string
+  redemptionLink?: string
+  code?: string
+  pin?: string
+  isIssued: boolean
+}
+
+// Product types supported by the payment modal
+export type ProductType = 'card' | 'stickers'
+
 interface CardPaymentModalProps {
   isOpen: boolean
   onClose: () => void
-  onPaymentSuccess: () => void
+  onPaymentSuccess: (issuedGiftCard?: IssuedGiftCardData) => void
   cardId: string
   cardName: string
   action: 'send' | 'print'
   recipientEmail?: string
   giftCardAmount?: number
+  // Optional: product type for different pricing (default: 'card')
+  productType?: ProductType
+  // Optional: for stickers - number of stickers on the sheet
+  stickerCount?: number
 }
 
 export default function CardPaymentModal({
@@ -31,7 +51,9 @@ export default function CardPaymentModal({
   cardName,
   action,
   recipientEmail,
-  giftCardAmount: propGiftCardAmount
+  giftCardAmount: propGiftCardAmount,
+  productType = 'card',
+  stickerCount
 }: CardPaymentModalProps) {
   if (!isOpen) return null
 
@@ -66,10 +88,16 @@ export default function CardPaymentModal({
         action={action}
         recipientEmail={recipientEmail}
         giftCardAmount={propGiftCardAmount}
+        productType={productType}
+        stickerCount={stickerCount}
       />
     </Elements>
   )
 }
+
+// Sticker sheet pricing
+const STICKER_PRICE = 3.99
+const STICKER_PROCESSING_FEE_PERCENT = 0.05 // 5%
 
 function CardPaymentModalContent({
   isOpen,
@@ -79,20 +107,25 @@ function CardPaymentModalContent({
   cardName,
   action,
   recipientEmail,
-  giftCardAmount: propGiftCardAmount
+  giftCardAmount: propGiftCardAmount,
+  productType = 'card',
+  stickerCount = 0
 }: CardPaymentModalProps) {
   const stripe = useStripe()
   const elements = useElements()
 
   // ✅ Use NextAuth session for authentication
   const { data: session, status: sessionStatus } = useSession()
+  
+  // Check if this is a sticker payment (simplified flow, no gift cards)
+  const isStickers = productType === 'stickers'
 
   // UI State
   const [cardholderName, setCardholderName] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
-  const [loadingPrice, setLoadingPrice] = useState(true)
+  const [loadingPrice, setLoadingPrice] = useState(!isStickers) // Stickers have fixed price, no need to load
   
   // Promo code state
   const [promoCode, setPromoCode] = useState('')
@@ -194,7 +227,7 @@ function CardPaymentModalContent({
 
   /**
    * Initialize the complete payment flow
-   * 1. Calculate price
+   * 1. Calculate price (fixed for stickers, dynamic for cards)
    * 2. Create order in database
    * 3. Create payment session
    * 4. Create Stripe payment intent
@@ -207,6 +240,58 @@ function CardPaymentModalContent({
       if (!userId) {
         throw new Error('User not authenticated')
       }
+
+      // ======== STICKERS: Simplified flow with fixed pricing ========
+      if (isStickers) {
+        console.log('🎨 Sticker payment - using fixed pricing')
+        const stickerProcessingFee = STICKER_PRICE * STICKER_PROCESSING_FEE_PERCENT
+        const stickerTotal = STICKER_PRICE + stickerProcessingFee
+        
+        // Set price data directly (no backend call needed)
+        const stickerPriceData = {
+          cardPrice: STICKER_PRICE,
+          giftCardAmount: 0,
+          processingFee: stickerProcessingFee,
+          total: stickerTotal
+        }
+        setPriceData(stickerPriceData)
+        
+        // Create Stripe payment intent for stickers
+        console.log('💳 Creating Stripe payment intent for stickers...')
+        const intentResponse = await fetch('/api/stripe/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: stickerTotal,
+            currency: 'usd',
+            metadata: {
+              productType: 'sticker-sheet',
+              stickerCount,
+              price: STICKER_PRICE,
+              processingFee: stickerProcessingFee
+            }
+          })
+        })
+        
+        const intentResult = await intentResponse.json()
+        
+        if (!intentResponse.ok || !intentResult.clientSecret) {
+          throw new Error(intentResult.error || 'Failed to initialize sticker payment')
+        }
+        
+        setClientSecret(intentResult.clientSecret)
+        
+        // Generate session ID for QR payment (stickers don't need order in DB)
+        const sessionId = `STICKER-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        setPaymentSessionId(sessionId)
+        setOrderId(sessionId) // Use session ID as order ID for stickers
+        
+        console.log('✅ Sticker payment intent created:', intentResult.paymentIntentId)
+        setLoadingPrice(false)
+        return
+      }
+      
+      // ======== CARDS: Full flow with gift card support ========
 
       // Step 1: Check localStorage for gift card amount if not provided
       let giftCardAmount = propGiftCardAmount || 0
@@ -528,6 +613,7 @@ function CardPaymentModalContent({
   /**
    * Handle successful payment
    * Issues the gift card if one is attached (pending)
+   * Returns the issued gift card data to the parent component for printing
    */
   const handlePaymentSuccess = async () => {
     // ✅ Stop polling when payment succeeds
@@ -539,97 +625,232 @@ function CardPaymentModalContent({
     setIsProcessing(false)
     setPaymentComplete(true)
 
-    // 🎁 Issue gift card if one is pending
+    // 🎁 Issue gift card if one is pending (NOT for stickers - stickers don't have gift cards)
+    let issuedGiftCardData: IssuedGiftCardData | undefined = undefined
+    
+    // Skip gift card processing for stickers
+    if (isStickers) {
+      console.log('🎨 Sticker payment - skipping gift card processing')
+      // Wait a moment to show success message, then call callback
+      setTimeout(() => {
+        onPaymentSuccess(undefined)
+      }, 1500)
+      return
+    }
+    
+    console.log('🎁 Checking for gift card to issue, cardId:', cardId)
+    
     try {
       const storedGiftCard = localStorage.getItem(`giftCard_${cardId}`)
+      console.log('🎁 Raw stored gift card:', storedGiftCard ? `${storedGiftCard.substring(0, 100)}...` : 'null')
+      
       if (storedGiftCard) {
-        const giftCardSelection = JSON.parse(storedGiftCard)
-
-        // Check if gift card is pending (not yet issued)
-        if (giftCardSelection.status === 'pending' && !giftCardSelection.isIssued) {
-          console.log('🎁 Payment successful - Now issuing gift card:', giftCardSelection)
-
-          // Call Tillo API to issue the actual gift card
-          const response = await fetch('/api/tillo/issue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              brandSlug: giftCardSelection.brandSlug,
-              amount: giftCardSelection.amount,
-              currency: giftCardSelection.currency || 'USD'
+        let giftCardSelection: any = null
+        
+        // Handle both encrypted and unencrypted formats
+        if (storedGiftCard.startsWith('{') || storedGiftCard.startsWith('[')) {
+          console.log('🎁 Gift card is in plain JSON format')
+          giftCardSelection = JSON.parse(storedGiftCard)
+        } else {
+          // Encrypted format - decrypt first
+          console.log('🎁 Gift card is encrypted, decrypting...')
+          try {
+            const decryptResponse = await fetch('/api/giftcard/decrypt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ encryptedData: storedGiftCard })
             })
-          })
-
-          const data = await response.json()
-
-          if (response.ok && data.success) {
-            console.log('✅ Gift card issued successfully after payment:', data.giftCard)
-
-            // Update localStorage with issued gift card data
-            const issuedGiftCard = {
-              ...giftCardSelection,
-              status: 'issued',
-              isIssued: true,
-              issuedAt: new Date().toISOString(),
-              // Add the actual gift card data from Tillo
-              redemptionLink: data.giftCard?.url || data.giftCard?.redemptionUrl,
-              code: data.giftCard?.code,
-              pin: data.giftCard?.pin,
-              orderId: data.giftCard?.orderId,
-              expiryDate: data.giftCard?.expiryDate,
-              qrCode: '' // Will be generated if needed
+            if (decryptResponse.ok) {
+              const { giftCardData } = await decryptResponse.json()
+              giftCardSelection = giftCardData
+              console.log('🎁 Gift card decrypted successfully')
+            } else {
+              console.error('🎁 Failed to decrypt gift card, status:', decryptResponse.status)
             }
+          } catch (decryptError) {
+            console.warn('Failed to decrypt gift card:', decryptError)
+          }
+        }
 
-            // Generate QR code for the redemption link
-            if (issuedGiftCard.redemptionLink) {
+        console.log('🎁 Parsed gift card selection:', giftCardSelection ? {
+          storeName: giftCardSelection.storeName,
+          amount: giftCardSelection.amount,
+          status: giftCardSelection.status,
+          isIssued: giftCardSelection.isIssued,
+          hasQrCode: !!giftCardSelection.qrCode
+        } : 'null')
+
+        if (giftCardSelection) {
+          // Check if gift card is pending (not yet issued)
+          if (giftCardSelection.status === 'pending' && !giftCardSelection.isIssued) {
+            console.log('🎁 Gift card is PENDING - calling Tillo API to issue')
+
+            // Call Tillo API to issue the actual gift card
+            const response = await fetch('/api/tillo/issue', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                brandSlug: giftCardSelection.brandSlug,
+                amount: giftCardSelection.amount,
+                currency: giftCardSelection.currency || 'USD'
+              })
+            })
+
+            const data = await response.json()
+            
+            console.log('🎁 Tillo API response:', {
+              ok: response.ok,
+              success: data.success,
+              hasGiftCard: !!data.giftCard,
+              giftCard: data.giftCard ? {
+                url: data.giftCard.url,
+                code: data.giftCard.code ? '***' : 'N/A',
+                pin: data.giftCard.pin ? '***' : 'N/A',
+                orderId: data.giftCard.orderId
+              } : null,
+              error: data.error
+            })
+
+            if (response.ok && data.success) {
+              console.log('✅ Gift card issued successfully after payment')
+
+              // Update localStorage with issued gift card data
+              const issuedGiftCard = {
+                ...giftCardSelection,
+                status: 'issued',
+                isIssued: true,
+                issuedAt: new Date().toISOString(),
+                // Add the actual gift card data from Tillo
+                redemptionLink: data.giftCard?.url || data.giftCard?.redemptionUrl,
+                code: data.giftCard?.code,
+                pin: data.giftCard?.pin,
+                orderId: data.giftCard?.orderId,
+                expiryDate: data.giftCard?.expiryDate,
+                qrCode: '' // Will be generated below
+              }
+              
+              console.log('🎁 Issued gift card object:', {
+                storeName: issuedGiftCard.storeName,
+                amount: issuedGiftCard.amount,
+                redemptionLink: issuedGiftCard.redemptionLink || 'N/A',
+                code: issuedGiftCard.code ? '***' : 'N/A',
+                hasStoreLogo: !!issuedGiftCard.storeLogo
+              })
+
+              // Generate QR code for the redemption link or code
+              // Always generate a QR code - either from URL, code, or a fallback
+              let qrContent = issuedGiftCard.redemptionLink || '';
+              
+              // If no URL, create QR from gift card code
+              if (!qrContent && issuedGiftCard.code) {
+                qrContent = issuedGiftCard.code;
+                if (issuedGiftCard.pin) {
+                  qrContent += ` PIN: ${issuedGiftCard.pin}`;
+                }
+              }
+              
+              // Fallback: create QR with store name and amount
+              if (!qrContent) {
+                qrContent = `${giftCardSelection.storeName || 'Gift Card'} - $${issuedGiftCard.amount || giftCardSelection.amount}`;
+              }
+              
+              console.log('🎁 Generating QR code for:', qrContent.substring(0, 50) + '...');
+              
               try {
-                const qrCodeUrl = await QRCode.toDataURL(issuedGiftCard.redemptionLink, {
+                const qrCodeUrl = await QRCode.toDataURL(qrContent, {
                   width: 200,
                   margin: 2,
                   color: { dark: '#2d3748', light: '#ffffff' },
                   errorCorrectionLevel: 'H'
                 })
                 issuedGiftCard.qrCode = qrCodeUrl
+                console.log('✅ QR code generated successfully, length:', qrCodeUrl.length);
               } catch (qrError) {
-                console.warn('Failed to generate QR code:', qrError)
+                console.error('❌ Failed to generate QR code:', qrError)
+                // Create a simple fallback QR code
+                try {
+                  const fallbackQr = await QRCode.toDataURL('Gift Card', {
+                    width: 200,
+                    margin: 2,
+                    color: { dark: '#2d3748', light: '#ffffff' },
+                    errorCorrectionLevel: 'H'
+                  })
+                  issuedGiftCard.qrCode = fallbackQr
+                  console.log('⚠️ Using fallback QR code');
+                } catch {
+                  console.error('❌ Even fallback QR generation failed');
+                }
               }
-            }
 
-            // Encrypt and save the issued gift card
-            try {
-              const encryptResponse = await fetch('/api/giftcard/encrypt', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ giftCardData: issuedGiftCard })
+              // ✅ Prepare issued gift card data to return to parent for printing
+              issuedGiftCardData = {
+                storeName: issuedGiftCard.storeName,
+                amount: issuedGiftCard.amount,
+                qrCode: issuedGiftCard.qrCode,
+                storeLogo: issuedGiftCard.storeLogo,
+                redemptionLink: issuedGiftCard.redemptionLink,
+                code: issuedGiftCard.code,
+                pin: issuedGiftCard.pin,
+                isIssued: true
+              }
+              console.log('🎁 Returning issued gift card data for printing:', {
+                storeName: issuedGiftCardData.storeName,
+                amount: issuedGiftCardData.amount,
+                hasQrCode: !!issuedGiftCardData.qrCode,
+                qrCodeLength: issuedGiftCardData.qrCode?.length || 0,
+                hasStoreLogo: !!issuedGiftCardData.storeLogo,
+                hasRedemptionLink: !!issuedGiftCardData.redemptionLink
               })
 
-              if (encryptResponse.ok) {
-                const { encryptedData } = await encryptResponse.json()
-                localStorage.setItem(`giftCard_${cardId}`, encryptedData)
-                localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
-                  storeName: issuedGiftCard.storeName,
-                  amount: issuedGiftCard.amount,
-                  source: 'tillo',
-                  status: 'issued',
-                  issuedAt: issuedGiftCard.issuedAt,
-                  isEncrypted: true
-                }))
-                console.log('🔐 Issued gift card saved with encryption')
-              } else {
-                // Fallback - save without encryption
+              // Encrypt and save the issued gift card
+              try {
+                const encryptResponse = await fetch('/api/giftcard/encrypt', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ giftCardData: issuedGiftCard })
+                })
+
+                if (encryptResponse.ok) {
+                  const { encryptedData } = await encryptResponse.json()
+                  localStorage.setItem(`giftCard_${cardId}`, encryptedData)
+                  localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
+                    storeName: issuedGiftCard.storeName,
+                    amount: issuedGiftCard.amount,
+                    source: 'tillo',
+                    status: 'issued',
+                    issuedAt: issuedGiftCard.issuedAt,
+                    isEncrypted: true
+                  }))
+                  console.log('🔐 Issued gift card saved with encryption')
+                } else {
+                  // Fallback - save without encryption
+                  localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(issuedGiftCard))
+                }
+              } catch (encryptError) {
+                console.warn('Encryption failed, saving unencrypted:', encryptError)
                 localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(issuedGiftCard))
               }
-            } catch (encryptError) {
-              console.warn('Encryption failed, saving unencrypted:', encryptError)
-              localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(issuedGiftCard))
+            } else {
+              console.error('❌ Failed to issue gift card after payment:', data)
+              // Don't fail the payment - the card was paid, just log the error
+              // User can contact support with the payment receipt
+            }
+          } else if (giftCardSelection.isIssued && giftCardSelection.qrCode) {
+            // Gift card already issued - still pass it for printing
+            console.log('🎁 Gift card already issued, passing to print:', giftCardSelection)
+            issuedGiftCardData = {
+              storeName: giftCardSelection.storeName,
+              amount: giftCardSelection.amount,
+              qrCode: giftCardSelection.qrCode,
+              storeLogo: giftCardSelection.storeLogo,
+              redemptionLink: giftCardSelection.redemptionLink,
+              code: giftCardSelection.code,
+              pin: giftCardSelection.pin,
+              isIssued: true
             }
           } else {
-            console.error('❌ Failed to issue gift card after payment:', data)
-            // Don't fail the payment - the card was paid, just log the error
-            // User can contact support with the payment receipt
+            console.log('🎁 Gift card already issued or no pending gift card')
           }
-        } else {
-          console.log('🎁 Gift card already issued or no pending gift card')
         }
       }
     } catch (giftCardError) {
@@ -637,9 +858,9 @@ function CardPaymentModalContent({
       // Don't fail - payment was successful
     }
 
-    // Wait a moment to show success message
+    // Wait a moment to show success message, then pass issued gift card data to parent
     setTimeout(() => {
-      onPaymentSuccess()
+      onPaymentSuccess(issuedGiftCardData)
     }, 1500)
   }
 
@@ -659,12 +880,15 @@ function CardPaymentModalContent({
 
   /**
    * Handle free checkout with promo code
+   * Still issues gift card if one is attached
    */
-  const handleFreeCheckout = () => {
+  const handleFreeCheckout = async () => {
     if (promoApplied) {
       console.log('🎟️ Free checkout with promo code')
       setPaymentComplete(true)
-      onPaymentSuccess()
+      
+      // Even with promo code, we need to issue the gift card
+      await handlePaymentSuccess()
     }
   }
 
@@ -877,7 +1101,11 @@ function CardPaymentModalContent({
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Payment Successful!</h3>
                 <p className="text-gray-600">
-                  {action === 'send' ? 'Your e-card will be sent shortly.' : 'Your card will be printed shortly.'}
+                  {isStickers 
+                    ? 'Your sticker sheet will be printed shortly.' 
+                    : action === 'send' 
+                      ? 'Your e-card will be sent shortly.' 
+                      : 'Your card will be printed shortly.'}
                 </p>
               </div>
             ) : loadingPrice ? (
@@ -890,25 +1118,29 @@ function CardPaymentModalContent({
                 {/* Left Column: Payment Details */}
                 <div className="space-y-6">
                   {/* Invoice */}
-                  <div className="bg-gray-50 rounded-lg p-4">
+                  <div className={`rounded-lg p-4 ${isStickers ? 'bg-gradient-to-br from-pink-50 to-purple-50 border border-pink-100' : 'bg-gray-50'}`}>
                     <h3 className="font-semibold text-gray-900 mb-3">Order Summary</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Card:</span>
-                        <span className="font-medium text-gray-900">{cardName}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Type:</span>
+                        <span className="text-gray-600">{isStickers ? 'Product:' : 'Card:'}</span>
                         <span className="font-medium text-gray-900">
-                          {action === 'send' ? 'E-Card' : 'Print'}
+                          {isStickers ? `Sticker Sheet (${stickerCount} stickers)` : cardName}
                         </span>
                       </div>
+                      {!isStickers && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Type:</span>
+                          <span className="font-medium text-gray-900">
+                            {action === 'send' ? 'E-Card' : 'Print'}
+                          </span>
+                        </div>
+                      )}
                       <div className="border-t border-gray-200 my-2 pt-2">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Card Price:</span>
+                          <span className="text-gray-600">{isStickers ? 'Sticker Sheet:' : 'Card Price:'}</span>
                           <span className="font-medium">${priceData?.cardPrice?.toFixed(2) || '0.00'}</span>
                         </div>
-                        {priceData?.giftCardAmount > 0 && (
+                        {!isStickers && priceData?.giftCardAmount > 0 && (
                           <div className="flex justify-between mt-1">
                             <span className="text-gray-600">Gift Card:</span>
                             <span className="font-medium">${priceData.giftCardAmount.toFixed(2)}</span>
