@@ -293,7 +293,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { brandSlug, amount, currency = 'USD' } = body
-    const sector = body.sector || process.env.TILLO_DEFAULT_SECTOR || 'b2c-marketplace'
+    const sector = body.sector || process.env.TILLO_DEFAULT_SECTOR || 'gift-card-mall'
 
     // Validate required fields
     if (!brandSlug || !amount) {
