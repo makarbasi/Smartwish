@@ -1182,6 +1182,24 @@ export class KioskConfigService {
   // ==================== Local Print Agent Endpoints ====================
 
   /**
+   * Get printer configurations for all active kiosks
+   * Used by print agent to display configured printers at startup
+   */
+  async getAllKioskPrinterConfigs(): Promise<any[]> {
+    const kiosks = await this.kioskRepo.find({
+      where: { isActive: true },
+      order: { kioskId: 'ASC' },
+    });
+
+    return kiosks.map(kiosk => ({
+      kioskId: kiosk.kioskId,
+      name: kiosk.name || kiosk.kioskId,
+      printerName: (kiosk.config as any)?.printerName || null,
+      printerIP: (kiosk.config as any)?.printerIP || null,
+    }));
+  }
+
+  /**
    * Get pending print jobs for the local print agent
    * This uses the database instead of in-memory queue for persistence
    */
