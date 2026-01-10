@@ -342,6 +342,7 @@ export default function CustomizeCardPage() {
   // Send E-card functionality state
   const [showSendModal, setShowSendModal] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [sendEmailSuccess, setSendEmailSuccess] = useState(false);
 
   // Payment and printing state
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -1213,6 +1214,9 @@ export default function CustomizeCardPage() {
 
       setSaveMessage("✅ E-card sent successfully!");
       setTimeout(() => setSaveMessage(""), 3000);
+      
+      // Show success animation in modal (modal will auto-close via its own timer)
+      setSendEmailSuccess(true);
       
       // Clear the issued gift card state after sending
       setIssuedGiftCardForEcard(null);
@@ -2901,20 +2905,8 @@ export default function CustomizeCardPage() {
         <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-gray-50 to-white border-t border-gray-100 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-40">
           <div className="max-w-4xl mx-auto px-4 py-5 sm:px-6 lg:px-8">
             <div className="flex gap-5 justify-center items-center">
-              {/* Print Button Group - Tray Dropdown + Print Button */}
+              {/* Print Button Group */}
               <div className="flex items-center gap-3">
-                {/* Tray Selection Dropdown - Next to Print Button */}
-                <select
-                  value={selectedTray}
-                  onChange={(e) => setSelectedTray(e.target.value as 'tray-1' | 'tray-2')}
-                  disabled={isPrinting || isWaitingForSave}
-                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  title="Select paper tray"
-                >
-                  <option value="tray-1">Tray 1</option>
-                  <option value="tray-2">Tray 2</option>
-                </select>
-
                 {/* Print Button - Elegant purple gradient */}
                 <button
                   onClick={handlePrint}
@@ -3148,11 +3140,15 @@ export default function CustomizeCardPage() {
       {/* Send E-card Modal */}
       <SendECardModal
         isOpen={showSendModal}
-        onClose={() => setShowSendModal(false)}
+        onClose={() => {
+          setShowSendModal(false);
+          setSendEmailSuccess(false);
+        }}
         onSend={handleSendEcard}
         cardName={cardData?.name || "Untitled Card"}
         cardThumbnail={cardData?.pages?.[0] || ""}
         isLoading={isSendingEmail}
+        sendSuccess={sendEmailSuccess}
       />
 
       {/* CSS for fast pulse glow animation */}
