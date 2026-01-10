@@ -201,12 +201,14 @@ async function bootstrap() {
   expressApp.use(bodyParser.json({ limit: '50mb' }));
   expressApp.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-  // Create nodemailer transporter
+  // Create nodemailer transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: process.env.SMTP_HOST || process.env.EMAIL_USER ? 'smtpout.secureserver.net' : 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
     auth: {
-      user: process.env.GMAIL_USER || 'ma.karbasi@gmail.com',
-      pass: process.env.GMAIL_APP_PASSWORD || 'xzkyuniylijauvas'
+      user: process.env.EMAIL_USER || process.env.GMAIL_USER || 'ma.karbasi@gmail.com',
+      pass: process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || 'xzkyuniylijauvas'
     },
     tls: {
       rejectUnauthorized: false

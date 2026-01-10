@@ -11,12 +11,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// Create transporter for Gmail SMTP
+// Create transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+  port: parseInt(process.env.SMTP_PORT || '587', 10),
+  secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
   auth: {
-    user: 'ma.karbasi@gmail.com', // Your Gmail address
-    pass: 'xzkyuniylijauvas'      // Your Gmail App Password
+    user: process.env.EMAIL_USER || 'ma.karbasi@gmail.com',
+    pass: process.env.EMAIL_PASS || 'xzkyuniylijauvas'
   },
   tls: {
     rejectUnauthorized: false // Allow self-signed certificates
@@ -38,7 +40,7 @@ app.post('/send-email', async (req, res) => {
     
     // Email options
     const mailOptions = {
-      from: 'ma.karbasi@gmail.com', // Your Gmail address
+      from: process.env.EMAIL_USER || 'ma.karbasi@gmail.com',
       to: 'info@smartwish.us',
       subject: `Contact Form: ${subject}`,
       html: `

@@ -176,9 +176,11 @@ export class ECardService {
                 return false;
             }
 
-            // Create transporter
+            // Create transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
             const transporter = nodemailer.createTransport({
-                service: 'gmail',
+                host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+                port: parseInt(process.env.SMTP_PORT || '587', 10),
+                secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
                 auth: {
                     user: process.env.EMAIL_USER,
                     pass: process.env.EMAIL_PASS,
@@ -186,7 +188,6 @@ export class ECardService {
                 tls: {
                     rejectUnauthorized: false,
                 },
-                secure: true,
             });
 
             // Test the connection

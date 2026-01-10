@@ -15,6 +15,7 @@ export interface PrinterTray {
 export interface KioskConfig {
   theme: string;
   featuredTemplateIds: string[];
+  promotedGiftCardIds?: string[]; // Gift card brand IDs/slugs to feature in Gift Hub
   micEnabled: boolean;
   ads: {
     playlist: Array<{ url: string; duration?: number; weight?: number }>;

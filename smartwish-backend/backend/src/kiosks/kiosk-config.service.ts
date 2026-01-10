@@ -234,7 +234,9 @@ export class KioskConfigService {
   ): Promise<boolean> {
     try {
       const transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
+        secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS,
@@ -242,7 +244,6 @@ export class KioskConfigService {
         tls: {
           rejectUnauthorized: false,
         },
-        secure: true,
       });
 
       const frontendUrl = process.env.FRONTEND_URL || 'https://app.smartwish.us';
