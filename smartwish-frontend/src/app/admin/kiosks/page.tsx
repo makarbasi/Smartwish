@@ -63,6 +63,10 @@ type KioskConfig = {
   printerIP?: string; // Printer IP address for IPP printing
   printerTrays?: PrinterTray[];
   revenueSharePercent?: number; // Store owner's share of net profit (default 30%)
+  virtualKeyboard?: {
+    enabled: boolean; // Master toggle - if false, no page shrinking, no keyboard
+    showBuiltInKeyboard: boolean; // If enabled=true but this is false, shrink page but use Windows touch keyboard
+  };
 };
 
 type Kiosk = {
@@ -114,6 +118,10 @@ const DEFAULT_CONFIG: KioskConfig = {
     { trayNumber: 2, trayName: "Tray 2", paperType: "sticker", paperSize: "letter" },
   ],
   revenueSharePercent: 30, // Default 30% of net profit goes to store owner
+  virtualKeyboard: {
+    enabled: true, // Enable virtual keyboard support by default
+    showBuiltInKeyboard: true, // Show our built-in virtual keyboard by default
+  },
 };
 
 export default function KiosksAdminPage() {
@@ -1206,6 +1214,96 @@ function KioskFormModal({
                           }`}
                         />
                       </button>
+                    </div>
+
+                    {/* Virtual Keyboard Settings */}
+                    <div className="border-t border-gray-200 pt-4 mt-4">
+                      <h5 className="text-sm font-semibold text-gray-800 mb-3">
+                        ⌨️ Virtual Keyboard
+                      </h5>
+                      
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <label className="text-sm font-medium text-gray-700">
+                            Virtual Keyboard Support
+                          </label>
+                          <p className="text-xs text-gray-500">
+                            Enable keyboard support and page shrinking for input fields
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              config: {
+                                ...formData.config,
+                                virtualKeyboard: {
+                                  ...formData.config.virtualKeyboard,
+                                  enabled: !(formData.config.virtualKeyboard?.enabled !== false),
+                                  showBuiltInKeyboard: formData.config.virtualKeyboard?.showBuiltInKeyboard !== false,
+                                },
+                              },
+                            })
+                          }
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                            formData.config.virtualKeyboard?.enabled !== false
+                              ? "bg-indigo-600"
+                              : "bg-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              formData.config.virtualKeyboard?.enabled !== false
+                                ? "translate-x-5"
+                                : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Sub-option: Show Built-in Keyboard (only visible when main toggle is ON) */}
+                      {formData.config.virtualKeyboard?.enabled !== false && (
+                        <div className="flex items-center justify-between ml-4 pl-4 border-l-2 border-gray-200">
+                          <div>
+                            <label className="text-sm font-medium text-gray-700">
+                              Show Built-in Keyboard
+                            </label>
+                            <p className="text-xs text-gray-500">
+                              Show SmartWish keyboard. If off, use Windows Touch Keyboard instead.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                config: {
+                                  ...formData.config,
+                                  virtualKeyboard: {
+                                    ...formData.config.virtualKeyboard,
+                                    enabled: true,
+                                    showBuiltInKeyboard: !(formData.config.virtualKeyboard?.showBuiltInKeyboard !== false),
+                                  },
+                                },
+                              })
+                            }
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                              formData.config.virtualKeyboard?.showBuiltInKeyboard !== false
+                                ? "bg-indigo-600"
+                                : "bg-gray-200"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                formData.config.virtualKeyboard?.showBuiltInKeyboard !== false
+                                  ? "translate-x-5"
+                                  : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div>

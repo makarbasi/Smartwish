@@ -24,6 +24,10 @@ export interface KioskConfig {
   printerIP?: string; // Printer IP address for IPP printing
   printerTrays: PrinterTray[];
   revenueSharePercent: number; // Store owner's share of net profit (default 30%)
+  virtualKeyboard?: {
+    enabled: boolean; // Master toggle - if false, no page shrinking, no keyboard
+    showBuiltInKeyboard: boolean; // If enabled=true but this is false, shrink page but don't show our keyboard (use Windows touch keyboard)
+  };
   [key: string]: unknown;
 }
 
@@ -69,6 +73,10 @@ const DEFAULT_CONFIG: KioskConfig = {
     { trayNumber: 2, trayName: 'Tray 2', paperType: 'sticker', paperSize: 'letter' },
   ],
   revenueSharePercent: 30, // Default 30% of net profit goes to store owner
+  virtualKeyboard: {
+    enabled: true, // Enable virtual keyboard support by default
+    showBuiltInKeyboard: true, // Show our built-in virtual keyboard by default
+  },
 };
 
 /**
@@ -102,6 +110,12 @@ export const useKiosk = () => {
     throw new Error('useKiosk must be used within a KioskProvider');
   }
   return context;
+};
+
+// Safe version that returns null if not within KioskProvider (useful for components that may render outside provider)
+export const useKioskSafe = () => {
+  const context = useContext(KioskContext);
+  return context ?? null;
 };
 
 // ==================== Helper Functions ====================
