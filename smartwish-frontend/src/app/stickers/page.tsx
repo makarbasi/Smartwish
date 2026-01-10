@@ -10,7 +10,7 @@ import StickerSheet, { StickerSlot } from "@/components/stickers/StickerSheet";
 import StickerCarousel, { StickerItem } from "@/components/stickers/StickerCarousel";
 import StickerGallery, { Sticker } from "@/components/stickers/StickerGallery";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
-import StickerPaymentModal from "@/components/stickers/StickerPaymentModal";
+import CardPaymentModal from "@/components/CardPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 
@@ -872,11 +872,15 @@ export default function StickersPage() {
         />
       )}
 
-      {/* Sticker Payment Modal */}
-      <StickerPaymentModal
+      {/* Payment Modal - Uses shared CardPaymentModal with sticker-specific settings */}
+      <CardPaymentModal
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
-        onPaymentSuccess={handlePaymentSuccess}
+        onPaymentSuccess={() => handlePaymentSuccess()}
+        cardId={`sticker-sheet-${Date.now()}`}
+        cardName="Sticker Sheet"
+        action="print"
+        productType="stickers"
         stickerCount={filledSlotsCount}
       />
     </div>

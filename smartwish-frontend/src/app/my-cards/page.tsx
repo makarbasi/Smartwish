@@ -11,7 +11,7 @@ import { useSession } from "next-auth/react";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal";
 import SendECardModal from "@/components/SendECardModal";
 import PrinterSelectionModal from "@/components/PrinterSelectionModal";
-import CardPaymentModal from "@/components/CardPaymentModal";
+import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
 import jsPDF from 'jspdf';
 import useSWR from "swr";
 import { useToast } from "@/contexts/ToastContext";
@@ -713,11 +713,25 @@ function MyCardsContent() {
     setPaymentModalOpen(true);
   };
 
-  // Execute send e-card after payment
-  const executeSendECard = () => {
+  // State to hold issued gift card data for e-card sending
+  const [issuedGiftCardForEcard, setIssuedGiftCardForEcard] = useState<IssuedGiftCardData | null>(null);
+
+  // Execute send e-card after payment - receives issued gift card data from payment modal
+  const executeSendECard = (issuedGiftCard?: IssuedGiftCardData) => {
     if (!pendingAction || pendingAction.action !== 'send') return;
 
     console.log('📧 Payment successful, showing e-card modal');
+    
+    // Store the issued gift card data so it can be passed when sending
+    if (issuedGiftCard) {
+      console.log('🎁 Gift card to include in e-card:', {
+        storeName: issuedGiftCard.storeName,
+        amount: issuedGiftCard.amount,
+        hasQrCode: !!issuedGiftCard.qrCode
+      });
+      setIssuedGiftCardForEcard(issuedGiftCard);
+    }
+    
     setCardToSend({
       id: pendingAction.card.id,
       name: pendingAction.card.name,
@@ -940,7 +954,16 @@ function MyCardsContent() {
   };
 
   // Auto-print using kiosk config for printer and tray selection
-  const autoPrintToEpson = async (card: MyCard, image1: string, image2: string, image3: string, image4: string, paperType: string = 'greeting-card') => {
+  // Now also handles gift card data to overlay QR code on the printed card
+  const autoPrintToEpson = async (
+    card: MyCard, 
+    image1: string, 
+    image2: string, 
+    image3: string, 
+    image4: string, 
+    paperType: string = 'greeting-card',
+    giftCardForPrint?: IssuedGiftCardData | null
+  ) => {
     // Get printer settings from kiosk config
     const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9135e Series';
     const trays = kioskConfig?.printerTrays || [];
@@ -958,6 +981,9 @@ function MyCardsContent() {
     
     console.log(`🖨️ Auto-printing to: ${printerName} (Direct backend print - NO popup)`);
     console.log(`📥 Paper type: ${paperType}, Tray: ${trayNumber || 'Auto'}, Size: ${paperSize}`);
+    if (giftCardForPrint) {
+      console.log('🎁 Including gift card in print:', giftCardForPrint.storeName, '$' + giftCardForPrint.amount);
+    }
 
     let printLogId: string | null = null;
 
@@ -1003,7 +1029,32 @@ function MyCardsContent() {
 
       console.log('Images converted, sending to backend printer...');
 
-      // Send to backend /print-pc endpoint with tray info
+      // Prepare gift card data for backend (if present)
+      const giftCardPayload = giftCardForPrint ? {
+        storeName: giftCardForPrint.storeName,
+        amount: giftCardForPrint.amount,
+        qrCode: giftCardForPrint.qrCode,
+        storeLogo: giftCardForPrint.storeLogo,
+        redemptionLink: giftCardForPrint.redemptionLink
+      } : null;
+
+      // Log gift card payload for debugging
+      if (giftCardPayload) {
+        console.log('🎁 Gift card payload for backend:', {
+          storeName: giftCardPayload.storeName,
+          amount: giftCardPayload.amount,
+          hasQrCode: !!giftCardPayload.qrCode,
+          qrCodeLength: giftCardPayload.qrCode?.length || 0,
+          qrCodePrefix: giftCardPayload.qrCode?.substring(0, 50) || 'N/A',
+          hasStoreLogo: !!giftCardPayload.storeLogo,
+          hasRedemptionLink: !!giftCardPayload.redemptionLink
+        });
+      } else {
+        console.log('🎁 No gift card payload - printing without gift card');
+      }
+
+      // Send to backend /print-pc endpoint with tray info and gift card data
+      // Backend will overlay the gift card QR code on the card if provided
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
         headers: {
@@ -1015,6 +1066,7 @@ function MyCardsContent() {
           paperSize: paperSize,
           paperType: paperType,
           trayNumber: trayNumber,
+          giftCardData: giftCardPayload, // Pass gift card data for QR overlay
         }),
       });
 
@@ -1060,12 +1112,21 @@ function MyCardsContent() {
     });
   };
 
-  // Execute print after payment
-  const executePrint = async () => {
+  // Execute print after payment - receives issued gift card data from payment modal
+  const executePrint = async (issuedGiftCard?: IssuedGiftCardData) => {
     if (!pendingAction || pendingAction.action !== 'print') return;
 
     const card = pendingAction.card;
     console.log('🖨️ Payment successful, proceeding with print');
+    
+    if (issuedGiftCard) {
+      console.log('🎁 Gift card to print:', {
+        storeName: issuedGiftCard.storeName,
+        amount: issuedGiftCard.amount,
+        hasQrCode: !!issuedGiftCard.qrCode,
+        hasLogo: !!issuedGiftCard.storeLogo
+      });
+    }
 
     setIsPrinting(true);
     try {
@@ -1093,9 +1154,9 @@ function MyCardsContent() {
 
       console.log('Printing directly to EPSON printer via backend...');
 
-      // Send images directly to backend printer - no PDF generation needed
-      // The backend will handle compositing and printing automatically
-      await autoPrintToEpson(card, image1, image2, image3, image4);
+      // Send images directly to backend printer with gift card data
+      // The backend will handle compositing, adding QR overlay, and printing automatically
+      await autoPrintToEpson(card, image1, image2, image3, image4, 'greeting-card', issuedGiftCard);
       setIsPrinting(false);
       setPaymentModalOpen(false);
       setPendingAction(null);
@@ -1123,6 +1184,17 @@ function MyCardsContent() {
       throw new Error("Please sign in to send e-cards");
     }
 
+    // Get the gift card data if present
+    const giftCardToSend = issuedGiftCardForEcard;
+    
+    if (giftCardToSend) {
+      console.log('🎁 Including gift card in e-card:', {
+        storeName: giftCardToSend.storeName,
+        amount: giftCardToSend.amount,
+        hasQrCode: !!giftCardToSend.qrCode
+      });
+    }
+
     setSendingECard(true);
 
     try {
@@ -1138,6 +1210,16 @@ function MyCardsContent() {
           recipientEmail: email,
           message: message,
           senderName: session.user.name || session.user.email,
+          // Include gift card data if present
+          giftCardData: giftCardToSend ? {
+            storeName: giftCardToSend.storeName,
+            amount: giftCardToSend.amount,
+            qrCode: giftCardToSend.qrCode,
+            storeLogo: giftCardToSend.storeLogo,
+            redemptionLink: giftCardToSend.redemptionLink,
+            code: giftCardToSend.code,
+            pin: giftCardToSend.pin
+          } : null
         }),
       });
 
@@ -1165,6 +1247,7 @@ function MyCardsContent() {
       // Close modal and reset state
       setECardModalOpen(false);
       setCardToSend(null);
+      setIssuedGiftCardForEcard(null);
     } catch (error) {
       console.error("❌ Send e-card failed:", error);
       // Don't throw the error again since we already handled it
@@ -1769,11 +1852,11 @@ function MyCardsContent() {
               setPaymentModalOpen(false);
               setPendingAction(null);
             }}
-            onPaymentSuccess={() => {
+            onPaymentSuccess={(issuedGiftCard) => {
               if (pendingAction.action === 'print') {
-                executePrint();
+                executePrint(issuedGiftCard);
               } else if (pendingAction.action === 'send') {
-                executeSendECard();
+                executeSendECard(issuedGiftCard);
               }
             }}
             cardId={pendingAction.card.id}

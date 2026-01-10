@@ -11,6 +11,16 @@ import {
     HeartIcon
 } from "@heroicons/react/24/outline";
 
+interface GiftCardData {
+    storeName: string;
+    amount: number;
+    qrCode?: string;
+    storeLogo?: string;
+    redemptionLink?: string;
+    code?: string;
+    pin?: string;
+}
+
 interface ECard {
     id: string;
     cardId: string;
@@ -37,6 +47,8 @@ interface ECard {
         image4?: string;
         metadata?: any;
     } | null;
+    // Gift card data attached to the e-card
+    giftCardData?: GiftCardData | null;
 }
 
 export default function ECardViewer() {
@@ -67,8 +79,11 @@ export default function ECardViewer() {
                         senderEmail: ecardData.senderEmail,
                         message: ecardData.message,
                         createdAt: ecardData.createdAt,
-                        cardData: ecardData.cardData
+                        cardData: ecardData.cardData,
+                        // Include gift card data from the e-card record
+                        giftCardData: ecardData.giftCardData || null
                     };
+                    console.log('🎁 E-card loaded with gift card:', ecard.giftCardData);
                     setECard(ecard);
                 } else {
                     setError(data.error || "E-Card not found");
@@ -123,8 +138,8 @@ export default function ECardViewer() {
     const cardImages = getCardImages();
     const totalPages = cardImages.length;
 
-    // Extract gift card data from metadata
-    const giftCardData = eCard?.cardData?.metadata?.giftCard || null;
+    // Extract gift card data - prefer direct giftCardData, fallback to metadata
+    const giftCardData = eCard?.giftCardData || eCard?.cardData?.metadata?.giftCard || null;
 
     const nextPage = () => {
         if (isFlipping) return;
