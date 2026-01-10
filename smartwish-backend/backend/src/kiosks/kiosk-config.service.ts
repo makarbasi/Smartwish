@@ -233,6 +233,20 @@ export class KioskConfigService {
     expiresAt: Date,
   ): Promise<boolean> {
     try {
+      console.log('📧 Attempting to send manager invitation email to:', email);
+      console.log('📧 Email configuration:', {
+        host: process.env.SMTP_HOST || 'smtp.office365.com',
+        port: process.env.SMTP_PORT || '587',
+        user: process.env.EMAIL_USER ? 'configured' : 'MISSING',
+        pass: process.env.EMAIL_PASS ? 'configured' : 'MISSING',
+      });
+
+      // Check if email configuration is available
+      if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        console.error('❌ Email configuration missing - EMAIL_USER or EMAIL_PASS not set');
+        return false;
+      }
+
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST || 'smtp.office365.com',
         port: parseInt(process.env.SMTP_PORT || '587', 10),
@@ -246,6 +260,11 @@ export class KioskConfigService {
           minVersion: 'TLSv1.2' // Office 365 requires TLS 1.2+
         },
       });
+
+      // Verify the connection before sending
+      console.log('🔍 Verifying email connection...');
+      await transporter.verify();
+      console.log('✅ Email connection verified');
 
       const frontendUrl = process.env.FRONTEND_URL || 'https://app.smartwish.us';
       const setupUrl = `${frontendUrl}/managers/signup?token=${token}`;
@@ -300,11 +319,18 @@ export class KioskConfigService {
         `,
       };
 
-      await transporter.sendMail(mailOptions);
-      console.log(`Manager invitation email sent to ${email}`);
+      console.log('📤 Sending manager invitation email...');
+      const result = await transporter.sendMail(mailOptions);
+      console.log(`✅ Manager invitation email sent to ${email}`, result.messageId);
       return true;
-    } catch (error) {
-      console.error('Error sending manager invitation email:', error);
+    } catch (error: any) {
+      console.error('❌ Error sending manager invitation email:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        responseCode: error.responseCode,
+        response: error.response,
+      });
       return false;
     }
   }
