@@ -663,6 +663,7 @@ export class KioskConfigService {
     giftCardBrand?: string;
     giftCardAmount?: number;
     giftCardCode?: string;
+    printerName?: string;
     paperType?: string;
     paperSize?: string;
     trayNumber?: number;
@@ -674,6 +675,9 @@ export class KioskConfigService {
     if (!kiosk) {
       throw new NotFoundException(`Kiosk with ID ${data.kioskId} not found`);
     }
+
+    // Use printerName from request, or fall back to kiosk config
+    const printerName = data.printerName || (kiosk.config as any)?.printerName || null;
 
     const printLog = this.printLogRepo.create({
       kioskId: data.kioskId,
@@ -689,6 +693,7 @@ export class KioskConfigService {
       giftCardBrand: data.giftCardBrand,
       giftCardAmount: data.giftCardAmount,
       giftCardCode: data.giftCardCode,
+      printerName,
       paperType: data.paperType,
       paperSize: data.paperSize,
       trayNumber: data.trayNumber,
@@ -1172,5 +1177,59 @@ export class KioskConfigService {
     }
 
     return log;
+  }
+
+  // ==================== Local Print Agent Endpoints ====================
+
+  /**
+   * Get pending print jobs for the local print agent
+   * This uses the database instead of in-memory queue for persistence
+   */
+  async getPendingPrintJobs(): Promise<any[]> {
+    const pendingLogs = await this.printLogRepo.find({
+      where: { status: PrintStatus.PENDING },
+      relations: ['kiosk'],
+      order: { createdAt: 'ASC' },
+      take: 10, // Limit to 10 jobs at a time
+    });
+
+    // Transform to the format expected by local-print-agent.js
+    return pendingLogs.map(log => ({
+      id: log.id,
+      printerName: log.printerName || (log.kiosk?.config as any)?.printerName || null,
+      paperType: log.paperType || 'greeting-card',
+      paperSize: log.paperSize || 'letter',
+      trayNumber: log.trayNumber || null,
+      pdfUrl: log.pdfUrl || null,
+      status: log.status,
+      createdAt: log.createdAt?.toISOString(),
+      kioskName: log.kiosk?.name || log.kiosk?.kioskId || 'Unknown',
+    }));
+  }
+
+  /**
+   * Update print job status (for local agent)
+   */
+  async updatePrintJobStatus(
+    logId: string,
+    status: PrintStatus,
+    errorMessage?: string,
+  ): Promise<KioskPrintLog> {
+    const log = await this.printLogRepo.findOne({ where: { id: logId } });
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    log.status = status;
+    if (status === PrintStatus.PROCESSING) {
+      log.startedAt = new Date();
+    } else if (status === PrintStatus.COMPLETED || status === PrintStatus.FAILED) {
+      log.completedAt = new Date();
+    }
+    if (errorMessage) {
+      log.errorMessage = errorMessage;
+    }
+
+    return this.printLogRepo.save(log);
   }
 }

@@ -283,6 +283,7 @@ export class KioskPrintLogController {
       giftCardBrand?: string;
       giftCardAmount?: number;
       giftCardCode?: string;
+      printerName?: string;
       paperType?: string;
       paperSize?: string;
       trayNumber?: number;
@@ -386,6 +387,42 @@ export class ManagerPrintLogController {
     await this.kioskService.getManagerPrintLogById(logId, req.user.id);
     // Then process reprint
     return this.kioskService.reprintJob(logId, req.user.id);
+  }
+}
+
+/**
+ * Local print agent endpoints - polls for pending jobs from database
+ * This is more reliable than the in-memory queue which is lost on server restart
+ */
+@Controller('local-agent')
+export class LocalPrintAgentController {
+  constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * Get pending print jobs for local print agent
+   * Uses database (persistent) instead of in-memory queue
+   */
+  @Public()
+  @Get('pending-jobs')
+  async getPendingJobs() {
+    const jobs = await this.kioskService.getPendingPrintJobs();
+    return { jobs };
+  }
+
+  /**
+   * Update job status (called by local agent after printing)
+   */
+  @Public()
+  @Put('jobs/:logId/status')
+  async updateJobStatus(
+    @Param('logId') logId: string,
+    @Body() body: { status: string; error?: string },
+  ) {
+    return this.kioskService.updatePrintJobStatus(
+      logId,
+      body.status as any,
+      body.error,
+    );
   }
 }
 

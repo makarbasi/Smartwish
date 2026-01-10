@@ -16,6 +16,7 @@ import {
   KioskPrintLogController,
   ManagerPrintLogController,
   AdminPrintLogController,
+  LocalPrintAgentController,
 } from './kiosk-config.controller';
 import { User } from '../user/user.entity';
 
@@ -51,6 +52,7 @@ import { User } from '../user/user.entity';
     KioskPrintLogController,
     ManagerPrintLogController,
     AdminPrintLogController,
+    LocalPrintAgentController,
   ],
   providers: [KioskConfigService],
   exports: [KioskConfigService],

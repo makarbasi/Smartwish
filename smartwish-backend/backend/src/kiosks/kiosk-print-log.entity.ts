@@ -75,6 +75,9 @@ export class KioskPrintLog {
   giftCardCode: string;
 
   // Print details
+  @Column({ name: 'printer_name', nullable: true })
+  printerName: string;
+
   @Column({ name: 'paper_type', nullable: true })
   paperType: string;
 

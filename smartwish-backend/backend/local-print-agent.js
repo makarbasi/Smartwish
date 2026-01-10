@@ -441,8 +441,8 @@ async function processJob(job) {
       paperType: job.paperType || 'greeting-card' 
     });
 
-    // Update job status on server
-    await updateJobStatus(job.id, 'completed');
+    // Update job status on server (use DB endpoint)
+    await updateJobStatusDB(job.id, 'completed');
 
     // Cleanup
     await fs.rm(jobDir, { recursive: true, force: true });
@@ -451,7 +451,7 @@ async function processJob(job) {
 
   } catch (error) {
     console.error(`  ❌ Job ${job.id} failed:`, error.message);
-    await updateJobStatus(job.id, 'failed', error.message);
+    await updateJobStatusDB(job.id, 'failed', error.message);
 
     // Cleanup on error too
     try {
@@ -479,7 +479,68 @@ async function updateJobStatus(jobId, status, error = null) {
 // MAIN POLLING LOOP
 // =============================================================================
 
-async function pollForJobs() {
+/**
+ * Poll for pending jobs from the DATABASE-BACKED endpoint
+ * This is more reliable than the in-memory queue which is lost on server restart
+ */
+async function pollForJobsFromDB() {
+  try {
+    // Use the new database-backed endpoint
+    const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/pending-jobs`);
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    const jobs = data.jobs || [];
+
+    if (jobs.length > 0) {
+      console.log(`\n📬 Found ${jobs.length} pending job(s) from database`);
+
+      for (const job of jobs) {
+        // Mark as processing first (uses database endpoint)
+        await updateJobStatusDB(job.id, 'processing');
+        await processJob(job);
+      }
+    }
+
+  } catch (error) {
+    if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+      // Server might be down, just wait and retry
+    } else if (error.message.includes('404')) {
+      // Fallback to legacy in-memory endpoint if new endpoint not deployed yet
+      console.log('⚠️ Database endpoint not available, falling back to in-memory queue...');
+      await pollForJobsLegacy();
+    } else {
+      console.error('Poll error (DB):', error.message);
+    }
+  }
+}
+
+/**
+ * Update job status using the database-backed endpoint
+ */
+async function updateJobStatusDB(jobId, status, error = null) {
+  try {
+    const body = { status };
+    if (error) body.error = error;
+
+    await fetch(`${CONFIG.cloudServerUrl}/local-agent/jobs/${jobId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    console.warn(`  ⚠️ Could not update job status (DB): ${err.message}`);
+    // Try legacy endpoint as fallback
+    await updateJobStatus(jobId, status, error);
+  }
+}
+
+/**
+ * Legacy polling from in-memory queue (fallback)
+ */
+async function pollForJobsLegacy() {
   try {
     const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs`);
     if (!response.ok) {
@@ -493,7 +554,7 @@ async function pollForJobs() {
     const pendingJobs = jobs.filter(j => j.status === 'pending');
 
     if (pendingJobs.length > 0) {
-      console.log(`\n📬 Found ${pendingJobs.length} pending job(s)`);
+      console.log(`\n📬 Found ${pendingJobs.length} pending job(s) (legacy)`);
 
       for (const job of pendingJobs) {
         // Mark as processing first
@@ -506,9 +567,16 @@ async function pollForJobs() {
     if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
       // Server might be down, just wait and retry
     } else {
-      console.error('Poll error:', error.message);
+      console.error('Poll error (legacy):', error.message);
     }
   }
+}
+
+/**
+ * Main polling function - tries database first, then legacy
+ */
+async function pollForJobs() {
+  await pollForJobsFromDB();
 }
 
 async function listPrinters() {

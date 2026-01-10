@@ -918,6 +918,7 @@ function MyCardsContent() {
     giftCardBrand?: string;
     giftCardAmount?: number;
     giftCardCode?: string;
+    printerName?: string;
     paperType?: string;
     paperSize?: string;
     trayNumber?: number | null;
@@ -1005,6 +1006,7 @@ function MyCardsContent() {
           productId: card.id,
           productName: card.name || 'Greeting Card',
           price,
+          printerName, // Include printer name for local agent to use
           paperType,
           paperSize,
           trayNumber,
