@@ -25,13 +25,22 @@ echo   Poll Interval: %POLL_INTERVAL%ms
 echo.
 
 REM ===============================================
-REM  OPEN BROWSER IN FULLSCREEN KIOSK MODE
+REM  OPEN BROWSER IN FULLSCREEN MODE
 REM ===============================================
 echo Opening manager login page in fullscreen...
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk --start-fullscreen "%CLOUD_SERVER_URL%/managers/login"
 
-REM Wait a moment for browser to launch
-timeout /t 2 /nobreak >nul
+REM Open browser and send F11 to make it fullscreen
+REM This works even if Chrome is already running
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "https://app.smartwish.us/managers/login"
+
+REM Wait for browser to open
+timeout /t 3 /nobreak >nul
+
+REM Send F11 to Chrome to toggle fullscreen
+powershell -Command "$wshell = New-Object -ComObject wscript.shell; $wshell.AppActivate('Chrome'); Start-Sleep -Milliseconds 500; $wshell.SendKeys('{F11}')"
+
+REM Wait a moment before continuing
+timeout /t 1 /nobreak >nul
 
 REM Start the print agent
 node local-print-agent.js

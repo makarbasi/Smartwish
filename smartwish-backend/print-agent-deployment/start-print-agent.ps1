@@ -27,33 +27,52 @@ Write-Host "  Poll Interval: $env:POLL_INTERVAL ms"
 Write-Host ""
 
 # ===============================================
-# OPEN BROWSER IN FULLSCREEN KIOSK MODE
+# OPEN BROWSER IN FULLSCREEN MODE
 # ===============================================
 if (-not $NoBrowser) {
     Write-Host "Opening manager login page in fullscreen..." -ForegroundColor Green
-    $loginUrl = "$env:CLOUD_SERVER_URL/managers/login"
+    
+    if ($Dev) {
+        $loginUrl = "http://localhost:3000/managers/login"
+    } else {
+        $loginUrl = "https://app.smartwish.us/managers/login"
+    }
     
     # Try Chrome first (most common)
     $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
     $chromePathX86 = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+    $browserName = "Chrome"
     
     if (Test-Path $chromePath) {
-        Start-Process $chromePath -ArgumentList "--kiosk", "--start-fullscreen", $loginUrl
+        Start-Process $chromePath -ArgumentList "--new-window", $loginUrl
     } elseif (Test-Path $chromePathX86) {
-        Start-Process $chromePathX86 -ArgumentList "--kiosk", "--start-fullscreen", $loginUrl
+        Start-Process $chromePathX86 -ArgumentList "--new-window", $loginUrl
     } else {
         # Fallback to Edge (comes with Windows)
         $edgePath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
         if (Test-Path $edgePath) {
-            Start-Process $edgePath -ArgumentList "--kiosk", "--start-fullscreen", $loginUrl
+            Start-Process $edgePath -ArgumentList "--new-window", $loginUrl
+            $browserName = "Edge"
         } else {
             Write-Host "  Could not find Chrome or Edge. Opening in default browser..." -ForegroundColor Yellow
             Start-Process $loginUrl
+            $browserName = $null
         }
     }
     
-    # Wait for browser to launch
-    Start-Sleep -Seconds 2
+    # Wait for browser to open
+    Start-Sleep -Seconds 3
+    
+    # Send F11 to make fullscreen (works even if browser was already running)
+    if ($browserName) {
+        $wshell = New-Object -ComObject wscript.shell
+        $wshell.AppActivate($browserName) | Out-Null
+        Start-Sleep -Milliseconds 500
+        $wshell.SendKeys('{F11}')
+        Write-Host "  Sent F11 to enable fullscreen mode" -ForegroundColor Green
+    }
+    
+    Start-Sleep -Seconds 1
 }
 
 # Run the agent (located in this directory)

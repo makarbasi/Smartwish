@@ -184,35 +184,34 @@ export default function KioskProductSwitcher() {
 
   return (
     <>
-      {/* Floating Toggle Button - More vibrant */}
+      {/* Floating Toggle Button - Large round button aligned with search bar */}
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed top-4 left-4 z-50 flex items-center gap-2 rounded-full px-4 py-2.5 shadow-lg border-2 hover:shadow-xl hover:scale-105 transition-all duration-300 group ${
+        className={`fixed top-[22px] left-4 sm:left-6 z-50 w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full shadow-xl border-3 hover:shadow-2xl hover:scale-110 active:scale-95 transition-all duration-200 group ${
           currentProduct === "greeting-cards"
-            ? "bg-gradient-to-r from-indigo-500 to-purple-500 border-indigo-400 text-white"
-            : "bg-gradient-to-r from-pink-500 to-rose-500 border-pink-400 text-white"
+            ? "bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 border-white/30"
+            : "bg-gradient-to-br from-pink-500 via-rose-500 to-rose-600 border-white/30"
         }`}
         aria-label="Switch product type"
+        title={currentProduct === "greeting-cards" ? "Click to switch to Stickers" : "Click to switch to Greeting Cards"}
       >
-        {currentProduct === "greeting-cards" ? (
-          <>
-            <span className="text-xl">🎁</span>
-            <span className="font-semibold hidden sm:inline">Greeting Cards</span>
-          </>
-        ) : (
-          <>
-            <span className="text-xl">✨</span>
-            <span className="font-semibold hidden sm:inline">Stickers</span>
-          </>
-        )}
-        <svg
-          className="w-4 h-4 text-white/80 group-hover:text-white transition-colors"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-        </svg>
+        {/* Product emoji with switch indicator */}
+        <div className="relative">
+          <span className="text-2xl sm:text-3xl">
+            {currentProduct === "greeting-cards" ? "🎁" : "✨"}
+          </span>
+          {/* Small switch badge */}
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-white rounded-full flex items-center justify-center shadow-md">
+            <svg 
+              className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-700" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
+          </div>
+        </div>
       </button>
 
       {/* Modal Overlay */}
