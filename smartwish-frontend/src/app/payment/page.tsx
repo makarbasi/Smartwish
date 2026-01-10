@@ -1,15 +1,96 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useState, useEffect, Component, ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useSession } from 'next-auth/react'
 
-// Initialize Stripe
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+// Initialize Stripe with null-check to prevent crashes
+const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
+
+// Error Boundary to catch and display runtime errors gracefully
+interface ErrorBoundaryProps {
+  children: ReactNode
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+}
+
+class PaymentErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('❌ Payment page error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-red-50 to-rose-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center">
+            <div className="mx-auto w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+              <svg className="w-10 h-10 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-3">Payment Error</h1>
+            <p className="text-gray-600 mb-4">
+              An error occurred while loading the payment page.
+            </p>
+            <p className="text-sm text-gray-500 bg-gray-100 p-3 rounded-lg font-mono break-all mb-4">
+              {this.state.error?.message || 'Unknown error'}
+            </p>
+            <p className="text-sm text-gray-500">
+              Please scan the QR code again or contact support.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
 
 function PaymentContent() {
+  // Show error if Stripe is not configured
+  if (!stripePromise) {
+    console.error('❌ Stripe not initialized! Check NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY')
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-rose-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center">
+          <div className="mx-auto w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
+            <svg className="w-10 h-10 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">Payment System Error</h1>
+          <p className="text-gray-600 mb-6">The payment system is not configured correctly. Please contact support.</p>
+          <p className="text-sm text-gray-500">
+            Error: Stripe publishable key is missing.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <Elements stripe={stripePromise}>
       <PaymentForm />
@@ -40,8 +121,8 @@ function PaymentForm() {
   const sessionId = searchParams.get('session')
   const urlOrderId = searchParams.get('orderId') // ✅ Get orderId from QR code
   
-  // ✅ Backend configuration
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001'
+  // ✅ Backend configuration - use production URL as default
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'
   const accessToken = (session?.user as any)?.access_token
 
   // ✅ FIX: Allow guest checkout - don't require authentication
@@ -492,15 +573,17 @@ function PaymentForm() {
 
 export default function PaymentPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-          <p className="text-gray-600">Loading payment...</p>
+    <PaymentErrorBoundary>
+      <Suspense fallback={
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+            <p className="text-gray-600">Loading payment...</p>
+          </div>
         </div>
-      </div>
-    }>
-      <PaymentContent />
-    </Suspense>
+      }>
+        <PaymentContent />
+      </Suspense>
+    </PaymentErrorBoundary>
   )
 }
