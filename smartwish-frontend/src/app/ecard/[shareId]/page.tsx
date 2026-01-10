@@ -72,6 +72,22 @@ export default function ECardViewer() {
                 if (data.success && data.ecard) {
                     // Use the ecard data directly
                     const ecardData = data.ecard;
+                    
+                    console.log('═══════════════════════════════════════════════════════════')
+                    console.log('📧 E-CARD VIEWER - Data received from API')
+                    console.log('📧 ecardData.id:', ecardData.id)
+                    console.log('📧 ecardData.giftCardData:', ecardData.giftCardData ? 'PRESENT' : 'NOT PRESENT')
+                    if (ecardData.giftCardData) {
+                        console.log('🎁 Gift card details:', {
+                            storeName: ecardData.giftCardData.storeName,
+                            amount: ecardData.giftCardData.amount,
+                            hasQrCode: !!ecardData.giftCardData.qrCode,
+                            qrCodeLength: ecardData.giftCardData.qrCode?.length || 0,
+                            hasRedemptionLink: !!ecardData.giftCardData.redemptionLink
+                        });
+                    }
+                    console.log('═══════════════════════════════════════════════════════════')
+                    
                     const ecard: ECard = {
                         id: ecardData.id,
                         cardId: ecardData.cardId,
@@ -83,7 +99,7 @@ export default function ECardViewer() {
                         // Include gift card data from the e-card record
                         giftCardData: ecardData.giftCardData || null
                     };
-                    console.log('🎁 E-card loaded with gift card:', ecard.giftCardData);
+                    console.log('🎁 E-card state set with giftCardData:', ecard.giftCardData ? 'YES' : 'NO');
                     setECard(ecard);
                 } else {
                     setError(data.error || "E-Card not found");
@@ -140,6 +156,20 @@ export default function ECardViewer() {
 
     // Extract gift card data - prefer direct giftCardData, fallback to metadata
     const giftCardData = eCard?.giftCardData || eCard?.cardData?.metadata?.giftCard || null;
+    
+    // Log gift card extraction for debugging
+    if (eCard) {
+        console.log('🎁 Gift card extraction:', {
+            fromEcardGiftCardData: eCard.giftCardData ? 'YES' : 'NO',
+            fromMetadata: eCard.cardData?.metadata?.giftCard ? 'YES' : 'NO',
+            finalGiftCardData: giftCardData ? {
+                storeName: giftCardData.storeName,
+                amount: giftCardData.amount,
+                hasQrCode: !!giftCardData.qrCode,
+                qrCodeLength: giftCardData.qrCode?.length || 0
+            } : 'NULL'
+        });
+    }
 
     const nextPage = () => {
         if (isFlipping) return;

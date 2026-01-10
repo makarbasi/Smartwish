@@ -19,14 +19,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { cardId, cardName, recipientEmail, message, senderName, giftCardData } = body;
     
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('📧 /api/send-ecard RECEIVED REQUEST')
+    console.log('📧 cardId:', cardId)
+    console.log('📧 recipientEmail:', recipientEmail)
+    console.log('📧 giftCardData received:', giftCardData ? 'YES' : 'NO/NULL')
+    
     // Log gift card data if present
     if (giftCardData) {
       console.log('🎁 E-card includes gift card:', {
         storeName: giftCardData.storeName,
         amount: giftCardData.amount,
-        hasQrCode: !!giftCardData.qrCode
+        hasQrCode: !!giftCardData.qrCode,
+        qrCodeLength: giftCardData.qrCode?.length || 0,
+        hasStoreLogo: !!giftCardData.storeLogo,
+        hasRedemptionLink: !!giftCardData.redemptionLink,
+        hasCode: !!giftCardData.code
       });
+    } else {
+      console.log('⚠️ NO gift card data in request!')
     }
+    console.log('═══════════════════════════════════════════════════════════')
 
     // Validate required fields
     if (!cardId || !cardName || !recipientEmail || !senderName) {
