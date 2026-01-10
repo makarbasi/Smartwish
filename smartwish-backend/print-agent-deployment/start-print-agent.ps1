@@ -17,13 +17,14 @@ if ($Dev) {
     $env:CLOUD_SERVER_URL = "https://smartwish.onrender.com"
     Write-Host "  MODE: PRODUCTION" -ForegroundColor Green
 }
-$env:DEFAULT_PRINTER = "HPA4CC43 (HP Smart Tank 7600 series)"
+$env:DEFAULT_PRINTER = "HPIE4B65B (HP OfficeJet Pro 9130e Series)"
 $env:POLL_INTERVAL = "5000"
 
 Write-Host "Configuration:" -ForegroundColor Yellow
 Write-Host "  Server: $env:CLOUD_SERVER_URL"
-Write-Host "  Printer: $env:DEFAULT_PRINTER"
+Write-Host "  Fallback Printer: $env:DEFAULT_PRINTER"
 Write-Host "  Poll Interval: $env:POLL_INTERVAL ms"
+Write-Host "  Note: Printer name/IP from /admin/kiosks config is used per-job" -ForegroundColor Cyan
 Write-Host ""
 
 # ===============================================

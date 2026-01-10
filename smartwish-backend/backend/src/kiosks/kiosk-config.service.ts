@@ -1197,6 +1197,7 @@ export class KioskConfigService {
     return pendingLogs.map(log => ({
       id: log.id,
       printerName: log.printerName || (log.kiosk?.config as any)?.printerName || null,
+      printerIP: (log.kiosk?.config as any)?.printerIP || null,
       paperType: log.paperType || 'greeting-card',
       paperSize: log.paperSize || 'letter',
       trayNumber: log.trayNumber || null,

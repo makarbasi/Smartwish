@@ -37,8 +37,9 @@ const CONFIG = {
   // Cloud server URL - change this to your deployed backend
   cloudServerUrl: process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
 
-  // Default printer name - set to your actual printer
-  defaultPrinter: process.env.DEFAULT_PRINTER || 'HP OfficeJet Pro 9130e Series [HPIE4B65B]',
+  // Fallback default printer (only used if job has no printerName from kiosk config)
+  // Per-kiosk printer settings are configured in /admin/kiosks
+  defaultPrinter: process.env.DEFAULT_PRINTER || 'HPIE4B65B (HP OfficeJet Pro 9130e Series)',
 
   // How often to poll for new jobs (milliseconds)
   pollInterval: process.env.POLL_INTERVAL || 5000,
@@ -597,7 +598,8 @@ async function listPrinters() {
   }
 
   console.log('─'.repeat(50));
-  console.log(`  Default: ${CONFIG.defaultPrinter}`);
+  console.log(`  Fallback: ${CONFIG.defaultPrinter}`);
+  console.log('  (Actual printer is loaded from kiosk config per-job)');
   console.log('');
 }
 
@@ -607,6 +609,9 @@ async function main() {
   console.log('═'.repeat(60));
   console.log(`  Server: ${CONFIG.cloudServerUrl}`);
   console.log(`  Poll Interval: ${CONFIG.pollInterval}ms`);
+  console.log('');
+  console.log('📝 Printer settings are loaded from /admin/kiosks config per-job.');
+  console.log(`   Fallback printer: ${CONFIG.defaultPrinter}`);
   console.log('');
 
   await ensureTempDir();

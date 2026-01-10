@@ -37,8 +37,9 @@ const CONFIG = {
   // Cloud server URL - change this to your deployed backend
   cloudServerUrl: process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
 
-  // Default printer name - set to your actual printer
-  defaultPrinter: process.env.DEFAULT_PRINTER || 'HPA4CC43 (HP Smart Tank 7600 series)',
+  // Fallback default printer (only used if job has no printerName from kiosk config)
+  // Per-kiosk printer settings are configured in /admin/kiosks
+  defaultPrinter: process.env.DEFAULT_PRINTER || 'HPIE4B65B (HP OfficeJet Pro 9130e Series)',
 
   // How often to poll for new jobs (milliseconds)
   pollInterval: process.env.POLL_INTERVAL || 5000,
@@ -391,7 +392,8 @@ async function updateJobStatus(jobId, status, error = null) {
     const body = { status };
     if (error) body.error = error;
 
-    await fetch(`${CONFIG.cloudServerUrl}/print-jobs/${jobId}/status`, {
+    // Use database-backed endpoint for job status updates
+    await fetch(`${CONFIG.cloudServerUrl}/local-agent/jobs/${jobId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -407,7 +409,8 @@ async function updateJobStatus(jobId, status, error = null) {
 
 async function pollForJobs() {
   try {
-    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs`);
+    // Use database-backed endpoint which includes printerName and printerIP from kiosk config
+    const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/pending-jobs`);
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
@@ -415,13 +418,11 @@ async function pollForJobs() {
     const data = await response.json();
     const jobs = data.jobs || [];
 
-    // Find pending jobs
-    const pendingJobs = jobs.filter(j => j.status === 'pending');
+    // All jobs returned are already pending (filtered by server)
+    if (jobs.length > 0) {
+      console.log(`\n📬 Found ${jobs.length} pending job(s)`);
 
-    if (pendingJobs.length > 0) {
-      console.log(`\n📬 Found ${pendingJobs.length} pending job(s)`);
-
-      for (const job of pendingJobs) {
+      for (const job of jobs) {
         // Mark as processing first
         await updateJobStatus(job.id, 'processing');
         await processJob(job);
@@ -455,7 +456,8 @@ async function listPrinters() {
   }
 
   console.log('─'.repeat(50));
-  console.log(`  Default: ${CONFIG.defaultPrinter}`);
+  console.log(`  Fallback: ${CONFIG.defaultPrinter}`);
+  console.log('  (Actual printer is loaded from kiosk config per-job)');
   console.log('');
 }
 
@@ -465,6 +467,9 @@ async function main() {
   console.log('═'.repeat(60));
   console.log(`  Server: ${CONFIG.cloudServerUrl}`);
   console.log(`  Poll Interval: ${CONFIG.pollInterval}ms`);
+  console.log('');
+  console.log('📝 Printer settings are loaded from /admin/kiosks config per-job.');
+  console.log(`   Fallback printer: ${CONFIG.defaultPrinter}`);
   console.log('');
 
   await ensureTempDir();
