@@ -10,6 +10,7 @@ import {
     ArrowLeftIcon,
     HeartIcon
 } from "@heroicons/react/24/outline";
+import QRCode from "qrcode";
 
 interface GiftCardData {
     storeName: string;
@@ -59,6 +60,7 @@ export default function ECardViewer() {
     const [error, setError] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(0);
     const [isFlipping, setIsFlipping] = useState(false);
+    const [generatedQrCode, setGeneratedQrCode] = useState<string | null>(null);
 
     useEffect(() => {
         if (!shareId) return;
@@ -166,10 +168,52 @@ export default function ECardViewer() {
                 storeName: giftCardData.storeName,
                 amount: giftCardData.amount,
                 hasQrCode: !!giftCardData.qrCode,
-                qrCodeLength: giftCardData.qrCode?.length || 0
+                qrCodeLength: giftCardData.qrCode?.length || 0,
+                hasRedemptionLink: !!giftCardData.redemptionLink
             } : 'NULL'
         });
     }
+    
+    // Generate QR code dynamically if not present but we have redemption info
+    useEffect(() => {
+        const generateQR = async () => {
+            if (giftCardData && !giftCardData.qrCode && !generatedQrCode) {
+                // Determine QR content from available data
+                let qrContent = giftCardData.redemptionLink || '';
+                
+                if (!qrContent && giftCardData.code) {
+                    qrContent = giftCardData.code;
+                    if (giftCardData.pin) {
+                        qrContent += ` PIN: ${giftCardData.pin}`;
+                    }
+                }
+                
+                if (!qrContent) {
+                    qrContent = `${giftCardData.storeName} - $${giftCardData.amount}`;
+                }
+                
+                console.log('🎁 Generating QR code dynamically for:', qrContent.substring(0, 50) + '...');
+                
+                try {
+                    const qrDataUrl = await QRCode.toDataURL(qrContent, {
+                        width: 200,
+                        margin: 2,
+                        color: { dark: '#2d3748', light: '#ffffff' },
+                        errorCorrectionLevel: 'H'
+                    });
+                    setGeneratedQrCode(qrDataUrl);
+                    console.log('✅ QR code generated dynamically, length:', qrDataUrl.length);
+                } catch (error) {
+                    console.error('❌ Failed to generate QR code:', error);
+                }
+            }
+        };
+        
+        generateQR();
+    }, [giftCardData, generatedQrCode]);
+    
+    // Use stored QR code or dynamically generated one
+    const displayQrCode = giftCardData?.qrCode || generatedQrCode;
 
     const nextPage = () => {
         if (isFlipping) return;
@@ -310,7 +354,7 @@ export default function ECardViewer() {
                                 )}
 
                                 {/* Gift Card QR Code and Logo Overlay - Show on page 3 (index 2) */}
-                                {currentPage === 2 && giftCardData && (
+                                {currentPage === 2 && giftCardData && displayQrCode && (
                                     <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-gray-200 z-10">
                                         <div className="flex flex-col items-center space-y-3">
                                             {/* QR Code and Logo side-by-side */}
@@ -318,7 +362,7 @@ export default function ECardViewer() {
                                                 {/* QR Code on left */}
                                                 <div className="bg-white p-2 rounded-lg shadow-sm">
                                                     <img
-                                                        src={giftCardData.qrCode}
+                                                        src={displayQrCode}
                                                         alt="Gift Card QR Code"
                                                         className="w-24 h-24 object-contain"
                                                     />
