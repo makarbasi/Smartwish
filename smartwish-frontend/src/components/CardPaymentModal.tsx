@@ -644,13 +644,24 @@ function CardPaymentModalContent({
     console.log('🎁 action:', action)
     
     // Debug: List ALL localStorage keys related to gift cards
-    const allGiftCardKeys = Object.keys(localStorage).filter(k => k.includes('giftCard'))
+    const allGiftCardKeys = Object.keys(localStorage).filter(k => k.includes('giftCard') && !k.includes('Meta'))
     console.log('🎁 All gift card keys in localStorage:', allGiftCardKeys)
     
     try {
       const expectedKey = `giftCard_${cardId}`
       console.log('🎁 Looking for key:', expectedKey)
-      const storedGiftCard = localStorage.getItem(expectedKey)
+      let storedGiftCard = localStorage.getItem(expectedKey)
+      let actualGiftCardKey = expectedKey
+      
+      // ✅ FALLBACK: If exact key not found, try to find any gift card (handles card ID migration issues)
+      if (!storedGiftCard && allGiftCardKeys.length > 0) {
+        console.log('🎁 Exact key not found, trying fallback...')
+        // Use the most recent gift card (last one in the list, or the only one)
+        actualGiftCardKey = allGiftCardKeys[allGiftCardKeys.length - 1]
+        storedGiftCard = localStorage.getItem(actualGiftCardKey)
+        console.log('🎁 Using fallback key:', actualGiftCardKey, 'found:', storedGiftCard ? 'YES' : 'NO')
+      }
+      
       console.log('🎁 Raw stored gift card found:', storedGiftCard ? 'YES' : 'NO')
       if (storedGiftCard) {
         console.log('🎁 Raw data (first 200 chars):', storedGiftCard.substring(0, 200))
@@ -710,18 +721,24 @@ function CardPaymentModalContent({
 
             const data = await response.json()
             
-            console.log('🎁 Tillo API response:', {
+            console.log('🎁 Tillo API FULL response:', JSON.stringify(data, null, 2))
+            console.log('🎁 Tillo API response summary:', {
               ok: response.ok,
               success: data.success,
               hasGiftCard: !!data.giftCard,
               giftCard: data.giftCard ? {
                 url: data.giftCard.url,
-                code: data.giftCard.code ? '***' : 'N/A',
-                pin: data.giftCard.pin ? '***' : 'N/A',
+                redemptionUrl: data.giftCard.redemptionUrl,
+                code: data.giftCard.code ? '***PRESENT***' : 'N/A',
+                pin: data.giftCard.pin ? '***PRESENT***' : 'N/A',
                 orderId: data.giftCard.orderId
               } : null,
               error: data.error
             })
+            
+            // 🎁 Extract redemption URL - try multiple fields
+            const redemptionUrl = data.giftCard?.url || data.giftCard?.redemptionUrl || data.giftCard?.claim_url || ''
+            console.log('🎁 Extracted redemption URL:', redemptionUrl || 'NONE FOUND!')
 
             if (response.ok && data.success) {
               console.log('✅ Gift card issued successfully after payment')
@@ -732,14 +749,16 @@ function CardPaymentModalContent({
                 status: 'issued',
                 isIssued: true,
                 issuedAt: new Date().toISOString(),
-                // Add the actual gift card data from Tillo
-                redemptionLink: data.giftCard?.url || data.giftCard?.redemptionUrl,
+                // Add the actual gift card data from Tillo - try multiple URL fields
+                redemptionLink: redemptionUrl,
                 code: data.giftCard?.code,
                 pin: data.giftCard?.pin,
-                orderId: data.giftCard?.orderId,
+                orderId: data.giftCard?.orderId || data.giftCard?.clientRequestId,
                 expiryDate: data.giftCard?.expiryDate,
                 qrCode: '' // Will be generated below
               }
+              
+              console.log('🎁 Issued gift card redemptionLink set to:', issuedGiftCard.redemptionLink || 'EMPTY!')
               
               console.log('🎁 Issued gift card object:', {
                 storeName: issuedGiftCard.storeName,
@@ -752,10 +771,15 @@ function CardPaymentModalContent({
               // Generate QR code for the redemption link or code
               // Always generate a QR code - either from URL, code, or a fallback
               let qrContent = issuedGiftCard.redemptionLink || '';
+              let qrSource = 'redemptionLink';
+              
+              console.log('🎁 QR content check - redemptionLink:', issuedGiftCard.redemptionLink || 'EMPTY')
+              console.log('🎁 QR content check - code:', issuedGiftCard.code || 'EMPTY')
               
               // If no URL, create QR from gift card code
               if (!qrContent && issuedGiftCard.code) {
                 qrContent = issuedGiftCard.code;
+                qrSource = 'code';
                 if (issuedGiftCard.pin) {
                   qrContent += ` PIN: ${issuedGiftCard.pin}`;
                 }
@@ -764,9 +788,11 @@ function CardPaymentModalContent({
               // Fallback: create QR with store name and amount
               if (!qrContent) {
                 qrContent = `${giftCardSelection.storeName || 'Gift Card'} - $${issuedGiftCard.amount || giftCardSelection.amount}`;
+                qrSource = 'fallback';
+                console.warn('⚠️ USING FALLBACK QR CONTENT - No redemption URL or code available!')
               }
               
-              console.log('🎁 Generating QR code for:', qrContent.substring(0, 50) + '...');
+              console.log('🎁 Generating QR code from:', qrSource, '- content:', qrContent.substring(0, 80));
               
               try {
                 const qrCodeUrl = await QRCode.toDataURL(qrContent, {
@@ -814,7 +840,10 @@ function CardPaymentModalContent({
                 hasRedemptionLink: !!issuedGiftCardData.redemptionLink
               })
 
-              // Encrypt and save the issued gift card
+              // Encrypt and save the issued gift card (use actual key that was found, not just cardId)
+              const saveKey = actualGiftCardKey || `giftCard_${cardId}`
+              const metaKey = saveKey.replace('giftCard_', 'giftCardMeta_')
+              
               try {
                 const encryptResponse = await fetch('/api/giftcard/encrypt', {
                   method: 'POST',
@@ -824,8 +853,8 @@ function CardPaymentModalContent({
 
                 if (encryptResponse.ok) {
                   const { encryptedData } = await encryptResponse.json()
-                  localStorage.setItem(`giftCard_${cardId}`, encryptedData)
-                  localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
+                  localStorage.setItem(saveKey, encryptedData)
+                  localStorage.setItem(metaKey, JSON.stringify({
                     storeName: issuedGiftCard.storeName,
                     amount: issuedGiftCard.amount,
                     source: 'tillo',
@@ -833,14 +862,15 @@ function CardPaymentModalContent({
                     issuedAt: issuedGiftCard.issuedAt,
                     isEncrypted: true
                   }))
-                  console.log('🔐 Issued gift card saved with encryption')
+                  console.log('🔐 Issued gift card saved with encryption to key:', saveKey)
                 } else {
                   // Fallback - save without encryption
-                  localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(issuedGiftCard))
+                  localStorage.setItem(saveKey, JSON.stringify(issuedGiftCard))
+                  console.log('🔐 Issued gift card saved without encryption to key:', saveKey)
                 }
               } catch (encryptError) {
                 console.warn('Encryption failed, saving unencrypted:', encryptError)
-                localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(issuedGiftCard))
+                localStorage.setItem(saveKey, JSON.stringify(issuedGiftCard))
               }
             } else {
               console.error('❌ Failed to issue gift card after payment:', data)

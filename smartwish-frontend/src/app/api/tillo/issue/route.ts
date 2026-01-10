@@ -293,7 +293,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { brandSlug, amount, currency = 'USD' } = body
-    const sector = body.sector || process.env.TILLO_DEFAULT_SECTOR || 'gift-card-mall'
+    
+    // IMPORTANT: Always use 'gift-card-mall' - this is the correct sector for our Tillo account
+    // Ignore the env variable since it may have the old incorrect value
+    const sector = 'gift-card-mall'
+    
+    console.log('🎁 Issuing gift card with sector:', sector, '(hardcoded - ignoring env)')
 
     // Validate required fields
     if (!brandSlug || !amount) {
