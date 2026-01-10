@@ -820,12 +820,35 @@ function CardPaymentModalContent({
                 }
               }
 
+              // ✅ Convert store logo URL to base64 (so backend doesn't need to fetch it)
+              let storeLogoBase64 = issuedGiftCard.storeLogo || '';
+              if (storeLogoBase64 && !storeLogoBase64.startsWith('data:')) {
+                try {
+                  console.log('🏪 Converting store logo to base64:', storeLogoBase64.substring(0, 50));
+                  const logoResponse = await fetch(storeLogoBase64);
+                  if (logoResponse.ok) {
+                    const logoBlob = await logoResponse.blob();
+                    const logoBase64 = await new Promise<string>((resolve) => {
+                      const reader = new FileReader();
+                      reader.onloadend = () => resolve(reader.result as string);
+                      reader.readAsDataURL(logoBlob);
+                    });
+                    storeLogoBase64 = logoBase64;
+                    console.log('✅ Store logo converted to base64, length:', logoBase64.length);
+                  } else {
+                    console.warn('⚠️ Failed to fetch store logo, status:', logoResponse.status);
+                  }
+                } catch (logoError) {
+                  console.warn('⚠️ Failed to convert store logo to base64:', logoError);
+                }
+              }
+
               // ✅ Prepare issued gift card data to return to parent for printing
               issuedGiftCardData = {
                 storeName: issuedGiftCard.storeName,
                 amount: issuedGiftCard.amount,
                 qrCode: issuedGiftCard.qrCode,
-                storeLogo: issuedGiftCard.storeLogo,
+                storeLogo: storeLogoBase64, // Now base64 encoded
                 redemptionLink: issuedGiftCard.redemptionLink,
                 code: issuedGiftCard.code,
                 pin: issuedGiftCard.pin,
@@ -880,11 +903,32 @@ function CardPaymentModalContent({
           } else if (giftCardSelection.isIssued && giftCardSelection.qrCode) {
             // Gift card already issued - still pass it for printing
             console.log('🎁 Gift card already issued, passing to print:', giftCardSelection)
+            
+            // ✅ Convert store logo URL to base64 if needed
+            let existingLogoBase64 = giftCardSelection.storeLogo || '';
+            if (existingLogoBase64 && !existingLogoBase64.startsWith('data:')) {
+              try {
+                console.log('🏪 Converting existing store logo to base64');
+                const logoResponse = await fetch(existingLogoBase64);
+                if (logoResponse.ok) {
+                  const logoBlob = await logoResponse.blob();
+                  existingLogoBase64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(logoBlob);
+                  });
+                  console.log('✅ Existing store logo converted to base64');
+                }
+              } catch (logoError) {
+                console.warn('⚠️ Failed to convert existing store logo:', logoError);
+              }
+            }
+            
             issuedGiftCardData = {
               storeName: giftCardSelection.storeName,
               amount: giftCardSelection.amount,
               qrCode: giftCardSelection.qrCode,
-              storeLogo: giftCardSelection.storeLogo,
+              storeLogo: existingLogoBase64,
               redemptionLink: giftCardSelection.redemptionLink,
               code: giftCardSelection.code,
               pin: giftCardSelection.pin,

@@ -105,17 +105,18 @@ export class SharingService {
 
   private async sendShareEmail(sharedCard: SharedCard): Promise<boolean> {
     try {
-      // Create transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
+      // Create transporter with SMTP configuration (supports Office 365, Gmail, GoDaddy, and other SMTP servers)
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+        host: process.env.SMTP_HOST || 'smtp.office365.com',
         port: parseInt(process.env.SMTP_PORT || '587', 10),
         secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
         auth: {
-          user: process.env.EMAIL_USER || 'your-email@smartwish.us',
+          user: process.env.EMAIL_USER || 'amin@smartwish.us',
           pass: process.env.EMAIL_PASS || 'your-email-password',
         },
         tls: {
           rejectUnauthorized: false, // This will bypass SSL certificate validation
+          minVersion: 'TLSv1.2' // Office 365 requires TLS 1.2+
         },
       });
 

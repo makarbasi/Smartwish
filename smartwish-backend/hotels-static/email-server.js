@@ -11,17 +11,18 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// Create transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
+// Create transporter with SMTP configuration (supports Office 365, Gmail, GoDaddy, and other SMTP servers)
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+  host: process.env.SMTP_HOST || 'smtp.office365.com',
   port: parseInt(process.env.SMTP_PORT || '587', 10),
   secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
   auth: {
-    user: process.env.EMAIL_USER || 'ma.karbasi@gmail.com',
-    pass: process.env.EMAIL_PASS || 'xzkyuniylijauvas'
+    user: process.env.EMAIL_USER || 'amin@smartwish.us',
+    pass: process.env.EMAIL_PASS
   },
   tls: {
-    rejectUnauthorized: false // Allow self-signed certificates
+    rejectUnauthorized: false, // Allow self-signed certificates
+    minVersion: 'TLSv1.2' // Office 365 requires TLS 1.2+
   }
 });
 

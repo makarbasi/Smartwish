@@ -176,9 +176,9 @@ export class ECardService {
                 return false;
             }
 
-            // Create transporter with SMTP configuration (supports Gmail, GoDaddy, and other SMTP servers)
+            // Create transporter with SMTP configuration (supports Office 365, Gmail, GoDaddy, and other SMTP servers)
             const transporter = nodemailer.createTransport({
-                host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+                host: process.env.SMTP_HOST || 'smtp.office365.com',
                 port: parseInt(process.env.SMTP_PORT || '587', 10),
                 secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
                 auth: {
@@ -187,6 +187,7 @@ export class ECardService {
                 },
                 tls: {
                     rejectUnauthorized: false,
+                    minVersion: 'TLSv1.2' // Office 365 requires TLS 1.2+
                 },
             });
 
