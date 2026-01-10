@@ -638,11 +638,23 @@ function CardPaymentModalContent({
       return
     }
     
-    console.log('🎁 Checking for gift card to issue, cardId:', cardId)
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('🎁 GIFT CARD ISSUANCE FLOW - START')
+    console.log('🎁 cardId:', cardId)
+    console.log('🎁 action:', action)
+    
+    // Debug: List ALL localStorage keys related to gift cards
+    const allGiftCardKeys = Object.keys(localStorage).filter(k => k.includes('giftCard'))
+    console.log('🎁 All gift card keys in localStorage:', allGiftCardKeys)
     
     try {
-      const storedGiftCard = localStorage.getItem(`giftCard_${cardId}`)
-      console.log('🎁 Raw stored gift card:', storedGiftCard ? `${storedGiftCard.substring(0, 100)}...` : 'null')
+      const expectedKey = `giftCard_${cardId}`
+      console.log('🎁 Looking for key:', expectedKey)
+      const storedGiftCard = localStorage.getItem(expectedKey)
+      console.log('🎁 Raw stored gift card found:', storedGiftCard ? 'YES' : 'NO')
+      if (storedGiftCard) {
+        console.log('🎁 Raw data (first 200 chars):', storedGiftCard.substring(0, 200))
+      }
       
       if (storedGiftCard) {
         let giftCardSelection: any = null
@@ -858,8 +870,24 @@ function CardPaymentModalContent({
       // Don't fail - payment was successful
     }
 
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('🎁 GIFT CARD ISSUANCE FLOW - COMPLETE')
+    console.log('🎁 issuedGiftCardData:', issuedGiftCardData ? {
+      storeName: issuedGiftCardData.storeName,
+      amount: issuedGiftCardData.amount,
+      hasQrCode: !!issuedGiftCardData.qrCode,
+      qrCodeLength: issuedGiftCardData.qrCode?.length || 0,
+      hasStoreLogo: !!issuedGiftCardData.storeLogo,
+      hasRedemptionLink: !!issuedGiftCardData.redemptionLink,
+      hasCode: !!issuedGiftCardData.code,
+      isIssued: issuedGiftCardData.isIssued
+    } : 'UNDEFINED - NO GIFT CARD TO ISSUE')
+    console.log('🎁 Calling onPaymentSuccess with gift card data...')
+    console.log('═══════════════════════════════════════════════════════════')
+
     // Wait a moment to show success message, then pass issued gift card data to parent
     setTimeout(() => {
+      console.log('🎁 onPaymentSuccess callback triggered with:', issuedGiftCardData ? 'GIFT CARD DATA' : 'undefined')
       onPaymentSuccess(issuedGiftCardData)
     }, 1500)
   }

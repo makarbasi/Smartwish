@@ -38,6 +38,24 @@ export async function GET(
         { status: 404 }
       );
     }
+    
+    // Log gift card data for debugging
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('📧 /api/ecard/[shareId] - Fetching e-card')
+    console.log('📧 shareId:', shareId)
+    console.log('📧 ecard.giftCardData:', ecard.giftCardData ? 'PRESENT' : 'NOT PRESENT')
+    if (ecard.giftCardData) {
+      console.log('🎁 Gift card in stored record:', {
+        storeName: ecard.giftCardData.storeName,
+        amount: ecard.giftCardData.amount,
+        hasQrCode: !!ecard.giftCardData.qrCode,
+        qrCodeLength: ecard.giftCardData.qrCode?.length || 0,
+        hasRedemptionLink: !!ecard.giftCardData.redemptionLink
+      });
+    } else {
+      console.log('⚠️ NO gift card data in stored e-card record!')
+    }
+    console.log('═══════════════════════════════════════════════════════════')
 
     // Check if ecard has expired
     const now = new Date();

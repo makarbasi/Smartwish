@@ -1083,7 +1083,15 @@ export default function CustomizeCardPage() {
 
   // Execute send e-card after payment - receives issued gift card data from payment modal
   const executeSendECard = (issuedGiftCard?: IssuedGiftCardData) => {
-    if (!pendingAction || pendingAction.action !== 'send') return;
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('📧 executeSendECard CALLED')
+    console.log('📧 pendingAction:', pendingAction)
+    console.log('📧 issuedGiftCard received:', issuedGiftCard ? 'YES' : 'NO/UNDEFINED')
+    
+    if (!pendingAction || pendingAction.action !== 'send') {
+      console.log('📧 EARLY RETURN: No pending action or action is not "send"')
+      return;
+    }
 
     console.log('📧 Payment successful, showing e-card modal');
     
@@ -1092,13 +1100,21 @@ export default function CustomizeCardPage() {
       console.log('🎁 Gift card to include in e-card:', {
         storeName: issuedGiftCard.storeName,
         amount: issuedGiftCard.amount,
-        hasQrCode: !!issuedGiftCard.qrCode
+        hasQrCode: !!issuedGiftCard.qrCode,
+        qrCodeLength: issuedGiftCard.qrCode?.length || 0,
+        hasRedemptionLink: !!issuedGiftCard.redemptionLink,
+        hasCode: !!issuedGiftCard.code,
+        isIssued: issuedGiftCard.isIssued
       });
       setIssuedGiftCardForEcard(issuedGiftCard);
       // Also update the local gift card state
       setGiftCardData(issuedGiftCard);
+      console.log('🎁 Gift card stored in issuedGiftCardForEcard state')
+    } else {
+      console.log('⚠️ NO GIFT CARD received from payment modal!')
     }
     
+    console.log('═══════════════════════════════════════════════════════════')
     setShowSendModal(true);
     setPaymentModalOpen(false);
     setPendingAction(null);
@@ -1106,6 +1122,22 @@ export default function CustomizeCardPage() {
 
   // Handle sending the actual e-card (called from modal)
   const handleSendEcard = async (email: string, message: string) => {
+    console.log('═══════════════════════════════════════════════════════════')
+    console.log('📧 handleSendEcard CALLED')
+    console.log('📧 email:', email)
+    console.log('📧 issuedGiftCardForEcard state:', issuedGiftCardForEcard ? {
+      storeName: issuedGiftCardForEcard.storeName,
+      amount: issuedGiftCardForEcard.amount,
+      hasQrCode: !!issuedGiftCardForEcard.qrCode,
+      qrCodeLength: issuedGiftCardForEcard.qrCode?.length || 0
+    } : 'NULL')
+    console.log('📧 giftCardData state:', giftCardData ? {
+      storeName: giftCardData.storeName,
+      amount: giftCardData.amount,
+      isIssued: giftCardData.isIssued,
+      hasQrCode: !!giftCardData.qrCode
+    } : 'NULL')
+    
     if (!cardData) {
       throw new Error("No card data available");
     }
@@ -1116,19 +1148,41 @@ export default function CustomizeCardPage() {
 
     // Use real saved design ID if we have it (for templates that were saved in background)
     const actualCardId = realSavedDesignId || cardData.id;
+    console.log('📧 actualCardId:', actualCardId)
 
     // Get the gift card data (either from payment or from state)
     const giftCardToSend = issuedGiftCardForEcard || (giftCardData?.isIssued ? giftCardData : null);
     
-    if (giftCardToSend) {
-      console.log('🎁 Including gift card in e-card:', {
-        storeName: giftCardToSend.storeName,
-        amount: giftCardToSend.amount,
-        hasQrCode: !!giftCardToSend.qrCode
-      });
-    }
+    console.log('🎁 giftCardToSend (final):', giftCardToSend ? {
+      storeName: giftCardToSend.storeName,
+      amount: giftCardToSend.amount,
+      hasQrCode: !!giftCardToSend.qrCode,
+      qrCodeLength: giftCardToSend.qrCode?.length || 0,
+      hasRedemptionLink: !!giftCardToSend.redemptionLink,
+      hasCode: !!giftCardToSend.code,
+      isIssued: giftCardToSend.isIssued
+    } : 'NULL - NO GIFT CARD WILL BE SENT');
 
     setIsSendingEmail(true);
+
+    // Prepare gift card payload
+    const giftCardPayload = giftCardToSend ? {
+      storeName: giftCardToSend.storeName,
+      amount: giftCardToSend.amount,
+      qrCode: giftCardToSend.qrCode,
+      storeLogo: giftCardToSend.storeLogo,
+      redemptionLink: giftCardToSend.redemptionLink,
+      code: giftCardToSend.code,
+      pin: giftCardToSend.pin
+    } : null;
+    
+    console.log('🎁 giftCardPayload for API:', giftCardPayload ? {
+      storeName: giftCardPayload.storeName,
+      amount: giftCardPayload.amount,
+      qrCodeLength: giftCardPayload.qrCode?.length || 0,
+      hasStoreLogo: !!giftCardPayload.storeLogo
+    } : 'NULL');
+    console.log('═══════════════════════════════════════════════════════════')
 
     try {
       const response = await fetch("/api/send-ecard", {
@@ -1144,15 +1198,7 @@ export default function CustomizeCardPage() {
           message: message,
           senderName: session.user.name || session.user.email,
           // Include gift card data if present
-          giftCardData: giftCardToSend ? {
-            storeName: giftCardToSend.storeName,
-            amount: giftCardToSend.amount,
-            qrCode: giftCardToSend.qrCode,
-            storeLogo: giftCardToSend.storeLogo,
-            redemptionLink: giftCardToSend.redemptionLink,
-            code: giftCardToSend.code,
-            pin: giftCardToSend.pin
-          } : null
+          giftCardData: giftCardPayload
         }),
       });
 
