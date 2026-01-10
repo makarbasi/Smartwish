@@ -214,32 +214,41 @@ async function printPdf(pdfPath, printerName) {
 // =============================================================================
 
 async function processJob(job) {
+  const paperType = job.paperType || 'greeting-card';
+  const isSticker = paperType === 'sticker';
+  
   console.log(`\n📋 Processing job: ${job.id}`);
-  console.log(`   Printer: ${job.printerName}`);
-  console.log(`   Paper Type: ${job.paperType || 'greeting-card'}`);
+  console.log(`   Type: ${isSticker ? '🏷️  STICKER (IPP with printer IP)' : '💌 GREETING CARD (Windows printer name)'}`);
+  console.log(`   Kiosk: ${job.kioskName || 'Unknown'}`);
+  
+  if (isSticker) {
+    console.log(`   Printer IP: ${job.printerIP || '(not set - will use fallback)'}`);
+  } else {
+    console.log(`   Printer Name: ${job.printerName || '(not set - will use fallback)'}`);
+  }
+  
   console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No'}`);
   console.log(`   JPG URL: ${job.jpgUrl ? 'Yes ✓' : 'No'}`);
-  console.log(`   Images: ${job.imagePaths?.length || 0}`);
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });
 
   try {
     // =========================================================================
-    // STICKER PRINTING: Use JPG URL and print via IPP
+    // STICKER PRINTING: Use JPG URL and print via IPP (requires printer IP)
     // =========================================================================
-    if (job.jpgUrl && job.paperType === 'sticker') {
-      console.log('  🖼️  Using sticker JPG (IPP printing)');
+    if (job.jpgUrl && paperType === 'sticker') {
+      console.log('  🖼️  Sticker printing via IPP protocol');
 
       const jpgPath = path.join(jobDir, 'stickers.jpg');
       await downloadImage(job.jpgUrl, jpgPath);
       console.log('  ✅ JPG downloaded successfully');
 
-      // Get printer IP from job or use default
+      // Get printer IP from job (set in /admin/kiosks) or use fallback
       const printerIP = job.printerIP || '192.168.1.239';
       const printerUrl = `http://${printerIP}:631/ipp/print`;
 
-      console.log(`  📡 Printer IP: ${printerIP}`);
+      console.log(`  📡 Printer IP: ${printerIP}${job.printerIP ? ' (from kiosk config)' : ' (fallback)'}`);
       console.log(`  📡 Printer URL: ${printerUrl}`);
 
       // Verify printer is reachable (optional check)
@@ -304,13 +313,15 @@ async function processJob(job) {
     }
 
     // =========================================================================
-    // GREETING CARDS: Use PDF or generate from images
+    // GREETING CARDS: Use PDF and print via Windows printer name
     // =========================================================================
+    console.log('  💌 Greeting card printing via Windows printer driver');
+    
     let pdfPath = path.join(jobDir, 'card.pdf');
 
     // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
     if (job.pdfUrl) {
-      console.log('  📄 Using server-generated PDF (recommended)');
+      console.log('  📄 Downloading server-generated PDF...');
       await downloadPdf(job.pdfUrl, pdfPath);
       console.log('  ✅ PDF downloaded successfully');
     }
@@ -359,8 +370,9 @@ async function processJob(job) {
       throw new Error('Job has no PDF URL and no valid image paths');
     }
 
-    // Print
+    // Print using Windows printer name (set in /admin/kiosks)
     const printerName = job.printerName || CONFIG.defaultPrinter;
+    console.log(`  🖨️  Printer: ${printerName}${job.printerName ? ' (from kiosk config)' : ' (fallback)'}`);
     await printPdf(pdfPath, printerName);
 
     // Update job status on server
@@ -387,30 +399,96 @@ async function processJob(job) {
   }
 }
 
-async function updateJobStatus(jobId, status, error = null) {
+/**
+ * Update job status using the database-backed endpoint
+ */
+async function updateJobStatusDB(jobId, status, error = null) {
   try {
     const body = { status };
     if (error) body.error = error;
 
-    // Use database-backed endpoint for job status updates
     await fetch(`${CONFIG.cloudServerUrl}/local-agent/jobs/${jobId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
   } catch (err) {
-    console.warn(`  ⚠️ Could not update job status: ${err.message}`);
+    console.warn(`  ⚠️ Could not update job status (DB): ${err.message}`);
+    // Try legacy endpoint as fallback
+    await updateJobStatusLegacy(jobId, status, error);
   }
+}
+
+/**
+ * Update job status using the legacy in-memory endpoint
+ */
+async function updateJobStatusLegacy(jobId, status, error = null) {
+  try {
+    const body = { status };
+    if (error) body.error = error;
+
+    await fetch(`${CONFIG.cloudServerUrl}/print-jobs/${jobId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    console.warn(`  ⚠️ Could not update job status (legacy): ${err.message}`);
+  }
+}
+
+// Wrapper function that chooses the right update method
+async function updateJobStatus(jobId, status, error = null) {
+  // Try database endpoint first, it will fallback to legacy if needed
+  await updateJobStatusDB(jobId, status, error);
 }
 
 // =============================================================================
 // MAIN POLLING LOOP
 // =============================================================================
 
-async function pollForJobs() {
+/**
+ * Poll for pending jobs from the DATABASE-BACKED endpoint
+ * Greeting cards are stored in the database with kiosk config (printerName, printerIP)
+ */
+async function pollForJobsFromDB() {
   try {
-    // Use database-backed endpoint which includes printerName and printerIP from kiosk config
     const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/pending-jobs`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Endpoint not deployed yet, skip silently
+        return;
+      }
+      throw new Error(`Server returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    const jobs = data.jobs || [];
+
+    if (jobs.length > 0) {
+      console.log(`\n📬 Found ${jobs.length} pending greeting card job(s) from database`);
+
+      for (const job of jobs) {
+        await updateJobStatusDB(job.id, 'processing');
+        await processJob(job);
+      }
+    }
+  } catch (error) {
+    if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+      // Server might be down, just wait and retry
+    } else {
+      console.error('Poll error (DB):', error.message);
+    }
+  }
+}
+
+/**
+ * Poll for pending jobs from the IN-MEMORY queue
+ * Stickers are stored in the in-memory queue with printerIP from kiosk config
+ */
+async function pollForJobsFromMemory() {
+  try {
+    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs`);
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
@@ -418,28 +496,38 @@ async function pollForJobs() {
     const data = await response.json();
     const jobs = data.jobs || [];
 
-    // All jobs returned are already pending (filtered by server)
-    if (jobs.length > 0) {
-      console.log(`\n📬 Found ${jobs.length} pending job(s)`);
+    // Find pending sticker jobs (stickers use the in-memory queue)
+    const pendingJobs = jobs.filter(j => j.status === 'pending');
 
-      for (const job of jobs) {
-        // Mark as processing first
-        await updateJobStatus(job.id, 'processing');
+    if (pendingJobs.length > 0) {
+      console.log(`\n📬 Found ${pendingJobs.length} pending sticker job(s) from queue`);
+
+      for (const job of pendingJobs) {
+        await updateJobStatusLegacy(job.id, 'processing');
         await processJob(job);
       }
     }
-
   } catch (error) {
     if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
       // Server might be down, just wait and retry
     } else {
-      console.error('Poll error:', error.message);
+      console.error('Poll error (memory):', error.message);
     }
   }
 }
 
+/**
+ * Main polling function - polls BOTH sources:
+ * - Database: Greeting cards with printerName from kiosk config
+ * - In-memory queue: Stickers with printerIP from kiosk config
+ */
+async function pollForJobs() {
+  await pollForJobsFromDB();
+  await pollForJobsFromMemory();
+}
+
 async function listPrinters() {
-  console.log('\n📋 Available Printers:');
+  console.log('\n📋 Available Local Printers:');
   console.log('─'.repeat(50));
 
   try {
@@ -457,7 +545,38 @@ async function listPrinters() {
 
   console.log('─'.repeat(50));
   console.log(`  Fallback: ${CONFIG.defaultPrinter}`);
-  console.log('  (Actual printer is loaded from kiosk config per-job)');
+  console.log('');
+}
+
+async function fetchKioskPrinterConfigs() {
+  console.log('\n🔧 Kiosk Printer Configurations (from /admin/kiosks):');
+  console.log('─'.repeat(60));
+
+  try {
+    const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/printer-config`);
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+
+    const kiosks = await response.json();
+    
+    if (kiosks && kiosks.length > 0) {
+      kiosks.forEach((kiosk, i) => {
+        const printerName = kiosk.printerName || '(not set)';
+        const printerIP = kiosk.printerIP || '(not set)';
+        console.log(`  ${i + 1}. ${kiosk.name}`);
+        console.log(`     Printer: ${printerName}`);
+        console.log(`     IP: ${printerIP}`);
+      });
+    } else {
+      console.log('  No kiosks configured');
+    }
+  } catch (err) {
+    console.error(`  ⚠️ Could not fetch kiosk configs: ${err.message}`);
+    console.log('     (Server may not be running or endpoint not deployed yet)');
+  }
+
+  console.log('─'.repeat(60));
   console.log('');
 }
 
@@ -468,12 +587,10 @@ async function main() {
   console.log(`  Server: ${CONFIG.cloudServerUrl}`);
   console.log(`  Poll Interval: ${CONFIG.pollInterval}ms`);
   console.log('');
-  console.log('📝 Printer settings are loaded from /admin/kiosks config per-job.');
-  console.log(`   Fallback printer: ${CONFIG.defaultPrinter}`);
-  console.log('');
 
   await ensureTempDir();
   await listPrinters();
+  await fetchKioskPrinterConfigs();
 
   console.log('🔄 Waiting for print jobs...');
   console.log('   Press Ctrl+C to stop\n');

@@ -399,6 +399,16 @@ export class LocalPrintAgentController {
   constructor(private readonly kioskService: KioskConfigService) {}
 
   /**
+   * Get printer configurations for all kiosks
+   * Used by print agent to display configured printers at startup
+   */
+  @Public()
+  @Get('printer-config')
+  async getPrinterConfig() {
+    return this.kioskService.getAllKioskPrinterConfigs();
+  }
+
+  /**
    * Get pending print jobs for local print agent
    * Uses database (persistent) instead of in-memory queue
    */

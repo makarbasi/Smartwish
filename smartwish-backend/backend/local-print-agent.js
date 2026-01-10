@@ -361,36 +361,110 @@ async function downloadPdf(url, savePath) {
 }
 
 async function processJob(job) {
-  console.log(`\n📋 Processing job: ${job.id}`);
-  
-  // Use default printer if job doesn't specify one
-  const printerName = job.printerName || CONFIG.defaultPrinter;
+  const paperType = job.paperType || 'greeting-card';
+  const isSticker = paperType === 'sticker';
   const trayNumber = job.trayNumber || null;
   
-  console.log(`   Printer: ${printerName}`);
-  console.log(`   Paper Type: ${job.paperType || 'greeting-card'}`);
+  console.log(`\n📋 Processing job: ${job.id}`);
+  console.log(`   Type: ${isSticker ? '🏷️  STICKER (IPP with printer IP)' : '💌 GREETING CARD (Windows printer name)'}`);
+  console.log(`   Kiosk: ${job.kioskName || 'Unknown'}`);
+  
+  if (isSticker) {
+    console.log(`   Printer IP: ${job.printerIP || '(not set - will use fallback)'}`);
+  } else {
+    console.log(`   Printer Name: ${job.printerName || '(not set - will use fallback)'}`);
+  }
+  
   console.log(`   Tray: ${trayNumber || 'Auto'}`);
-  console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No (will use images)'}`);
-  console.log(`   Images: ${job.imagePaths?.length || 0}`);
+  console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No'}`);
+  console.log(`   JPG URL: ${job.jpgUrl ? 'Yes ✓' : 'No'}`);
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });
 
   try {
-    let pdfPath;
+    // =========================================================================
+    // STICKER PRINTING: Use JPG URL and print via IPP (requires printer IP)
+    // =========================================================================
+    if (job.jpgUrl && paperType === 'sticker') {
+      console.log('  🖼️  Sticker printing via IPP protocol');
+
+      const jpgPath = path.join(jobDir, 'stickers.jpg');
+      await downloadImage(job.jpgUrl, jpgPath);
+      console.log('  ✅ JPG downloaded successfully');
+
+      // Get printer IP from job (set in /admin/kiosks) or use fallback
+      const printerIP = job.printerIP || '192.168.1.239';
+      const printerUrl = `http://${printerIP}:631/ipp/print`;
+
+      console.log(`  📡 Printer IP: ${printerIP}${job.printerIP ? ' (from kiosk config)' : ' (fallback)'}`);
+      console.log(`  📡 Printer URL: ${printerUrl}`);
+
+      // Read JPG file
+      const jpgBuffer = await fs.readFile(jpgPath);
+      console.log(`  📄 JPG file size: ${(jpgBuffer.length / 1024).toFixed(2)} KB`);
+
+      // Print using IPP (Note: requires 'ipp' package - npm install ipp)
+      console.log('  🔌 Connecting to printer via IPP...');
+      
+      try {
+        const ipp = (await import('ipp')).default;
+        const printer = ipp.Printer(printerUrl);
+
+        const printJob = {
+          'operation-attributes-tag': {
+            'requesting-user-name': 'Admin',
+            'job-name': 'Sticker Sheet',
+            'document-format': 'image/jpeg',
+          },
+          'job-attributes-tag': {
+            copies: 1,
+            media: 'iso_a4_210x297mm',
+            'print-quality': 5, // High quality
+          },
+          data: jpgBuffer,
+        };
+
+        console.log(`  📤 Sending print job (${(jpgBuffer.length / 1024).toFixed(2)} KB)...`);
+        await new Promise((resolve, reject) => {
+          printer.execute('Print-Job', printJob, (err, result) => {
+            if (err) {
+              reject(new Error(`IPP Print failed: ${err.message || JSON.stringify(err)}`));
+            } else {
+              console.log('  ✅ Print job sent. Status:', result.statusCode);
+              resolve(result);
+            }
+          });
+        });
+      } catch (ippErr) {
+        throw new Error(`IPP printing failed: ${ippErr.message}`);
+      }
+
+      // Update job status on server
+      await updateJobStatusDB(job.id, 'completed');
+
+      // Cleanup
+      await fs.rm(jobDir, { recursive: true, force: true });
+
+      console.log(`  ✅ Job ${job.id} completed successfully!`);
+      return;
+    }
 
     // =========================================================================
-    // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
+    // GREETING CARDS: Use PDF and print via Windows printer name
     // =========================================================================
+    console.log('  💌 Greeting card printing via Windows printer driver');
+    
+    let pdfPath;
+
+    // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
     if (job.pdfUrl) {
-      console.log('  📄 Using server-generated PDF (recommended)');
+      console.log('  📄 Downloading server-generated PDF...');
       pdfPath = path.join(jobDir, 'card.pdf');
       await downloadPdf(job.pdfUrl, pdfPath);
       console.log('  ✅ PDF downloaded successfully');
     } 
-    // =========================================================================
     // FALLBACK: Generate PDF from images (legacy support)
-    // =========================================================================
     else if (job.imagePaths && job.imagePaths.length >= 4) {
       console.log('  ⚠️  No PDF URL provided - generating from images (slower)');
       
@@ -436,10 +510,13 @@ async function processJob(job) {
       throw new Error('Job has no PDF URL and no valid image paths');
     }
 
-    // Print the PDF with tray and paper type options
+    // Print using Windows printer name (set in /admin/kiosks)
+    const printerName = job.printerName || CONFIG.defaultPrinter;
+    console.log(`  🖨️  Printer: ${printerName}${job.printerName ? ' (from kiosk config)' : ' (fallback)'}`);
+    
     await printPdf(pdfPath, printerName, { 
       trayNumber, 
-      paperType: job.paperType || 'greeting-card' 
+      paperType: paperType 
     });
 
     // Update job status on server (use DB endpoint)
@@ -574,10 +651,13 @@ async function pollForJobsLegacy() {
 }
 
 /**
- * Main polling function - tries database first, then legacy
+ * Main polling function - polls BOTH sources:
+ * - Database: Greeting cards with printerName from kiosk config
+ * - In-memory queue: Stickers with printerIP from kiosk config
  */
 async function pollForJobs() {
   await pollForJobsFromDB();
+  await pollForJobsLegacy(); // Also check in-memory queue for stickers
 }
 
 async function listPrinters() {
@@ -599,7 +679,38 @@ async function listPrinters() {
 
   console.log('─'.repeat(50));
   console.log(`  Fallback: ${CONFIG.defaultPrinter}`);
-  console.log('  (Actual printer is loaded from kiosk config per-job)');
+  console.log('');
+}
+
+async function fetchKioskPrinterConfigs() {
+  console.log('\n🔧 Kiosk Printer Configurations (from /admin/kiosks):');
+  console.log('─'.repeat(60));
+
+  try {
+    const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/printer-config`);
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+
+    const kiosks = await response.json();
+    
+    if (kiosks && kiosks.length > 0) {
+      kiosks.forEach((kiosk, i) => {
+        const printerName = kiosk.printerName || '(not set)';
+        const printerIP = kiosk.printerIP || '(not set)';
+        console.log(`  ${i + 1}. ${kiosk.name}`);
+        console.log(`     Printer: ${printerName}`);
+        console.log(`     IP: ${printerIP}`);
+      });
+    } else {
+      console.log('  No kiosks configured');
+    }
+  } catch (err) {
+    console.error(`  ⚠️ Could not fetch kiosk configs: ${err.message}`);
+    console.log('     (Server may not be running or endpoint not deployed yet)');
+  }
+
+  console.log('─'.repeat(60));
   console.log('');
 }
 
@@ -610,12 +721,10 @@ async function main() {
   console.log(`  Server: ${CONFIG.cloudServerUrl}`);
   console.log(`  Poll Interval: ${CONFIG.pollInterval}ms`);
   console.log('');
-  console.log('📝 Printer settings are loaded from /admin/kiosks config per-job.');
-  console.log(`   Fallback printer: ${CONFIG.defaultPrinter}`);
-  console.log('');
 
   await ensureTempDir();
   await listPrinters();
+  await fetchKioskPrinterConfigs();
 
   console.log('🔄 Waiting for print jobs...');
   console.log('   Press Ctrl+C to stop\n');
