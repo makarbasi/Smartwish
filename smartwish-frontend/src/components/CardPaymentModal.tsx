@@ -143,7 +143,7 @@ function CardPaymentModalContent({
   const checkPaymentIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // ✅ Get authentication from NextAuth session (no localStorage)
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001'
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'
   const userId = session?.user?.id
   const accessToken = (session?.user as any)?.access_token
 
