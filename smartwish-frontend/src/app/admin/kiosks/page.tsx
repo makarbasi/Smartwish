@@ -951,6 +951,52 @@ function KioskFormModal({
   saving: boolean;
   isCreate?: boolean;
 }) {
+  // Local state for comma-separated text fields to allow typing commas/spaces
+  const [featuredTemplatesText, setFeaturedTemplatesText] = useState(
+    formData.config.featuredTemplateIds?.join(", ") || ""
+  );
+  const [promotedGiftCardsText, setPromotedGiftCardsText] = useState(
+    formData.config.promotedGiftCardIds?.join(", ") || ""
+  );
+
+  // Sync local state when modal opens with new data
+  useEffect(() => {
+    if (open) {
+      setFeaturedTemplatesText(formData.config.featuredTemplateIds?.join(", ") || "");
+      setPromotedGiftCardsText(formData.config.promotedGiftCardIds?.join(", ") || "");
+    }
+  }, [open, formData.config.featuredTemplateIds, formData.config.promotedGiftCardIds]);
+
+  // Parse comma-separated text into array (on blur)
+  const parseCommaSeparated = (text: string): string[] => {
+    return text
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  };
+
+  // Sync featured templates to formData on blur
+  const handleFeaturedTemplatesBlur = () => {
+    setFormData({
+      ...formData,
+      config: {
+        ...formData.config,
+        featuredTemplateIds: parseCommaSeparated(featuredTemplatesText),
+      },
+    });
+  };
+
+  // Sync promoted gift cards to formData on blur
+  const handlePromotedGiftCardsBlur = () => {
+    setFormData({
+      ...formData,
+      config: {
+        ...formData.config,
+        promotedGiftCardIds: parseCommaSeparated(promotedGiftCardsText),
+      },
+    });
+  };
+
   return (
     <Transition appear show={open} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -1358,19 +1404,9 @@ function KioskFormModal({
                       </label>
                       <input
                         type="text"
-                        value={formData.config.featuredTemplateIds?.join(", ") || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            config: {
-                              ...formData.config,
-                              featuredTemplateIds: e.target.value
-                                .split(",")
-                                .map((s) => s.trim())
-                                .filter(Boolean),
-                            },
-                          })
-                        }
+                        value={featuredTemplatesText}
+                        onChange={(e) => setFeaturedTemplatesText(e.target.value)}
+                        onBlur={handleFeaturedTemplatesBlur}
                         placeholder="template-1, template-2"
                         className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                       />
@@ -1385,19 +1421,9 @@ function KioskFormModal({
                       </label>
                       <input
                         type="text"
-                        value={formData.config.promotedGiftCardIds?.join(", ") || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            config: {
-                              ...formData.config,
-                              promotedGiftCardIds: e.target.value
-                                .split(",")
-                                .map((s) => s.trim())
-                                .filter(Boolean),
-                            },
-                          })
-                        }
+                        value={promotedGiftCardsText}
+                        onChange={(e) => setPromotedGiftCardsText(e.target.value)}
+                        onBlur={handlePromotedGiftCardsBlur}
                         placeholder="amazon-com-usa, starbucks-usa, target-usa"
                         className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                       />
