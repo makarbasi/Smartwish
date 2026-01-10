@@ -346,5 +346,18 @@
     "expiresAt": "2026-04-10T19:09:09.552Z",
     "cardData": null,
     "giftCardData": null
+  },
+  {
+    "id": "76d47959-4fa2-4785-96fd-fe4cb6a115ce",
+    "cardId": "21a5f33f-ea07-4700-9d3e-69fe160e0763",
+    "userId": "5934ceee-181a-4258-9fed-5ff536e5464e",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Smartwish",
+    "senderEmail": "kiosk@smartwish.us",
+    "message": "hi",
+    "createdAt": "2026-01-10T19:28:26.385Z",
+    "expiresAt": "2026-04-10T19:28:26.385Z",
+    "cardData": null,
+    "giftCardData": null
   }
 ]
