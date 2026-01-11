@@ -1337,7 +1337,16 @@ export class AppController {
       const job = jobs.find((j) => j.id === jobId);
 
       if (!job) {
-        return res.status(404).json({ message: 'Print job not found' });
+        // Job not in queue = it was completed and cleared by local agent
+        // Return a synthetic "completed" status so frontend stops polling
+        console.log(`📋 Job ${jobId} not in queue - returning completed (was cleared)`);
+        return res.json({ 
+          job: { 
+            id: jobId, 
+            status: 'completed',
+            clearedFromQueue: true 
+          } 
+        });
       }
 
       res.json({ job });
