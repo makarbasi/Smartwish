@@ -453,19 +453,20 @@ async function updateJobStatus(jobId, status, error = null) {
 }
 
 /**
- * Remove completed and failed jobs from the in-memory queue
- * This prevents any chance of re-printing old jobs
+ * Remove the processed job from the in-memory queue
+ * Uses clear-all to ensure no jobs remain that could be re-printed
  */
 async function cleanupCompletedJobs() {
   try {
-    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear`, {
+    // Use clear-all to remove ALL jobs - we process one at a time anyway
+    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
       method: 'DELETE',
     });
     
     if (response.ok) {
       const result = await response.json();
       if (result.cleared > 0) {
-        console.log(`  🧹 Cleaned up ${result.cleared} completed/failed job(s) from queue`);
+        console.log(`  🧹 Cleared queue (${result.cleared} job(s) removed)`);
       }
     }
   } catch (err) {
@@ -526,40 +527,32 @@ async function pollForJobsFromMemory() {
     const data = await response.json();
     const jobs = data.jobs || [];
 
-    // Find pending jobs
+    // ONLY process "pending" jobs - never reprocess "processing" or "completed" jobs
     const pendingJobs = jobs.filter(j => j.status === 'pending');
-    
-    // Also find stale "processing" jobs (stuck for more than 2 minutes)
-    const now = Date.now();
-    const staleJobs = jobs.filter(j => {
-      if (j.status !== 'processing') return false;
-      const jobTime = new Date(j.updatedAt || j.createdAt).getTime();
-      const ageMinutes = (now - jobTime) / 1000 / 60;
-      return ageMinutes > 2; // Stuck for more than 2 minutes
-    });
 
-    // Debug: Show all jobs in queue
+    // Debug: Show queue status occasionally
     if (jobs.length > 0) {
-      console.log(`\n🔍 In-memory queue: ${jobs.length} total, ${pendingJobs.length} pending, ${staleJobs.length} stale`);
-      jobs.forEach((j, i) => {
-        const isStale = staleJobs.some(s => s.id === j.id);
-        const staleMarker = isStale ? ' ⚠️STALE' : '';
-        console.log(`   ${i + 1}. [${j.status}${staleMarker}] ${j.id} (${j.paperType || 'greeting-card'})`);
-      });
+      const completed = jobs.filter(j => j.status === 'completed').length;
+      const processing = jobs.filter(j => j.status === 'processing').length;
+      console.log(`\n🔍 Queue: ${jobs.length} total (${pendingJobs.length} pending, ${processing} processing, ${completed} completed)`);
+      
+      // Only show details if there are pending jobs
+      if (pendingJobs.length > 0) {
+        pendingJobs.forEach((j, i) => {
+          console.log(`   ${i + 1}. [pending] ${j.id} (${j.paperType || 'greeting-card'})`);
+        });
+      }
     }
 
-    // Combine pending and stale jobs for processing
-    const jobsToProcess = [...pendingJobs, ...staleJobs];
+    if (pendingJobs.length > 0) {
+      console.log(`\n📬 Processing ${pendingJobs.length} pending job(s)`);
 
-    if (jobsToProcess.length > 0) {
-      console.log(`\n📬 Processing ${jobsToProcess.length} job(s) from in-memory queue`);
-      if (staleJobs.length > 0) {
-        console.log(`   (includes ${staleJobs.length} stale job(s) that were stuck in 'processing')`);
-      }
-
-      for (const job of jobsToProcess) {
+      for (const job of pendingJobs) {
+        // Mark as processing BEFORE starting
         await updateJobStatusLegacy(job.id, 'processing');
+        // Process the job
         await processJob(job);
+        // Note: processJob calls updateJobStatus which cleans up completed jobs
       }
     }
   } catch (error) {
