@@ -484,7 +484,7 @@ async function pollForJobsFromDB() {
 
 /**
  * Poll for pending jobs from the IN-MEMORY queue
- * Stickers are stored in the in-memory queue with printerIP from kiosk config
+ * Both greeting cards and stickers can be in the in-memory queue
  */
 async function pollForJobsFromMemory() {
   try {
@@ -496,13 +496,38 @@ async function pollForJobsFromMemory() {
     const data = await response.json();
     const jobs = data.jobs || [];
 
-    // Find pending sticker jobs (stickers use the in-memory queue)
+    // Find pending jobs
     const pendingJobs = jobs.filter(j => j.status === 'pending');
+    
+    // Also find stale "processing" jobs (stuck for more than 2 minutes)
+    const now = Date.now();
+    const staleJobs = jobs.filter(j => {
+      if (j.status !== 'processing') return false;
+      const jobTime = new Date(j.updatedAt || j.createdAt).getTime();
+      const ageMinutes = (now - jobTime) / 1000 / 60;
+      return ageMinutes > 2; // Stuck for more than 2 minutes
+    });
 
-    if (pendingJobs.length > 0) {
-      console.log(`\n📬 Found ${pendingJobs.length} pending sticker job(s) from queue`);
+    // Debug: Show all jobs in queue
+    if (jobs.length > 0) {
+      console.log(`\n🔍 In-memory queue: ${jobs.length} total, ${pendingJobs.length} pending, ${staleJobs.length} stale`);
+      jobs.forEach((j, i) => {
+        const isStale = staleJobs.some(s => s.id === j.id);
+        const staleMarker = isStale ? ' ⚠️STALE' : '';
+        console.log(`   ${i + 1}. [${j.status}${staleMarker}] ${j.id} (${j.paperType || 'greeting-card'})`);
+      });
+    }
 
-      for (const job of pendingJobs) {
+    // Combine pending and stale jobs for processing
+    const jobsToProcess = [...pendingJobs, ...staleJobs];
+
+    if (jobsToProcess.length > 0) {
+      console.log(`\n📬 Processing ${jobsToProcess.length} job(s) from in-memory queue`);
+      if (staleJobs.length > 0) {
+        console.log(`   (includes ${staleJobs.length} stale job(s) that were stuck in 'processing')`);
+      }
+
+      for (const job of jobsToProcess) {
         await updateJobStatusLegacy(job.id, 'processing');
         await processJob(job);
       }
@@ -516,12 +541,22 @@ async function pollForJobsFromMemory() {
   }
 }
 
+// Track last poll time for debugging
+let pollCount = 0;
+
 /**
  * Main polling function - polls BOTH sources:
  * - Database: Greeting cards with printerName from kiosk config
- * - In-memory queue: Stickers with printerIP from kiosk config
+ * - In-memory queue: All jobs (greeting cards + stickers) with printerName/printerIP
  */
 async function pollForJobs() {
+  pollCount++;
+  // Show poll activity every 12 polls (1 minute at 5s interval)
+  if (pollCount % 12 === 0) {
+    const now = new Date().toLocaleTimeString();
+    console.log(`\n⏱️  [${now}] Still polling... (${pollCount} polls so far)`);
+  }
+  
   await pollForJobsFromDB();
   await pollForJobsFromMemory();
 }
@@ -580,6 +615,29 @@ async function fetchKioskPrinterConfigs() {
   console.log('');
 }
 
+async function clearJobQueue() {
+  console.log('\n🧹 Clearing old jobs from queue (starting fresh)...');
+  
+  try {
+    // Clear the in-memory queue on the server
+    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
+      method: 'DELETE',
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`   ✅ Cleared ${result.cleared || 0} old job(s) from queue`);
+    } else {
+      console.log(`   ⚠️ Could not clear queue: ${response.status}`);
+    }
+  } catch (err) {
+    console.log(`   ⚠️ Could not clear queue: ${err.message}`);
+    console.log('   (This is OK if the server endpoint is not deployed yet)');
+  }
+  
+  console.log('');
+}
+
 async function main() {
   console.log('═'.repeat(60));
   console.log('  🖨️  SMARTWISH LOCAL PRINT AGENT');
@@ -591,6 +649,9 @@ async function main() {
   await ensureTempDir();
   await listPrinters();
   await fetchKioskPrinterConfigs();
+  
+  // Clear old jobs from queue - start fresh every time
+  await clearJobQueue();
 
   console.log('🔄 Waiting for print jobs...');
   console.log('   Press Ctrl+C to stop\n');

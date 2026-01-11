@@ -36,8 +36,9 @@ REM Open browser and send F11 to make it fullscreen
 REM This works even if Chrome is already running
 start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "https://app.smartwish.us/managers/login"
 
-REM Wait for browser to open
-timeout /t 3 /nobreak >nul
+REM Wait 10 seconds for browser to fully load before going fullscreen
+echo Waiting 10 seconds for browser to load...
+timeout /t 10 /nobreak >nul
 
 REM Send F11 to Chrome to toggle fullscreen
 powershell -Command "$wshell = New-Object -ComObject wscript.shell; $wshell.AppActivate('Chrome'); Start-Sleep -Milliseconds 500; $wshell.SendKeys('{F11}')"

@@ -61,8 +61,9 @@ if (-not $NoBrowser) {
         }
     }
     
-    # Wait for browser to open
-    Start-Sleep -Seconds 3
+    # Wait 10 seconds for browser to fully load before going fullscreen
+    Write-Host "  Waiting 10 seconds for browser to load..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 10
     
     # Send F11 to make fullscreen (works even if browser was already running)
     if ($browserName) {

@@ -28,6 +28,9 @@ export interface IssuedGiftCardData {
 // Product types supported by the payment modal
 export type ProductType = 'card' | 'stickers'
 
+// Print status for tracking print progress
+export type PrintStatus = 'idle' | 'sending' | 'printing' | 'completed' | 'failed'
+
 interface CardPaymentModalProps {
   isOpen: boolean
   onClose: () => void
@@ -41,6 +44,10 @@ interface CardPaymentModalProps {
   productType?: ProductType
   // Optional: for stickers - number of stickers on the sheet
   stickerCount?: number
+  // Optional: Print status for showing progress in modal
+  printStatus?: PrintStatus
+  // Optional: Error message if print failed
+  printError?: string
 }
 
 export default function CardPaymentModal({
@@ -53,7 +60,9 @@ export default function CardPaymentModal({
   recipientEmail,
   giftCardAmount: propGiftCardAmount,
   productType = 'card',
-  stickerCount
+  stickerCount,
+  printStatus = 'idle',
+  printError
 }: CardPaymentModalProps) {
   if (!isOpen) return null
 
@@ -90,6 +99,8 @@ export default function CardPaymentModal({
         giftCardAmount={propGiftCardAmount}
         productType={productType}
         stickerCount={stickerCount}
+        printStatus={printStatus}
+        printError={printError}
       />
     </Elements>
   )
@@ -109,7 +120,9 @@ function CardPaymentModalContent({
   recipientEmail,
   giftCardAmount: propGiftCardAmount,
   productType = 'card',
-  stickerCount = 0
+  stickerCount = 0,
+  printStatus = 'idle',
+  printError
 }: CardPaymentModalProps) {
   const stripe = useStripe()
   const elements = useElements()
@@ -119,6 +132,9 @@ function CardPaymentModalContent({
   
   // Check if this is a sticker payment (simplified flow, no gift cards)
   const isStickers = productType === 'stickers'
+  
+  // Determine if we're in a printing state (to prevent modal close)
+  const isPrintInProgress = printStatus === 'sending' || printStatus === 'printing'
 
   // UI State
   const [cardholderName, setCardholderName] = useState('')
@@ -1146,6 +1162,11 @@ function CardPaymentModalContent({
   }
 
   const handleClose = () => {
+    // Don't allow closing while payment is processing or print is in progress
+    if (isProcessing || isPrintInProgress) {
+      return
+    }
+    
     if (!isProcessing) {
       setCardholderName('')
       setPaymentError(null)
@@ -1185,8 +1206,8 @@ function CardPaymentModalContent({
             </DialogTitle>
             <button
               onClick={handleClose}
-              disabled={isProcessing}
-              className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+              disabled={isProcessing || isPrintInProgress}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <XMarkIcon className="h-5 w-5" />
             </button>
@@ -1196,19 +1217,90 @@ function CardPaymentModalContent({
           <div className="p-6">
             {paymentComplete ? (
               <div className="text-center py-8">
-                <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Payment Successful!</h3>
-                <p className="text-gray-600">
-                  {isStickers 
-                    ? 'Your sticker sheet will be printed shortly.' 
-                    : action === 'send' 
-                      ? 'Your e-card will be sent shortly.' 
-                      : 'Your card will be printed shortly.'}
-                </p>
+                {/* Payment Success + Print Status */}
+                {printStatus === 'completed' ? (
+                  // Print completed successfully
+                  <>
+                    <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                      <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Print Complete!</h3>
+                    <p className="text-gray-600">
+                      {isStickers 
+                        ? 'Your sticker sheet has been printed successfully.' 
+                        : 'Your card has been printed successfully.'}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">Please collect your {isStickers ? 'stickers' : 'card'} from the printer.</p>
+                  </>
+                ) : printStatus === 'failed' ? (
+                  // Print failed
+                  <>
+                    <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                      <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-semibold text-red-600 mb-2">Print Failed</h3>
+                    <p className="text-gray-600">
+                      {printError || 'There was an error printing. Please try again or contact staff.'}
+                    </p>
+                  </>
+                ) : printStatus === 'sending' || printStatus === 'printing' ? (
+                  // Printing in progress
+                  <>
+                    <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                      <svg className="w-8 h-8 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      {printStatus === 'sending' ? 'Sending to Printer...' : 'Printing...'}
+                    </h3>
+                    <p className="text-gray-600">
+                      {printStatus === 'sending' 
+                        ? 'Your payment was successful! Preparing your print job...'
+                        : isStickers 
+                          ? 'Your sticker sheet is being printed. Please wait...' 
+                          : 'Your card is being printed. Please wait...'}
+                    </p>
+                    <div className="mt-4 flex justify-center">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
+                    </div>
+                  </>
+                ) : action === 'send' ? (
+                  // E-card send (no print tracking needed)
+                  <>
+                    <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                      <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Payment Successful!</h3>
+                    <p className="text-gray-600">Your e-card will be sent shortly.</p>
+                  </>
+                ) : (
+                  // Default: Payment success, waiting for print to start
+                  <>
+                    <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                      <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Payment Successful!</h3>
+                    <p className="text-gray-600">
+                      {isStickers 
+                        ? 'Your sticker sheet will be printed shortly.' 
+                        : 'Your card will be printed shortly.'}
+                    </p>
+                  </>
+                )}
               </div>
             ) : loadingPrice ? (
               <div className="text-center py-12">
