@@ -288,13 +288,16 @@ export default function StickersPage() {
 
   // Handle payment success
   const handlePaymentSuccess = async () => {
+    console.log("🎯 handlePaymentSuccess called - starting sticker print flow");
     setIsPrinting(true);
     setPrintStatus('sending');
     setPrintError(null);
     
     try {
       // Generate JPG and print - returns jobId for polling
+      console.log("📤 Calling printStickerSheet...");
       const result = await printStickerSheet();
+      console.log("📥 printStickerSheet returned:", result);
       const jobId = result?.jobId;
       
       if (jobId) {
@@ -376,12 +379,14 @@ export default function StickersPage() {
         }, 5000);
       }
       
-      console.log("✅ Sticker print job sent!");
+      console.log("✅ Sticker print job sent!", { jobId });
     } catch (error) {
       console.error("❌ Sticker print error:", error);
       setPrintStatus('failed');
       setPrintError(error instanceof Error ? error.message : 'Print failed');
       setIsPrinting(false);
+      // Show error in alert for debugging
+      alert(`Sticker print failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 

@@ -703,6 +703,15 @@ async function pollForJobsFromMemory() {
     const data = await response.json();
     const jobs = data.jobs || [];
 
+    // Debug: Show ALL jobs in queue periodically
+    if (pollCount % 6 === 1 && jobs.length > 0) {
+      console.log(`\n🔍 Queue contents (${jobs.length} total):`);
+      jobs.forEach((j, i) => {
+        const isLocal = locallyProcessedJobs.has(j.id);
+        console.log(`   ${i + 1}. [${j.status}] ${j.id} (${j.paperType || 'greeting-card'})${isLocal ? ' ✓local' : ''}`);
+      });
+    }
+
     // ONLY process "pending" jobs that we haven't already processed locally
     // This prevents re-printing if server status update fails due to rate limiting
     const pendingJobs = jobs.filter(j => 
@@ -710,11 +719,10 @@ async function pollForJobsFromMemory() {
     );
 
     // Only show queue status when there are NEW jobs to process
-    // Don't spam logs with stale queue data from rate-limited cleanups
     if (pendingJobs.length > 0) {
       console.log(`\n🔍 Found ${pendingJobs.length} new job(s) in queue`);
       pendingJobs.forEach((j, i) => {
-        console.log(`   ${i + 1}. ${j.id} (${j.paperType || 'greeting-card'})`);
+        console.log(`   ${i + 1}. ${j.id} (${j.paperType || 'greeting-card'}) - jpgUrl: ${j.jpgUrl ? 'YES' : 'no'}, pdfUrl: ${j.pdfUrl ? 'YES' : 'no'}`);
       });
     }
 
