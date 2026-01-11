@@ -1570,19 +1570,64 @@ export default function CustomizeCardPage() {
       // Update UI to show printing status
       setPrintStatus('printing');
       
-      // Update status to completed (include PDF URL if available)
-      if (printLogId) {
-        if (result.pdfUrl) {
-          console.log('📄 PDF URL received:', result.pdfUrl);
-        }
-        await updatePrintLogStatus(printLogId, 'completed', undefined, result.pdfUrl);
-      }
+      // Get the job ID from the response for status polling
+      const jobId = result.jobId;
       
-      // Show completed status after a brief delay to simulate print completion
-      // In a full implementation, you would poll the print job status
-      setTimeout(() => {
-        setPrintStatus('completed');
-      }, 3000);
+      if (jobId) {
+        // Poll for actual print job completion from local agent
+        console.log(`🔄 Polling for print job status: ${jobId}`);
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(
+              `${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-jobs/${jobId}`
+            );
+            
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              const jobStatus = statusData.job?.status;
+              
+              console.log(`📋 Job ${jobId} status: ${jobStatus}`);
+              
+              if (jobStatus === 'completed') {
+                clearInterval(pollInterval);
+                setPrintStatus('completed');
+                
+                // Update print log if we have one
+                if (printLogId && result.pdfUrl) {
+                  await updatePrintLogStatus(printLogId, 'completed', undefined, result.pdfUrl);
+                }
+              } else if (jobStatus === 'failed') {
+                clearInterval(pollInterval);
+                setPrintStatus('failed');
+                setPrintError(statusData.job?.error || 'Print job failed');
+                
+                if (printLogId) {
+                  await updatePrintLogStatus(printLogId, 'failed', statusData.job?.error);
+                }
+              }
+              // If still 'pending' or 'processing', keep polling
+            }
+          } catch (pollErr) {
+            console.warn('Error polling job status:', pollErr);
+          }
+        }, 2000); // Poll every 2 seconds
+        
+        // Stop polling after 2 minutes (timeout)
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          // If still printing after 2 minutes, assume it completed (printer might not report back)
+          if (printStatus === 'printing') {
+            console.log('⏱️ Poll timeout - assuming print completed');
+            setPrintStatus('completed');
+          }
+        }, 120000);
+      } else {
+        // No job ID returned, fall back to showing completed after delay
+        console.log('⚠️ No job ID returned, using fallback timing');
+        setTimeout(() => {
+          setPrintStatus('completed');
+        }, 5000);
+      }
 
     } catch (err) {
       console.error('Auto-print error:', err);
