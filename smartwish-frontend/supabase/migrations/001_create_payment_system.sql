@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS orders (
     card_id UUID NOT NULL,
     
     -- Order details
-    order_type VARCHAR(20) NOT NULL CHECK (order_type IN ('print', 'send_ecard')),
+    order_type VARCHAR(20) NOT NULL CHECK (order_type IN ('print', 'send_ecard', 'sticker')),
     card_name VARCHAR(255) NOT NULL,
     recipient_email VARCHAR(255), -- For e-cards
     

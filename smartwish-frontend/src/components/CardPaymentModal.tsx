@@ -257,13 +257,13 @@ function CardPaymentModalContent({
         throw new Error('User not authenticated')
       }
 
-      // ======== STICKERS: Simplified flow with fixed pricing ========
+      // ======== STICKERS: Fixed pricing but still need order in database for QR payment ========
       if (isStickers) {
         console.log('🎨 Sticker payment - using fixed pricing')
         const stickerProcessingFee = STICKER_PRICE * STICKER_PROCESSING_FEE_PERCENT
         const stickerTotal = STICKER_PRICE + stickerProcessingFee
         
-        // Set price data directly (no backend call needed)
+        // Set price data directly (no backend call needed for pricing)
         const stickerPriceData = {
           cardPrice: STICKER_PRICE,
           giftCardAmount: 0,
@@ -272,7 +272,48 @@ function CardPaymentModalContent({
         }
         setPriceData(stickerPriceData)
         
-        // Create Stripe payment intent for stickers
+        // Step 1: Create order in database (required for QR code mobile payment)
+        console.log('📦 Creating sticker order in database...')
+        const orderResponse = await fetch(`${backendUrl}/orders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            cardId,
+            orderType: 'sticker',
+            cardName: cardName || 'Sticker Sheet',
+            cardPrice: STICKER_PRICE,
+            giftCardAmount: 0,
+            processingFee: stickerProcessingFee,
+            totalAmount: stickerTotal,
+            currency: 'USD',
+            metadata: {
+              source: 'kiosk',
+              productType: 'sticker-sheet',
+              stickerCount
+            }
+          })
+        })
+
+        if (!orderResponse.ok) {
+          const errorData = await orderResponse.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to create sticker order')
+        }
+
+        const orderResult = await orderResponse.json()
+
+        if (!orderResult.success || !orderResult.order || !orderResult.order.id) {
+          console.error('Invalid sticker order response:', orderResult)
+          throw new Error('Invalid response from sticker order creation')
+        }
+
+        const createdOrderId = orderResult.order.id
+        setOrderId(createdOrderId)
+        console.log('✅ Sticker order created:', createdOrderId)
+        
+        // Step 2: Create Stripe payment intent for stickers
         console.log('💳 Creating Stripe payment intent for stickers...')
         const intentResponse = await fetch('/api/stripe/create-payment-intent', {
           method: 'POST',
@@ -281,6 +322,8 @@ function CardPaymentModalContent({
             amount: stickerTotal,
             currency: 'usd',
             metadata: {
+              orderId: createdOrderId,
+              userId,
               productType: 'sticker-sheet',
               stickerCount,
               price: STICKER_PRICE,
@@ -296,13 +339,51 @@ function CardPaymentModalContent({
         }
         
         setClientSecret(intentResult.clientSecret)
-        
-        // Generate session ID for QR payment (stickers don't need order in DB)
-        const sessionId = `STICKER-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-        setPaymentSessionId(sessionId)
-        setOrderId(sessionId) // Use session ID as order ID for stickers
-        
         console.log('✅ Sticker payment intent created:', intentResult.paymentIntentId)
+
+        // Step 3: Create payment session in database
+        const sessionId = `STICKER-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        console.log('💳 Creating sticker payment session in database...')
+
+        const sessionResponse = await fetch(`${backendUrl}/orders/payment-sessions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            orderId: createdOrderId,
+            amount: stickerTotal,
+            currency: 'USD',
+            stripePaymentIntentId: intentResult.paymentIntentId,
+            stripeClientSecret: intentResult.clientSecret,
+            initiatedFrom: 'kiosk',
+            paymentMethod: 'card_kiosk',
+            sessionId,
+            metadata: {
+              cardId,
+              cardName: cardName || 'Sticker Sheet',
+              productType: 'sticker-sheet',
+              stickerCount
+            }
+          })
+        })
+
+        if (!sessionResponse.ok) {
+          const errorData = await sessionResponse.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to create sticker payment session')
+        }
+
+        const sessionResult = await sessionResponse.json()
+
+        if (!sessionResult.success || !sessionResult.session || !sessionResult.session.id) {
+          console.error('Invalid sticker session response:', sessionResult)
+          throw new Error('Invalid response from sticker payment session creation')
+        }
+
+        setPaymentSessionId(sessionResult.session.id)
+        console.log('✅ Sticker payment session created:', sessionResult.session.id)
+        
         setLoadingPrice(false)
         return
       }

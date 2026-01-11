@@ -10,6 +10,7 @@ import {
 export enum OrderType {
   PRINT = 'print',
   SEND_ECARD = 'send_ecard',
+  STICKER = 'sticker',
 }
 
 export enum OrderStatus {
