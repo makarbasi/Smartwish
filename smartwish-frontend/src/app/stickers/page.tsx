@@ -69,6 +69,10 @@ export default function StickersPage() {
   const [isPrinting, setIsPrinting] = useState(false);
   // Generate a stable UUID for sticker orders (required for database - card_id is UUID type)
   const [stickerOrderId, setStickerOrderId] = useState<string>(() => crypto.randomUUID());
+  
+  // Print status for tracking (same as greeting cards)
+  const [printStatus, setPrintStatus] = useState<'idle' | 'sending' | 'printing' | 'completed' | 'failed'>('idle');
+  const [printError, setPrintError] = useState<string | null>(null);
 
   // Fetch stickers for carousel - get all 200 for variety across 4 rows
   const { data: stickersData, isLoading: isLoadingStickers } = useSWR<StickersApiResponse>(
@@ -285,27 +289,89 @@ export default function StickersPage() {
   // Handle payment success
   const handlePaymentSuccess = async () => {
     setIsPrinting(true);
+    setPrintStatus('sending');
+    setPrintError(null);
     
     try {
-      // Generate JPG and print
-      await printStickerSheet();
+      // Generate JPG and print - returns jobId for polling
+      const result = await printStickerSheet();
+      const jobId = result?.jobId;
       
-      setShowPaymentModal(false);
-      setIsPrinting(false);
+      if (jobId) {
+        // Poll for actual print job completion from local agent
+        console.log(`🔄 Polling for sticker print job status: ${jobId}`);
+        setPrintStatus('printing');
+        
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(
+              `${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-jobs/${jobId}`
+            );
+            
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              const jobStatus = statusData.job?.status;
+              
+              console.log(`📋 Sticker job ${jobId} status: ${jobStatus}`);
+              
+              if (jobStatus === 'completed') {
+                clearInterval(pollInterval);
+                setPrintStatus('completed');
+                setIsPrinting(false);
+                
+                // Reset state after 3 seconds
+                setTimeout(() => {
+                  setShowPaymentModal(false);
+                  setPrintStatus('idle');
+                  setSlots(
+                    Array.from({ length: 6 }, (_, i) => ({
+                      id: i,
+                      imageUrl: null,
+                      editedImageBlob: null,
+                      originalImageUrl: null,
+                    }))
+                  );
+                  // Generate new order ID for next order
+                  setStickerOrderId(crypto.randomUUID());
+                }, 3000);
+              } else if (jobStatus === 'failed') {
+                clearInterval(pollInterval);
+                setPrintStatus('failed');
+                setPrintError(statusData.job?.error || 'Sticker print job failed');
+                setIsPrinting(false);
+              }
+              // If still 'pending' or 'processing', keep polling
+            }
+          } catch (pollErr) {
+            console.warn('Poll error:', pollErr);
+          }
+        }, 2000); // Poll every 2 seconds
+        
+        // Stop polling after 2 minutes (timeout)
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          // If still printing after 2 minutes, assume it completed
+          if (printStatus === 'printing') {
+            console.log('⏱️ Sticker poll timeout - assuming print completed');
+            setPrintStatus('completed');
+            setIsPrinting(false);
+          }
+        }, 120000);
+      } else {
+        // No job ID returned, fall back to showing completed after delay
+        console.log('⚠️ No sticker job ID returned, using fallback timing');
+        setPrintStatus('printing');
+        setTimeout(() => {
+          setPrintStatus('completed');
+          setIsPrinting(false);
+        }, 5000);
+      }
       
-      // Reset state after successful print
-      setSlots(
-        Array.from({ length: 6 }, (_, i) => ({
-          id: i,
-          imageUrl: null,
-          editedImageBlob: null,
-          originalImageUrl: null,
-        }))
-      );
-      
-      console.log("✅ Your sticker sheet is printing!");
+      console.log("✅ Sticker print job sent!");
     } catch (error) {
-      console.error("❌ Print error:", error);
+      console.error("❌ Sticker print error:", error);
+      setPrintStatus('failed');
+      setPrintError(error instanceof Error ? error.message : 'Print failed');
       setIsPrinting(false);
     }
   };
@@ -677,11 +743,12 @@ export default function StickersPage() {
   };
 
   // Print sticker sheet function - generates JPG and sends to backend for IPP printing
-  const printStickerSheet = async () => {
+  // Returns the result with jobId for polling
+  const printStickerSheet = async (): Promise<{ jobId?: string; message?: string } | null> => {
     // Get printer name from kiosk config (must be set in /admin/kiosks)
     if (!kioskConfig?.printerName) {
       console.error('❌ Printer not configured. Please set printer name in /admin/kiosks');
-      return;
+      throw new Error('Printer not configured. Please contact staff.');
     }
     const printerName = kioskConfig.printerName;
     
@@ -724,6 +791,7 @@ export default function StickersPage() {
 
     const result = await response.json();
     console.log("✅ Sticker print job sent successfully!", result);
+    return result; // Return result with jobId for polling
   };
 
   // Cleanup blob URLs on unmount
@@ -1038,13 +1106,21 @@ export default function StickersPage() {
       {/* Payment Modal - Uses shared CardPaymentModal with sticker-specific settings */}
       <CardPaymentModal
         isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
+        onClose={() => {
+          // Only allow close if not printing
+          if (printStatus !== 'sending' && printStatus !== 'printing') {
+            setShowPaymentModal(false);
+            setPrintStatus('idle');
+          }
+        }}
         onPaymentSuccess={() => handlePaymentSuccess()}
         cardId={stickerOrderId}
         cardName="Sticker Sheet"
         action="print"
         productType="stickers"
         stickerCount={filledSlotsCount}
+        printStatus={printStatus}
+        printError={printError || undefined}
       />
     </div>
   );
