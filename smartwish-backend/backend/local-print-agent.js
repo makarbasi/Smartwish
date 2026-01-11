@@ -714,6 +714,29 @@ async function fetchKioskPrinterConfigs() {
   console.log('');
 }
 
+async function clearJobQueue() {
+  console.log('\n🧹 Clearing old jobs from queue (starting fresh)...');
+  
+  try {
+    // Clear the in-memory queue on the server
+    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
+      method: 'DELETE',
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`   ✅ Cleared ${result.cleared || 0} old job(s) from queue`);
+    } else {
+      console.log(`   ⚠️ Could not clear queue: ${response.status}`);
+    }
+  } catch (err) {
+    console.log(`   ⚠️ Could not clear queue: ${err.message}`);
+    console.log('   (This is OK if the server endpoint is not deployed yet)');
+  }
+  
+  console.log('');
+}
+
 async function main() {
   console.log('═'.repeat(60));
   console.log('  🖨️  SMARTWISH LOCAL PRINT AGENT');
@@ -725,6 +748,9 @@ async function main() {
   await ensureTempDir();
   await listPrinters();
   await fetchKioskPrinterConfigs();
+  
+  // Clear old jobs from queue - start fresh every time
+  await clearJobQueue();
 
   console.log('🔄 Waiting for print jobs...');
   console.log('   Press Ctrl+C to stop\n');

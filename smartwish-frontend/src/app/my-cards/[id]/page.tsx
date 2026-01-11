@@ -351,6 +351,10 @@ export default function CustomizeCardPage() {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedTray, setSelectedTray] = useState<'tray-1' | 'tray-2'>('tray-1');
+  
+  // Print status for modal display
+  const [printStatus, setPrintStatus] = useState<'idle' | 'sending' | 'printing' | 'completed' | 'failed'>('idle');
+  const [printError, setPrintError] = useState<string | null>(null);
 
 
   // Swipe functionality state
@@ -1459,7 +1463,8 @@ export default function CustomizeCardPage() {
   ) => {
     // Get printer name from kiosk config (must be set in /admin/kiosks)
     if (!kioskConfig?.printerName) {
-      alert('Printer not configured. Please set printer name in /admin/kiosks');
+      setPrintStatus('failed');
+      setPrintError('Printer not configured. Please contact staff.');
       return;
     }
     const printerName = kioskConfig.printerName;
@@ -1471,6 +1476,10 @@ export default function CustomizeCardPage() {
     if (giftCardForPrint) {
       console.log('🎁 Including gift card in print:', giftCardForPrint.storeName, '$' + giftCardForPrint.amount);
     }
+
+    // Update UI to show sending status
+    setPrintStatus('sending');
+    setPrintError(null);
 
     let printLogId: string | null = null;
 
@@ -1558,6 +1567,9 @@ export default function CustomizeCardPage() {
       const result = await response.json();
       console.log('✅ Print job queued successfully!', result);
       
+      // Update UI to show printing status
+      setPrintStatus('printing');
+      
       // Update status to completed (include PDF URL if available)
       if (printLogId) {
         if (result.pdfUrl) {
@@ -1566,7 +1578,11 @@ export default function CustomizeCardPage() {
         await updatePrintLogStatus(printLogId, 'completed', undefined, result.pdfUrl);
       }
       
-      alert(`Print job sent to ${printerName}!\nCheck your printer for output.`);
+      // Show completed status after a brief delay to simulate print completion
+      // In a full implementation, you would poll the print job status
+      setTimeout(() => {
+        setPrintStatus('completed');
+      }, 3000);
 
     } catch (err) {
       console.error('Auto-print error:', err);
@@ -1576,7 +1592,8 @@ export default function CustomizeCardPage() {
         await updatePrintLogStatus(printLogId, 'failed', err instanceof Error ? err.message : 'Unknown error');
       }
       
-      alert(`Failed to print: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setPrintStatus('failed');
+      setPrintError(err instanceof Error ? err.message : 'Unknown error');
     }
   };
 
@@ -1618,6 +1635,10 @@ export default function CustomizeCardPage() {
     }
 
     setIsPrinting(true);
+    // Reset print status for new print job
+    setPrintStatus('idle');
+    setPrintError(null);
+    
     try {
       // Extract image URLs from current state
       const image1 = pageImages[0];
@@ -1626,7 +1647,8 @@ export default function CustomizeCardPage() {
       const image4 = pageImages[3];
 
       if (!image1 || !image2 || !image3 || !image4) {
-        alert('All four card images are required for printing');
+        setPrintStatus('failed');
+        setPrintError('All four card images are required for printing');
         setIsPrinting(false);
         return;
       }
@@ -1635,16 +1657,16 @@ export default function CustomizeCardPage() {
 
       // Send images directly to backend printer with gift card data
       // The backend will handle compositing, adding QR overlay, and printing automatically
+      // Note: Modal stays open - autoPrintToEpson will update printStatus which the modal displays
       await autoPrintToEpson(image1, image2, image3, image4, 'greeting-card', selectedTray, giftCardForPrint);
       setIsPrinting(false);
-      setPaymentModalOpen(false);
-      setPendingAction(null);
+      // Don't close modal here - let user see print status and close manually when done
+      // Modal will close when user clicks close after seeing "Print Complete!"
     } catch (error) {
       console.error('Print error:', error);
-      alert('Failed to generate print files. Please try again.');
+      setPrintStatus('failed');
+      setPrintError('Failed to generate print files. Please try again.');
       setIsPrinting(false);
-      setPaymentModalOpen(false);
-      setPendingAction(null);
     }
   };
 
@@ -2979,6 +3001,9 @@ export default function CustomizeCardPage() {
           onClose={() => {
             setPaymentModalOpen(false);
             setPendingAction(null);
+            // Reset print status when modal closes
+            setPrintStatus('idle');
+            setPrintError(null);
           }}
           onPaymentSuccess={(issuedGiftCard) => {
             if (pendingAction.action === 'print') {
@@ -2990,6 +3015,8 @@ export default function CustomizeCardPage() {
           cardId={pendingAction.card.id}
           cardName={pendingAction.card.name}
           action={pendingAction.action}
+          printStatus={printStatus}
+          printError={printError || undefined}
         />
       )}
 

@@ -1253,6 +1253,82 @@ export class AppController {
     }
   }
 
+  /**
+   * Clear completed and failed jobs from the in-memory queue
+   * Optionally reset stuck "processing" jobs back to "pending"
+   */
+  @Delete('print-jobs/clear')
+  async clearPrintJobs(@Req() req: Request, @Res() res: Response) {
+    try {
+      if (!global.printJobQueue) {
+        return res.json({ message: 'Queue is already empty', cleared: 0 });
+      }
+
+      const { resetStuck } = req.query;
+      const originalCount = global.printJobQueue.length;
+
+      if (resetStuck === 'true') {
+        // Reset stuck "processing" jobs back to "pending"
+        let resetCount = 0;
+        global.printJobQueue.forEach(job => {
+          if (job.status === 'processing') {
+            job.status = 'pending';
+            job.updatedAt = new Date().toISOString();
+            resetCount++;
+          }
+        });
+        console.log(`🔄 Reset ${resetCount} stuck jobs back to pending`);
+        return res.json({
+          message: `Reset ${resetCount} stuck jobs back to pending`,
+          resetCount,
+          totalJobs: global.printJobQueue.length,
+        });
+      }
+
+      // Remove completed and failed jobs, keep pending and processing
+      global.printJobQueue = global.printJobQueue.filter(
+        job => job.status === 'pending' || job.status === 'processing'
+      );
+
+      const clearedCount = originalCount - global.printJobQueue.length;
+      console.log(`🧹 Cleared ${clearedCount} completed/failed jobs from queue`);
+
+      res.json({
+        message: `Cleared ${clearedCount} completed/failed jobs`,
+        cleared: clearedCount,
+        remaining: global.printJobQueue.length,
+      });
+    } catch (error) {
+      console.error('Error clearing print jobs:', error);
+      res.status(500).json({
+        message: 'Failed to clear print jobs',
+        error: error.message,
+      });
+    }
+  }
+
+  /**
+   * Clear ALL jobs from the in-memory queue (nuclear option)
+   */
+  @Delete('print-jobs/clear-all')
+  async clearAllPrintJobs(@Res() res: Response) {
+    try {
+      const count = global.printJobQueue?.length || 0;
+      global.printJobQueue = [];
+      console.log(`🧹 Cleared ALL ${count} jobs from queue`);
+      res.json({
+        message: `Cleared all ${count} jobs from queue`,
+        cleared: count,
+      });
+    } catch (error) {
+      console.error('Error clearing all print jobs:', error);
+      res.status(500).json({
+        message: 'Failed to clear all print jobs',
+        error: error.message,
+      });
+    }
+  }
+
   @Get('print-jobs/:jobId')
   async getPrintJob(@Param('jobId') jobId: string, @Res() res: Response) {
     try {
