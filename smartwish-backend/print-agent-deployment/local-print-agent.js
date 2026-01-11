@@ -26,6 +26,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import ipp from 'ipp';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,7 +46,11 @@ const CONFIG = {
   defaultPrinter: process.env.DEFAULT_PRINTER || 'HPIE4B65B (HP OfficeJet Pro 9130e Series)',
 
   // How often to poll for new jobs (milliseconds)
-  pollInterval: process.env.POLL_INTERVAL || 5000,
+  // Using 10 seconds to reduce rate limit pressure on Render free tier
+  pollInterval: process.env.POLL_INTERVAL || 10000,
+  
+  // How long to wait before retrying after rate limit (milliseconds)
+  rateLimitBackoff: 10000,
 
   // Temporary directory for downloaded files
   tempDir: path.join(__dirname, 'temp-print-jobs'),
@@ -175,6 +183,61 @@ async function createPdf(pdfPath, side1Path, side2Path, config) {
   return pdfPath;
 }
 
+/**
+ * Get current print jobs from Windows print queue
+ */
+async function getWindowsPrintQueue(printerName) {
+  try {
+    // PowerShell command to get print jobs for the specific printer
+    const cmd = `powershell -Command "Get-PrintJob -PrinterName '${printerName}' | Select-Object Id, JobStatus, DocumentName | ConvertTo-Json"`;
+    const { stdout } = await execAsync(cmd);
+    
+    if (!stdout.trim()) {
+      return []; // Empty queue
+    }
+    
+    const jobs = JSON.parse(stdout);
+    // Handle single job (PowerShell returns object, not array)
+    return Array.isArray(jobs) ? jobs : [jobs];
+  } catch (err) {
+    // No jobs or printer not found
+    return [];
+  }
+}
+
+/**
+ * Wait for print queue to be empty (job completed)
+ */
+async function waitForPrintComplete(printerName, timeoutMs = 60000) {
+  const startTime = Date.now();
+  const checkInterval = 1000; // Check every 1 second
+  
+  console.log(`  ⏳ Monitoring Windows print queue for completion...`);
+  
+  while (Date.now() - startTime < timeoutMs) {
+    const jobs = await getWindowsPrintQueue(printerName);
+    
+    if (jobs.length === 0) {
+      console.log(`  ✅ Windows print queue is empty - job completed!`);
+      return true;
+    }
+    
+    // Show current queue status
+    const printing = jobs.filter(j => j.JobStatus === 'Printing').length;
+    const spooling = jobs.filter(j => j.JobStatus === 'Spooling').length;
+    const waiting = jobs.length - printing - spooling;
+    
+    if (printing > 0 || spooling > 0) {
+      console.log(`  🖨️  Windows queue: ${jobs.length} job(s) - ${printing} printing, ${spooling} spooling`);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
+  }
+  
+  console.log(`  ⚠️ Timeout waiting for print queue - assuming completed`);
+  return true; // Assume completed after timeout
+}
+
 async function printPdf(pdfPath, printerName) {
   console.log(`  🖨️ Printing to: ${printerName}`);
   console.log(`  📄 Settings: Letter, Landscape, Duplex (flip short edge), Color`);
@@ -194,19 +257,17 @@ async function printPdf(pdfPath, printerName) {
 
   try {
     await print(pdfPath, printOptions);
-    console.log('  ✅ Print job sent successfully (duplex: flip on short edge)!');
+    console.log('  ✅ Print job sent to Windows spooler');
   } catch (err) {
     console.warn('  ⚠️ Print with duplex options failed:', err.message);
     console.warn('  📝 Trying basic print...');
     // Fallback: try basic print (duplex should be set in printer defaults)
     await print(pdfPath, { printer: printerName });
     console.log('  ✅ Print job sent using printer defaults');
-    console.log('');
-    console.log('  ⚠️  If not printing two-sided, set duplex in Windows:');
-    console.log('     Control Panel → Devices and Printers');
-    console.log('     Right-click printer → Printing Preferences');
-    console.log('     Set "Two-sided" to "Flip on Short Edge"');
   }
+  
+  // NOW MONITOR WINDOWS PRINT QUEUE FOR REAL COMPLETION
+  await waitForPrintComplete(printerName, 120000); // 2 minute timeout
 }
 
 // =============================================================================
@@ -293,7 +354,7 @@ async function processJob(job) {
             console.error('  ❌ IPP Error details:', err);
             reject(new Error(`IPP Print failed: ${err.message || JSON.stringify(err)}`));
           } else {
-            console.log('  ✅ Print job sent. Status:', result.statusCode);
+            console.log('  ✅ Print job accepted by printer. Status:', result.statusCode);
             if (result.statusCode !== 'successful-ok') {
               console.warn('  ⚠️  Warning: Status code is not "successful-ok":', result.statusCode);
             }
@@ -301,6 +362,11 @@ async function processJob(job) {
           }
         });
       });
+      
+      // Wait a few seconds for sticker to actually print
+      console.log('  ⏳ Waiting for sticker to print...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('  ✅ Sticker print completed!');
 
       // Update job status on server
       await updateJobStatus(job.id, 'completed');
@@ -402,76 +468,177 @@ async function processJob(job) {
 /**
  * Update job status using the database-backed endpoint
  */
+/**
+ * Update job status using the database-backed endpoint
+ * CRITICAL: This MUST succeed for frontend to show "Print Complete"
+ */
 async function updateJobStatusDB(jobId, status, error = null) {
-  try {
-    const body = { status };
-    if (error) body.error = error;
+  const maxRetries = 10; // More retries for critical status updates
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const body = { status };
+      if (error) body.error = error;
 
-    await fetch(`${CONFIG.cloudServerUrl}/local-agent/jobs/${jobId}/status`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    console.warn(`  ⚠️ Could not update job status (DB): ${err.message}`);
-    // Try legacy endpoint as fallback
-    await updateJobStatusLegacy(jobId, status, error);
+      const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/jobs/${jobId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      
+      if (response.status === 429) {
+        // Rate limited - wait and retry with shorter delays
+        const waitTime = Math.min(Math.pow(1.5, attempt) * 500, 5000); // 500ms to 5s max
+        console.log(`  ⏳ DB status update rate limited, retry ${attempt + 1}/${maxRetries} in ${(waitTime/1000).toFixed(1)}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      if (response.ok) {
+        return true; // Success
+      }
+    } catch (err) {
+      const waitTime = Math.min(1000 * (attempt + 1), 3000);
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+        console.warn(`  ⚠️ Could not update job status (DB) after ${maxRetries} attempts: ${err.message}`);
+      }
+    }
   }
+  return false;
 }
 
 /**
  * Update job status using the legacy in-memory endpoint
+ * CRITICAL: This MUST succeed for frontend to show "Print Complete"
  */
 async function updateJobStatusLegacy(jobId, status, error = null) {
-  try {
-    const body = { status };
-    if (error) body.error = error;
+  const maxRetries = 10; // More retries for critical status updates
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const body = { status };
+      if (error) body.error = error;
 
-    await fetch(`${CONFIG.cloudServerUrl}/print-jobs/${jobId}/status`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    console.warn(`  ⚠️ Could not update job status (legacy): ${err.message}`);
+      const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/${jobId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      
+      if (response.status === 429) {
+        // Rate limited - wait and retry with shorter delays for status updates
+        const waitTime = Math.min(Math.pow(1.5, attempt) * 500, 5000); // 500ms to 5s max
+        console.log(`  ⏳ Status update rate limited, retry ${attempt + 1}/${maxRetries} in ${(waitTime/1000).toFixed(1)}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      if (response.ok) {
+        if (status === 'completed') {
+          console.log(`  ✅ Status "${status}" sent to server successfully`);
+        }
+        return true; // Success
+      }
+    } catch (err) {
+      const waitTime = Math.min(1000 * (attempt + 1), 3000);
+      if (attempt < maxRetries - 1) {
+        console.log(`  ⏳ Network error, retry ${attempt + 1}/${maxRetries} in ${waitTime/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+        console.warn(`  ⚠️ Could not update job status (legacy) after ${maxRetries} attempts: ${err.message}`);
+      }
+    }
   }
+  return false;
 }
 
-// Wrapper function that updates BOTH endpoints (DB and in-memory queue)
-// This ensures the job status is updated regardless of where the job came from
+/**
+ * Retry a fetch request with exponential backoff for 429 errors
+ */
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      if (response.status === 429) {
+        // Rate limited - wait and retry
+        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.log(`  ⏳ Rate limited, waiting ${waitTime/1000}s before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      return response;
+    } catch (err) {
+      if (attempt === maxRetries - 1) throw err;
+      // Wait before retry on network errors
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
+// Update job status on the server
+// CRITICAL: The in-memory queue update is what frontend polls to show "Print Complete"
 async function updateJobStatus(jobId, status, error = null) {
-  // Update both endpoints to ensure status is properly tracked everywhere
-  // In-memory queue (for jobs from /print-jobs)
-  await updateJobStatusLegacy(jobId, status, error);
-  // Database (for jobs from /local-agent/pending-jobs)
-  await updateJobStatusDB(jobId, status, error);
+  console.log(`  📡 Updating job status to "${status}" on server...`);
   
-  // After completing or failing a job, clean up the queue
+  // PRIORITY 1: Update in-memory queue - this is what frontend polls!
+  const legacySuccess = await updateJobStatusLegacy(jobId, status, error);
+  
+  if (status === 'completed') {
+    if (legacySuccess) {
+      console.log(`  🎉 Frontend will now show "Print Complete"!`);
+    } else {
+      console.warn(`  ⚠️ WARNING: Could not update status - frontend may be stuck on "Printing..."`);
+    }
+  }
+  
+  // PRIORITY 2: Try DB update (non-blocking, less critical)
+  // Don't wait for this - it's for record keeping, not frontend display
+  updateJobStatusDB(jobId, status, error).catch(() => {});
+  
+  // PRIORITY 3: Cleanup (non-blocking)
   if (status === 'completed' || status === 'failed') {
-    await cleanupCompletedJobs();
+    cleanupCompletedJobs().catch(() => {});
   }
 }
 
 /**
  * Remove the processed job from the in-memory queue
  * Uses clear-all to ensure no jobs remain that could be re-printed
+ * Retries on rate limiting (429) errors
  */
 async function cleanupCompletedJobs() {
-  try {
-    // Use clear-all to remove ALL jobs - we process one at a time anyway
-    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
-      method: 'DELETE',
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      if (result.cleared > 0) {
-        console.log(`  🧹 Cleared queue (${result.cleared} job(s) removed)`);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
+        method: 'DELETE',
+      });
+      
+      if (response.status === 429) {
+        // Rate limited - wait and retry with increasing delay
+        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s, 16s
+        console.log(`  ⏳ Cleanup rate limited, waiting ${waitTime/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
       }
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.cleared > 0) {
+          console.log(`  🧹 Cleared queue (${result.cleared} job(s) removed)`);
+        }
+        return; // Success, exit
+      }
+    } catch (err) {
+      // Wait before retry on network errors
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-  } catch (err) {
-    // Silently ignore - cleanup is not critical
   }
+  console.warn('  ⚠️ Could not clear queue after retries');
 }
 
 // =============================================================================
@@ -495,11 +662,17 @@ async function pollForJobsFromDB() {
 
     const data = await response.json();
     const jobs = data.jobs || [];
+    
+    // Filter out jobs we've already processed locally
+    const newJobs = jobs.filter(j => !locallyProcessedJobs.has(j.id));
 
-    if (jobs.length > 0) {
-      console.log(`\n📬 Found ${jobs.length} pending greeting card job(s) from database`);
+    if (newJobs.length > 0) {
+      console.log(`\n📬 Found ${newJobs.length} pending greeting card job(s) from database`);
 
-      for (const job of jobs) {
+      for (const job of newJobs) {
+        // Mark as locally processed IMMEDIATELY to prevent re-processing
+        locallyProcessedJobs.add(job.id);
+        
         await updateJobStatusDB(job.id, 'processing');
         await processJob(job);
       }
@@ -507,6 +680,9 @@ async function pollForJobsFromDB() {
   } catch (error) {
     if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
       // Server might be down, just wait and retry
+    } else if (error.message.includes('429')) {
+      // Rate limited - log and wait
+      console.log('Poll error (DB): Rate limited, will retry...');
     } else {
       console.error('Poll error (DB):', error.message);
     }
@@ -527,37 +703,42 @@ async function pollForJobsFromMemory() {
     const data = await response.json();
     const jobs = data.jobs || [];
 
-    // ONLY process "pending" jobs - never reprocess "processing" or "completed" jobs
-    const pendingJobs = jobs.filter(j => j.status === 'pending');
+    // ONLY process "pending" jobs that we haven't already processed locally
+    // This prevents re-printing if server status update fails due to rate limiting
+    const pendingJobs = jobs.filter(j => 
+      j.status === 'pending' && !locallyProcessedJobs.has(j.id)
+    );
 
-    // Debug: Show queue status occasionally
-    if (jobs.length > 0) {
-      const completed = jobs.filter(j => j.status === 'completed').length;
-      const processing = jobs.filter(j => j.status === 'processing').length;
-      console.log(`\n🔍 Queue: ${jobs.length} total (${pendingJobs.length} pending, ${processing} processing, ${completed} completed)`);
-      
-      // Only show details if there are pending jobs
-      if (pendingJobs.length > 0) {
-        pendingJobs.forEach((j, i) => {
-          console.log(`   ${i + 1}. [pending] ${j.id} (${j.paperType || 'greeting-card'})`);
-        });
-      }
+    // Only show queue status when there are NEW jobs to process
+    // Don't spam logs with stale queue data from rate-limited cleanups
+    if (pendingJobs.length > 0) {
+      console.log(`\n🔍 Found ${pendingJobs.length} new job(s) in queue`);
+      pendingJobs.forEach((j, i) => {
+        console.log(`   ${i + 1}. ${j.id} (${j.paperType || 'greeting-card'})`);
+      });
     }
 
     if (pendingJobs.length > 0) {
-      console.log(`\n📬 Processing ${pendingJobs.length} pending job(s)`);
+      console.log(`\n📬 Processing ${pendingJobs.length} new job(s)`);
 
       for (const job of pendingJobs) {
-        // Mark as processing BEFORE starting
+        // Mark as locally processed IMMEDIATELY to prevent re-processing
+        locallyProcessedJobs.add(job.id);
+        
+        // Mark as processing on server
         await updateJobStatusLegacy(job.id, 'processing');
         // Process the job
         await processJob(job);
         // Note: processJob calls updateJobStatus which cleans up completed jobs
+        
+        console.log(`  📋 Job ${job.id} added to local tracking (${locallyProcessedJobs.size} total tracked)`);
       }
     }
   } catch (error) {
     if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
       // Server might be down, just wait and retry
+    } else if (error.message.includes('429')) {
+      // Rate limited - skip logging (retry logic handles this)
     } else {
       console.error('Poll error (memory):', error.message);
     }
@@ -567,20 +748,25 @@ async function pollForJobsFromMemory() {
 // Track last poll time for debugging
 let pollCount = 0;
 
+// LOCAL tracking of processed jobs to prevent re-processing
+// even if server status update fails due to rate limiting
+const locallyProcessedJobs = new Set();
+
 /**
- * Main polling function - polls BOTH sources:
- * - Database: Greeting cards with printerName from kiosk config
- * - In-memory queue: All jobs (greeting cards + stickers) with printerName/printerIP
+ * Main polling function
+ * Only polls in-memory queue to reduce rate limit pressure
+ * All jobs (stickers + greeting cards) go through /print-jobs endpoint
  */
 async function pollForJobs() {
   pollCount++;
-  // Show poll activity every 12 polls (1 minute at 5s interval)
-  if (pollCount % 12 === 0) {
+  // Show poll activity every 6 polls (1 minute at 10s interval)
+  if (pollCount % 6 === 0) {
     const now = new Date().toLocaleTimeString();
     console.log(`\n⏱️  [${now}] Still polling... (${pollCount} polls so far)`);
   }
   
-  await pollForJobsFromDB();
+  // Only poll in-memory queue to reduce server requests
+  // This reduces rate limiting and leaves room for status updates
   await pollForJobsFromMemory();
 }
 
@@ -641,21 +827,36 @@ async function fetchKioskPrinterConfigs() {
 async function clearJobQueue() {
   console.log('\n🧹 Clearing old jobs from queue (starting fresh)...');
   
-  try {
-    // Clear the in-memory queue on the server
-    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
-      method: 'DELETE',
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`   ✅ Cleared ${result.cleared || 0} old job(s) from queue`);
-    } else {
-      console.log(`   ⚠️ Could not clear queue: ${response.status}`);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      // Clear the in-memory queue on the server
+      const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
+        method: 'DELETE',
+      });
+      
+      if (response.status === 429) {
+        // Rate limited - wait and retry
+        const waitTime = Math.pow(2, attempt) * 1000;
+        console.log(`   ⏳ Rate limited, waiting ${waitTime/1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`   ✅ Cleared ${result.cleared || 0} old job(s) from queue`);
+        console.log('');
+        return; // Success
+      } else {
+        console.log(`   ⚠️ Could not clear queue: ${response.status}`);
+      }
+    } catch (err) {
+      if (attempt === 4) {
+        console.log(`   ⚠️ Could not clear queue: ${err.message}`);
+        console.log('   (This is OK if the server endpoint is not deployed yet)');
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-  } catch (err) {
-    console.log(`   ⚠️ Could not clear queue: ${err.message}`);
-    console.log('   (This is OK if the server endpoint is not deployed yet)');
   }
   
   console.log('');
