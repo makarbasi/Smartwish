@@ -302,19 +302,29 @@ export default function StickersPage() {
         console.log(`🔄 Polling for sticker print job status: ${jobId}`);
         setPrintStatus('printing');
         
+        let pollCount = 0;
+        const maxPolls = 60; // 2 minutes at 2 second intervals
+        let isComplete = false;
+        
         const pollInterval = setInterval(async () => {
+          if (isComplete) return;
+          pollCount++;
+          
           try {
             const statusResponse = await fetch(
               `${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-jobs/${jobId}`
             );
             
+            console.log(`📋 Polling sticker job ${jobId}... (poll ${pollCount}/${maxPolls})`);
+            
             if (statusResponse.ok) {
               const statusData = await statusResponse.json();
               const jobStatus = statusData.job?.status;
               
-              console.log(`📋 Sticker job ${jobId} status: ${jobStatus}`);
+              console.log(`📋 Sticker job ${jobId} status: ${jobStatus}`, statusData);
               
               if (jobStatus === 'completed') {
+                isComplete = true;
                 clearInterval(pollInterval);
                 setPrintStatus('completed');
                 setIsPrinting(false);
@@ -335,6 +345,7 @@ export default function StickersPage() {
                   setStickerOrderId(crypto.randomUUID());
                 }, 3000);
               } else if (jobStatus === 'failed') {
+                isComplete = true;
                 clearInterval(pollInterval);
                 setPrintStatus('failed');
                 setPrintError(statusData.job?.error || 'Sticker print job failed');
@@ -342,21 +353,19 @@ export default function StickersPage() {
               }
               // If still 'pending' or 'processing', keep polling
             }
+            
+            // Timeout after max polls
+            if (pollCount >= maxPolls && !isComplete) {
+              console.log('⏱️ Sticker poll timeout - assuming print completed');
+              isComplete = true;
+              clearInterval(pollInterval);
+              setPrintStatus('completed');
+              setIsPrinting(false);
+            }
           } catch (pollErr) {
             console.warn('Poll error:', pollErr);
           }
         }, 2000); // Poll every 2 seconds
-        
-        // Stop polling after 2 minutes (timeout)
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          // If still printing after 2 minutes, assume it completed
-          if (printStatus === 'printing') {
-            console.log('⏱️ Sticker poll timeout - assuming print completed');
-            setPrintStatus('completed');
-            setIsPrinting(false);
-          }
-        }, 120000);
       } else {
         // No job ID returned, fall back to showing completed after delay
         console.log('⚠️ No sticker job ID returned, using fallback timing');
