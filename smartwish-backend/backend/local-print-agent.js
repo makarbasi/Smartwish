@@ -576,19 +576,20 @@ async function updateJobStatus(jobId, status, error = null) {
 }
 
 /**
- * Remove completed and failed jobs from the in-memory queue
- * This prevents any chance of re-printing old jobs
+ * Remove the processed job from the in-memory queue
+ * Uses clear-all to ensure no jobs remain that could be re-printed
  */
 async function cleanupCompletedJobs() {
   try {
-    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear`, {
+    // Use clear-all to remove ALL jobs - we process one at a time anyway
+    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
       method: 'DELETE',
     });
     
     if (response.ok) {
       const result = await response.json();
       if (result.cleared > 0) {
-        console.log(`  🧹 Cleaned up ${result.cleared} completed/failed job(s) from queue`);
+        console.log(`  🧹 Cleared queue (${result.cleared} job(s) removed)`);
       }
     }
   } catch (err) {

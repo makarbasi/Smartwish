@@ -198,8 +198,8 @@ export class OrdersController {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
-      // ✅ Validate UUID format
-      if (!isValidUUID(orderData.cardId)) {
+      // ✅ Validate UUID format (skip for sticker orders - they don't have a real card)
+      if (orderData.orderType !== 'sticker' && !isValidUUID(orderData.cardId)) {
         return res.status(400).json({ error: 'Invalid card ID format' });
       }
 

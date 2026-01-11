@@ -67,6 +67,8 @@ export default function StickersPage() {
   // Payment state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  // Generate a stable UUID for sticker orders (required for database - card_id is UUID type)
+  const [stickerOrderId, setStickerOrderId] = useState<string>(() => crypto.randomUUID());
 
   // Fetch stickers for carousel - get all 200 for variety across 4 rows
   const { data: stickersData, isLoading: isLoadingStickers } = useSWR<StickersApiResponse>(
@@ -271,7 +273,8 @@ export default function StickersPage() {
       await generateStickerJPGOnly();
       setIsPrinting(false);
       
-      // Also open the payment modal for payment flow
+      // Generate a fresh UUID for this sticker order and open the payment modal
+      setStickerOrderId(crypto.randomUUID());
       setShowPaymentModal(true);
     } catch (error) {
       console.error("❌ Error generating JPG:", error);
@@ -1037,7 +1040,7 @@ export default function StickersPage() {
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         onPaymentSuccess={() => handlePaymentSuccess()}
-        cardId={`sticker-sheet-${Date.now()}`}
+        cardId={stickerOrderId}
         cardName="Sticker Sheet"
         action="print"
         productType="stickers"
