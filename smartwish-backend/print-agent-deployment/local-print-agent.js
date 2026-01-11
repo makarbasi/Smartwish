@@ -437,10 +437,40 @@ async function updateJobStatusLegacy(jobId, status, error = null) {
   }
 }
 
-// Wrapper function that chooses the right update method
+// Wrapper function that updates BOTH endpoints (DB and in-memory queue)
+// This ensures the job status is updated regardless of where the job came from
 async function updateJobStatus(jobId, status, error = null) {
-  // Try database endpoint first, it will fallback to legacy if needed
+  // Update both endpoints to ensure status is properly tracked everywhere
+  // In-memory queue (for jobs from /print-jobs)
+  await updateJobStatusLegacy(jobId, status, error);
+  // Database (for jobs from /local-agent/pending-jobs)
   await updateJobStatusDB(jobId, status, error);
+  
+  // After completing or failing a job, clean up the queue
+  if (status === 'completed' || status === 'failed') {
+    await cleanupCompletedJobs();
+  }
+}
+
+/**
+ * Remove completed and failed jobs from the in-memory queue
+ * This prevents any chance of re-printing old jobs
+ */
+async function cleanupCompletedJobs() {
+  try {
+    const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear`, {
+      method: 'DELETE',
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      if (result.cleared > 0) {
+        console.log(`  🧹 Cleaned up ${result.cleared} completed/failed job(s) from queue`);
+      }
+    }
+  } catch (err) {
+    // Silently ignore - cleanup is not critical
+  }
 }
 
 // =============================================================================
