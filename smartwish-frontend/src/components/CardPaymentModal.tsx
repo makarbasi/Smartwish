@@ -1447,7 +1447,7 @@ function CardPaymentModalContent({
                       </label>
                       <div className="flex gap-2">
                         <input
-                          type="text"
+                          type="password"
                           value={promoCode}
                           onChange={(e) => {
                             setPromoCode(e.target.value)
@@ -1455,6 +1455,7 @@ function CardPaymentModalContent({
                             setPromoError(null)
                           }}
                           placeholder="Enter code"
+                          autoComplete="off"
                           className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all ${
                             promoApplied
                               ? 'border-green-400 bg-green-50 focus:ring-green-300'
