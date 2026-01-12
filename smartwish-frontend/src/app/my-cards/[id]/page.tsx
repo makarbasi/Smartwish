@@ -37,6 +37,7 @@ import { saveSavedDesignWithImages } from "@/utils/savedDesignUtils";
 import { useSession } from "next-auth/react";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskConfig } from "@/hooks/useKioskConfig";
+import { useKioskInactivity } from "@/hooks/useKioskInactivity";
 
 type SavedDesign = {
   id: string;
@@ -248,6 +249,9 @@ export default function CustomizeCardPage() {
   const { data: session, status } = useSession();
   const { isKiosk } = useDeviceMode();
   const { config: kioskConfig } = useKioskConfig();
+  
+  // Kiosk inactivity management - pause during printing
+  const { pauseForPrinting, resumeInactivity } = useKioskInactivity();
   const params = useParams();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1480,6 +1484,9 @@ export default function CustomizeCardPage() {
     // Update UI to show sending status
     setPrintStatus('sending');
     setPrintError(null);
+    
+    // Pause inactivity timer during printing (5 minute timeout)
+    pauseForPrinting();
 
     let printLogId: string | null = null;
 
@@ -1592,6 +1599,9 @@ export default function CustomizeCardPage() {
                 clearInterval(pollInterval);
                 setPrintStatus('completed');
                 
+                // Resume inactivity timer after print completes
+                resumeInactivity();
+                
                 // Update print log if we have one
                 if (printLogId && result.pdfUrl) {
                   await updatePrintLogStatus(printLogId, 'completed', undefined, result.pdfUrl);
@@ -1600,6 +1610,9 @@ export default function CustomizeCardPage() {
                 clearInterval(pollInterval);
                 setPrintStatus('failed');
                 setPrintError(statusData.job?.error || 'Print job failed');
+                
+                // Resume inactivity timer after print failure
+                resumeInactivity();
                 
                 if (printLogId) {
                   await updatePrintLogStatus(printLogId, 'failed', statusData.job?.error);
@@ -1619,6 +1632,8 @@ export default function CustomizeCardPage() {
           if (printStatus === 'printing') {
             console.log('⏱️ Poll timeout - assuming print completed');
             setPrintStatus('completed');
+            // Resume inactivity timer after poll timeout
+            resumeInactivity();
           }
         }, 120000);
       } else {
@@ -1626,6 +1641,8 @@ export default function CustomizeCardPage() {
         console.log('⚠️ No job ID returned, using fallback timing');
         setTimeout(() => {
           setPrintStatus('completed');
+          // Resume inactivity timer after fallback delay
+          resumeInactivity();
         }, 5000);
       }
 
@@ -1639,6 +1656,8 @@ export default function CustomizeCardPage() {
       
       setPrintStatus('failed');
       setPrintError(err instanceof Error ? err.message : 'Unknown error');
+      // Resume inactivity timer after print error
+      resumeInactivity();
     }
   };
 

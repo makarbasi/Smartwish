@@ -15,6 +15,7 @@ import PinturaEditorModal from "@/components/PinturaEditorModal";
 import CardPaymentModal from "@/components/CardPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
+import { useKioskInactivity } from "@/hooks/useKioskInactivity";
 
 // Extended slot type with upload flag
 interface ExtendedStickerSlot extends StickerSlot {
@@ -49,6 +50,9 @@ export default function StickersPage() {
   const router = useRouter();
   const { isKiosk } = useDeviceMode();
   const { config: kioskConfig, kioskInfo } = useKiosk();
+  
+  // Kiosk inactivity management - pause during QR upload and printing
+  const { pauseForQRUpload, pauseForPrinting, resumeInactivity } = useKioskInactivity();
 
   // Generate a stable kiosk session ID for this session
   const [kioskSessionId] = useState<string>(() => crypto.randomUUID());
@@ -165,8 +169,10 @@ export default function StickersPage() {
     } else if (mode === "upload") {
       // Switch to QR code upload view
       setViewMode("upload-qr");
+      // Pause inactivity timer for QR upload (10 minutes to match QR code expiry)
+      pauseForQRUpload();
     }
-  }, [selectedSlotIndex]);
+  }, [selectedSlotIndex, pauseForQRUpload]);
 
   // Handle closing mode selector
   const handleCloseModeSelector = useCallback(() => {
@@ -223,16 +229,22 @@ export default function StickersPage() {
       )
     );
 
+    // Resume inactivity timer
+    resumeInactivity();
+
     // Close QR modal and return to initial view
     setSelectedSlotIndex(null);
     setViewMode("initial");
-  }, []);
+  }, [resumeInactivity]);
 
   // Handle QR code close
   const handleCloseQR = useCallback(() => {
+    // Resume inactivity timer
+    resumeInactivity();
+    
     setSelectedSlotIndex(null);
     setViewMode("initial");
-  }, []);
+  }, [resumeInactivity]);
 
   // Handle edit button click on a sticker slot
   const handleSlotEdit = useCallback(async (index: number) => {
@@ -346,6 +358,9 @@ export default function StickersPage() {
     setPrintStatus('sending');
     setPrintError(null);
     
+    // Pause inactivity timer during printing (5 minute timeout)
+    pauseForPrinting();
+    
     try {
       // Generate JPG and print - returns jobId for polling
       console.log("📤 Calling printStickerSheet...");
@@ -385,6 +400,9 @@ export default function StickersPage() {
                 setPrintStatus('completed');
                 setIsPrinting(false);
                 
+                // Resume inactivity timer now that print is complete
+                resumeInactivity();
+                
                 // Reset state after 3 seconds
                 setTimeout(() => {
                   setShowPaymentModal(false);
@@ -407,6 +425,9 @@ export default function StickersPage() {
                 setPrintStatus('failed');
                 setPrintError(statusData.job?.error || 'Sticker print job failed');
                 setIsPrinting(false);
+                
+                // Resume inactivity timer after print failure
+                resumeInactivity();
               }
               // If still 'pending' or 'processing', keep polling
             }
@@ -418,6 +439,9 @@ export default function StickersPage() {
               clearInterval(pollInterval);
               setPrintStatus('completed');
               setIsPrinting(false);
+              
+              // Resume inactivity timer after poll timeout
+              resumeInactivity();
             }
           } catch (pollErr) {
             console.warn('Poll error:', pollErr);
@@ -430,6 +454,8 @@ export default function StickersPage() {
         setTimeout(() => {
           setPrintStatus('completed');
           setIsPrinting(false);
+          // Resume inactivity timer after fallback delay
+          resumeInactivity();
         }, 5000);
       }
       
@@ -439,6 +465,8 @@ export default function StickersPage() {
       setPrintStatus('failed');
       setPrintError(error instanceof Error ? error.message : 'Print failed');
       setIsPrinting(false);
+      // Resume inactivity timer after print error
+      resumeInactivity();
       // Show error in alert for debugging
       alert(`Sticker print failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
