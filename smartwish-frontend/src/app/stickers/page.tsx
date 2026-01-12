@@ -9,13 +9,20 @@ import jsPDF from "jspdf";
 import StickerSheet, { StickerSlot } from "@/components/stickers/StickerSheet";
 import StickerCarousel, { StickerItem } from "@/components/stickers/StickerCarousel";
 import StickerGallery, { Sticker } from "@/components/stickers/StickerGallery";
+import StickerSlotModeSelector, { SlotMode } from "@/components/stickers/StickerSlotModeSelector";
+import UploadQRCode from "@/components/stickers/UploadQRCode";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
 import CardPaymentModal from "@/components/CardPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 
+// Extended slot type with upload flag
+interface ExtendedStickerSlot extends StickerSlot {
+  isUpload?: boolean;
+}
+
 // Page view modes
-type ViewMode = "initial" | "selection" | "editing";
+type ViewMode = "initial" | "mode-selection" | "selection" | "upload-qr" | "editing";
 
 // Stickers API response
 interface StickersApiResponse {
@@ -43,13 +50,17 @@ export default function StickersPage() {
   const { isKiosk } = useDeviceMode();
   const { config: kioskConfig, kioskInfo } = useKiosk();
 
+  // Generate a stable kiosk session ID for this session
+  const [kioskSessionId] = useState<string>(() => crypto.randomUUID());
+
   // Sticker slots state (6 slots for Avery 94513)
-  const [slots, setSlots] = useState<StickerSlot[]>(
+  const [slots, setSlots] = useState<ExtendedStickerSlot[]>(
     Array.from({ length: 6 }, (_, i) => ({
       id: i,
       imageUrl: null,
       editedImageBlob: null,
       originalImageUrl: null,
+      isUpload: false,
     }))
   );
 
@@ -117,6 +128,7 @@ export default function StickersPage() {
               imageUrl: sourceSlot.imageUrl,
               editedImageBlob: sourceSlot.editedImageBlob,
               originalImageUrl: sourceSlot.originalImageUrl,
+              isUpload: sourceSlot.isUpload,
             }
           : slot
       )
@@ -124,7 +136,7 @@ export default function StickersPage() {
     // Stay in copy mode to allow multiple pastes
   }, [copySourceIndex, slots]);
 
-  // Handle slot click - enter selection mode or paste if in copy mode
+  // Handle slot click - show mode selector or paste if in copy mode
   const handleSlotClick = useCallback((index: number) => {
     // If in copy mode, handle paste
     if (copySourceIndex !== null) {
@@ -138,16 +150,35 @@ export default function StickersPage() {
       return;
     }
     
-    // Normal mode - enter selection
+    // Show mode selector for this slot
     setSelectedSlotIndex(index);
-    setViewMode("selection");
+    setViewMode("mode-selection");
   }, [copySourceIndex, handleExitCopyMode, handleCopyToSlot]);
+
+  // Handle mode selection (sticker browse vs upload)
+  const handleModeSelect = useCallback((mode: SlotMode) => {
+    if (selectedSlotIndex === null) return;
+
+    if (mode === "sticker") {
+      // Switch to sticker gallery view
+      setViewMode("selection");
+    } else if (mode === "upload") {
+      // Switch to QR code upload view
+      setViewMode("upload-qr");
+    }
+  }, [selectedSlotIndex]);
+
+  // Handle closing mode selector
+  const handleCloseModeSelector = useCallback(() => {
+    setSelectedSlotIndex(null);
+    setViewMode("initial");
+  }, []);
 
   // Handle slot clear
   const handleSlotClear = useCallback((index: number) => {
     setSlots((prev) =>
       prev.map((slot, i) =>
-        i === index ? { ...slot, imageUrl: null, editedImageBlob: null, originalImageUrl: null } : slot
+        i === index ? { ...slot, imageUrl: null, editedImageBlob: null, originalImageUrl: null, isUpload: false } : slot
       )
     );
   }, []);
@@ -165,7 +196,7 @@ export default function StickersPage() {
     setSlots((prev) =>
       prev.map((slot, i) =>
         i === selectedSlotIndex
-          ? { ...slot, imageUrl: sticker.imageUrl, editedImageBlob: null, originalImageUrl: sticker.imageUrl }
+          ? { ...slot, imageUrl: sticker.imageUrl, editedImageBlob: null, originalImageUrl: sticker.imageUrl, isUpload: false }
           : slot
       )
     );
@@ -181,6 +212,28 @@ export default function StickersPage() {
     setViewMode("initial");
   }, []);
 
+  // Handle upload complete from QR code
+  const handleUploadComplete = useCallback((slotIndex: number, imageBase64: string) => {
+    // Update the slot with the uploaded image
+    setSlots((prev) =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? { ...slot, imageUrl: imageBase64, editedImageBlob: null, originalImageUrl: imageBase64, isUpload: true }
+          : slot
+      )
+    );
+
+    // Close QR modal and return to initial view
+    setSelectedSlotIndex(null);
+    setViewMode("initial");
+  }, []);
+
+  // Handle QR code close
+  const handleCloseQR = useCallback(() => {
+    setSelectedSlotIndex(null);
+    setViewMode("initial");
+  }, []);
+
   // Handle edit button click on a sticker slot
   const handleSlotEdit = useCallback(async (index: number) => {
     const slot = slots[index];
@@ -192,7 +245,7 @@ export default function StickersPage() {
     // Use the current imageUrl (which includes any edits) - NOT the original
     const imageUrl = slot.imageUrl;
     
-    // If it's already a blob or data URL, use it directly
+    // If it's already a blob, data URL or base64, use it directly
     if (imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) {
       setEditorImageSrc(imageUrl);
       setShowEditor(true);
@@ -342,6 +395,7 @@ export default function StickersPage() {
                       imageUrl: null,
                       editedImageBlob: null,
                       originalImageUrl: null,
+                      isUpload: false,
                     }))
                   );
                   // Generate new order ID for next order
@@ -418,6 +472,11 @@ export default function StickersPage() {
         if (!slot.imageUrl) return null;
 
         try {
+          // If it's already base64, return it directly
+          if (slot.imageUrl.startsWith("data:")) {
+            return slot.imageUrl;
+          }
+          
           const response = await fetch(slot.imageUrl);
           const blob = await response.blob();
           return new Promise<string>((resolve) => {
@@ -897,7 +956,7 @@ export default function StickersPage() {
           `}
         >
           {/* Premium card wrapper for the sticker sheet */}
-          {viewMode === "initial" && (
+          {viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr" ? (
             <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6 justify-center">
               {/* Sheet container - LARGER for portrait displays */}
               <div className="relative">
@@ -955,7 +1014,7 @@ export default function StickersPage() {
                     </div>
                     <div className="flex items-center gap-2 p-2 bg-purple-50/50 rounded-lg">
                       <span className="w-5 h-5 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
-                      <span>Browse designs</span>
+                      <span>Browse or upload</span>
                     </div>
                     <div className="flex items-center gap-2 p-2 bg-indigo-50/50 rounded-lg">
                       <span className="w-5 h-5 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
@@ -969,25 +1028,22 @@ export default function StickersPage() {
                 </div>
               </div>
             </div>
-          )}
-          
-          {/* Compact view for selection mode */}
-          {viewMode === "selection" && (
+          ) : viewMode === "selection" ? (
             <StickerSheet
               slots={slots}
               selectedIndex={selectedSlotIndex}
-              isCompact={viewMode === "selection"}
+              isCompact={true}
               onSlotClick={handleSlotClick}
               onSlotClear={handleSlotClear}
               onSlotEdit={handleSlotEdit}
               onSlotCopy={handleSlotCopy}
               copySourceIndex={copySourceIndex}
             />
-          )}
+          ) : null}
         </div>
 
         {/* ==================== PRINT BUTTON ==================== */}
-        {viewMode === "initial" && (
+        {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && (
           <div className="flex-shrink-0 mt-8 mb-6">
             <div className="max-w-lg mx-auto">
               {/* Button with glow effect - LARGER */}
@@ -1036,7 +1092,7 @@ export default function StickersPage() {
         )}
 
         {/* ==================== CAROUSEL SECTION - MULTI-ROW ==================== */}
-        {viewMode === "initial" && (
+        {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && (
           <div className="flex-1 min-h-0 flex flex-col mt-6">
             {/* Section header */}
             <div className="flex-shrink-0 flex items-center justify-center gap-3 mb-4">
@@ -1082,7 +1138,7 @@ export default function StickersPage() {
       </div>
       
       {/* ==================== TRUST FOOTER ==================== */}
-      {viewMode === "initial" && (
+      {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && (
         <div className="flex-shrink-0 py-3 border-t border-gray-100 bg-white/50">
           <div className="flex items-center justify-center gap-6 text-xs text-gray-400">
             <div className="flex items-center gap-1.5">
@@ -1105,6 +1161,27 @@ export default function StickersPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ==================== MODALS ==================== */}
+      
+      {/* Mode Selector Modal */}
+      {viewMode === "mode-selection" && selectedSlotIndex !== null && (
+        <StickerSlotModeSelector
+          slotIndex={selectedSlotIndex}
+          onSelectMode={handleModeSelect}
+          onClose={handleCloseModeSelector}
+        />
+      )}
+
+      {/* QR Code Upload Modal */}
+      {viewMode === "upload-qr" && selectedSlotIndex !== null && (
+        <UploadQRCode
+          slotIndex={selectedSlotIndex}
+          kioskSessionId={kioskSessionId}
+          onUploadComplete={handleUploadComplete}
+          onClose={handleCloseQR}
+        />
       )}
 
       {/* Sticker Editor Modal - using same Pintura as greeting cards */}
