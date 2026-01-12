@@ -32,8 +32,9 @@ export async function POST(request: NextRequest) {
     // Create session
     const session = createUploadSession(sessionId, slotIndex, kioskSessionId)
 
-    // Generate QR code URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    // Generate QR code URL - use request origin to avoid localhost in production
+    const requestUrl = new URL(request.url)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${requestUrl.protocol}//${requestUrl.host}`
     const uploadUrl = `${baseUrl}/mobile-upload/${sessionId}`
 
     return NextResponse.json({
