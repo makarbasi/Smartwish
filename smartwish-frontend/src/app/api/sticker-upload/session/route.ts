@@ -32,10 +32,14 @@ export async function POST(request: NextRequest) {
     // Create session
     const session = createUploadSession(sessionId, slotIndex, kioskSessionId)
 
-    // Generate QR code URL - use request origin to avoid localhost in production
-    const requestUrl = new URL(request.url)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${requestUrl.protocol}//${requestUrl.host}`
+    // Generate QR code URL - use headers to get actual host (works in production)
+    // Check for forwarded headers first (from proxy/load balancer), then fallback to host header
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'app.smartwish.us'
+    const protocol = request.headers.get('x-forwarded-proto') || (request.url.startsWith('https') ? 'https' : 'http')
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`
     const uploadUrl = `${baseUrl}/mobile-upload/${sessionId}`
+    
+    console.log('[Session] Generated upload URL:', uploadUrl, 'from host:', host, 'protocol:', protocol)
 
     return NextResponse.json({
       success: true,
