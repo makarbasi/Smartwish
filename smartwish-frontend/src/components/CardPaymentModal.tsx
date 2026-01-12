@@ -147,7 +147,7 @@ function CardPaymentModalContent({
   const [promoCode, setPromoCode] = useState('')
   const [promoApplied, setPromoApplied] = useState(false)
   const [promoError, setPromoError] = useState<string | null>(null)
-  const VALID_PROMO_CODE = 'smartwish2'
+  const VALID_PROMO_CODE = 'mypromo'
 
   // Payment Data
   const [orderId, setOrderId] = useState<string | null>(null)
