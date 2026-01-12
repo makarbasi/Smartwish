@@ -10,8 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "preinstall": "echo '//npm.pqina.nl/:_authToken=${PINTURA_TOKEN}' >> .npmrc || true",
-    "postinstall": "node scripts/ensure-sharp.js || true"
+    "preinstall": "echo '//npm.pqina.nl/:_authToken=${PINTURA_TOKEN}' >> .npmrc || true"
   },
   "dependencies": {
     "@google/genai": "^1.16.0",
@@ -42,7 +41,6 @@
     "react-leaflet": "^5.0.0",
     "react-pageflip": "^2.0.3",
     "react-simple-keyboard": "^3.8.132",
-    "sharp": "^0.33.5",
     "stripe": "^19.3.0",
     "swr": "^2.3.6"
   },
