@@ -129,10 +129,10 @@ function CardPaymentModalContent({
 
   // ✅ Use NextAuth session for authentication
   const { data: session, status: sessionStatus } = useSession()
-  
+
   // Check if this is a sticker payment (simplified flow, no gift cards)
   const isStickers = productType === 'stickers'
-  
+
   // Determine if we're in a printing state (to prevent modal close)
   const isPrintInProgress = printStatus === 'sending' || printStatus === 'printing'
 
@@ -142,7 +142,7 @@ function CardPaymentModalContent({
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [loadingPrice, setLoadingPrice] = useState(!isStickers) // Stickers have fixed price, no need to load
-  
+
   // Promo code state
   const [promoCode, setPromoCode] = useState('')
   const [promoApplied, setPromoApplied] = useState(false)
@@ -262,7 +262,7 @@ function CardPaymentModalContent({
         console.log('🎨 Sticker payment - using fixed pricing')
         const stickerProcessingFee = STICKER_PRICE * STICKER_PROCESSING_FEE_PERCENT
         const stickerTotal = STICKER_PRICE + stickerProcessingFee
-        
+
         // Set price data directly (no backend call needed for pricing)
         const stickerPriceData = {
           cardPrice: STICKER_PRICE,
@@ -271,7 +271,7 @@ function CardPaymentModalContent({
           total: stickerTotal
         }
         setPriceData(stickerPriceData)
-        
+
         // Step 1: Create order in database (required for QR code mobile payment)
         console.log('📦 Creating sticker order in database...')
         const orderResponse = await fetch(`${backendUrl}/orders`, {
@@ -312,7 +312,7 @@ function CardPaymentModalContent({
         const createdOrderId = orderResult.order.id
         setOrderId(createdOrderId)
         console.log('✅ Sticker order created:', createdOrderId)
-        
+
         // Step 2: Create Stripe payment intent for stickers
         console.log('💳 Creating Stripe payment intent for stickers...')
         const intentResponse = await fetch('/api/stripe/create-payment-intent', {
@@ -331,13 +331,13 @@ function CardPaymentModalContent({
             }
           })
         })
-        
+
         const intentResult = await intentResponse.json()
-        
+
         if (!intentResponse.ok || !intentResult.clientSecret) {
           throw new Error(intentResult.error || 'Failed to initialize sticker payment')
         }
-        
+
         setClientSecret(intentResult.clientSecret)
         console.log('✅ Sticker payment intent created:', intentResult.paymentIntentId)
 
@@ -383,11 +383,11 @@ function CardPaymentModalContent({
 
         setPaymentSessionId(sessionResult.session.id)
         console.log('✅ Sticker payment session created:', sessionResult.session.id)
-        
+
         setLoadingPrice(false)
         return
       }
-      
+
       // ======== CARDS: Full flow with gift card support ========
 
       // Step 1: Check localStorage for gift card amount if not provided
@@ -401,10 +401,10 @@ function CardPaymentModalContent({
           const allKeys = Object.keys(localStorage).filter(k => k.includes('giftCard') && !k.includes('Meta'))
           console.log('🎁 DEBUG: All giftCard keys in localStorage:', allKeys)
           console.log('🎁 DEBUG: Looking for key:', `giftCard_${cardId}`)
-          
+
           // Try to find gift card - check both exact match and any matching key
           let storedGiftData = localStorage.getItem(`giftCard_${cardId}`)
-          
+
           // ✅ Fallback: If not found and only one gift card exists, use it (likely a migration issue)
           if (!storedGiftData && allKeys.length === 1) {
             console.log('🎁 DEBUG: Exact key not found, trying fallback to:', allKeys[0])
@@ -412,10 +412,10 @@ function CardPaymentModalContent({
           }
           console.log('🎁 Checking localStorage for gift card:', `giftCard_${cardId}`)
           console.log('🎁 Stored data:', storedGiftData ? storedGiftData.substring(0, 100) + '...' : 'null')
-          
+
           if (storedGiftData) {
             let giftData: any = null
-            
+
             // ✅ FIX: Handle both encrypted and unencrypted gift card data
             if (storedGiftData.startsWith('{') || storedGiftData.startsWith('[')) {
               // Unencrypted JSON format (legacy or pre-payment)
@@ -430,7 +430,7 @@ function CardPaymentModalContent({
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ encryptedData: storedGiftData })
                 })
-                
+
                 if (decryptResponse.ok) {
                   const { giftCardData } = await decryptResponse.json()
                   giftData = giftCardData
@@ -442,7 +442,7 @@ function CardPaymentModalContent({
                 console.warn('⚠️ Decryption error:', decryptError)
               }
             }
-            
+
             if (giftData) {
               const parsedAmount = parseFloat(giftData.amount || 0)
 
@@ -724,7 +724,7 @@ function CardPaymentModalContent({
 
     // 🎁 Issue gift card if one is pending (NOT for stickers - stickers don't have gift cards)
     let issuedGiftCardData: IssuedGiftCardData | undefined = undefined
-    
+
     // Skip gift card processing for stickers
     if (isStickers) {
       console.log('🎨 Sticker payment - skipping gift card processing')
@@ -734,22 +734,22 @@ function CardPaymentModalContent({
       }, 1500)
       return
     }
-    
+
     console.log('═══════════════════════════════════════════════════════════')
     console.log('🎁 GIFT CARD ISSUANCE FLOW - START')
     console.log('🎁 cardId:', cardId)
     console.log('🎁 action:', action)
-    
+
     // Debug: List ALL localStorage keys related to gift cards
     const allGiftCardKeys = Object.keys(localStorage).filter(k => k.includes('giftCard') && !k.includes('Meta'))
     console.log('🎁 All gift card keys in localStorage:', allGiftCardKeys)
-    
+
     try {
       const expectedKey = `giftCard_${cardId}`
       console.log('🎁 Looking for key:', expectedKey)
       let storedGiftCard = localStorage.getItem(expectedKey)
       let actualGiftCardKey = expectedKey
-      
+
       // ✅ FALLBACK: If exact key not found, try to find any gift card (handles card ID migration issues)
       if (!storedGiftCard && allGiftCardKeys.length > 0) {
         console.log('🎁 Exact key not found, trying fallback...')
@@ -758,15 +758,15 @@ function CardPaymentModalContent({
         storedGiftCard = localStorage.getItem(actualGiftCardKey)
         console.log('🎁 Using fallback key:', actualGiftCardKey, 'found:', storedGiftCard ? 'YES' : 'NO')
       }
-      
+
       console.log('🎁 Raw stored gift card found:', storedGiftCard ? 'YES' : 'NO')
       if (storedGiftCard) {
         console.log('🎁 Raw data (first 200 chars):', storedGiftCard.substring(0, 200))
       }
-      
+
       if (storedGiftCard) {
         let giftCardSelection: any = null
-        
+
         // Handle both encrypted and unencrypted formats
         if (storedGiftCard.startsWith('{') || storedGiftCard.startsWith('[')) {
           console.log('🎁 Gift card is in plain JSON format')
@@ -817,7 +817,7 @@ function CardPaymentModalContent({
             })
 
             const data = await response.json()
-            
+
             console.log('🎁 Tillo API FULL response:', JSON.stringify(data, null, 2))
             console.log('🎁 Tillo API response summary:', {
               ok: response.ok,
@@ -832,7 +832,7 @@ function CardPaymentModalContent({
               } : null,
               error: data.error
             })
-            
+
             // 🎁 Extract redemption URL - try multiple fields
             const redemptionUrl = data.giftCard?.url || data.giftCard?.redemptionUrl || data.giftCard?.claim_url || ''
             console.log('🎁 Extracted redemption URL:', redemptionUrl || 'NONE FOUND!')
@@ -854,9 +854,9 @@ function CardPaymentModalContent({
                 expiryDate: data.giftCard?.expiryDate,
                 qrCode: '' // Will be generated below
               }
-              
+
               console.log('🎁 Issued gift card redemptionLink set to:', issuedGiftCard.redemptionLink || 'EMPTY!')
-              
+
               console.log('🎁 Issued gift card object:', {
                 storeName: issuedGiftCard.storeName,
                 amount: issuedGiftCard.amount,
@@ -869,10 +869,10 @@ function CardPaymentModalContent({
               // Always generate a QR code - either from URL, code, or a fallback
               let qrContent = issuedGiftCard.redemptionLink || '';
               let qrSource = 'redemptionLink';
-              
+
               console.log('🎁 QR content check - redemptionLink:', issuedGiftCard.redemptionLink || 'EMPTY')
               console.log('🎁 QR content check - code:', issuedGiftCard.code || 'EMPTY')
-              
+
               // If no URL, create QR from gift card code
               if (!qrContent && issuedGiftCard.code) {
                 qrContent = issuedGiftCard.code;
@@ -881,16 +881,16 @@ function CardPaymentModalContent({
                   qrContent += ` PIN: ${issuedGiftCard.pin}`;
                 }
               }
-              
+
               // Fallback: create QR with store name and amount
               if (!qrContent) {
                 qrContent = `${giftCardSelection.storeName || 'Gift Card'} - $${issuedGiftCard.amount || giftCardSelection.amount}`;
                 qrSource = 'fallback';
                 console.warn('⚠️ USING FALLBACK QR CONTENT - No redemption URL or code available!')
               }
-              
+
               console.log('🎁 Generating QR code from:', qrSource, '- content:', qrContent.substring(0, 80));
-              
+
               try {
                 const qrCodeUrl = await QRCode.toDataURL(qrContent, {
                   width: 200,
@@ -963,7 +963,7 @@ function CardPaymentModalContent({
               // Encrypt and save the issued gift card (use actual key that was found, not just cardId)
               const saveKey = actualGiftCardKey || `giftCard_${cardId}`
               const metaKey = saveKey.replace('giftCard_', 'giftCardMeta_')
-              
+
               try {
                 const encryptResponse = await fetch('/api/giftcard/encrypt', {
                   method: 'POST',
@@ -1000,7 +1000,7 @@ function CardPaymentModalContent({
           } else if (giftCardSelection.isIssued && giftCardSelection.qrCode) {
             // Gift card already issued - still pass it for printing
             console.log('🎁 Gift card already issued, passing to print:', giftCardSelection)
-            
+
             // ✅ Convert store logo URL to base64 if needed
             let existingLogoBase64 = giftCardSelection.storeLogo || '';
             if (existingLogoBase64 && !existingLogoBase64.startsWith('data:')) {
@@ -1020,7 +1020,7 @@ function CardPaymentModalContent({
                 console.warn('⚠️ Failed to convert existing store logo:', logoError);
               }
             }
-            
+
             issuedGiftCardData = {
               storeName: giftCardSelection.storeName,
               amount: giftCardSelection.amount,
@@ -1085,7 +1085,7 @@ function CardPaymentModalContent({
     if (promoApplied) {
       console.log('🎟️ Free checkout with promo code')
       setPaymentComplete(true)
-      
+
       // Even with promo code, we need to issue the gift card
       await handlePaymentSuccess()
     }
@@ -1247,7 +1247,7 @@ function CardPaymentModalContent({
     if (isProcessing || isPrintInProgress) {
       return
     }
-    
+
     if (!isProcessing) {
       setCardholderName('')
       setPaymentError(null)
@@ -1309,8 +1309,8 @@ function CardPaymentModalContent({
                     </div>
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">Print Complete!</h3>
                     <p className="text-gray-600">
-                      {isStickers 
-                        ? 'Your sticker sheet has been printed successfully.' 
+                      {isStickers
+                        ? 'Your sticker sheet has been printed successfully.'
                         : 'Your card has been printed successfully.'}
                     </p>
                     <p className="text-sm text-gray-500 mt-2">Please collect your {isStickers ? 'stickers' : 'card'} from the printer.</p>
@@ -1341,10 +1341,10 @@ function CardPaymentModalContent({
                       {printStatus === 'sending' ? 'Sending to Printer...' : 'Printing...'}
                     </h3>
                     <p className="text-gray-600">
-                      {printStatus === 'sending' 
+                      {printStatus === 'sending'
                         ? 'Your payment was successful! Preparing your print job...'
-                        : isStickers 
-                          ? 'Your sticker sheet is being printed. Please wait...' 
+                        : isStickers
+                          ? 'Your sticker sheet is being printed. Please wait...'
                           : 'Your card is being printed. Please wait...'}
                     </p>
                     <div className="mt-4 flex justify-center">
@@ -1376,8 +1376,8 @@ function CardPaymentModalContent({
                     </div>
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">Payment Successful!</h3>
                     <p className="text-gray-600">
-                      {isStickers 
-                        ? 'Your sticker sheet will be printed shortly.' 
+                      {isStickers
+                        ? 'Your sticker sheet will be printed shortly.'
                         : 'Your card will be printed shortly.'}
                     </p>
                   </>
@@ -1439,7 +1439,7 @@ function CardPaymentModalContent({
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Promo Code Input */}
                     <div className="mt-4 pt-3 border-t border-gray-200">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1456,24 +1456,22 @@ function CardPaymentModalContent({
                           }}
                           placeholder="Enter code"
                           autoComplete="off"
-                          className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all ${
-                            promoApplied
+                          className={`flex-1 px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 transition-all ${promoApplied
                               ? 'border-green-400 bg-green-50 focus:ring-green-300'
                               : promoError
-                              ? 'border-red-400 focus:ring-red-300'
-                              : 'border-gray-300 focus:ring-blue-300'
-                          }`}
+                                ? 'border-red-400 focus:ring-red-300'
+                                : 'border-gray-300 focus:ring-blue-300'
+                            }`}
                           disabled={promoApplied}
                         />
                         <button
                           type="button"
                           onClick={applyPromoCode}
                           disabled={!promoCode || promoApplied}
-                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            promoApplied
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${promoApplied
                               ? 'bg-green-100 text-green-700 cursor-default'
                               : 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
-                          }`}
+                            }`}
                         >
                           {promoApplied ? '✓ Applied' : 'Apply'}
                         </button>
@@ -1489,57 +1487,57 @@ function CardPaymentModalContent({
 
                   {/* Card Payment Form - Hidden when promo applied */}
                   {!promoApplied && (
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-gray-900">Enter Card Details</h3>
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-gray-900">Enter Card Details</h3>
 
-                    {/* Cardholder Name */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Cardholder Name
-                      </label>
-                      <input
-                        type="text"
-                        value={cardholderName}
-                        onChange={(e) => setCardholderName(e.target.value)}
-                        placeholder="John Doe"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={isProcessing}
-                      />
-                    </div>
-
-                    {/* Card Element */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Card Information
-                      </label>
-                      <div className="border border-gray-300 rounded-lg p-3">
-                        <CardElement options={CARD_ELEMENT_OPTIONS} />
+                      {/* Cardholder Name */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Cardholder Name
+                        </label>
+                        <input
+                          type="text"
+                          value={cardholderName}
+                          onChange={(e) => setCardholderName(e.target.value)}
+                          placeholder="John Doe"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={isProcessing}
+                        />
                       </div>
-                    </div>
 
-                    {/* Error Message */}
-                    {paymentError && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
-                        {paymentError}
+                      {/* Card Element */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Card Information
+                        </label>
+                        <div className="border border-gray-300 rounded-lg p-3">
+                          <CardElement options={CARD_ELEMENT_OPTIONS} />
+                        </div>
                       </div>
-                    )}
 
-                    {/* Pay Button */}
-                    <button
-                      onClick={processPayment}
-                      disabled={isProcessing || !stripe || !clientSecret || !orderId}
-                      className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                    >
-                      {isProcessing ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                          <span>Processing...</span>
-                        </>
-                      ) : (
-                        <span>Pay ${priceData?.total?.toFixed(2) || '0.00'}</span>
+                      {/* Error Message */}
+                      {paymentError && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">
+                          {paymentError}
+                        </div>
                       )}
-                    </button>
-                  </div>
+
+                      {/* Pay Button */}
+                      <button
+                        onClick={processPayment}
+                        disabled={isProcessing || !stripe || !clientSecret || !orderId}
+                        className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                      >
+                        {isProcessing ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                            <span>Processing...</span>
+                          </>
+                        ) : (
+                          <span>Pay ${priceData?.total?.toFixed(2) || '0.00'}</span>
+                        )}
+                      </button>
+                    </div>
                   )}
 
                   {/* Free Checkout Button - When promo applied */}
@@ -1565,44 +1563,44 @@ function CardPaymentModalContent({
 
                 {/* Right Column: QR Code Payment - Hidden when promo applied */}
                 {!promoApplied && (
-                <div className="border-l border-gray-200 pl-6">
-                  <div className="sticky top-6">
-                    <h3 className="font-semibold text-gray-900 mb-3">Or Scan to Pay</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Use your mobile device to complete the payment
-                    </p>
+                  <div className="border-l border-gray-200 pl-6">
+                    <div className="sticky top-6">
+                      <h3 className="font-semibold text-gray-900 mb-3">Or Scan to Pay</h3>
+                      <p className="text-sm text-gray-600 mb-4">
+                        Use your mobile device to complete the payment
+                      </p>
 
-                    {paymentQRCode ? (
-                      <div className="bg-white rounded-lg p-4 border-2 border-blue-200 text-center">
-                        <img
-                          src={paymentQRCode}
-                          alt="Payment QR Code"
-                          className="mx-auto mb-3"
-                        />
-                        <p className="text-xs text-gray-500">
-                          Scan this code with your phone's camera
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="bg-gray-100 rounded-lg p-8 text-center">
-                        <div className="animate-pulse">
-                          <div className="h-48 w-48 mx-auto bg-gray-200 rounded"></div>
+                      {paymentQRCode ? (
+                        <div className="bg-white rounded-lg p-4 border-2 border-blue-200 text-center">
+                          <img
+                            src={paymentQRCode}
+                            alt="Payment QR Code"
+                            className="mx-auto mb-3"
+                          />
+                          <p className="text-xs text-gray-500">
+                            Scan this code with your phone's camera
+                          </p>
                         </div>
-                        <p className="text-sm text-gray-500 mt-3">Generating QR code...</p>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="bg-gray-100 rounded-lg p-8 text-center">
+                          <div className="animate-pulse">
+                            <div className="h-48 w-48 mx-auto bg-gray-200 rounded"></div>
+                          </div>
+                          <p className="text-sm text-gray-500 mt-3">Generating QR code...</p>
+                        </div>
+                      )}
 
-                    <div className="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-                      <p className="font-semibold mb-1">How it works:</p>
-                      <ol className="list-decimal list-inside space-y-1">
-                        <li>Scan the QR code with your phone</li>
-                        <li>Enter your card details</li>
-                        <li>Complete the payment</li>
-                        <li>This screen will automatically update</li>
-                      </ol>
+                      <div className="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
+                        <p className="font-semibold mb-1">How it works:</p>
+                        <ol className="list-decimal list-inside space-y-1">
+                          <li>Scan the QR code with your phone</li>
+                          <li>Enter your card details</li>
+                          <li>Complete the payment</li>
+                          <li>This screen will automatically update</li>
+                        </ol>
+                      </div>
                     </div>
                   </div>
-                </div>
                 )}
               </div>
             )}
