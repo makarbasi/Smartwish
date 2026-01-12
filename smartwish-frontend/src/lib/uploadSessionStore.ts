@@ -1,15 +1,12 @@
 /**
  * Upload Session Store
  * 
- * File-based session storage for sticker photo uploads.
+ * In-memory session storage for sticker photo uploads.
  * Used to link QR code scans from mobile devices to kiosk sticker slots.
  * 
- * Uses file storage to survive Next.js hot reloads in development.
- * For production, consider using Redis or database storage.
+ * Uses globalThis to persist across Next.js module reloads in production.
+ * Sessions are short-lived (10 minutes) so in-memory storage is appropriate.
  */
-
-import fs from 'fs';
-import path from 'path';
 
 export interface UploadSession {
   sessionId: string;
@@ -25,41 +22,15 @@ export interface UploadSession {
 // Session expiration time: 10 minutes
 const SESSION_TTL_MS = 10 * 60 * 1000;
 
-// File path for session storage (in .next directory to survive hot reloads)
-const SESSION_FILE_PATH = path.join(process.cwd(), '.next', 'upload-sessions.json');
+// Use globalThis to persist sessions across module reloads
+// This works in both development and production
+const globalKey = '__upload_sessions__';
 
-/**
- * Read all sessions from file
- */
-function readSessionsFromFile(): Map<string, UploadSession> {
-  try {
-    if (fs.existsSync(SESSION_FILE_PATH)) {
-      const data = fs.readFileSync(SESSION_FILE_PATH, 'utf-8');
-      const parsed = JSON.parse(data);
-      return new Map(Object.entries(parsed));
-    }
-  } catch (error) {
-    console.log('[UploadSession] Error reading sessions file, starting fresh');
+function getSessions(): Map<string, UploadSession> {
+  if (!(globalThis as any)[globalKey]) {
+    (globalThis as any)[globalKey] = new Map<string, UploadSession>();
   }
-  return new Map();
-}
-
-/**
- * Write all sessions to file
- */
-function writeSessionsToFile(sessions: Map<string, UploadSession>): void {
-  try {
-    // Ensure .next directory exists
-    const dir = path.dirname(SESSION_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    
-    const data = Object.fromEntries(sessions);
-    fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error('[UploadSession] Error writing sessions file:', error);
-  }
+  return (globalThis as any)[globalKey];
 }
 
 /**
@@ -81,9 +52,8 @@ export function createUploadSession(
     status: 'pending'
   };
 
-  const sessions = readSessionsFromFile();
+  const sessions = getSessions();
   sessions.set(sessionId, session);
-  writeSessionsToFile(sessions);
   
   console.log(`[UploadSession] Created session ${sessionId} for slot ${slotIndex}, expires at ${new Date(session.expiresAt).toISOString()}`);
   console.log(`[UploadSession] Total sessions: ${sessions.size}`);
@@ -96,7 +66,7 @@ export function createUploadSession(
  * Returns undefined if not found or expired
  */
 export function getUploadSession(sessionId: string): UploadSession | undefined {
-  const sessions = readSessionsFromFile();
+  const sessions = getSessions();
   const session = sessions.get(sessionId);
   
   if (!session) {
@@ -110,7 +80,6 @@ export function getUploadSession(sessionId: string): UploadSession | undefined {
     console.log(`[UploadSession] Session ${sessionId} expired. Now: ${now}, ExpiresAt: ${session.expiresAt}`);
     session.status = 'expired';
     sessions.delete(sessionId);
-    writeSessionsToFile(sessions);
     return undefined;
   }
   
@@ -126,7 +95,7 @@ export function updateUploadSession(
   sessionId: string, 
   updates: Partial<UploadSession>
 ): boolean {
-  const sessions = readSessionsFromFile();
+  const sessions = getSessions();
   const session = sessions.get(sessionId);
   
   if (!session) {
@@ -136,7 +105,6 @@ export function updateUploadSession(
   
   Object.assign(session, updates);
   sessions.set(sessionId, session);
-  writeSessionsToFile(sessions);
   
   console.log(`[UploadSession] Updated session ${sessionId}:`, updates.status || 'no status change');
   return true;
@@ -147,12 +115,8 @@ export function updateUploadSession(
  * Returns true if session was deleted, false if not found
  */
 export function deleteUploadSession(sessionId: string): boolean {
-  const sessions = readSessionsFromFile();
+  const sessions = getSessions();
   const deleted = sessions.delete(sessionId);
-  
-  if (deleted) {
-    writeSessionsToFile(sessions);
-  }
   
   console.log(`[UploadSession] Deleted session ${sessionId}: ${deleted}`);
   return deleted;
@@ -160,10 +124,10 @@ export function deleteUploadSession(sessionId: string): boolean {
 
 /**
  * Cleanup expired sessions
- * Call periodically to prevent file bloat
+ * Call periodically to prevent memory bloat
  */
 export function cleanupExpiredSessions(): number {
-  const sessions = readSessionsFromFile();
+  const sessions = getSessions();
   const now = Date.now();
   let count = 0;
   
@@ -175,7 +139,6 @@ export function cleanupExpiredSessions(): number {
   }
   
   if (count > 0) {
-    writeSessionsToFile(sessions);
     console.log(`[UploadSession] Cleaned up ${count} expired sessions`);
   }
   
@@ -186,5 +149,5 @@ export function cleanupExpiredSessions(): number {
  * Get session count (for debugging)
  */
 export function getSessionCount(): number {
-  return readSessionsFromFile().size;
+  return getSessions().size;
 }
