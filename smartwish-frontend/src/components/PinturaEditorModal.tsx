@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { usePixshop } from "@/contexts/PixshopContext";
+import { usePixshopOptional } from "@/contexts/PixshopContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useVirtualKeyboard } from "@/contexts/VirtualKeyboardContext";
 // Removed WarningDialog import - now using direct redirect
@@ -133,8 +133,8 @@ export default function PinturaEditorModal({
   onProcess,
   editingPageIndex = 0,
 }: PinturaEditorModalProps) {
-  // Pixshop context for getting blob data
-  const { getBlobForDesign, currentBlob, isSaving, saveError, clearPixshopBlob } = usePixshop();
+  // Pixshop context for getting blob data (optional - works without provider)
+  const { getBlobForDesign, currentBlob, isSaving, saveError, clearPixshopBlob } = usePixshopOptional();
   
   // Device mode context for kiosk detection
   const { isKiosk } = useDeviceMode();

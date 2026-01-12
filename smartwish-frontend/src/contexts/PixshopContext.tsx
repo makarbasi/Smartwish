@@ -133,3 +133,23 @@ export function usePixshop() {
   }
   return context;
 }
+
+// Optional version that returns default values if provider is not available
+export function usePixshopOptional(): PixshopContextType {
+  const context = useContext(PixshopContext);
+  if (context === undefined) {
+    // Return default/empty implementation
+    return {
+      currentBlob: null,
+      setPixshopBlob: () => {},
+      clearPixshopBlob: () => {},
+      isSaving: false,
+      saveError: null,
+      setSaveStatus: () => {},
+      getBlobForDesign: () => null,
+      hasUnsavedChanges: false,
+      markSaved: () => {},
+    };
+  }
+  return context;
+}
