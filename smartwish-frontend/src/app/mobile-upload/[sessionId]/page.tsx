@@ -22,7 +22,7 @@ export default function MobileUploadPage() {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string | null>(null); // Keep original for comparison
+  const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [actionMode, setActionMode] = useState<ActionMode>("select");
   const [isProcessingBg, setIsProcessingBg] = useState(false);
@@ -73,57 +73,63 @@ export default function MobileUploadPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Show preview
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       setPreviewUrl(dataUrl);
-      setOriginalPreviewUrl(dataUrl); // Store original
-      setActionMode("processing"); // Show action options
+      setOriginalPreviewUrl(dataUrl);
+      setActionMode("processing");
     };
     reader.readAsDataURL(file);
   };
 
-  // Handle background removal
+  // Handle background removal - runs on the client (phone)
   const handleRemoveBackground = async () => {
     if (!previewUrl) return;
 
     setIsProcessingBg(true);
-    setActionMode("remove-bg");
+    setErrorMessage("");
 
     try {
-      const response = await fetch("/api/sticker-upload/remove-background", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      // Dynamically import the browser-based background removal library
+      const { removeBackground } = await import("@imgly/background-removal");
+
+      // Convert data URL to Blob
+      const response = await fetch(previewUrl);
+      const blob = await response.blob();
+
+      // Remove background (runs in browser using WebAssembly)
+      const resultBlob = await removeBackground(blob, {
+        progress: (key, current, total) => {
+          console.log(`[BgRemoval] ${key}: ${current}/${total}`);
         },
-        body: JSON.stringify({
-          imageBase64: previewUrl,
-        }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Background removal failed");
-      }
-
-      // Update preview with background-removed image
-      setPreviewUrl(data.imageBase64);
-      setActionMode("remove-bg"); // Show accept/reject options
+      // Convert result blob to data URL
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        setPreviewUrl(dataUrl);
+        setActionMode("remove-bg");
+        setIsProcessingBg(false);
+      };
+      reader.onerror = () => {
+        throw new Error("Failed to read processed image");
+      };
+      reader.readAsDataURL(resultBlob);
     } catch (error) {
       console.error("Background removal error:", error);
-      setErrorMessage(error instanceof Error ? error.message : "Failed to remove background. Please try again.");
-      setActionMode("processing"); // Go back to action selection
-    } finally {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to remove background. Please try again."
+      );
       setIsProcessingBg(false);
+      setActionMode("processing");
     }
   };
 
   // Accept background-removed image
   const handleAcceptBgRemoved = () => {
-    // Keep the current previewUrl (which is the bg-removed version)
-    setActionMode("processing"); // Go back to action options
+    setActionMode("processing");
   };
 
   // Reject background-removed image, revert to original
@@ -131,7 +137,7 @@ export default function MobileUploadPage() {
     if (originalPreviewUrl) {
       setPreviewUrl(originalPreviewUrl);
     }
-    setActionMode("processing"); // Go back to action options
+    setActionMode("processing");
   };
 
   // Handle edit image - open Pintura editor
@@ -142,14 +148,13 @@ export default function MobileUploadPage() {
 
   // Handle editor process (save)
   const handleEditorProcess = (result: { dest: File }) => {
-    // Convert File to base64 data URL for upload compatibility
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       setPreviewUrl(dataUrl);
-      setOriginalPreviewUrl(dataUrl); // Update original too
+      setOriginalPreviewUrl(dataUrl);
       setShowEditor(false);
-      setActionMode("processing"); // Go back to action options
+      setActionMode("processing");
     };
     reader.onerror = () => {
       console.error("Failed to read edited image");
@@ -162,7 +167,7 @@ export default function MobileUploadPage() {
   // Handle editor hide (cancel)
   const handleEditorHide = () => {
     setShowEditor(false);
-    setActionMode("processing"); // Go back to action options
+    setActionMode("processing");
   };
 
   // Handle upload
@@ -205,6 +210,7 @@ export default function MobileUploadPage() {
     setPreviewUrl(null);
     setOriginalPreviewUrl(null);
     setActionMode("select");
+    setErrorMessage("");
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
@@ -295,7 +301,7 @@ export default function MobileUploadPage() {
                 <div className="absolute inset-0 bg-black/60 rounded-full flex flex-col items-center justify-center z-10 backdrop-blur-sm">
                   <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mb-3" />
                   <p className="text-white font-semibold text-sm">Removing background...</p>
-                  <p className="text-white/80 text-xs mt-1">This may take a few seconds</p>
+                  <p className="text-white/80 text-xs mt-1">This may take a moment</p>
                 </div>
               )}
             </div>
@@ -372,7 +378,7 @@ export default function MobileUploadPage() {
                 ) : (
                   <>
                     <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     Remove Background
                   </>
@@ -458,7 +464,7 @@ export default function MobileUploadPage() {
         ) : null}
 
         {/* Error message */}
-        {status === "error" && errorMessage && (
+        {errorMessage && (
           <div className="bg-red-100 text-red-700 rounded-xl p-4 text-center">
             {errorMessage}
           </div>

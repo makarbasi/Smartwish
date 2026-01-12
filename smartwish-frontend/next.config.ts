@@ -10,31 +10,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Exclude native modules from bundling (for background removal)
-  // This tells Next.js to not bundle these packages - they'll be loaded at runtime
-  serverExternalPackages: [
-    '@imgly/background-removal-node',
-    'sharp',
-  ],
-  // Webpack config to handle native modules
-  webpack: (config, { isServer }) => {
-    // Only configure for server-side
-    if (isServer) {
-      // Ensure native modules are treated as external
-      config.externals = config.externals || [];
-      if (Array.isArray(config.externals)) {
-        config.externals.push('@imgly/background-removal-node', 'sharp');
-      } else {
-        config.externals = [
-          ...(Array.isArray(config.externals) ? config.externals : [config.externals]),
-          '@imgly/background-removal-node',
-          'sharp',
-        ];
-      }
-    }
-    
-    return config;
-  },
   images: {
     remotePatterns: [
       {
