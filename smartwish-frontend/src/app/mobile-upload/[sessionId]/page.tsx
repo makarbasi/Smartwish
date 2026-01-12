@@ -142,12 +142,21 @@ export default function MobileUploadPage() {
 
   // Handle editor process (save)
   const handleEditorProcess = (result: { dest: File }) => {
-    // Create a blob URL from the processed image
-    const blobUrl = URL.createObjectURL(result.dest);
-    setPreviewUrl(blobUrl);
-    setOriginalPreviewUrl(blobUrl); // Update original too
-    setShowEditor(false);
-    setActionMode("processing"); // Go back to action options
+    // Convert File to base64 data URL for upload compatibility
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setPreviewUrl(dataUrl);
+      setOriginalPreviewUrl(dataUrl); // Update original too
+      setShowEditor(false);
+      setActionMode("processing"); // Go back to action options
+    };
+    reader.onerror = () => {
+      console.error("Failed to read edited image");
+      setShowEditor(false);
+      setActionMode("processing");
+    };
+    reader.readAsDataURL(result.dest);
   };
 
   // Handle editor hide (cancel)
