@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const protocol = request.headers.get('x-forwarded-proto') || (request.url.startsWith('https') ? 'https' : 'http')
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`
     const uploadUrl = `${baseUrl}/mobile-upload/${sessionId}`
-    
+
     console.log('[Session] Generated upload URL:', uploadUrl, 'from host:', host, 'protocol:', protocol)
 
     return NextResponse.json({
