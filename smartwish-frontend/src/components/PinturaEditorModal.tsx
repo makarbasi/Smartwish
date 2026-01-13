@@ -6,6 +6,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { usePixshopOptional } from "@/contexts/PixshopContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useVirtualKeyboard } from "@/contexts/VirtualKeyboardContext";
+import { useSessionTracking } from "@/hooks/useSessionTracking";
 // Removed WarningDialog import - now using direct redirect
 import {
   setPlugins,
@@ -142,6 +143,9 @@ export default function PinturaEditorModal({
   // Virtual keyboard context for kiosk text input
   const { showKeyboard, hideKeyboard, isKeyboardVisible, lockKeyboard, unlockKeyboard } = useVirtualKeyboard();
   
+  // Session tracking for kiosk analytics
+  const { trackEditorOpen, trackEditorClose, trackEditorSave } = useSessionTracking();
+  
   // Track when annotate mode is active (for keyboard handling in kiosk mode)
   const [isAnnotateActive, setIsAnnotateActive] = useState(false);
   
@@ -164,6 +168,9 @@ export default function PinturaEditorModal({
     if (isVisible) {
       console.log('🧹 Modal became visible - cleaning up any stale overlays');
       
+      // Track editor open event for kiosk analytics
+      trackEditorOpen();
+      
       // Clean up any stale overlays
       const overlays = document.querySelectorAll('#pixshop-warning-overlay');
       if (overlays.length > 0) {
@@ -171,7 +178,7 @@ export default function PinturaEditorModal({
         overlays.forEach(overlay => overlay.remove());
       }
     }
-  }, [isVisible]);
+  }, [isVisible, trackEditorOpen]);
 
   // Define retouch click handler early to avoid reference issues
   const handleRetouchClick = async (e: Event) => {
@@ -727,6 +734,9 @@ export default function PinturaEditorModal({
   const handleProcess = ({ dest }: { dest: File }) => {
     console.log("✅ Editor process complete:", dest);
     
+    // Track editor save event for kiosk analytics
+    trackEditorSave();
+    
     // Check if this is from a retouch-triggered Done button
     const tempHandler = (window as any)?.tempPinturaOnProcess;
     if (tempHandler && typeof tempHandler === 'function') {
@@ -769,6 +779,9 @@ export default function PinturaEditorModal({
 
   const handleHide = () => {
     console.log("🚪 Editor hide triggered");
+    
+    // Track editor close event for kiosk analytics
+    trackEditorClose();
     
     // Clean up editor reference
     if (window) {

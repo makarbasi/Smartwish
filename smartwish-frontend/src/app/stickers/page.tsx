@@ -16,6 +16,7 @@ import CardPaymentModal from "@/components/CardPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskInactivity } from "@/hooks/useKioskInactivity";
+import { useSessionTracking } from "@/hooks/useSessionTracking";
 
 // Extended slot type with upload flag
 interface ExtendedStickerSlot extends StickerSlot {
@@ -53,6 +54,29 @@ export default function StickersPage() {
   
   // Kiosk inactivity management - pause during QR upload and printing
   const { pauseForQRUpload, pauseForPrinting, resumeInactivity } = useKioskInactivity();
+  
+  // Session tracking for analytics
+  const {
+    trackStickerBrowse,
+    trackStickerSelect,
+    trackStickerSearch,
+    trackStickerUploadStart,
+    trackStickerUploadComplete,
+    trackEditorOpen,
+    trackEditorSave,
+    trackEditorClose,
+    trackPrintStart,
+    trackPrintComplete,
+    trackCheckoutStart,
+    trackPaymentSuccess,
+    trackPaymentFailure,
+    endWithPrintedSticker,
+  } = useSessionTracking();
+  
+  // Track page browse on mount
+  useEffect(() => {
+    trackStickerBrowse();
+  }, [trackStickerBrowse]);
 
   // Generate a stable kiosk session ID for this session
   const [kioskSessionId] = useState<string>(() => crypto.randomUUID());
@@ -261,6 +285,7 @@ export default function StickersPage() {
     if (imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) {
       setEditorImageSrc(imageUrl);
       setShowEditor(true);
+      trackEditorOpen();
       return;
     }
     
@@ -279,6 +304,7 @@ export default function StickersPage() {
       reader.onloadend = () => {
         setEditorImageSrc(reader.result as string);
         setShowEditor(true);
+        trackEditorOpen();
       };
       reader.readAsDataURL(blob);
     } catch (error) {
@@ -286,6 +312,7 @@ export default function StickersPage() {
       // Fallback to direct URL (may not work due to CORS)
       setEditorImageSrc(imageUrl);
       setShowEditor(true);
+      trackEditorOpen();
     }
   }, [slots]);
 
@@ -322,6 +349,7 @@ export default function StickersPage() {
 
   // Handle editor hide (cancel)
   const handleEditorHide = useCallback(() => {
+    trackEditorClose();
     setShowEditor(false);
     setEditorImageSrc("");
     setSelectedSlotIndex(null);
@@ -335,6 +363,9 @@ export default function StickersPage() {
       console.log("⚠️ Please add at least one sticker before printing.");
       return;
     }
+    
+    // Track checkout start
+    trackCheckoutStart();
     
     setIsPrinting(true);
     try {
@@ -354,6 +385,11 @@ export default function StickersPage() {
   // Handle payment success
   const handlePaymentSuccess = async () => {
     console.log("🎯 handlePaymentSuccess called - starting sticker print flow");
+    
+    // Track payment success and print start
+    trackPaymentSuccess({ printType: 'sticker', amount: STICKER_SHEET_PRICE });
+    trackPrintStart('sticker');
+    
     setIsPrinting(true);
     setPrintStatus('sending');
     setPrintError(null);
@@ -399,6 +435,10 @@ export default function StickersPage() {
                 clearInterval(pollInterval);
                 setPrintStatus('completed');
                 setIsPrinting(false);
+                
+                // Track print completion and end session
+                trackPrintComplete('sticker');
+                endWithPrintedSticker();
                 
                 // Resume inactivity timer now that print is complete
                 resumeInactivity();
