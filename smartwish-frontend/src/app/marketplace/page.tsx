@@ -893,18 +893,26 @@ function CheckoutModal({
         amount: amount
       })
 
-      // Check if we're in gift mode - integrate with card design
+      // Check if we're in gift mode - integrate with card design or stickers
       const searchParams = new URLSearchParams(window.location.search)
       const returnTo = searchParams.get('returnTo')
+      const mode = searchParams.get('mode') // 'sticker' for sticker sheets
+      const sessionId = searchParams.get('sessionId') // Session ID for stickers
 
       if (returnTo) {
         console.log('🎁 Return Mode Detected - Saving gift card SELECTION and redirecting:', returnTo)
+
+        // Check if this is a sticker mode
+        const isStickerMode = mode === 'sticker' && sessionId
 
         // Extract cardId from returnTo URL (e.g., /my-cards/abc123?showGift=true)
         const cardIdMatch = returnTo.match(/\/my-cards\/([^?]+)/)
         const cardId = cardIdMatch ? cardIdMatch[1] : null
 
-        if (cardId) {
+        // Determine the storage key - use sessionId for stickers, cardId for cards
+        const storageKey = isStickerMode ? sessionId : cardId
+
+        if (storageKey) {
           // Store gift card SELECTION (not issued yet) - no sensitive data
           // The actual gift card will be issued after payment
           const giftCardSelection = {
@@ -922,8 +930,8 @@ function CheckoutModal({
           }
 
           // Store selection in localStorage (no encryption needed - no sensitive data)
-          localStorage.setItem(`giftCard_${cardId}`, JSON.stringify(giftCardSelection))
-          localStorage.setItem(`giftCardMeta_${cardId}`, JSON.stringify({
+          localStorage.setItem(`giftCard_${storageKey}`, JSON.stringify(giftCardSelection))
+          localStorage.setItem(`giftCardMeta_${storageKey}`, JSON.stringify({
             storeName: currentSelectedProduct.name,
             amount: amount,
             source: 'tillo',
@@ -932,11 +940,11 @@ function CheckoutModal({
             isEncrypted: false
           }))
 
-          console.log('✅ Gift card SELECTION saved for card:', cardId)
+          console.log(`✅ Gift card SELECTION saved for ${isStickerMode ? 'sticker session' : 'card'}:`, storageKey)
           console.log('📝 Note: Gift card will be issued after payment')
 
-          // Navigate back to the card editor
-          window.location.href = returnTo
+          // Navigate back to the card editor or stickers page
+          window.location.href = decodeURIComponent(returnTo)
           return
         }
       }
