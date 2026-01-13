@@ -22,7 +22,9 @@ import {
   GiftIcon,
   EnvelopeIcon,
   SparklesIcon,
+  ChartBarIcon,
 } from "@heroicons/react/24/outline";
+import Link from "next/link";
 import { Dialog, Transition } from "@headlessui/react";
 
 type AssignedManager = {
@@ -605,6 +607,14 @@ export default function KiosksAdminPage() {
 
                   {/* Actions */}
                   <div className="mt-4 space-y-2">
+                    {/* Session analytics button */}
+                    <Link
+                      href={`/admin/kiosks/${kiosk.kioskId}/sessions`}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 ring-1 ring-inset ring-purple-200 hover:bg-purple-100 transition-colors"
+                    >
+                      <ChartBarIcon className="h-4 w-4" />
+                      View Session Logs
+                    </Link>
                     {/* Manager assignment button */}
                     <button
                       onClick={() => openManagersModal(kiosk)}

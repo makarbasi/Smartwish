@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useVirtualKeyboard } from "@/contexts/VirtualKeyboardContext";
+import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
 
 interface UseKioskInactivityOptions {
     screenSaverTimeout?: number; // milliseconds (default: 60 seconds)
@@ -37,6 +38,7 @@ export function useKioskInactivity({
     const pathname = usePathname();
     const router = useRouter();
     const { hideKeyboard } = useVirtualKeyboard();
+    const kioskSession = useKioskSessionSafe();
 
     // Disable screen saver on admin pages and setup pages
     const isExcludedPath = EXCLUDED_PATHS.some(path => pathname.startsWith(path));
@@ -68,8 +70,17 @@ export function useKioskInactivity({
     }, []);
 
     // Navigate to kiosk home and clear user data
-    const navigateToHome = useCallback(() => {
+    const navigateToHome = useCallback(async () => {
         console.log("🖥️ [KioskInactivity] navigateToHome() - current path:", pathname);
+        
+        // End the kiosk session due to timeout
+        // Always call handleTimeout - the service has its own guard for inactive sessions
+        if (kioskSession) {
+            console.log("🖥️ [KioskInactivity] Calling handleTimeout (service will check if session is active)");
+            await kioskSession.handleTimeout();
+        } else {
+            console.log("🖥️ [KioskInactivity] No kioskSession context available");
+        }
         
         // If not on /kiosk/home, navigate there
         if (pathname !== '/kiosk/home') {
@@ -109,7 +120,7 @@ export function useKioskInactivity({
         } else {
             console.log("🖥️ [KioskInactivity] ✅ Already on /kiosk/home");
         }
-    }, [pathname, router]);
+    }, [pathname, router, kioskSession]);
 
     // Reset activity timers
     const resetActivity = useCallback(() => {
