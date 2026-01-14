@@ -168,8 +168,11 @@ export async function GET(request: NextRequest) {
             .in('id', staleSessionIds);
         }
         
-        // Clear stale heartbeats (older than 5 minutes)
-        // This indicates the browser was closed or stopped sending heartbeats
+        // Clear stale heartbeats for kiosks without active sessions
+        // If no active session and heartbeat is older than 90 seconds, clear it (browser likely closed)
+        // If there IS an active session, only clear if heartbeat is older than 5 minutes
+        const ninetySecondsAgo = new Date();
+        ninetySecondsAgo.setSeconds(ninetySecondsAgo.getSeconds() - 90);
         const fiveMinutesAgo = new Date();
         fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
         
@@ -184,12 +187,21 @@ export async function GET(request: NextRequest) {
                 continue;
               }
               
-              // Clear heartbeat if it's older than 5 minutes (browser likely closed)
+              const hasActiveSessionForKiosk = kiosksWithActiveSessions.has(kioskId);
+              
+              // Clear heartbeat if:
+              // - No active session AND heartbeat is older than 90 seconds (browser likely closed)
+              // - Has active session BUT heartbeat is older than 5 minutes (very stale)
               if (heartbeat) {
                 const heartbeatDate = new Date(heartbeat);
-                if (heartbeatDate < fiveMinutesAgo) {
-                  const minutesOld = Math.floor((Date.now() - heartbeatDate.getTime()) / 1000 / 60);
-                  console.log(`[Manager Kiosks] Clearing stale heartbeat for kiosk ${kioskId} (heartbeat ${minutesOld} minutes old - browser likely closed)`);
+                const shouldClear = hasActiveSessionForKiosk 
+                  ? heartbeatDate < fiveMinutesAgo  // With session: 5 min threshold
+                  : heartbeatDate < ninetySecondsAgo; // No session: 90 sec threshold (more strict)
+                
+                if (shouldClear) {
+                  const secondsOld = Math.floor((Date.now() - heartbeatDate.getTime()) / 1000);
+                  const minutesOld = (secondsOld / 60).toFixed(1);
+                  console.log(`[Manager Kiosks] Clearing stale heartbeat for kiosk ${kioskId} (${secondsOld}s / ${minutesOld}min old, hasActiveSession: ${hasActiveSessionForKiosk})`);
                   
                   const updatedConfig = {
                     ...(kioskConfig.config || {}),
@@ -243,23 +255,33 @@ export async function GET(request: NextRequest) {
       
       let isDeviceOnline = false;
       
-      // Device is online if there's a recent heartbeat (within last 2 minutes)
-      // This indicates the browser is open and responsive, regardless of active user session
-      // Active session is tracked separately to show if someone is actively using the kiosk
+      // Device is online if there's a recent heartbeat
+      // Heartbeats are sent every 30 seconds, so:
+      // - If there's an active session: use 2-minute window (more lenient)
+      // - If there's NO active session: use 90-second window (more strict - browser likely closed if no heartbeat in 90s)
+      const ninetySecondsAgo = new Date();
+      ninetySecondsAgo.setSeconds(ninetySecondsAgo.getSeconds() - 90);
+      
+      // Use stricter check if no active session (heartbeats stop when browser closes)
+      const heartbeatThreshold = hasActiveSession ? twoMinutesAgo : ninetySecondsAgo;
+      
       if (lastHeartbeat) {
         try {
           const heartbeatDate = new Date(lastHeartbeat);
           const now = new Date();
-          const minutesSinceHeartbeat = (now.getTime() - heartbeatDate.getTime()) / 1000 / 60;
+          const secondsSinceHeartbeat = (now.getTime() - heartbeatDate.getTime()) / 1000;
+          const minutesSinceHeartbeat = secondsSinceHeartbeat / 60;
           
-          // Device is online if heartbeat was within last 2 minutes (browser is open)
-          isDeviceOnline = heartbeatDate > twoMinutesAgo && heartbeatDate <= now;
+          // Device is online if heartbeat was within threshold (browser is open)
+          isDeviceOnline = heartbeatDate > heartbeatThreshold && heartbeatDate <= now;
           
           console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} status check:`, {
             lastHeartbeat,
             heartbeatDate: heartbeatDate.toISOString(),
-            twoMinutesAgo: twoMinutesAgo.toISOString(),
+            threshold: heartbeatThreshold.toISOString(),
+            thresholdType: hasActiveSession ? '2 minutes (with session)' : '90 seconds (no session)',
             now: now.toISOString(),
+            secondsSinceHeartbeat: secondsSinceHeartbeat.toFixed(1),
             minutesSinceHeartbeat: minutesSinceHeartbeat.toFixed(2),
             hasActiveSession,
             isDeviceOnline,
@@ -267,9 +289,9 @@ export async function GET(request: NextRequest) {
           });
           
           if (!isDeviceOnline) {
-            console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is offline: heartbeat is stale (${minutesSinceHeartbeat.toFixed(2)} minutes old) - browser likely closed`);
+            console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is offline: heartbeat is stale (${secondsSinceHeartbeat.toFixed(1)}s / ${minutesSinceHeartbeat.toFixed(2)}min old) - browser likely closed`);
           } else {
-            console.log(`[Manager Kiosk] Kiosk ${kiosk.kioskId} is online: browser is open and responsive`);
+            console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is online: browser is open and responsive (heartbeat ${secondsSinceHeartbeat.toFixed(1)}s ago)`);
           }
         } catch (error) {
           console.error(`[Manager Kiosks] Error parsing heartbeat for ${kiosk.kioskId}:`, error, lastHeartbeat);
