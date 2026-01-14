@@ -803,42 +803,85 @@ function CardPaymentModalContent({
         if (giftCardSelection) {
           // Check if gift card is pending (not yet issued)
           if (giftCardSelection.status === 'pending' && !giftCardSelection.isIssued) {
-            console.log('🎁 Gift card is PENDING - calling Tillo API to issue')
+            // Determine if this is a SmartWish internal brand or Tillo
+            const isSmartWishBrand = giftCardSelection.source === 'smartwish'
+            console.log('🎁 Gift card is PENDING - issuing via', isSmartWishBrand ? 'SMARTWISH API' : 'TILLO API')
 
-            // Call Tillo API to issue the actual gift card
-            const response = await fetch('/api/tillo/issue', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                brandSlug: giftCardSelection.brandSlug,
-                amount: giftCardSelection.amount,
-                currency: giftCardSelection.currency || 'USD'
+            let response: Response
+            let data: any
+
+            if (isSmartWishBrand) {
+              // Validate brandId is a proper UUID before calling API
+              const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+              if (!giftCardSelection.brandId || !uuidRegex.test(giftCardSelection.brandId)) {
+                console.error('❌ Invalid brandId in gift card selection:', giftCardSelection.brandId)
+                console.error('❌ Full gift card selection:', JSON.stringify(giftCardSelection, null, 2))
+                throw new Error(`Invalid gift card brand ID. Please remove the gift card and try adding it again.`)
+              }
+
+              // Call SmartWish internal API to issue gift card
+              response = await fetch('/api/gift-cards/purchase', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  brandId: giftCardSelection.brandId,
+                  amount: giftCardSelection.amount,
+                  paymentIntentId: orderId,
+                })
               })
-            })
 
-            const data = await response.json()
+              data = await response.json()
 
-            console.log('🎁 Tillo API FULL response:', JSON.stringify(data, null, 2))
-            console.log('🎁 Tillo API response summary:', {
-              ok: response.ok,
-              success: data.success,
-              hasGiftCard: !!data.giftCard,
-              giftCard: data.giftCard ? {
-                url: data.giftCard.url,
-                redemptionUrl: data.giftCard.redemptionUrl,
-                code: data.giftCard.code ? '***PRESENT***' : 'N/A',
-                pin: data.giftCard.pin ? '***PRESENT***' : 'N/A',
-                orderId: data.giftCard.orderId
-              } : null,
-              error: data.error
-            })
+              console.log('🎁 SmartWish API response:', {
+                ok: response.ok,
+                success: data.success,
+                hasGiftCard: !!data.giftCard,
+                giftCard: data.giftCard ? {
+                  cardNumber: data.giftCard.cardNumber,
+                  pin: data.giftCard.pin ? '***PRESENT***' : 'N/A',
+                  balance: data.giftCard.balance,
+                  expiresAt: data.giftCard.expiresAt,
+                } : null,
+                error: data.error
+              })
+            } else {
+              // Call Tillo API to issue the actual gift card
+              response = await fetch('/api/tillo/issue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  brandSlug: giftCardSelection.brandSlug,
+                  amount: giftCardSelection.amount,
+                  currency: giftCardSelection.currency || 'USD'
+                })
+              })
+
+              data = await response.json()
+
+              console.log('🎁 Tillo API FULL response:', JSON.stringify(data, null, 2))
+              console.log('🎁 Tillo API response summary:', {
+                ok: response.ok,
+                success: data.success,
+                hasGiftCard: !!data.giftCard,
+                giftCard: data.giftCard ? {
+                  url: data.giftCard.url,
+                  redemptionUrl: data.giftCard.redemptionUrl,
+                  code: data.giftCard.code ? '***PRESENT***' : 'N/A',
+                  pin: data.giftCard.pin ? '***PRESENT***' : 'N/A',
+                  orderId: data.giftCard.orderId
+                } : null,
+                error: data.error
+              })
+            }
 
             // 🎁 Extract redemption URL - try multiple fields
-            const redemptionUrl = data.giftCard?.url || data.giftCard?.redemptionUrl || data.giftCard?.claim_url || ''
-            console.log('🎁 Extracted redemption URL:', redemptionUrl || 'NONE FOUND!')
+            const redemptionUrl = isSmartWishBrand 
+              ? '' // SmartWish cards use QR with card code, not redemption URL
+              : (data.giftCard?.url || data.giftCard?.redemptionUrl || data.giftCard?.claim_url || '')
+            console.log('🎁 Extracted redemption URL:', redemptionUrl || 'NONE (SmartWish uses QR code)')
 
             if (response.ok && data.success) {
-              console.log('✅ Gift card issued successfully after payment')
+              console.log('✅ Gift card issued successfully after payment via', isSmartWishBrand ? 'SmartWish' : 'Tillo')
 
               // Update localStorage with issued gift card data
               const issuedGiftCard = {
@@ -846,13 +889,16 @@ function CardPaymentModalContent({
                 status: 'issued',
                 isIssued: true,
                 issuedAt: new Date().toISOString(),
-                // Add the actual gift card data from Tillo - try multiple URL fields
+                // Add the actual gift card data - different fields for SmartWish vs Tillo
                 redemptionLink: redemptionUrl,
-                code: data.giftCard?.code,
+                code: isSmartWishBrand ? data.giftCard?.cardNumber : data.giftCard?.code,
                 pin: data.giftCard?.pin,
-                orderId: data.giftCard?.orderId || data.giftCard?.clientRequestId,
-                expiryDate: data.giftCard?.expiryDate,
-                qrCode: '' // Will be generated below
+                cardNumber: isSmartWishBrand ? data.giftCard?.cardNumber : undefined,
+                cardCode: isSmartWishBrand ? data.giftCard?.cardCode : undefined,
+                orderId: isSmartWishBrand ? data.giftCard?.id : (data.giftCard?.orderId || data.giftCard?.clientRequestId),
+                expiryDate: isSmartWishBrand ? data.giftCard?.expiresAt : data.giftCard?.expiryDate,
+                qrCode: '', // Will be generated below
+                source: isSmartWishBrand ? 'smartwish' : 'tillo'
               }
 
               console.log('🎁 Issued gift card redemptionLink set to:', issuedGiftCard.redemptionLink || 'EMPTY!')
@@ -862,13 +908,24 @@ function CardPaymentModalContent({
                 amount: issuedGiftCard.amount,
                 redemptionLink: issuedGiftCard.redemptionLink || 'N/A',
                 code: issuedGiftCard.code ? '***' : 'N/A',
-                hasStoreLogo: !!issuedGiftCard.storeLogo
+                hasStoreLogo: !!issuedGiftCard.storeLogo,
+                source: issuedGiftCard.source
               })
 
               // Generate QR code for the redemption link or code
-              // Always generate a QR code - either from URL, code, or a fallback
-              let qrContent = issuedGiftCard.redemptionLink || '';
-              let qrSource = 'redemptionLink';
+              // For SmartWish cards, use the qrContent from API
+              // For Tillo cards, use redemption URL or code
+              let qrContent = '';
+              let qrSource = '';
+
+              if (isSmartWishBrand && data.giftCard?.qrContent) {
+                // SmartWish: use the QR content from the API (contains card code for lookup)
+                qrContent = data.giftCard.qrContent;
+                qrSource = 'smartwish_qr';
+              } else {
+                qrContent = issuedGiftCard.redemptionLink || '';
+                qrSource = 'redemptionLink';
+              }
 
               console.log('🎁 QR content check - redemptionLink:', issuedGiftCard.redemptionLink || 'EMPTY')
               console.log('🎁 QR content check - code:', issuedGiftCard.code || 'EMPTY')
@@ -977,7 +1034,7 @@ function CardPaymentModalContent({
                   localStorage.setItem(metaKey, JSON.stringify({
                     storeName: issuedGiftCard.storeName,
                     amount: issuedGiftCard.amount,
-                    source: 'tillo',
+                    source: issuedGiftCard.source || (isSmartWishBrand ? 'smartwish' : 'tillo'),
                     status: 'issued',
                     issuedAt: issuedGiftCard.issuedAt,
                     isEncrypted: true

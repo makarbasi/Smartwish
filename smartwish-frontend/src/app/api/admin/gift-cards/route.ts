@@ -4,9 +4,9 @@ import { auth } from '@/auth';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
 
 /**
- * GET /api/manager/kiosks
- * Get kiosks assigned to the authenticated manager
- * Proxies to backend: GET /managers/my-kiosks
+ * GET /api/admin/gift-cards
+ * List all issued gift cards with filtering and pagination
+ * Proxies to backend: GET /admin/gift-cards
  */
 export async function GET(request: NextRequest) {
   try {
@@ -15,36 +15,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const response = await fetch(`${API_BASE}/managers/my-kiosks`, {
-      method: 'GET',
+    const { searchParams } = new URL(request.url);
+    
+    const url = new URL(`${API_BASE}/admin/gift-cards`);
+    // Forward all query params
+    searchParams.forEach((value, key) => {
+      url.searchParams.set(key, value);
+    });
+
+    const response = await fetch(url.toString(), {
       headers: {
         Authorization: `Bearer ${session.user.access_token}`,
         'Content-Type': 'application/json',
       },
     });
 
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      console.error('Non-JSON response from backend:', text);
-      return NextResponse.json(
-        { error: text || 'Backend returned non-JSON response' },
-        { status: response.status || 500 }
-      );
-    }
-
-    const data = await response.json();
-
     if (!response.ok) {
+      const errorText = await response.text();
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch kiosks' },
+        { error: errorText || 'Failed to fetch gift cards' },
         { status: response.status }
       );
     }
 
+    const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching kiosks:', error);
+    console.error('Error fetching gift cards:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
