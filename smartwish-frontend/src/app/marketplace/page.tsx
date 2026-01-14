@@ -27,6 +27,8 @@ type Product = {
   availableAmounts?: number[]
   currency?: string
   type?: string
+  source?: 'smartwish' | 'tillo'  // Identifies whether this is a SmartWish internal brand
+  isSmartWishBrand?: boolean  // Can be used to pay for greeting cards/stickers
 }
 
 type ProductsResponse = {
@@ -46,6 +48,7 @@ const selectedAmount: number | null = null
 // Category icons mapping
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   'all': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>,
+  'smartwish': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>,
   'food-and-drink': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
   'supermarket': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>,
   'fashion': <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>,
@@ -190,12 +193,48 @@ function MarketplaceContent() {
   const isGiftMode = searchParams.get('mode') === 'gift'
 
   // Fetch data from Tillo API
-  const { data: productsData, error, isLoading } = useSWR<ProductsResponse>(
+  const { data: productsData, error: tilloError, isLoading: tilloLoading } = useSWR<ProductsResponse>(
     '/api/tillo/brands',
     fetcher
   )
 
+  // Fetch SmartWish internal gift card brands
+  const { data: smartWishData, error: smartWishError, isLoading: smartWishLoading } = useSWR<{ brands: Product[] }>(
+    '/api/gift-card-brands',
+    fetcher
+  )
+
+  // Combine loading and error states
+  const isLoading = tilloLoading || smartWishLoading
+  const error = tilloError || smartWishError
+
+  // Merge SmartWish brands (first) with Tillo brands
+  const mergedProducts = useMemo(() => {
+    const tilloBrands = (productsData?.brands || productsData?.products || []).map(b => ({
+      ...b,
+      source: 'tillo' as const,
+    }))
+    
+    const smartWishBrands = (smartWishData?.brands || []).map(b => ({
+      ...b,
+      source: 'smartwish' as const,
+      category: b.category || 'smartwish',  // Default category for SmartWish brands
+    }))
+
+    // SmartWish brands come first, then Tillo brands
+    const merged = [...smartWishBrands, ...tilloBrands]
+    
+    console.log('🎁 Merged gift card brands:', {
+      smartWish: smartWishBrands.length,
+      tillo: tilloBrands.length,
+      total: merged.length
+    })
+
+    return merged
+  }, [productsData, smartWishData])
+
   const CATEGORY_LABELS: Record<string, string> = {
+    'smartwish': 'SmartWish',
     'food-and-drink': 'Food & Drink',
     'tv-and-movies': 'TV & Movies',
     'travel-and-leisure': 'Travel & Leisure',
@@ -213,7 +252,7 @@ function MarketplaceContent() {
   }
 
   const categoryTabs = useMemo(() => {
-    const items = productsData?.brands || productsData?.products || []
+    const items = mergedProducts
     if (!items || items.length === 0) return [{ key: 'all', label: 'All' }]
 
     const counts = new Map<string, number>()
@@ -223,7 +262,9 @@ function MarketplaceContent() {
     }
 
     // Prefer common, user-meaningful categories first, then remaining by count.
+    // Add 'smartwish' as a special top-level category for our internal brands
     const preferredOrder = [
+      'smartwish',
       'food-and-drink',
       'supermarket',
       'fashion',
@@ -265,22 +306,23 @@ function MarketplaceContent() {
       { key: 'all', label: 'All' },
       ...limited.map((c) => ({ key: c, label: formatCategoryLabel(c) })),
     ]
-  }, [productsData])
+  }, [mergedProducts])
 
-  // Update global products when data loads (Tillo brands)
+  // Update global products when data loads (SmartWish + Tillo brands)
   useEffect(() => {
-    const items = productsData?.brands || productsData?.products || []
-    if (items.length > 0) {
-      allProducts = items
+    if (mergedProducts.length > 0) {
+      allProducts = mergedProducts
       filteredProducts = [...allProducts]
 
       // Debug: Log available categories
-      const categories = [...new Set(items.map(p => p.category))]
-      console.log('🎁 Available gift card brands:', items.length)
+      const categories = [...new Set(mergedProducts.map(p => p.category))]
+      const smartWishCount = mergedProducts.filter(p => p.source === 'smartwish').length
+      const tilloCount = mergedProducts.filter(p => p.source === 'tillo').length
+      console.log('🎁 Available gift card brands:', mergedProducts.length, `(SmartWish: ${smartWishCount}, Tillo: ${tilloCount})`)
       console.log('Available categories:', categories)
-      console.log('Sample brands:', items.slice(0, 3))
+      console.log('Sample brands:', mergedProducts.slice(0, 3))
     }
-  }, [productsData])
+  }, [mergedProducts])
 
   // Get promoted gift card IDs from kiosk config
   // Use sample promoted cards for demo/testing when none are configured
@@ -300,15 +342,20 @@ function MarketplaceContent() {
   }, [kioskConfig, configuredPromotedIds, promotedGiftCardIds])
 
   // Get promoted products (always visible, unaffected by search/filter)
+  // Includes SmartWish brands marked as promoted + kiosk-configured promoted IDs
   const promotedProducts = useMemo(() => {
-    const items = productsData?.brands || productsData?.products || []
-    if (items.length === 0 || promotedGiftCardIds.length === 0) return []
+    if (mergedProducts.length === 0) return []
 
-    // Find products that match the promoted IDs (by id, slug, or name)
-    const promoted = promotedGiftCardIds
+    // First, get SmartWish brands that are marked as promoted in the database
+    const smartWishPromoted = mergedProducts.filter(p => 
+      p.source === 'smartwish' && (p as any).isPromoted
+    )
+
+    // Then, find products that match the kiosk-configured promoted IDs (by id, slug, or name)
+    const kioskPromoted = promotedGiftCardIds
       .map(promotedId => {
         const normalizedId = promotedId.toLowerCase()
-        const found = items.find(product => 
+        const found = mergedProducts.find(product => 
           product.id?.toLowerCase() === normalizedId ||
           product.slug?.toLowerCase() === normalizedId ||
           product.name?.toLowerCase().includes(normalizedId.replace(/-/g, ' '))
@@ -320,16 +367,36 @@ function MarketplaceContent() {
       })
       .filter(Boolean) as Product[]
 
-    console.log('🌟 Promoted gift cards found:', promoted.length, 'of', promotedGiftCardIds.length)
-    return promoted
-  }, [productsData, promotedGiftCardIds])
+    // Combine and deduplicate (SmartWish promoted first, then kiosk config)
+    const promotedIds = new Set<string>()
+    const combined: Product[] = []
+    
+    // Add SmartWish promoted first
+    for (const p of smartWishPromoted) {
+      if (!promotedIds.has(p.id)) {
+        promotedIds.add(p.id)
+        combined.push(p)
+      }
+    }
+    
+    // Add kiosk config promoted
+    for (const p of kioskPromoted) {
+      if (!promotedIds.has(p.id)) {
+        promotedIds.add(p.id)
+        combined.push(p)
+      }
+    }
+
+    console.log('🌟 Promoted gift cards found:', combined.length, `(SmartWish: ${smartWishPromoted.length}, Kiosk config: ${kioskPromoted.length})`)
+    return combined
+  }, [mergedProducts, promotedGiftCardIds])
 
   // Filter products based on search and category filter
+  // SmartWish brands always appear first in results
   const displayProducts = useMemo(() => {
-    const items = productsData?.brands || productsData?.products || []
-    if (items.length === 0) return []
+    if (mergedProducts.length === 0) return []
 
-    let filtered = items
+    let filtered = mergedProducts
 
     // Apply category filter first
     if (activeFilter !== 'all') {
@@ -346,9 +413,16 @@ function MarketplaceContent() {
       console.log(`Filtered by search "${searchTerm}":`, filtered.length, 'products')
     }
 
+    // Sort to ensure SmartWish brands appear first
+    filtered = filtered.sort((a, b) => {
+      if (a.source === 'smartwish' && b.source !== 'smartwish') return -1
+      if (a.source !== 'smartwish' && b.source === 'smartwish') return 1
+      return 0  // Keep original order within same source
+    })
+
     console.log('Final display products:', filtered.length)
     return filtered
-  }, [productsData, searchTerm, activeFilter])
+  }, [mergedProducts, searchTerm, activeFilter])
 
   // Filter products by category
   const filterProducts = (category: string) => {
@@ -899,6 +973,12 @@ function CheckoutModal({
       const mode = searchParams.get('mode') // 'sticker' for sticker sheets
       const sessionId = searchParams.get('sessionId') // Session ID for stickers
 
+      // Determine the source - SmartWish internal or Tillo
+      const isSmartWishBrand = (currentSelectedProduct as any).source === 'smartwish'
+      const giftCardSource = isSmartWishBrand ? 'smartwish' : 'tillo'
+
+      console.log('🎁 Gift card source:', giftCardSource, isSmartWishBrand ? '(SmartWish internal)' : '(Tillo)')
+
       if (returnTo) {
         console.log('🎁 Return Mode Detected - Saving gift card SELECTION and redirecting:', returnTo)
 
@@ -921,12 +1001,15 @@ function CheckoutModal({
             storeName: currentSelectedProduct.name,
             amount: amount,
             brandSlug: currentSelectedProduct.slug || currentSelectedProduct.id,
+            brandId: currentSelectedProduct.id, // Keep the UUID for SmartWish brands
             currency: currentSelectedProduct.currency || 'USD',
+            // SmartWish specific
+            isSmartWishBrand: (currentSelectedProduct as any).isSmartWishBrand || false,
             // Status
             status: 'pending', // Will change to 'issued' after payment
             isIssued: false,   // Flag to indicate not yet issued
             selectedAt: new Date().toISOString(),
-            source: 'tillo'
+            source: giftCardSource
           }
 
           // Store selection in localStorage (no encryption needed - no sensitive data)
@@ -934,14 +1017,14 @@ function CheckoutModal({
           localStorage.setItem(`giftCardMeta_${storageKey}`, JSON.stringify({
             storeName: currentSelectedProduct.name,
             amount: amount,
-            source: 'tillo',
+            source: giftCardSource,
             status: 'pending',
             selectedAt: new Date().toISOString(),
             isEncrypted: false
           }))
 
           console.log(`✅ Gift card SELECTION saved for ${isStickerMode ? 'sticker session' : 'card'}:`, storageKey)
-          console.log('📝 Note: Gift card will be issued after payment')
+          console.log('📝 Note: Gift card will be issued after payment via', giftCardSource.toUpperCase())
 
           // Navigate back to the card editor or stickers page
           window.location.href = decodeURIComponent(returnTo)
@@ -956,8 +1039,10 @@ function CheckoutModal({
         amount: amount,
         productName: currentSelectedProduct.name,
         brandSlug: currentSelectedProduct.slug || currentSelectedProduct.id,
+        brandId: currentSelectedProduct.id,
         status: 'pending',
-        source: 'tillo'
+        source: giftCardSource,
+        isSmartWishBrand: (currentSelectedProduct as any).isSmartWishBrand || false
       }
       console.log('📝 Setting Success Data (selection only):', successPayload)
       setSuccessData(successPayload)

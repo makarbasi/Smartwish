@@ -48,6 +48,7 @@ import { GeminiEmbeddingService } from './services/gemini-embedding.service';
 import { OrdersModule } from './orders/orders.module';
 import { KioskConfigModule } from './kiosks/kiosk-config.module';
 import { StickersModule } from './stickers/stickers.module';
+import { GiftCardsModule } from './gift-cards/gift-cards.module';
 
 @Module({
   imports: [
@@ -104,6 +105,7 @@ import { StickersModule } from './stickers/stickers.module';
     OrdersModule,
     KioskConfigModule,
     StickersModule,
+    GiftCardsModule,
   ],
   controllers: [AppController, SharingController, TemplatesEnhancedController],
   providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService, GeminiEmbeddingService],

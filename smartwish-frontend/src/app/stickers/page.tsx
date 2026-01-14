@@ -31,6 +31,8 @@ interface GiftCardData {
   status?: 'pending' | 'issued';
   isIssued?: boolean;
   brandSlug?: string;
+  brandId?: string;
+  source?: 'smartwish' | 'tillo';
 }
 
 // Extended slot type with upload flag
@@ -1494,7 +1496,7 @@ function StickersContent() {
           }
         }}
         onPaymentSuccess={(issuedGiftCard) => handlePaymentSuccess(issuedGiftCard)}
-        cardId={giftCardData ? stickerSessionId : stickerOrderId}
+        cardId={stickerOrderId}
         cardName={giftCardData ? `Sticker Sheet + ${giftCardData.storeName} Gift Card` : "Sticker Sheet"}
         action="print"
         productType="stickers"

@@ -4,9 +4,9 @@ import { auth } from '@/auth';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
 
 /**
- * GET /api/manager/kiosks
- * Get kiosks assigned to the authenticated manager
- * Proxies to backend: GET /managers/my-kiosks
+ * GET /api/manager/print-logs
+ * Get print logs for the authenticated manager's kiosks
+ * Proxies to backend: GET /managers/print-logs
  */
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +15,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const response = await fetch(`${API_BASE}/managers/my-kiosks`, {
+    // Forward query params
+    const { searchParams } = new URL(request.url);
+    const queryString = searchParams.toString();
+    const url = `${API_BASE}/managers/print-logs${queryString ? `?${queryString}` : ''}`;
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${session.user.access_token}`,
@@ -23,6 +28,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Handle non-JSON responses
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const text = await response.text();
@@ -37,14 +43,14 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch kiosks' },
+        { error: data.message || 'Failed to fetch print logs' },
         { status: response.status }
       );
     }
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching kiosks:', error);
+    console.error('Error fetching print logs:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
