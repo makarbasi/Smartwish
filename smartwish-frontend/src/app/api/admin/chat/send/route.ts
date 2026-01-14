@@ -51,11 +51,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert message
+    // Find the kiosk's current active session by looking at the most recent kiosk message
+    // This ensures admin replies go to the correct session
+    const { data: latestKioskMessage } = await supabase
+      .from('kiosk_chat_messages')
+      .select('session_id')
+      .eq('kiosk_id', kioskId)
+      .eq('sender_type', 'kiosk')
+      .not('session_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const sessionId = latestKioskMessage?.session_id || null;
+    console.log(`[Admin Chat] Using session_id: ${sessionId} for kiosk ${kioskId}`);
+
+    // Insert message with the kiosk's current session
     const { data: chatMessage, error: insertError } = await supabase
       .from('kiosk_chat_messages')
       .insert({
         kiosk_id: kioskId,
+        session_id: sessionId, // Tag with kiosk's current session
         sender_type: 'admin',
         sender_id: session.user.id.toString(),
         message: message.trim(),

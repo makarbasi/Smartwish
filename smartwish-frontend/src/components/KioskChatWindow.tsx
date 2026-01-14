@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
+import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { ChatMessage } from '@/hooks/useKioskChat';
 import { useKiosk } from '@/contexts/KioskContext';
 import { useKioskChatContext } from '@/contexts/KioskChatContext';
+import ChatFeedbackWidget from './ChatFeedbackWidget';
 // Simple date formatting without date-fns dependency
 const formatTime = (dateString: string) => {
   try {
@@ -37,12 +39,18 @@ interface KioskChatWindowProps {
 }
 
 export default function KioskChatWindow({ isOpen, onClose }: KioskChatWindowProps) {
-  const { messages, isLoading, isConnected, error, sendMessage } = useKioskChatContext();
+  const { messages, isLoading, isConnected, error, sendMessage, sessionId } = useKioskChatContext();
   const { kioskInfo, loading: kioskLoading } = useKiosk();
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Reset feedback state when session changes (new user)
+  useEffect(() => {
+    setFeedbackSubmitted(false);
+  }, [sessionId]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -80,6 +88,10 @@ export default function KioskChatWindow({ isOpen, onClose }: KioskChatWindowProp
     }
   };
 
+  const handleFeedbackSubmit = async (feedback: string) => {
+    await sendMessage(feedback);
+    setFeedbackSubmitted(true);
+  };
 
   if (!isOpen) return null;
 
@@ -89,7 +101,10 @@ export default function KioskChatWindow({ isOpen, onClose }: KioskChatWindowProp
       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-indigo-600 text-white rounded-t-lg">
         <div className="flex items-center gap-2">
           <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'}`} />
-          <h3 className="font-semibold">Chat Support</h3>
+          <div>
+            <h3 className="font-semibold">Chat Support</h3>
+            <p className="text-xs text-indigo-200">info@smartwish.us</p>
+          </div>
         </div>
         <button
           onClick={onClose}
@@ -155,6 +170,21 @@ export default function KioskChatWindow({ isOpen, onClose }: KioskChatWindowProp
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Always Visible Feedback Section */}
+      {messages.length > 0 && !feedbackSubmitted && (
+        <div className="border-t border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
+          <ChatFeedbackWidget onSubmit={handleFeedbackSubmit} />
+        </div>
+      )}
+      
+      {/* Thank you message after feedback */}
+      {feedbackSubmitted && (
+        <div className="border-t border-green-200 bg-green-50 px-4 py-2 flex items-center justify-center gap-2">
+          <StarIconSolid className="h-4 w-4 text-green-600" />
+          <span className="text-sm text-green-700 font-medium">Thank you for your feedback!</span>
+        </div>
+      )}
 
       {/* Input Area */}
       <div className="p-4 border-t border-gray-200 bg-white rounded-b-lg">

@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 export interface ChatMessage {
   id: string;
   kiosk_id: string;
+  session_id?: string | null; // Session ID for isolating user chats
   sender_type: 'kiosk' | 'admin';
   sender_id: string | null;
   message: string;
@@ -49,6 +50,9 @@ export function useAdminChat(): UseAdminChatReturn {
   const [error, setError] = useState<string | null>(null);
   const [selectedKioskId, setSelectedKioskId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  
+  // Track current session per kiosk to detect new sessions
+  const currentSessionsRef = useRef<Record<string, string | null>>({});
 
   // Load list of kiosks with chats
   const loadKiosks = useCallback(async () => {
@@ -88,9 +92,18 @@ export function useAdminChat(): UseAdminChatReturn {
       }
 
       const data = await response.json();
+      const loadedMessages = data.messages || [];
+      
+      // Track the current session for this kiosk
+      const firstKioskMessage = loadedMessages.find((m: ChatMessage) => m.sender_type === 'kiosk' && m.session_id);
+      if (firstKioskMessage?.session_id) {
+        currentSessionsRef.current[kioskId] = firstKioskMessage.session_id;
+        console.log(`[useAdminChat] Tracking session ${firstKioskMessage.session_id} for kiosk ${kioskId}`);
+      }
+      
       setMessages((prev) => ({
         ...prev,
-        [kioskId]: data.messages || [],
+        [kioskId]: loadedMessages,
       }));
     } catch (err) {
       console.error('[useAdminChat] Error loading messages:', err);
@@ -192,7 +205,8 @@ export function useAdminChat(): UseAdminChatReturn {
   const selectKiosk = useCallback(
     (kioskId: string) => {
       setSelectedKioskId(kioskId);
-      loadMessages(kioskId);
+      // Always force refresh to get the latest session's messages
+      loadMessages(kioskId, true);
       markAsRead(kioskId);
     },
     [loadMessages, markAsRead]
@@ -238,6 +252,27 @@ export function useAdminChat(): UseAdminChatReturn {
         } else if (data.type === 'message') {
           const newMessage = data.message as ChatMessage;
           const kioskId = newMessage.kiosk_id;
+          const messageSessionId = newMessage.session_id;
+          const currentSession = currentSessionsRef.current[kioskId];
+
+          // Check if this is a message from a NEW session
+          if (newMessage.sender_type === 'kiosk' && messageSessionId && currentSession && messageSessionId !== currentSession) {
+            console.log(`[useAdminChat] 🔄 NEW SESSION detected for kiosk ${kioskId}: ${messageSessionId} (was: ${currentSession})`);
+            // New session started - clear old messages and update session
+            currentSessionsRef.current[kioskId] = messageSessionId;
+            setMessages((prev) => ({
+              ...prev,
+              [kioskId]: [newMessage], // Start fresh with just the new message
+            }));
+            loadKiosks();
+            return;
+          }
+
+          // Track session if this is the first message from this kiosk
+          if (newMessage.sender_type === 'kiosk' && messageSessionId && !currentSession) {
+            currentSessionsRef.current[kioskId] = messageSessionId;
+            console.log(`[useAdminChat] Tracking initial session ${messageSessionId} for kiosk ${kioskId}`);
+          }
 
           // Add message to the appropriate kiosk's messages
           setMessages((prev) => {

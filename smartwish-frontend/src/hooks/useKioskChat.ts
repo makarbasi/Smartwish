@@ -6,6 +6,7 @@ import { useKiosk } from '@/contexts/KioskContext';
 export interface ChatMessage {
   id: string;
   kiosk_id: string;
+  session_id?: string;
   sender_type: 'kiosk' | 'admin';
   sender_id: string | null;
   message: string;
@@ -21,8 +22,36 @@ interface UseKioskChatReturn {
   error: string | null;
   sendMessage: (message: string) => Promise<void>;
   clearHistory: () => void;
+  resetSession: () => void;
   unreadCount: number;
+  sessionId: string | null;
 }
+
+// Generate a new session ID
+const generateSessionId = (): string => {
+  return crypto.randomUUID();
+};
+
+// Get or create session ID from sessionStorage
+const getSessionId = (kioskId: string): string => {
+  const storageKey = `kiosk_chat_session_${kioskId}`;
+  let sessionId = sessionStorage.getItem(storageKey);
+  if (!sessionId) {
+    sessionId = generateSessionId();
+    sessionStorage.setItem(storageKey, sessionId);
+    console.log('[useKioskChat] Created new session:', sessionId);
+  }
+  return sessionId;
+};
+
+// Reset session ID (creates a new one)
+const resetSessionId = (kioskId: string): string => {
+  const storageKey = `kiosk_chat_session_${kioskId}`;
+  const newSessionId = generateSessionId();
+  sessionStorage.setItem(storageKey, newSessionId);
+  console.log('[useKioskChat] Reset session to:', newSessionId);
+  return newSessionId;
+};
 
 export function useKioskChat(): UseKioskChatReturn {
   const { kioskInfo } = useKiosk();
@@ -33,22 +62,34 @@ export function useKioskChat(): UseKioskChatReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Initialize session ID when kioskId is available
+  useEffect(() => {
+    if (kioskId) {
+      const currentSessionId = getSessionId(kioskId);
+      setSessionId(currentSessionId);
+    } else {
+      setSessionId(null);
+    }
+  }, [kioskId]);
+
   // Load chat history
   const loadHistory = useCallback(async () => {
-    if (!kioskId) {
-      console.log('[useKioskChat] loadHistory: No kioskId, skipping');
+    if (!kioskId || !sessionId) {
+      console.log('[useKioskChat] loadHistory: No kioskId or sessionId, skipping');
       return;
     }
 
-    console.log('[useKioskChat] loadHistory: Loading history for', kioskId);
+    console.log('[useKioskChat] loadHistory: Loading history for', kioskId, 'session:', sessionId);
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/kiosk/chat/history?kioskId=${kioskId}&limit=50`);
+      // Include sessionId in the request to only get messages from current session
+      const response = await fetch(`/api/kiosk/chat/history?kioskId=${kioskId}&sessionId=${sessionId}&limit=50`);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('[useKioskChat] API Error:', errorData);
@@ -69,12 +110,12 @@ export function useKioskChat(): UseKioskChatReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [kioskId]);
+  }, [kioskId, sessionId]);
 
   // Send message
   const sendMessage = useCallback(
     async (message: string) => {
-      if (!kioskId || !message.trim()) return;
+      if (!kioskId || !sessionId || !message.trim()) return;
 
       const trimmedMessage = message.trim();
       if (trimmedMessage.length === 0 || trimmedMessage.length > 1000) {
@@ -89,6 +130,7 @@ export function useKioskChat(): UseKioskChatReturn {
         const tempMessage: ChatMessage = {
           id: `temp-${Date.now()}`,
           kiosk_id: kioskId,
+          session_id: sessionId,
           sender_type: 'kiosk',
           sender_id: null,
           message: trimmedMessage,
@@ -106,7 +148,7 @@ export function useKioskChat(): UseKioskChatReturn {
         const response = await fetch('/api/kiosk/chat/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmedMessage, kioskId }),
+          body: JSON.stringify({ message: trimmedMessage, kioskId, sessionId }),
         });
 
         if (!response.ok) {
@@ -127,14 +169,45 @@ export function useKioskChat(): UseKioskChatReturn {
         setMessages((prev) => prev.filter((m) => !m.id.startsWith('temp-')));
       }
     },
-    [kioskId]
+    [kioskId, sessionId]
   );
 
-  // Clear history (for idle timeout)
+  // Clear history (for UI only, keeps same session)
   const clearHistory = useCallback(() => {
     setMessages([]);
     setUnreadCount(0);
   }, []);
+
+  // Reset session (creates new session, clears history)
+  // Called on inactivity timeout to isolate next user's chat
+  const resetSession = useCallback(() => {
+    if (!kioskId) {
+      console.log('[useKioskChat] resetSession: No kioskId, skipping');
+      return;
+    }
+    
+    console.log('[useKioskChat] 🔄 RESETTING SESSION for kioskId:', kioskId);
+    console.log('[useKioskChat] Old session:', sessionId);
+    
+    // Close existing SSE connection immediately
+    if (eventSourceRef.current) {
+      console.log('[useKioskChat] Closing old SSE connection');
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    
+    // Generate new session ID
+    const newSessionId = resetSessionId(kioskId);
+    console.log('[useKioskChat] ✅ New session:', newSessionId);
+    
+    // Clear all state
+    setSessionId(newSessionId);
+    setMessages([]);
+    setUnreadCount(0);
+    setError(null);
+    setIsConnected(false);
+    setIsLoading(true); // Will reload when effect re-runs
+  }, [kioskId, sessionId]);
 
   // Mark messages as read
   const markAsRead = useCallback(
@@ -162,21 +235,22 @@ export function useKioskChat(): UseKioskChatReturn {
 
   // Set up real-time subscription via Server-Sent Events
   useEffect(() => {
-    console.log('[useKioskChat] Effect running, kioskId:', kioskId);
+    console.log('[useKioskChat] 🔌 Effect running, kioskId:', kioskId, 'sessionId:', sessionId);
     
-    if (!kioskId) {
-      console.log('[useKioskChat] No kioskId, setting isLoading=false, isConnected=false');
+    if (!kioskId || !sessionId) {
+      console.log('[useKioskChat] No kioskId or sessionId, setting isLoading=false, isConnected=false');
       setIsConnected(false);
-      setIsLoading(false); // Important: Set loading to false when no kioskId
+      setIsLoading(false); // Important: Set loading to false when no kioskId/sessionId
       return;
     }
 
-    // Load initial history
-    console.log('[useKioskChat] Calling loadHistory for kioskId:', kioskId);
+    // Load initial history for this session
+    console.log('[useKioskChat] 📜 Loading history for session:', sessionId);
     loadHistory();
 
-    // Connect to SSE endpoint for real-time updates
-    const eventSource = new EventSource(`/api/kiosk/chat/stream?kioskId=${encodeURIComponent(kioskId)}`);
+    // Connect to SSE endpoint for real-time updates (include sessionId to filter messages)
+    console.log('[useKioskChat] 🔌 Connecting SSE for session:', sessionId);
+    const eventSource = new EventSource(`/api/kiosk/chat/stream?kioskId=${encodeURIComponent(kioskId)}&sessionId=${encodeURIComponent(sessionId)}`);
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
@@ -257,7 +331,7 @@ export function useKioskChat(): UseKioskChatReturn {
         eventSourceRef.current = null;
       }
     };
-  }, [kioskId, loadHistory]);
+  }, [kioskId, sessionId, loadHistory]);
 
   // Mark admin messages as read when they're displayed
   useEffect(() => {
@@ -277,6 +351,8 @@ export function useKioskChat(): UseKioskChatReturn {
     error,
     sendMessage,
     clearHistory,
+    resetSession,
     unreadCount,
+    sessionId,
   };
 }

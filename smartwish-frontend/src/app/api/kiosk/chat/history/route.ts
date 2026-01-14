@@ -10,10 +10,11 @@ export async function GET(request: NextRequest) {
     console.log('[Kiosk Chat History] Request received');
     const searchParams = request.nextUrl.searchParams;
     const kioskId = searchParams.get('kioskId');
+    const sessionId = searchParams.get('sessionId'); // Session ID for isolating user chats
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const before = searchParams.get('before'); // message ID for pagination
 
-    console.log('[Kiosk Chat History] Params:', { kioskId, limit, before });
+    console.log('[Kiosk Chat History] Params:', { kioskId, sessionId, limit, before });
 
     if (!kioskId) {
       return NextResponse.json(
@@ -40,11 +41,21 @@ export async function GET(request: NextRequest) {
 
     console.log('[Kiosk Chat History] Kiosk verified, fetching messages...');
 
-    // Build query
+    // Build query - STRICTLY filter by sessionId for user isolation
+    // Each session should only see its own messages (no old/legacy messages)
     let query = supabase
       .from('kiosk_chat_messages')
       .select('*')
-      .eq('kiosk_id', kioskId)
+      .eq('kiosk_id', kioskId);
+    
+    if (sessionId) {
+      // STRICT: Only return messages from this session
+      // This ensures user isolation - new session = fresh chat
+      query = query.eq('session_id', sessionId);
+      console.log('[Kiosk Chat History] STRICT filtering by session:', sessionId);
+    }
+    
+    query = query
       .order('created_at', { ascending: false })
       .limit(limit);
 

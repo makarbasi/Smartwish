@@ -14,7 +14,7 @@ function KioskChatInner() {
   const { kioskInfo } = useKiosk();
   const kioskId = kioskInfo?.kioskId || null;
   const [isOpen, setIsOpen] = useState(false);
-  const { clearHistory, unreadCount } = useKioskChatContext();
+  const { resetSession, unreadCount } = useKioskChatContext();
 
   // Determine if chat should be visible
   const shouldShowChat =
@@ -26,13 +26,15 @@ function KioskChatInner() {
       pathname === '/stickers' ||
       pathname === '/my-cards');
 
-  // Handle idle timeout - close chat and clear history
+  // Handle idle timeout - close chat and reset session for next user
   useEffect(() => {
     const handleTimeout = () => {
+      console.log('[KioskChat] Timeout detected, resetting session');
       if (isOpen) {
         setIsOpen(false);
       }
-      clearHistory();
+      // Reset session creates a new session ID, so next user gets fresh chat
+      resetSession();
     };
 
     // Listen for custom event from useKioskInactivity
@@ -40,7 +42,7 @@ function KioskChatInner() {
     return () => {
       window.removeEventListener('kiosk-timeout', handleTimeout);
     };
-  }, [isOpen, clearHistory]);
+  }, [isOpen, resetSession]);
 
   if (!shouldShowChat) {
     return null;

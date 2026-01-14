@@ -10,7 +10,9 @@ interface KioskChatContextType {
   error: string | null;
   sendMessage: (message: string) => Promise<void>;
   clearHistory: () => void;
+  resetSession: () => void;
   unreadCount: number;
+  sessionId: string | null;
 }
 
 const KioskChatContext = createContext<KioskChatContextType | null>(null);
