@@ -19,6 +19,7 @@ import {
   ShieldCheckIcon,
   BuildingStorefrontIcon,
   TicketIcon,
+  ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 
 interface DashboardStats {
@@ -82,6 +83,14 @@ const quickActions = [
     href: "/admin/gift-cards",
     icon: CreditCardIcon,
     iconBg: "bg-amber-500",
+    iconColor: "text-white",
+  },
+  {
+    name: "Kiosk Chat",
+    description: "Chat with kiosk users in real-time and provide support",
+    href: "/admin/chat",
+    icon: ChatBubbleLeftRightIcon,
+    iconBg: "bg-indigo-500",
     iconColor: "text-white",
   },
 ];

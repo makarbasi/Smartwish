@@ -204,6 +204,7 @@ export class AdminGiftCardsController {
       cards: result.cards.map(card => ({
         id: card.id,
         cardNumber: card.cardNumber,
+        pin: card.metadata?.pin || null, // Include PIN from metadata for admin
         initialBalance: card.initialBalance,
         currentBalance: card.currentBalance,
         status: card.status,
@@ -234,6 +235,7 @@ export class AdminGiftCardsController {
       card: {
         id: card.id,
         cardNumber: card.cardNumber,
+        pin: card.metadata?.pin || null, // Include PIN from metadata for admin
         initialBalance: card.initialBalance,
         currentBalance: card.currentBalance,
         status: card.status,

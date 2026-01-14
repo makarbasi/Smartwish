@@ -22,6 +22,7 @@ import { Dialog, Transition } from "@headlessui/react";
 interface GiftCard {
   id: string;
   cardNumber: string;
+  pin?: string; // PIN if available (may not be returned for security)
   initialBalance: number;
   currentBalance: number;
   status: string;
@@ -232,6 +233,17 @@ export default function AdminGiftCardsPage() {
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  // Format card number as 16 digits with spaces (e.g., "1234 5678 9012 3456")
+  const formatCardNumber = (cardNumber: string) => {
+    // Remove any existing spaces and format as 16 digits
+    const cleaned = cardNumber.replace(/\s/g, '');
+    if (cleaned.length === 16) {
+      return `${cleaned.slice(0, 4)} ${cleaned.slice(4, 8)} ${cleaned.slice(8, 12)} ${cleaned.slice(12, 16)}`;
+    }
+    // If not 16 digits, return as-is
+    return cardNumber;
   };
 
   const formatCurrency = (value: number) => {
@@ -584,7 +596,10 @@ export default function AdminGiftCardsPage() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Card
+                            Card Number
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            PIN
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Brand
@@ -611,8 +626,24 @@ export default function AdminGiftCardsPage() {
                           <tr key={card.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className="font-mono text-sm text-gray-900">
-                                {card.cardNumber}
+                                {formatCardNumber(card.cardNumber)}
                               </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {card.pin ? (
+                                <span className="font-mono text-sm text-gray-900">
+                                  {card.pin}
+                                </span>
+                              ) : (
+                                <div>
+                                  <span className="font-mono text-sm text-gray-500">
+                                    N/A
+                                  </span>
+                                  <span className="text-xs text-gray-400 block">
+                                    (Not stored)
+                                  </span>
+                                </div>
+                              )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
@@ -733,14 +764,44 @@ export default function AdminGiftCardsPage() {
                         <Dialog.Title className="text-lg font-semibold text-gray-900">
                           Card Details
                         </Dialog.Title>
-                        <p className="text-sm text-gray-500 font-mono">
-                          {selectedCard.cardNumber}
-                        </p>
+                        <div className="mt-2 space-y-1">
+                          <p className="text-sm text-gray-500">Card Number</p>
+                          <p className="text-sm font-mono text-gray-900">
+                            {formatCardNumber(selectedCard.cardNumber)}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-2">PIN</p>
+                          <p className="text-sm font-mono text-gray-900">
+                            {selectedCard.pin || "Not available (hashed for security)"}
+                          </p>
+                        </div>
                       </div>
 
                       <div className="p-6 space-y-4">
                         {/* Card Info */}
                         <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-sm text-gray-500">Card Number</p>
+                            <p className="font-mono font-medium">
+                              {formatCardNumber(selectedCard.cardNumber)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500">PIN</p>
+                            {selectedCard.pin ? (
+                              <p className="font-mono font-medium text-gray-900">
+                                {selectedCard.pin}
+                              </p>
+                            ) : (
+                              <div>
+                                <p className="font-mono font-medium text-gray-500">
+                                  N/A
+                                </p>
+                                <p className="text-xs text-gray-400">
+                                  (Not stored for this card)
+                                </p>
+                              </div>
+                            )}
+                          </div>
                           <div>
                             <p className="text-sm text-gray-500">Brand</p>
                             <p className="font-medium">
