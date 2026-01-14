@@ -81,6 +81,9 @@ type Kiosk = {
   config: KioskConfig;
   version: string;
   isActive?: boolean;
+  isOnline?: boolean; // Device online (based on heartbeat)
+  hasActiveSession?: boolean; // Active user session
+  lastHeartbeat?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -516,9 +519,41 @@ export default function KiosksAdminPage() {
                         </p>
                       </div>
                     </div>
-                    <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                      v{kiosk.version}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                        v{kiosk.version}
+                      </span>
+                      {/* Device Online/Offline Status */}
+                      <span
+                        className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          kiosk.isOnline
+                            ? "bg-green-100 text-green-700 ring-1 ring-inset ring-green-600/20"
+                            : "bg-red-100 text-red-700 ring-1 ring-inset ring-red-600/20"
+                        }`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            kiosk.isOnline ? "bg-green-500" : "bg-red-500"
+                          }`}
+                        />
+                        {kiosk.isOnline ? "Device Online" : "Device Offline"}
+                      </span>
+                      {/* Active Session Indicator */}
+                      <span
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                          kiosk.hasActiveSession
+                            ? "bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-600/20"
+                            : "bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-600/20"
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            kiosk.hasActiveSession ? "bg-blue-500 animate-pulse" : "bg-gray-400"
+                          }`}
+                        />
+                        {kiosk.hasActiveSession ? "Active Session" : "No Session"}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Config summary */}
@@ -573,6 +608,54 @@ export default function KiosksAdminPage() {
                       <span className="text-gray-600">
                         Ads: {kiosk.config?.ads?.playlist?.length || 0}
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Device Status */}
+                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Device Status</p>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${kiosk.isOnline ? "bg-green-500" : "bg-red-500"}`} />
+                        <span className="text-sm font-medium text-gray-900">
+                          {kiosk.isOnline ? "Online" : "Offline"}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {kiosk.lastHeartbeat ? (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Last Heartbeat</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {new Date(kiosk.lastHeartbeat).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {Math.floor((Date.now() - new Date(kiosk.lastHeartbeat).getTime()) / 1000 / 60)} minutes ago
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Last Heartbeat</p>
+                        <p className="text-sm font-medium text-gray-500">Never</p>
+                        <p className="text-xs text-gray-400 mt-1">Device has not sent heartbeat</p>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">User Session</p>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            kiosk.hasActiveSession ? "bg-blue-500 animate-pulse" : "bg-gray-400"
+                          }`}
+                        />
+                        <p className={`text-sm font-medium ${kiosk.hasActiveSession ? "text-blue-600" : "text-gray-500"}`}>
+                          {kiosk.hasActiveSession ? "Active" : "None"}
+                        </p>
+                      </div>
+                      {kiosk.hasActiveSession && (
+                        <p className="text-xs text-gray-400 mt-1">Browser is open and responsive</p>
+                      )}
                     </div>
                   </div>
 
