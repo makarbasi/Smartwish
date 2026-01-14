@@ -322,6 +322,10 @@ export async function GET(request: NextRequest) {
           printCount: kiosk.config?.printCount || 0,
           lastHeartbeat: lastHeartbeat || null,
           createdAt: kiosk.assignedAt || kiosk.createdAt || new Date().toISOString(),
+          // Include these for device pairing
+          storeId: kiosk.storeId,
+          apiKey: kiosk.apiKey,
+          surveillance: kiosk.surveillance || kiosk.config?.surveillance || null,
         };
       } catch (error) {
         console.error(`[Manager Kiosks] Error processing kiosk ${kiosk?.kioskId || 'unknown'}:`, error);
@@ -339,6 +343,10 @@ export async function GET(request: NextRequest) {
           printCount: 0,
           lastHeartbeat: null,
           createdAt: kiosk?.assignedAt || kiosk?.createdAt || new Date().toISOString(),
+          // Include these for device pairing
+          storeId: kiosk?.storeId || null,
+          apiKey: kiosk?.apiKey || null,
+          surveillance: kiosk?.surveillance || kiosk?.config?.surveillance || null,
         };
       }
     });

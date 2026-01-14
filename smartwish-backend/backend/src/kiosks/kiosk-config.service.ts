@@ -609,6 +609,7 @@ export class KioskConfigService {
 
   /**
    * Get all kiosks assigned to a manager (for manager's kiosk selection)
+   * Includes apiKey for device pairing functionality
    */
   async getManagerKiosks(userId: string) {
     const assignments = await this.kioskManagerRepo.find({
@@ -623,7 +624,10 @@ export class KioskConfigService {
         kioskId: a.kiosk.kioskId,
         name: a.kiosk.name,
         storeId: a.kiosk.storeId,
+        apiKey: a.kiosk.apiKey, // Include API key for device pairing
+        isActive: a.kiosk.isActive,
         config: this.mergeConfig(a.kiosk.config),
+        surveillance: (a.kiosk.config as any)?.surveillance || null, // Include surveillance config
         assignedAt: a.assignedAt,
       }));
   }
@@ -1196,7 +1200,39 @@ export class KioskConfigService {
       name: kiosk.name || kiosk.kioskId,
       printerName: (kiosk.config as any)?.printerName || null,
       printerIP: (kiosk.config as any)?.printerIP || null,
+      surveillance: (kiosk.config as any)?.surveillance || null,
     }));
+  }
+
+  /**
+   * Get full config for a specific kiosk (for device pairing)
+   * Returns kiosk config including surveillance settings
+   */
+  async getKioskConfigForPairing(kioskId: string): Promise<any | null> {
+    const kiosk = await this.kioskRepo.findOne({
+      where: { kioskId, isActive: true },
+    });
+
+    if (!kiosk) {
+      return null;
+    }
+
+    return {
+      kioskId: kiosk.kioskId,
+      name: kiosk.name || kiosk.kioskId,
+      storeId: kiosk.storeId,
+      apiKey: kiosk.apiKey,
+      printerName: (kiosk.config as any)?.printerName || null,
+      printerIP: (kiosk.config as any)?.printerIP || null,
+      printerTrays: (kiosk.config as any)?.printerTrays || [],
+      surveillance: (kiosk.config as any)?.surveillance || {
+        enabled: false,
+        webcamIndex: 0,
+        httpPort: 8765,
+        dwellThresholdSeconds: 8,
+        frameThreshold: 10,
+      },
+    };
   }
 
   /**

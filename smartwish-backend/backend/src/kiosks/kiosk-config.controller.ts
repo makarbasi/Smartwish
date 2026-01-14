@@ -434,6 +434,20 @@ export class LocalPrintAgentController {
       body.error,
     );
   }
+
+  /**
+   * Get kiosk config for device pairing
+   * Used by local print agent when paired via manager dashboard
+   */
+  @Public()
+  @Get('kiosk-config/:kioskId')
+  async getKioskConfigForPairing(@Param('kioskId') kioskId: string) {
+    const config = await this.kioskService.getKioskConfigForPairing(kioskId);
+    if (!config) {
+      return { error: 'Kiosk not found' };
+    }
+    return config;
+  }
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   EnvelopeIcon,
   SparklesIcon,
   ChartBarIcon,
+  VideoCameraIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { Dialog, Transition } from "@headlessui/react";
@@ -69,6 +70,13 @@ type KioskConfig = {
   virtualKeyboard?: {
     enabled: boolean; // Master toggle - if false, no page shrinking, no keyboard
     showBuiltInKeyboard: boolean; // If enabled=true but this is false, shrink page but use Windows touch keyboard
+  };
+  surveillance?: {
+    enabled: boolean; // Enable surveillance/people counting
+    webcamIndex: number; // Webcam device index (default 0)
+    dwellThresholdSeconds: number; // Seconds before counting (default 8)
+    frameThreshold: number; // Frames before saving image (default 10)
+    httpPort: number; // Port for local image server (default 8765)
   };
 };
 
@@ -128,6 +136,13 @@ const DEFAULT_CONFIG: KioskConfig = {
   virtualKeyboard: {
     enabled: true, // Enable virtual keyboard support by default
     showBuiltInKeyboard: true, // Show our built-in virtual keyboard by default
+  },
+  surveillance: {
+    enabled: false, // Disabled by default
+    webcamIndex: 0,
+    dwellThresholdSeconds: 8,
+    frameThreshold: 10,
+    httpPort: 8765,
   },
 };
 
@@ -697,6 +712,17 @@ export default function KiosksAdminPage() {
                     >
                       <ChartBarIcon className="h-4 w-4" />
                       View Session Logs
+                    </Link>
+                    {/* Surveillance button */}
+                    <Link
+                      href={`/admin/kiosks/${kiosk.kioskId}/surveillance`}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-100 transition-colors"
+                    >
+                      <VideoCameraIcon className="h-4 w-4" />
+                      Surveillance
+                      {kiosk.config?.surveillance?.enabled && (
+                        <span className="ml-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      )}
                     </Link>
                     {/* Manager assignment button */}
                     <button
@@ -1690,6 +1716,159 @@ function KioskFormModal({
                         />
                         <span className="text-sm text-gray-600">%</span>
                       </div>
+                    </div>
+
+                    {/* Surveillance Configuration */}
+                    <div className="col-span-2 border-t pt-4 mt-2">
+                      <h5 className="text-sm font-semibold text-gray-800 mb-3">
+                        📹 Surveillance / People Counting
+                      </h5>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Track foot traffic using webcam-based person detection. Requires Python and YOLO model on the kiosk computer.
+                      </p>
+
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <label className="text-sm font-medium text-gray-700">
+                            Enable Surveillance
+                          </label>
+                          <p className="text-xs text-gray-500">
+                            Start people counting when print agent runs
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              config: {
+                                ...formData.config,
+                                surveillance: {
+                                  ...formData.config.surveillance,
+                                  enabled: !(formData.config.surveillance?.enabled ?? false),
+                                  webcamIndex: formData.config.surveillance?.webcamIndex ?? 0,
+                                  dwellThresholdSeconds: formData.config.surveillance?.dwellThresholdSeconds ?? 8,
+                                  frameThreshold: formData.config.surveillance?.frameThreshold ?? 10,
+                                  httpPort: formData.config.surveillance?.httpPort ?? 8765,
+                                },
+                              },
+                            })
+                          }
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 ${
+                            formData.config.surveillance?.enabled
+                              ? "bg-amber-500"
+                              : "bg-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              formData.config.surveillance?.enabled
+                                ? "translate-x-5"
+                                : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {formData.config.surveillance?.enabled && (
+                        <div className="grid grid-cols-2 gap-4 ml-4 pl-4 border-l-2 border-amber-200">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Webcam Index</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              value={formData.config.surveillance?.webcamIndex ?? 0}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    surveillance: {
+                                      ...formData.config.surveillance!,
+                                      webcamIndex: parseInt(e.target.value) || 0,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">0 = default camera</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Dwell Threshold (seconds)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="60"
+                              value={formData.config.surveillance?.dwellThresholdSeconds ?? 8}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    surveillance: {
+                                      ...formData.config.surveillance!,
+                                      dwellThresholdSeconds: parseInt(e.target.value) || 8,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Count after staying this long</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Frame Threshold</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={formData.config.surveillance?.frameThreshold ?? 10}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    surveillance: {
+                                      ...formData.config.surveillance!,
+                                      frameThreshold: parseInt(e.target.value) || 10,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Save image after this many frames</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Image Server Port</label>
+                            <input
+                              type="number"
+                              min="1024"
+                              max="65535"
+                              value={formData.config.surveillance?.httpPort ?? 8765}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    surveillance: {
+                                      ...formData.config.surveillance!,
+                                      httpPort: parseInt(e.target.value) || 8765,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Local HTTP port for images</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
