@@ -73,6 +73,9 @@ export function useKioskInactivity({
     const navigateToHome = useCallback(async () => {
         console.log("🖥️ [KioskInactivity] navigateToHome() - current path:", pathname);
         
+        // Dispatch event to clear chat history
+        window.dispatchEvent(new CustomEvent('kiosk-timeout'));
+        
         // End the kiosk session due to timeout
         // Always call handleTimeout - the service has its own guard for inactive sessions
         if (kioskSession) {

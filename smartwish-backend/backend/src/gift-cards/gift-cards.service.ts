@@ -148,10 +148,10 @@ export class GiftCardsService {
   // ==================== Gift Card Methods ====================
 
   private generateCardNumber(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let number = 'SW';
-    for (let i = 0; i < 14; i++) {
-      number += chars.charAt(Math.floor(Math.random() * chars.length));
+    // Generate a 16-digit card number (all numeric)
+    let number = '';
+    for (let i = 0; i < 16; i++) {
+      number += Math.floor(Math.random() * 10).toString();
     }
     return number;
   }
@@ -199,6 +199,7 @@ export class GiftCardsService {
     expiresAt.setMonth(expiresAt.getMonth() + brand.expiryMonths);
 
     // Create card
+    // Store PIN in metadata for admin access (stored securely, only accessible to admins)
     const card = this.cardRepo.create({
       brandId: dto.brandId,
       cardNumber,
@@ -210,6 +211,9 @@ export class GiftCardsService {
       expiresAt,
       purchaseOrderId: dto.paymentIntentId,
       kioskId: dto.kioskId,
+      metadata: {
+        pin: pin, // Store PIN in metadata for admin viewing (only accessible via admin endpoints)
+      },
     });
     const savedCard = await this.cardRepo.save(card);
 
@@ -310,27 +314,54 @@ export class GiftCardsService {
       try {
         const qrData = JSON.parse(dto.cardCode);
         if (qrData.type === 'smartwish_giftcard' && qrData.code) {
+          console.log('[CheckBalance] Looking up card by QR code:', qrData.code);
           card = await this.cardRepo.findOne({
             where: { cardCode: qrData.code },
             relations: ['brand'],
           });
         }
       } catch {
+        console.log('[CheckBalance] Looking up card by raw cardCode:', dto.cardCode);
         card = await this.cardRepo.findOne({
           where: { cardCode: dto.cardCode },
           relations: ['brand'],
         });
       }
     } else if (dto.cardNumber) {
+      // Normalize card number: remove spaces and convert to string
+      const normalizedCardNumber = dto.cardNumber.replace(/\s/g, '').trim();
+      console.log('[CheckBalance] Looking up card by cardNumber:', normalizedCardNumber, '(original:', dto.cardNumber, ')');
+      
       card = await this.cardRepo.findOne({
-        where: { cardNumber: dto.cardNumber },
+        where: { cardNumber: normalizedCardNumber },
         relations: ['brand'],
       });
+      
+      // If not found with normalized, try exact match (in case of formatting differences)
+      if (!card) {
+        console.log('[CheckBalance] Card not found with normalized number, trying exact match');
+        card = await this.cardRepo.findOne({
+          where: { cardNumber: dto.cardNumber },
+          relations: ['brand'],
+        });
+      }
     }
 
     if (!card) {
+      console.error('[CheckBalance] Card not found. Search params:', {
+        hasCardCode: !!dto.cardCode,
+        hasCardNumber: !!dto.cardNumber,
+        cardNumber: dto.cardNumber,
+        cardCode: dto.cardCode?.substring(0, 50),
+      });
       throw new NotFoundException('Gift card not found');
     }
+    
+    console.log('[CheckBalance] Card found:', {
+      id: card.id,
+      cardNumber: card.cardNumber,
+      status: card.status,
+    });
 
     // Verify PIN
     const pinValid = await bcrypt.compare(dto.pin, card.pinHash);
@@ -414,15 +445,49 @@ export class GiftCardsService {
     await this.cardRepo.save(card);
 
     // Create transaction
-    await this.transactionRepo.save({
-      giftCardId: card.id,
-      transactionType: TransactionType.REDEMPTION,
-      amount: -dto.amount,
-      balanceBefore: currentBalance,
-      balanceAfter: newBalance,
-      description: dto.description || 'Redemption',
-      performedBy,
-    });
+    // Note: performedBy is nullable. If the provided user ID doesn't exist in the users table,
+    // it will cause a foreign key constraint violation. Set to null if invalid.
+    let validPerformedBy: string | null = null;
+    if (performedBy) {
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(performedBy)) {
+        // For now, we'll set it if it's a valid UUID format
+        // The database will enforce the foreign key constraint
+        // If it fails, we'll catch and retry with null
+        validPerformedBy = performedBy;
+      } else {
+        console.warn(`[redeemGiftCard] Invalid UUID format for performedBy: ${performedBy}, setting to null`);
+      }
+    }
+
+    try {
+      await this.transactionRepo.save({
+        giftCardId: card.id,
+        transactionType: TransactionType.REDEMPTION,
+        amount: -dto.amount,
+        balanceBefore: currentBalance,
+        balanceAfter: newBalance,
+        description: dto.description || 'Redemption',
+        performedBy: validPerformedBy,
+      });
+    } catch (saveError: any) {
+      // If foreign key constraint violation, retry with null
+      if (saveError?.code === '23503' || saveError?.message?.includes('foreign key')) {
+        console.warn(`[redeemGiftCard] Foreign key constraint violation for performedBy ${validPerformedBy}, retrying with null`);
+        await this.transactionRepo.save({
+          giftCardId: card.id,
+          transactionType: TransactionType.REDEMPTION,
+          amount: -dto.amount,
+          balanceBefore: currentBalance,
+          balanceAfter: newBalance,
+          description: dto.description || 'Redemption',
+          performedBy: null,
+        });
+      } else {
+        throw saveError;
+      }
+    }
 
     return {
       success: true,

@@ -202,7 +202,9 @@ function GiftCardsContent() {
     if (cardCode) {
       payload.cardCode = cardCode;
     } else if (cardNumber) {
-      payload.cardNumber = cardNumber;
+      // Remove spaces from card number before sending to API
+      payload.cardNumber = cardNumber.replace(/\s/g, '').trim();
+      console.log('[Manager GiftCards] Checking balance for card number:', payload.cardNumber, '(formatted input:', cardNumber, ')');
     } else {
       setError("Please scan a QR code or enter a card number");
       setLoading(false);
@@ -257,38 +259,83 @@ function GiftCardsContent() {
     setSuccess(null);
 
     try {
+      const payload = {
+        cardId: cardInfo.id,
+        pin: pin.trim(),
+        amount: Number(amount.toFixed(2)), // Ensure it's a number, not a string
+        ...(redeemDescription?.trim() && { description: redeemDescription.trim() }),
+      };
+      
+      console.log('[Manager GiftCards] Sending redeem request:', {
+        ...payload,
+        pin: '***', // Don't log PIN
+      });
+
       const response = await fetch("/api/manager/gift-cards/redeem", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cardId: cardInfo.id,
-          pin,
-          amount,
-          description: redeemDescription || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      let data: any;
+      try {
+        data = await response.json();
+        console.log('[Manager GiftCards] Redeem response status:', response.status);
+        console.log('[Manager GiftCards] Redeem response data:', data);
+        console.log('[Manager GiftCards] Full error details:', JSON.stringify(data, null, 2));
+      } catch (parseError) {
+        console.error('[Manager GiftCards] Error parsing redeem response:', parseError);
+        console.error('[Manager GiftCards] Response status:', response.status);
+        console.error('[Manager GiftCards] Response headers:', Object.fromEntries(response.headers.entries()));
+        setError("Failed to parse server response");
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to redeem gift card");
+        const errorMsg = data.error || data.message || data.details?.message || data.details?.error || "Failed to redeem gift card";
+        const errorDetails = data.details ? JSON.stringify(data.details, null, 2) : 'No details';
+        console.error('[Manager GiftCards] Redeem failed:', {
+          status: response.status,
+          error: errorMsg,
+          fullData: data,
+          errorDetails: errorDetails
+        });
+        // Show more detailed error to user if available
+        const userFriendlyError = data.details?.message || data.details?.error || errorMsg;
+        throw new Error(userFriendlyError);
       }
 
       // Update card info with new balance
+      // Backend returns: { success: true, amountRedeemed, previousBalance, newBalance, cardStatus }
+      const newBalance = data.newBalance ?? data.balanceAfter ?? cardInfo.currentBalance - amount;
+      const cardStatus = data.cardStatus ?? cardInfo.status;
+
       setCardInfo((prev) =>
-        prev ? { ...prev, currentBalance: data.newBalance, status: data.cardStatus } : null
+        prev ? { ...prev, currentBalance: newBalance, status: cardStatus } : null
       );
 
       setRedeemAmount("");
       setRedeemDescription("");
-      setSuccess(`✅ Successfully redeemed $${amount.toFixed(2)}. New balance: $${data.newBalance.toFixed(2)}`);
+      setSuccess(`✅ Successfully redeemed $${amount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`);
       
       // Reset after 3 seconds
       setTimeout(() => {
         handleReset();
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const errorMessage = err instanceof Error ? err.message : "An error occurred";
+      
+      // Check if the error is actually a successful response that failed to parse
+      // If we have cardInfo and the error is about parsing, the redemption might have succeeded
+      if (errorMessage.includes('parse') || errorMessage.includes('JSON')) {
+        console.warn('[Manager GiftCards] Response parsing error, but redemption may have succeeded:', err);
+        // Try to show a success message and suggest refreshing
+        setSuccess(`⚠️ Redemption may have been processed. Please check the balance or refresh.`);
+      } else {
+        console.error('[Manager GiftCards] Error in handleRedeem:', err);
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -382,12 +429,18 @@ function GiftCardsContent() {
                     type="text"
                     id="cardNumber"
                     value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value.toUpperCase())}
-                    placeholder="SWXXXXXXXXXXXX"
-                    maxLength={16}
+                    onChange={(e) => {
+                      // Only allow digits and spaces, remove all other characters
+                      const cleaned = e.target.value.replace(/[^\d\s]/g, '');
+                      // Auto-format with spaces every 4 digits (for display)
+                      const formatted = cleaned.replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim();
+                      setCardNumber(formatted);
+                    }}
+                    placeholder="1234 5678 9012 3456"
+                    maxLength={19} // 16 digits + 3 spaces
                     className="w-full rounded-lg border border-gray-300 px-4 py-3 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm font-mono"
                   />
-                  <p className="mt-1 text-xs text-gray-500">16-character card number starting with SW</p>
+                  <p className="mt-1 text-xs text-gray-500">Enter 16-digit card number (spaces are optional)</p>
                 </div>
 
                 {cardNumber && (
@@ -525,23 +578,31 @@ function GiftCardsContent() {
                   
                   {/* Quick amount buttons */}
                   <div className="flex gap-2 mt-3">
-                    {[5, 10, 25, cardInfo.currentBalance].map((amount) => {
-                      const displayAmount = amount === cardInfo.currentBalance ? "Full" : `$${amount}`;
-                      const actualAmount = amount === cardInfo.currentBalance ? cardInfo.currentBalance : amount;
-                      
-                      if (actualAmount > cardInfo.currentBalance) return null;
-                      
-                      return (
-                        <button
-                          key={amount}
-                          type="button"
-                          onClick={() => setRedeemAmount(actualAmount.toFixed(2))}
-                          className="flex-1 px-3 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                        >
-                          {displayAmount}
-                        </button>
+                    {(() => {
+                      const presetAmounts = [5, 10, 25];
+                      // Filter out preset amounts that match the current balance (to avoid duplicates)
+                      const uniquePresets = presetAmounts.filter(amount => 
+                        amount <= cardInfo.currentBalance && amount !== cardInfo.currentBalance
                       );
-                    })}
+                      // Always include "Full" option at the end
+                      const quickAmounts = [...uniquePresets, cardInfo.currentBalance];
+                      
+                      return quickAmounts.map((amount, index) => {
+                        const isFull = amount === cardInfo.currentBalance;
+                        const displayAmount = isFull ? "Full" : `$${amount}`;
+                        
+                        return (
+                          <button
+                            key={`quick-amount-${isFull ? 'full' : amount}-${index}`}
+                            type="button"
+                            onClick={() => setRedeemAmount(amount.toFixed(2))}
+                            className="flex-1 px-3 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                          >
+                            {displayAmount}
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
 

@@ -32,13 +32,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize card number: remove spaces and trim (card numbers are stored without spaces)
+    const normalizedBody = { ...body };
+    if (normalizedBody.cardNumber) {
+      normalizedBody.cardNumber = normalizedBody.cardNumber.replace(/\s/g, '').trim();
+      console.log('[Manager CheckBalance] Normalized card number:', normalizedBody.cardNumber, '(original:', body.cardNumber, ')');
+    }
+    if (normalizedBody.cardCode) {
+      console.log('[Manager CheckBalance] Using cardCode (QR):', normalizedBody.cardCode.substring(0, 50));
+    }
+
     const response = await fetch(`${API_BASE}/manager/gift-cards/check-balance`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.user.access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(normalizedBody),
     });
 
     if (!response.ok) {
