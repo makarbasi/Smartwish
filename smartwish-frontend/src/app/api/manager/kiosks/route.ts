@@ -19,32 +19,50 @@ export async function GET(request: NextRequest) {
 
     console.log('Fetching kiosks for manager, user ID:', session.user.id);
 
-    const response = await fetch(`${API_BASE}/managers/my-kiosks`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${session.user.access_token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/managers/my-kiosks`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${session.user.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (fetchError: any) {
+      console.error('Error fetching from backend:', fetchError);
+      return NextResponse.json(
+        { error: 'Failed to connect to backend', message: fetchError?.message },
+        { status: 503 }
+      );
+    }
 
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const text = await response.text();
-      console.error('Non-JSON response from backend:', text);
+      console.error('Non-JSON response from backend:', text.substring(0, 500));
       return NextResponse.json(
-        { error: text || 'Backend returned non-JSON response' },
+        { error: 'Backend returned non-JSON response', details: text.substring(0, 500) },
         { status: response.status || 500 }
       );
     }
 
-    const data = await response.json();
-    console.log('Backend response:', JSON.stringify(data, null, 2));
+    let data: any;
+    try {
+      data = await response.json();
+      console.log('Backend response received, status:', response.status);
+    } catch (parseError: any) {
+      console.error('Error parsing backend response:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON response from backend', message: parseError?.message },
+        { status: 500 }
+      );
+    }
 
     if (!response.ok) {
-      console.error('Backend error:', data);
+      console.error('Backend error response:', data);
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch kiosks' },
-        { status: response.status }
+        { error: data.message || data.error || 'Failed to fetch kiosks', details: data },
+        { status: response.status || 500 }
       );
     }
 
@@ -54,8 +72,17 @@ export async function GET(request: NextRequest) {
     console.log('Kiosks array length:', kiosksArray.length);
     
     // Get all kiosk IDs to check for active sessions and device heartbeats
-    const kioskIds = kiosksArray.map((k: any) => k.kioskId);
+    // Filter out any undefined/null kioskIds
+    const kioskIds = kiosksArray
+      .map((k: any) => k.kioskId)
+      .filter((id: string) => id != null && id !== undefined);
     console.log('[Manager Kiosks] Checking status for kiosk IDs:', kioskIds);
+    
+    // If no kiosks, return empty array early
+    if (kiosksArray.length === 0) {
+      console.log('[Manager Kiosks] No kiosks found, returning empty array');
+      return NextResponse.json({ kiosks: [] });
+    }
     
     // Check for active sessions (outcome = 'in_progress' and ended_at IS NULL)
     let kiosksWithActiveSessions: Set<string> = new Set();
@@ -69,13 +96,18 @@ export async function GET(request: NextRequest) {
     let kioskConfigsMap: Map<string, { lastHeartbeat?: string }> = new Map();
     let kioskConfigsData: any[] = [];
     
-    if (kioskIds.length > 0) {
+    if (kioskIds.length > 0 && kioskIds.every(id => id != null && id !== '')) {
       try {
         // Get kiosk configs from Supabase to check heartbeats
+        // Only query if we have valid kiosk IDs
         const { data: kioskConfigs, error: configError } = await supabase
           .from('kiosk_configs')
           .select('id, kiosk_id, config')
-          .in('kiosk_id', kioskIds);
+          .in('kiosk_id', kioskIds.filter(id => id != null && id !== ''));
+        
+        if (configError) {
+          console.error('[Manager Kiosks] Error fetching kiosk configs:', configError);
+        }
         
         if (!configError && kioskConfigs) {
           kioskConfigsData = kioskConfigs; // Store for cleanup later
@@ -94,10 +126,14 @@ export async function GET(request: NextRequest) {
         const { data: activeSessions, error: sessionError } = await supabase
           .from('kiosk_sessions')
           .select('kiosk_id, started_at, outcome, ended_at')
-          .in('kiosk_id', kioskIds)
+          .in('kiosk_id', kioskIds.filter(id => id != null && id !== ''))
           .eq('outcome', 'in_progress')
           .is('ended_at', null)
           .gte('started_at', twentyFourHoursAgo.toISOString());
+        
+        if (sessionError) {
+          console.error('[Manager Kiosks] Error fetching active sessions:', sessionError);
+        }
         
         if (!sessionError && activeSessions) {
           kiosksWithActiveSessions = new Set(activeSessions.map((s: any) => s.kiosk_id));
@@ -108,13 +144,17 @@ export async function GET(request: NextRequest) {
         }
         
         // Auto-end stale sessions (older than 24h)
-        const { data: staleSessions } = await supabase
+        const { data: staleSessions, error: staleSessionsError } = await supabase
           .from('kiosk_sessions')
           .select('id, kiosk_id, started_at')
-          .in('kiosk_id', kioskIds)
+          .in('kiosk_id', kioskIds.filter(id => id != null && id !== ''))
           .eq('outcome', 'in_progress')
           .is('ended_at', null)
           .lt('started_at', twentyFourHoursAgo.toISOString());
+        
+        if (staleSessionsError) {
+          console.error('[Manager Kiosks] Error fetching stale sessions:', staleSessionsError);
+        }
         
         if (staleSessions && staleSessions.length > 0) {
           console.log('[Manager Kiosks] Auto-ending', staleSessions.length, 'stale sessions');
@@ -133,33 +173,45 @@ export async function GET(request: NextRequest) {
         const fiveMinutesAgo = new Date();
         fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
         
-        for (const kioskConfig of kioskConfigsData) {
-          const kioskId = kioskConfig.kiosk_id;
-          const heartbeat = kioskConfig.config?.lastHeartbeat;
-          
-          // Clear heartbeat if it's older than 5 minutes (browser likely closed)
-          if (heartbeat) {
+        if (kioskConfigsData && kioskConfigsData.length > 0) {
+          for (const kioskConfig of kioskConfigsData) {
             try {
-              const heartbeatDate = new Date(heartbeat);
-              if (heartbeatDate < fiveMinutesAgo) {
-                const minutesOld = Math.floor((Date.now() - heartbeatDate.getTime()) / 1000 / 60);
-                console.log(`[Manager Kiosks] Clearing stale heartbeat for kiosk ${kioskId} (heartbeat ${minutesOld} minutes old - browser likely closed)`);
-                
-                const updatedConfig = {
-                  ...(kioskConfig.config || {}),
-                  lastHeartbeat: null, // Clear the stale heartbeat
-                };
-                
-                await supabase
-                  .from('kiosk_configs')
-                  .update({
-                    config: updatedConfig,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('kiosk_id', kioskId);
+              const kioskId = kioskConfig?.kiosk_id;
+              const heartbeat = kioskConfig?.config?.lastHeartbeat;
+              
+              if (!kioskId) {
+                console.warn('[Manager Kiosks] Skipping heartbeat cleanup - missing kiosk_id');
+                continue;
+              }
+              
+              // Clear heartbeat if it's older than 5 minutes (browser likely closed)
+              if (heartbeat) {
+                const heartbeatDate = new Date(heartbeat);
+                if (heartbeatDate < fiveMinutesAgo) {
+                  const minutesOld = Math.floor((Date.now() - heartbeatDate.getTime()) / 1000 / 60);
+                  console.log(`[Manager Kiosks] Clearing stale heartbeat for kiosk ${kioskId} (heartbeat ${minutesOld} minutes old - browser likely closed)`);
+                  
+                  const updatedConfig = {
+                    ...(kioskConfig.config || {}),
+                    lastHeartbeat: null, // Clear the stale heartbeat
+                  };
+                  
+                  const { error: updateError } = await supabase
+                    .from('kiosk_configs')
+                    .update({
+                      config: updatedConfig,
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('kiosk_id', kioskId);
+                  
+                  if (updateError) {
+                    console.error(`[Manager Kiosks] Error updating heartbeat for ${kioskId}:`, updateError);
+                  }
+                }
               }
             } catch (error) {
-              console.error(`[Manager Kiosks] Error clearing stale heartbeat for ${kioskId}:`, error);
+              console.error(`[Manager Kiosks] Error clearing stale heartbeat:`, error);
+              // Continue processing other kiosks even if one fails
             }
           }
         }
@@ -169,16 +221,17 @@ export async function GET(request: NextRequest) {
     }
     
     const transformedKiosks = kiosksArray.map((kiosk: any) => {
-      // Check if there's an active user session first
-      const hasActiveSession = kiosksWithActiveSessions.has(kiosk.kioskId);
-      
-      // Get heartbeat from both backend config and Supabase config (backend might have cached data)
-      const backendHeartbeat = kiosk.config?.lastHeartbeat;
-      const supabaseConfig = kioskConfigsMap.get(kiosk.kioskId);
-      const supabaseHeartbeat = supabaseConfig?.lastHeartbeat;
-      
-      // Use the most recent heartbeat (prefer Supabase as it's the source of truth)
-      const lastHeartbeat = supabaseHeartbeat || backendHeartbeat;
+      try {
+        // Check if there's an active user session first
+        const hasActiveSession = kiosksWithActiveSessions.has(kiosk.kioskId);
+        
+        // Get heartbeat from both backend config and Supabase config (backend might have cached data)
+        const backendHeartbeat = kiosk.config?.lastHeartbeat;
+        const supabaseConfig = kioskConfigsMap.get(kiosk.kioskId);
+        const supabaseHeartbeat = supabaseConfig?.lastHeartbeat;
+        
+        // Use the most recent heartbeat (prefer Supabase as it's the source of truth)
+        const lastHeartbeat = supabaseHeartbeat || backendHeartbeat;
       
       console.log(`[Manager Kiosks] Processing kiosk ${kiosk.kioskId}:`, {
         hasConfig: !!kiosk.config,
@@ -234,25 +287,48 @@ export async function GET(request: NextRequest) {
         sessionStatusReason: hasActiveSession ? 'User actively using kiosk' : 'No active user session (idle or timed out)',
       });
       
-      return {
-        id: kiosk.id,
-        kioskId: kiosk.kioskId,
-        name: kiosk.name || kiosk.kioskId,
-        location: kiosk.config?.location || kiosk.storeId || null,
-        status: kiosk.isActive !== undefined ? (kiosk.isActive ? 'active' : 'inactive') : 'active',
-        isOnline: isDeviceOnline, // Device online status (based on heartbeat + active session)
-        hasActiveSession, // Active user session status
-        printerStatus: kiosk.config?.printerStatus || null,
-        lastPrintAt: kiosk.config?.lastPrintAt || null,
-        printCount: kiosk.config?.printCount || 0,
-        lastHeartbeat: lastHeartbeat || null,
-        createdAt: kiosk.assignedAt || kiosk.createdAt || new Date().toISOString(),
-      };
+        return {
+          id: kiosk.id,
+          kioskId: kiosk.kioskId,
+          name: kiosk.name || kiosk.kioskId,
+          location: kiosk.config?.location || kiosk.storeId || null,
+          status: kiosk.isActive !== undefined ? (kiosk.isActive ? 'active' : 'inactive') : 'active',
+          isOnline: isDeviceOnline, // Device online status (based on heartbeat)
+          hasActiveSession, // Active user session status
+          printerStatus: kiosk.config?.printerStatus || null,
+          lastPrintAt: kiosk.config?.lastPrintAt || null,
+          printCount: kiosk.config?.printCount || 0,
+          lastHeartbeat: lastHeartbeat || null,
+          createdAt: kiosk.assignedAt || kiosk.createdAt || new Date().toISOString(),
+        };
+      } catch (error) {
+        console.error(`[Manager Kiosks] Error processing kiosk ${kiosk?.kioskId || 'unknown'}:`, error);
+        // Return a safe default object if processing fails
+        return {
+          id: kiosk?.id || '',
+          kioskId: kiosk?.kioskId || '',
+          name: kiosk?.name || kiosk?.kioskId || 'Unknown',
+          location: kiosk?.config?.location || kiosk?.storeId || null,
+          status: 'active',
+          isOnline: false,
+          hasActiveSession: false,
+          printerStatus: null,
+          lastPrintAt: null,
+          printCount: 0,
+          lastHeartbeat: null,
+          createdAt: kiosk?.assignedAt || kiosk?.createdAt || new Date().toISOString(),
+        };
+      }
     });
 
     return NextResponse.json({ kiosks: transformedKiosks });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching kiosks:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error stack:', error?.stack);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      message: error?.message || 'Unknown error',
+      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    }, { status: 500 });
   }
 }
