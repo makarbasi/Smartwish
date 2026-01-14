@@ -67,22 +67,29 @@ export async function POST(request: NextRequest) {
     const durationSeconds = Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000);
 
     // Update session
-    const { error: updateError } = await supabase
+    const { data: updatedSession, error: updateError } = await supabase
       .from('kiosk_sessions')
       .update({
         ended_at: endedAt.toISOString(),
         duration_seconds: durationSeconds,
         outcome,
       })
-      .eq('id', sessionId);
+      .eq('id', sessionId)
+      .select('id, kiosk_id, outcome, ended_at')
+      .single();
 
     if (updateError) {
-      console.error('Error ending session:', updateError);
+      console.error('[Session End] Error ending session:', updateError);
       return NextResponse.json(
         { error: 'Failed to end session' },
         { status: 500 }
       );
     }
+
+    console.log(`[Session End] Successfully ended session ${sessionId} for kiosk ${updatedSession?.kiosk_id}:`, {
+      outcome: updatedSession?.outcome,
+      ended_at: updatedSession?.ended_at,
+    });
 
     // Log session_end event
     const { error: eventError } = await supabase

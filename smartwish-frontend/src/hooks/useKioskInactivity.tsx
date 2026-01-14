@@ -17,8 +17,8 @@ interface UseKioskInactivityOptions {
 const MOUSE_MOVE_THROTTLE = 5000; // milliseconds
 const TOUCH_MOVE_THROTTLE = 5000; // milliseconds
 
-// Pages where screen saver should never appear
-const EXCLUDED_PATHS = ['/admin', '/managers'];
+// Pages where screen saver and timeout should never appear
+const EXCLUDED_PATHS = ['/admin', '/manager', '/managers'];
 
 // QR code upload timeout (matches the session TTL)
 const QR_UPLOAD_TIMEOUT = 10 * 60 * 1000; // 10 minutes
