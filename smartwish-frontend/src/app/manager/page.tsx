@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   CreditCardIcon,
@@ -12,6 +13,8 @@ import {
   BanknotesIcon,
   ComputerDesktopIcon,
   CurrencyDollarIcon,
+  DevicePhoneMobileIcon,
+  VideoCameraIcon,
 } from "@heroicons/react/24/outline";
 
 interface PrintStats {
@@ -22,6 +25,26 @@ interface PrintStats {
   transactionFees: number;
   netProfit: number;
   storeOwnerShare: number;
+}
+
+interface KioskInfo {
+  id: string;
+  kioskId: string;
+  name: string | null;
+  isActive: boolean;
+  storeId: string;
+  apiKey?: string;
+  surveillance?: {
+    enabled?: boolean;
+    webcamIndex?: number;
+    httpPort?: number;
+  };
+}
+
+interface PairingStatus {
+  paired: boolean;
+  kioskId: string | null;
+  kioskName: string | null;
 }
 
 const quickActions = [
@@ -35,8 +58,85 @@ const quickActions = [
 ];
 
 export default function ManagerDashboard() {
+  const searchParams = useSearchParams();
+  const isPairingMode = searchParams.get('pair') === 'true';
+  const pairingPort = searchParams.get('port') || '8766';
+
   const [stats, setStats] = useState<PrintStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [kiosks, setKiosks] = useState<KioskInfo[]>([]);
+  const [pairingStatus, setPairingStatus] = useState<PairingStatus | null>(null);
+  const [pairingInProgress, setPairingInProgress] = useState<string | null>(null);
+  const [pairingError, setPairingError] = useState<string | null>(null);
+  const [pairingSuccess, setPairingSuccess] = useState<string | null>(null);
+
+  // Check local agent pairing status
+  const checkPairingStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`http://localhost:${pairingPort}/status`, {
+        method: 'GET',
+      });
+      if (response.ok) {
+        const status = await response.json();
+        setPairingStatus(status);
+        return status;
+      }
+    } catch {
+      // Local agent not running, that's okay
+      setPairingStatus(null);
+    }
+    return null;
+  }, [pairingPort]);
+
+  // Load kiosks for pairing
+  const loadKiosks = useCallback(async () => {
+    try {
+      const response = await fetch('/api/manager/kiosks');
+      if (response.ok) {
+        const data = await response.json();
+        // API returns { kiosks: [...] }
+        setKiosks(data.kiosks || data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load kiosks:', error);
+    }
+  }, []);
+
+  // Pair device with a kiosk
+  const pairDevice = async (kiosk: KioskInfo) => {
+    setPairingInProgress(kiosk.kioskId);
+    setPairingError(null);
+    setPairingSuccess(null);
+
+    try {
+      const response = await fetch(`http://localhost:${pairingPort}/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kioskId: kiosk.kioskId,
+          kioskName: kiosk.name || kiosk.kioskId,
+          apiKey: kiosk.apiKey,
+          storeId: kiosk.storeId,
+          config: {
+            surveillance: kiosk.surveillance || { enabled: false },
+          },
+          pairedBy: 'manager',
+        }),
+      });
+
+      if (response.ok) {
+        setPairingSuccess(kiosk.name || kiosk.kioskId);
+        await checkPairingStatus();
+      } else {
+        const error = await response.json();
+        setPairingError(error.error || 'Failed to pair device');
+      }
+    } catch (err) {
+      setPairingError('Cannot connect to local agent. Make sure the print agent is running on this device.');
+    } finally {
+      setPairingInProgress(null);
+    }
+  };
 
   useEffect(() => {
     const loadStats = async () => {
@@ -54,7 +154,13 @@ export default function ManagerDashboard() {
     };
 
     loadStats();
-  }, []);
+
+    // If in pairing mode, check status and load kiosks
+    if (isPairingMode) {
+      checkPairingStatus();
+      loadKiosks();
+    }
+  }, [isPairingMode, checkPairingStatus, loadKiosks]);
 
   return (
     <div className="py-6 px-4 sm:px-6 lg:px-8">
@@ -67,6 +173,114 @@ export default function ManagerDashboard() {
           Welcome to the SmartWish Manager Portal. Manage gift cards, view earnings, and monitor your kiosks.
         </p>
       </div>
+
+      {/* Device Pairing Section - Only show when in pairing mode */}
+      {isPairingMode && (
+        <div className="mb-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="flex items-center gap-3 mb-4">
+            <DevicePhoneMobileIcon className="h-8 w-8" />
+            <div>
+              <h2 className="text-xl font-bold">Device Pairing</h2>
+              <p className="text-sm opacity-90">Connect this device to a kiosk</p>
+            </div>
+          </div>
+
+          {/* Current pairing status */}
+          {pairingStatus?.paired && (
+            <div className="bg-white/20 rounded-lg p-4 mb-4">
+              <p className="text-sm opacity-90">Currently paired to:</p>
+              <p className="text-lg font-bold">{pairingStatus.kioskName || pairingStatus.kioskId}</p>
+            </div>
+          )}
+
+          {/* Success message */}
+          {pairingSuccess && (
+            <div className="bg-green-500/30 border border-green-300/50 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2">
+                <CheckCircleIcon className="h-6 w-6 text-green-200" />
+                <div>
+                  <p className="font-medium">Successfully paired!</p>
+                  <p className="text-sm opacity-90">This device is now connected to: {pairingSuccess}</p>
+                  <p className="text-sm opacity-90 mt-1">The local agent will now start surveillance and print services.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Error message */}
+          {pairingError && (
+            <div className="bg-red-500/30 border border-red-300/50 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2">
+                <XCircleIcon className="h-6 w-6 text-red-200" />
+                <div>
+                  <p className="font-medium">Pairing failed</p>
+                  <p className="text-sm opacity-90">{pairingError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Kiosk selection */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Select a kiosk to pair with this device:</p>
+            {kiosks.length === 0 ? (
+              <p className="text-sm opacity-80">Loading kiosks...</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {kiosks.map((kiosk) => (
+                  <div
+                    key={kiosk.kioskId}
+                    className="bg-white/10 rounded-lg p-4 border border-white/20"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{kiosk.name || kiosk.kioskId}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`w-2 h-2 rounded-full ${kiosk.isActive ? 'bg-green-400' : 'bg-gray-400'}`} />
+                          <span className="text-xs opacity-80">{kiosk.isActive ? 'Active' : 'Inactive'}</span>
+                          {kiosk.surveillance?.enabled && (
+                            <span className="flex items-center gap-1 text-xs opacity-80">
+                              <VideoCameraIcon className="h-3 w-3" />
+                              Surveillance
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => pairDevice(kiosk)}
+                        disabled={pairingInProgress === kiosk.kioskId || pairingStatus?.kioskId === kiosk.kioskId}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          pairingStatus?.kioskId === kiosk.kioskId
+                            ? 'bg-green-500 text-white cursor-default'
+                            : pairingInProgress === kiosk.kioskId
+                            ? 'bg-white/20 text-white cursor-wait'
+                            : 'bg-white text-indigo-600 hover:bg-indigo-50'
+                        }`}
+                      >
+                        {pairingStatus?.kioskId === kiosk.kioskId
+                          ? '✓ Paired'
+                          : pairingInProgress === kiosk.kioskId
+                          ? 'Pairing...'
+                          : 'Pair Device'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-white/20 text-sm opacity-80">
+            <p><strong>How it works:</strong></p>
+            <ol className="list-decimal list-inside space-y-1 mt-2">
+              <li>Select a kiosk above to associate this device with it</li>
+              <li>The local print agent will receive the kiosk configuration</li>
+              <li>Surveillance and printing will start automatically</li>
+              <li>You can close this page after pairing is complete</li>
+            </ol>
+          </div>
+        </div>
+      )}
 
       {/* Earnings Summary */}
       {!loading && stats && (
