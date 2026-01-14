@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer as supabase } from '@/lib/supabaseServer';
+import { sendChatNotificationEmail } from '@/lib/emailService';
 
 /**
  * POST /api/kiosk/chat/send
@@ -8,9 +9,9 @@ import { supabaseServer as supabase } from '@/lib/supabaseServer';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { message, kioskId } = body;
+    const { message, kioskId, sessionId } = body;
 
-    console.log('[Kiosk Chat Send] Received request:', { kioskId, messageLength: message?.length });
+    console.log('[Kiosk Chat Send] Received request:', { kioskId, sessionId, messageLength: message?.length });
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       console.error('[Kiosk Chat Send] Invalid message:', { message, type: typeof message });
@@ -35,10 +36,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify kiosk exists
+    // Verify kiosk exists and get name
     const { data: kiosk, error: kioskError } = await supabase
       .from('kiosk_configs')
-      .select('kiosk_id, is_active')
+      .select('kiosk_id, is_active, name')
       .eq('kiosk_id', kioskId)
       .single();
 
@@ -57,11 +58,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert message
+    // Insert message with session_id for session isolation
     const { data: chatMessage, error: insertError } = await supabase
       .from('kiosk_chat_messages')
       .insert({
         kiosk_id: kioskId,
+        session_id: sessionId || null, // Include session_id for session isolation
         sender_type: 'kiosk',
         sender_id: null,
         message: message.trim(),
@@ -79,6 +81,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Kiosk Chat] Message sent from kiosk ${kioskId}: ${message.substring(0, 50)}...`);
+
+    // Send email notification to admin (non-blocking)
+    sendChatNotificationEmail({
+      kioskId,
+      kioskName: kiosk.name || 'Unknown Kiosk',
+      message: message.trim(),
+      senderType: 'kiosk',
+    }).catch(err => {
+      console.error('[Kiosk Chat] Email notification failed (non-blocking):', err);
+    });
 
     return NextResponse.json({
       success: true,

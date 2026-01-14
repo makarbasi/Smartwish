@@ -35,11 +35,32 @@ export async function GET(
       );
     }
 
-    // Build query
+    // Find the current active session for this kiosk
+    // (most recent session with messages)
+    const { data: latestSession } = await supabase
+      .from('kiosk_chat_messages')
+      .select('session_id')
+      .eq('kiosk_id', kioskId)
+      .not('session_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const currentSessionId = latestSession?.session_id;
+    console.log(`[Admin Chat] Current session for kiosk ${kioskId}: ${currentSessionId}`);
+
+    // Build query - only fetch messages from current session
     let query = supabase
       .from('kiosk_chat_messages')
       .select('*')
-      .eq('kiosk_id', kioskId)
+      .eq('kiosk_id', kioskId);
+    
+    // Filter by current session if one exists
+    if (currentSessionId) {
+      query = query.eq('session_id', currentSessionId);
+    }
+    
+    query = query
       .order('created_at', { ascending: false })
       .limit(limit);
 

@@ -111,8 +111,17 @@ export function useKioskInactivity({
                         localStorage.removeItem(key);
                     }
                 });
-                sessionStorage.clear();
-                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data");
+                
+                // Clear sessionStorage but preserve chat session key (already reset by resetSession)
+                const sessionKeysToKeep = ['kiosk_chat_session_'];
+                const sessionKeys = Object.keys(sessionStorage);
+                sessionKeys.forEach(key => {
+                    const shouldKeep = sessionKeysToKeep.some(prefix => key.startsWith(prefix));
+                    if (!shouldKeep) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
+                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data (preserved chat session)");
             } catch (error) {
                 console.error("🖥️ [KioskInactivity] Error clearing storage:", error);
             }

@@ -9,6 +9,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const kioskId = searchParams.get('kioskId');
+  const sessionId = searchParams.get('sessionId'); // Session ID for filtering messages
 
   if (!kioskId) {
     return new Response(
@@ -16,6 +17,8 @@ export async function GET(request: NextRequest) {
       { status: 400, headers: { 'Content-Type': 'application/json' } }
     );
   }
+
+  console.log('[Kiosk Chat Stream] Starting stream for kiosk:', kioskId, 'session:', sessionId);
 
   // Verify kiosk exists
   const { data: kiosk, error: kioskError } = await supabaseServer
@@ -47,17 +50,23 @@ export async function GET(request: NextRequest) {
         controller.enqueue(encoder.encode(message));
       };
 
-      sendMessage({ type: 'connected', kioskId });
+      sendMessage({ type: 'connected', kioskId, sessionId });
       sendMessage({ type: 'status', status: 'connected' });
 
       // Load recent messages to avoid sending duplicates
       // Get messages from the last 30 seconds to build a set of known IDs
-      const { data: recentMessages } = await supabaseServer
+      let recentQuery = supabaseServer
         .from('kiosk_chat_messages')
         .select('id, created_at')
         .eq('kiosk_id', kioskId)
-        .gte('created_at', new Date(Date.now() - 30000).toISOString())
-        .order('created_at', { ascending: false });
+        .gte('created_at', new Date(Date.now() - 30000).toISOString());
+      
+      // STRICT: Only get messages from this session
+      if (sessionId) {
+        recentQuery = recentQuery.eq('session_id', sessionId);
+      }
+      
+      const { data: recentMessages } = await recentQuery.order('created_at', { ascending: false });
 
       if (recentMessages && recentMessages.length > 0) {
         recentMessages.forEach((msg) => lastMessageIds.add(msg.id));
@@ -71,12 +80,19 @@ export async function GET(request: NextRequest) {
       // Poll for new messages every 2 seconds
       const pollForMessages = async () => {
         try {
-          const { data: newMessages, error } = await supabaseServer
+          // Build query for new messages
+          let newMsgQuery = supabaseServer
             .from('kiosk_chat_messages')
             .select('*')
             .eq('kiosk_id', kioskId)
-            .gt('created_at', lastMessageTime)
-            .order('created_at', { ascending: true });
+            .gt('created_at', lastMessageTime);
+          
+          // STRICT: Only get messages from this session
+          if (sessionId) {
+            newMsgQuery = newMsgQuery.eq('session_id', sessionId);
+          }
+          
+          const { data: newMessages, error } = await newMsgQuery.order('created_at', { ascending: true });
 
           if (error) {
             console.error('[Kiosk Chat Stream] Poll error:', error);
@@ -101,12 +117,18 @@ export async function GET(request: NextRequest) {
           }
 
           // Also check for updated messages (read status changes)
-          const { data: updatedMessages } = await supabaseServer
+          let updatedQuery = supabaseServer
             .from('kiosk_chat_messages')
             .select('*')
             .eq('kiosk_id', kioskId)
-            .gt('updated_at', lastMessageTime)
-            .order('updated_at', { ascending: true });
+            .gt('updated_at', lastMessageTime);
+          
+          // STRICT: Only get messages from this session
+          if (sessionId) {
+            updatedQuery = updatedQuery.eq('session_id', sessionId);
+          }
+          
+          const { data: updatedMessages } = await updatedQuery.order('updated_at', { ascending: true });
 
           if (updatedMessages && updatedMessages.length > 0) {
             updatedMessages.forEach((message) => {

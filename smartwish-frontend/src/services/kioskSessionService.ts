@@ -44,7 +44,11 @@ interface PersistedSessionState {
   state: SessionState;
   currentPage: string;
   pageEnteredAt: number;
+  persistedAt: number; // Timestamp when state was saved
 }
+
+// Maximum age of persisted session (30 minutes)
+const MAX_SESSION_AGE_MS = 30 * 60 * 1000;
 
 // ==================== Service Class ====================
 
@@ -75,6 +79,7 @@ class KioskSessionService {
         state: this.state,
         currentPage: this.currentPage,
         pageEnteredAt: this.pageEnteredAt,
+        persistedAt: Date.now(),
       };
       try {
         sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(state));
@@ -94,6 +99,14 @@ class KioskSessionService {
       if (stored) {
         const state: PersistedSessionState = JSON.parse(stored);
         
+        // Check if session is too old
+        const age = Date.now() - (state.persistedAt || 0);
+        if (age > MAX_SESSION_AGE_MS) {
+          console.log('[SessionService] Persisted session too old, clearing');
+          this.clearPersistedState();
+          return;
+        }
+        
         // Only recover if session was active
         if (state.state === 'active' && state.sessionId) {
           this.sessionId = state.sessionId;
@@ -110,6 +123,8 @@ class KioskSessionService {
       }
     } catch (error) {
       console.warn('[SessionService] Failed to recover session state:', error);
+      // Clear potentially corrupted state
+      this.clearPersistedState();
     }
   }
 
@@ -443,6 +458,16 @@ class KioskSessionService {
         if (response.ok) {
           console.log(`[SessionService] Flushed ${eventsToSend.length} events`);
           return;
+        }
+
+        // If session is invalid (400), clear the persisted state and stop trying
+        if (response.status === 400) {
+          console.warn('[SessionService] Session invalid (400), clearing state');
+          this.clearPersistedState();
+          this.sessionId = null;
+          this.state = 'idle';
+          this.stopBatchTimer();
+          return; // Don't retry, session is invalid
         }
 
         throw new Error(`HTTP ${response.status}`);
