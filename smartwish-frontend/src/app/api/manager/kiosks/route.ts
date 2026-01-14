@@ -128,26 +128,26 @@ export async function GET(request: NextRequest) {
             .in('id', staleSessionIds);
         }
         
-        // Clear stale heartbeats for kiosks without active sessions
-        // If a kiosk has no active session but has a heartbeat older than 5 minutes, clear it
+        // Clear stale heartbeats (older than 5 minutes)
+        // This indicates the browser was closed or stopped sending heartbeats
         const fiveMinutesAgo = new Date();
         fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
         
         for (const kioskConfig of kioskConfigsData) {
           const kioskId = kioskConfig.kiosk_id;
-          const hasActiveSession = kiosksWithActiveSessions.has(kioskId);
           const heartbeat = kioskConfig.config?.lastHeartbeat;
           
-          // If no active session and heartbeat is stale (older than 5 minutes), clear it
-          if (!hasActiveSession && heartbeat) {
+          // Clear heartbeat if it's older than 5 minutes (browser likely closed)
+          if (heartbeat) {
             try {
               const heartbeatDate = new Date(heartbeat);
               if (heartbeatDate < fiveMinutesAgo) {
-                console.log(`[Manager Kiosks] Clearing stale heartbeat for kiosk ${kioskId} (no active session, heartbeat ${Math.floor((Date.now() - heartbeatDate.getTime()) / 1000 / 60)} minutes old)`);
+                const minutesOld = Math.floor((Date.now() - heartbeatDate.getTime()) / 1000 / 60);
+                console.log(`[Manager Kiosks] Clearing stale heartbeat for kiosk ${kioskId} (heartbeat ${minutesOld} minutes old - browser likely closed)`);
                 
                 const updatedConfig = {
                   ...(kioskConfig.config || {}),
-                  lastHeartbeat: null, // Clear the heartbeat
+                  lastHeartbeat: null, // Clear the stale heartbeat
                 };
                 
                 await supabase
@@ -190,17 +190,16 @@ export async function GET(request: NextRequest) {
       
       let isDeviceOnline = false;
       
-      // Device is ONLY online if:
-      // 1. There's a recent heartbeat (within last 2 minutes) AND
-      // 2. There's an active session (browser is open)
-      // This ensures we don't show devices as online when browser is closed
-      if (lastHeartbeat && hasActiveSession) {
+      // Device is online if there's a recent heartbeat (within last 2 minutes)
+      // This indicates the browser is open and responsive, regardless of active user session
+      // Active session is tracked separately to show if someone is actively using the kiosk
+      if (lastHeartbeat) {
         try {
           const heartbeatDate = new Date(lastHeartbeat);
           const now = new Date();
           const minutesSinceHeartbeat = (now.getTime() - heartbeatDate.getTime()) / 1000 / 60;
           
-          // Device is online ONLY if heartbeat was within last 2 minutes AND there's an active session
+          // Device is online if heartbeat was within last 2 minutes (browser is open)
           isDeviceOnline = heartbeatDate > twoMinutesAgo && heartbeatDate <= now;
           
           console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} status check:`, {
@@ -215,26 +214,24 @@ export async function GET(request: NextRequest) {
           });
           
           if (!isDeviceOnline) {
-            console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is offline: heartbeat is stale (${minutesSinceHeartbeat.toFixed(2)} minutes old)`);
+            console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is offline: heartbeat is stale (${minutesSinceHeartbeat.toFixed(2)} minutes old) - browser likely closed`);
+          } else {
+            console.log(`[Manager Kiosk] Kiosk ${kiosk.kioskId} is online: browser is open and responsive`);
           }
         } catch (error) {
           console.error(`[Manager Kiosks] Error parsing heartbeat for ${kiosk.kioskId}:`, error, lastHeartbeat);
           isDeviceOnline = false;
         }
       } else {
-        if (!lastHeartbeat) {
-          console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is offline: no heartbeat`);
-        }
-        if (!hasActiveSession) {
-          console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is offline: no active session (browser closed)`);
-        }
+        console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} is offline: no heartbeat (browser not open or not sending heartbeats)`);
       }
       
       console.log(`[Manager Kiosks] Kiosk ${kiosk.kioskId} final status:`, {
         isDeviceOnline,
         hasActiveSession,
         lastHeartbeat,
-        reason: !hasActiveSession ? 'No active session' : !lastHeartbeat ? 'No heartbeat' : 'Heartbeat too old',
+        deviceStatusReason: isDeviceOnline ? 'Browser open and responsive' : (!lastHeartbeat ? 'No heartbeat (browser closed)' : 'Heartbeat too old (browser likely closed)'),
+        sessionStatusReason: hasActiveSession ? 'User actively using kiosk' : 'No active user session (idle or timed out)',
       });
       
       return {
