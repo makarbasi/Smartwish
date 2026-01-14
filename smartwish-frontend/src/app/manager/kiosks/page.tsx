@@ -8,7 +8,10 @@ import {
   XCircleIcon,
   MapPinIcon,
   PrinterIcon,
+  PlayIcon,
+  LinkIcon,
 } from "@heroicons/react/24/outline";
+import Link from "next/link";
 
 interface Kiosk {
   id: string;
@@ -16,10 +19,12 @@ interface Kiosk {
   name: string;
   location?: string;
   status?: string;
-  isOnline?: boolean;
+  isOnline?: boolean; // Device online (based on heartbeat)
+  hasActiveSession?: boolean; // Active user session
   printerStatus?: string;
   lastPrintAt?: string;
   printCount?: number;
+  lastHeartbeat?: string | null;
   createdAt: string;
 }
 
@@ -121,7 +126,8 @@ export default function KiosksPage() {
                       <p className="text-sm text-teal-100">{kiosk.kioskId}</p>
                     </div>
                   </div>
-                  {kiosk.isOnline !== undefined && (
+                  <div className="flex flex-col items-end gap-1">
+                    {/* Device Online/Offline Status */}
                     <span
                       className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                         kiosk.isOnline
@@ -134,9 +140,25 @@ export default function KiosksPage() {
                           kiosk.isOnline ? "bg-green-400" : "bg-red-400"
                         }`}
                       />
-                      {kiosk.isOnline ? "Online" : "Offline"}
+                      {kiosk.isOnline ? "Device Online" : "Device Offline"}
                     </span>
-                  )}
+                    
+                    {/* Active Session Indicator - Always show */}
+                    <span
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                        kiosk.hasActiveSession
+                          ? "bg-blue-400/20 text-blue-100"
+                          : "bg-gray-400/20 text-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          kiosk.hasActiveSession ? "bg-blue-400 animate-pulse" : "bg-gray-400"
+                        }`}
+                      />
+                      {kiosk.hasActiveSession ? "Active Session" : "No Session"}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -176,6 +198,54 @@ export default function KiosksPage() {
                   </div>
                 </div>
 
+                {/* Device Status */}
+                <div className="pt-3 border-t border-gray-100 space-y-2">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Device Status</p>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${kiosk.isOnline ? "bg-green-500" : "bg-red-500"}`} />
+                      <span className="text-sm font-medium text-gray-900">
+                        {kiosk.isOnline ? "Online" : "Offline"}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {kiosk.lastHeartbeat ? (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Last Heartbeat</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {new Date(kiosk.lastHeartbeat).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {Math.floor((Date.now() - new Date(kiosk.lastHeartbeat).getTime()) / 1000 / 60)} minutes ago
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Last Heartbeat</p>
+                      <p className="text-sm font-medium text-gray-500">Never</p>
+                      <p className="text-xs text-gray-400 mt-1">Device has not sent heartbeat</p>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">User Session</p>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          kiosk.hasActiveSession ? "bg-blue-500 animate-pulse" : "bg-gray-400"
+                        }`}
+                      />
+                      <p className={`text-sm font-medium ${kiosk.hasActiveSession ? "text-blue-600" : "text-gray-500"}`}>
+                        {kiosk.hasActiveSession ? "Active" : "None"}
+                      </p>
+                    </div>
+                    {kiosk.hasActiveSession && (
+                      <p className="text-xs text-gray-400 mt-1">Browser is open and responsive</p>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4 pt-3 border-t border-gray-100">
                   <div>
                     <p className="text-xs text-gray-500 uppercase">Total Prints</p>
@@ -192,9 +262,46 @@ export default function KiosksPage() {
                     </p>
                   </div>
                 </div>
+
+                {/* Activate Kiosk Button */}
+                <div className="pt-4 border-t border-gray-100">
+                  <Link
+                    href="/kiosk"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors"
+                  >
+                    <PlayIcon className="h-5 w-5" />
+                    Activate This Kiosk
+                  </Link>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Select this kiosk on the hardware device
+                  </p>
+                </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Info Box */}
+      {kiosks.length > 0 && (
+        <div className="mt-8 bg-teal-50 rounded-xl p-6 border border-teal-200">
+          <div className="flex items-start gap-3">
+            <LinkIcon className="h-6 w-6 text-teal-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-teal-900 mb-2">
+                How to Activate a Kiosk on Hardware
+              </h3>
+              <ol className="text-sm text-teal-800 space-y-2 list-decimal list-inside">
+                <li>Click "Activate This Kiosk" on the kiosk you want to use</li>
+                <li>You&apos;ll be taken to the kiosk activation page</li>
+                <li>If you&apos;re on the hardware device, select the kiosk to activate it</li>
+                <li>If you&apos;re not on the device, share the activation link with someone who has physical access</li>
+              </ol>
+              <p className="text-xs text-teal-700 mt-3">
+                <strong>Note:</strong> The activation must be done directly on the hardware device where the kiosk will run.
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

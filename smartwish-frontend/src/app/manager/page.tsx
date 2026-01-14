@@ -4,10 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   CreditCardIcon,
-  MagnifyingGlassIcon,
   MinusCircleIcon,
-  ClockIcon,
-  QrCodeIcon,
   PrinterIcon,
   CheckCircleIcon,
   XCircleIcon,
@@ -29,32 +26,11 @@ interface PrintStats {
 
 const quickActions = [
   {
-    name: "Scan QR Code",
-    description: "Scan a gift card QR to check balance & redeem",
-    href: "/manager/gift-cards?action=check",
-    icon: QrCodeIcon,
-    color: "bg-teal-500",
-  },
-  {
-    name: "Check Balance",
-    description: "Look up a gift card balance by card number",
-    href: "/manager/gift-cards?action=check",
-    icon: MagnifyingGlassIcon,
-    color: "bg-blue-500",
-  },
-  {
     name: "Redeem Gift Card",
-    description: "Deduct amount from a gift card",
-    href: "/manager/gift-cards?action=redeem",
+    description: "Scan QR code, check balance, and redeem from gift card",
+    href: "/manager/gift-cards",
     icon: MinusCircleIcon,
-    color: "bg-green-500",
-  },
-  {
-    name: "View Transactions",
-    description: "Check transaction history for a card",
-    href: "/manager/gift-cards?action=history",
-    icon: ClockIcon,
-    color: "bg-purple-500",
+    color: "bg-teal-500",
   },
 ];
 
@@ -177,8 +153,8 @@ export default function ManagerDashboard() {
 
       {/* Quick Actions */}
       <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Gift Card Actions</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {quickActions.map((action) => (
             <Link
               key={action.name}
@@ -267,15 +243,15 @@ export default function ManagerDashboard() {
             <ol className="space-y-3 text-sm text-gray-600">
               <li className="flex items-start">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600 text-xs font-medium mr-3">1</span>
-                <span><strong>Scan or Enter:</strong> Use the camera to scan the QR code or enter the 16-character card number.</span>
+                <span><strong>Scan QR Code:</strong> Use the camera to scan the gift card QR code, or enter the card number manually.</span>
               </li>
               <li className="flex items-start">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600 text-xs font-medium mr-3">2</span>
-                <span><strong>Verify PIN:</strong> Enter the 4-digit PIN provided with the gift card.</span>
+                <span><strong>Enter PIN:</strong> Enter the 4-digit PIN to verify and automatically load the balance.</span>
               </li>
               <li className="flex items-start">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600 text-xs font-medium mr-3">3</span>
-                <span><strong>Redeem:</strong> Enter the amount to deduct and confirm the transaction.</span>
+                <span><strong>Redeem:</strong> View the balance and enter the amount to deduct from the card.</span>
               </li>
             </ol>
           </div>

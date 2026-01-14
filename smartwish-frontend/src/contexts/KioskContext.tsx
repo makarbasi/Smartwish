@@ -191,6 +191,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Computed values
   const isActivated = !!kioskId && !!kioskInfo;
@@ -318,10 +319,62 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [kioskId, fetchConfig, subscribeToUpdates, unsubscribeFromUpdates]);
 
+  // Send heartbeat when kiosk is activated
+  const sendHeartbeat = useCallback(async (id: string) => {
+    try {
+      const response = await fetch('/api/kiosk/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kioskId: id }),
+      });
+      
+      if (!response.ok) {
+        console.error('[KioskContext] Heartbeat failed:', response.status);
+      } else {
+        console.log('[KioskContext] ✅ Heartbeat sent for kiosk:', id);
+      }
+    } catch (error) {
+      console.error('[KioskContext] Error sending heartbeat:', error);
+    }
+  }, []);
+
+  // Start/stop heartbeat interval when kiosk is activated/deactivated
+  useEffect(() => {
+    // Clear existing interval
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    // Start heartbeat if kiosk is activated
+    if (kioskId && isActivated) {
+      // Send initial heartbeat immediately
+      sendHeartbeat(kioskId);
+      
+      // Then send heartbeat every 30 seconds
+      heartbeatIntervalRef.current = setInterval(() => {
+        sendHeartbeat(kioskId);
+      }, 30000); // 30 seconds
+
+      console.log('[KioskContext] Started heartbeat interval for kiosk:', kioskId);
+    }
+
+    return () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+        console.log('[KioskContext] Stopped heartbeat interval');
+      }
+    };
+  }, [kioskId, isActivated, sendHeartbeat]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       unsubscribeFromUpdates();
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+      }
     };
   }, [unsubscribeFromUpdates]);
 
@@ -346,6 +399,12 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [fetchConfig, subscribeToUpdates]);
 
   const deactivateKiosk = useCallback(() => {
+    // Stop heartbeat
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+    
     clearStoredKioskId();
     setKioskId(null);
     setKioskInfo(null);
