@@ -207,12 +207,20 @@ export default function KioskSessionsPage({
       }
       
       const data = await response.json();
+      
+      // Check if recording exists
+      if (!data.recording) {
+        setShowVideoModal(false);
+        alert("No recording found for this session");
+        return;
+      }
+      
       const recording: SessionRecording = {
         id: data.recording.id,
         sessionId: sessionId,
         storageUrl: data.recording.storageUrl,
         thumbnailUrl: data.recording.thumbnailUrl,
-        duration: data.recording.durationSeconds,
+        duration: data.recording.duration,
         status: data.recording.status,
       };
       

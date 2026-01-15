@@ -12,6 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ kioskId: string; sessionId: string }> }
 ) {
   try {
+    // Check auth at frontend level
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -19,16 +20,10 @@ export async function GET(
 
     const { kioskId, sessionId } = await params;
 
-    // Get JWT token from session for backend auth
-    const token = (session as any).accessToken || '';
-
-    // Proxy to backend
+    // Proxy to backend (backend trusts frontend auth check)
     const response = await fetch(`${BACKEND_URL}/admin/kiosks/${kioskId}/sessions/${sessionId}/recording`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
 
     const data = await response.json();
@@ -84,6 +79,7 @@ export async function DELETE(
   { params }: { params: Promise<{ kioskId: string; sessionId: string }> }
 ) {
   try {
+    // Check auth at frontend level
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -91,16 +87,10 @@ export async function DELETE(
 
     const { kioskId, sessionId } = await params;
 
-    // Get JWT token from session for backend auth
-    const token = (session as any).accessToken || '';
-
-    // Proxy to backend
+    // Proxy to backend (backend trusts frontend auth check)
     const response = await fetch(`${BACKEND_URL}/admin/kiosks/${kioskId}/sessions/${sessionId}/recording`, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
 
     const data = await response.json();

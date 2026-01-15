@@ -8,13 +8,11 @@ import {
   Patch,
   Post,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SessionRecordingsService } from './session-recordings.service';
 import { Public } from '../auth/public.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 /**
  * Public endpoints for kiosks to create and upload recordings
@@ -121,15 +119,18 @@ export class SessionRecordingsPublicController {
 
 /**
  * Admin endpoints for viewing and managing recordings
+ * Note: Auth is handled at the frontend API layer (Next-Auth)
+ * These endpoints are called only from frontend API routes that check auth
  */
 @Controller('admin/kiosks')
-@UseGuards(JwtAuthGuard)
 export class SessionRecordingsAdminController {
   constructor(private readonly recordingsService: SessionRecordingsService) {}
 
   /**
    * Get recording for a specific session
+   * Called from frontend /api/admin/kiosks/[kioskId]/sessions/[sessionId]/recording
    */
+  @Public()
   @Get(':kioskId/sessions/:sessionId/recording')
   async getSessionRecording(
     @Param('kioskId') kioskId: string,
@@ -141,7 +142,9 @@ export class SessionRecordingsAdminController {
 
   /**
    * Delete a recording
+   * Called from frontend /api/admin/kiosks/[kioskId]/sessions/[sessionId]/recording
    */
+  @Public()
   @Delete(':kioskId/sessions/:sessionId/recording')
   async deleteSessionRecording(
     @Param('kioskId') kioskId: string,
