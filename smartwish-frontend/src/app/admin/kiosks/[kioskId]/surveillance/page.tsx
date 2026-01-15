@@ -235,25 +235,65 @@ export default function KioskSurveillancePage({
     }
   }, [kioskId, page, startDate, endDate, countedOnly, session?.user?.access_token]);
 
-  // Load all data
+  // Load all data - only on initial mount when authenticated
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.access_token) return;
 
-    fetchSummaryStats();
-    fetchDailyStats();
-    fetchDetections();
-  }, [status, session?.user?.access_token, fetchSummaryStats, fetchDailyStats, fetchDetections]);
+    // Only fetch once when authenticated
+    let isMounted = true;
+    
+    const loadData = async () => {
+      if (!isMounted) return;
+      await Promise.all([
+        fetchSummaryStats(),
+        fetchDailyStats(),
+        fetchDetections(),
+      ]);
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session?.user?.access_token, kioskId]); // Only re-fetch when auth state or kiosk changes
 
-  // Refresh data periodically
+  // Re-fetch detections when filters/pagination change
   useEffect(() => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || !session?.user?.access_token) return;
+    
+    // Skip initial load (handled above)
+    const isInitialLoad = page === 1 && !startDate && !endDate && !countedOnly;
+    if (isInitialLoad) return;
+    
+    fetchDetections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, startDate, endDate, countedOnly]);
 
-    const interval = setInterval(() => {
-      fetchSummaryStats();
+  // Refresh data periodically - using ref to avoid recreating interval
+  useEffect(() => {
+    if (status !== "authenticated" || !session?.user?.access_token) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/admin/surveillance/${kioskId}/stats/summary`, {
+          headers: {
+            Authorization: `Bearer ${session?.user?.access_token}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setSummaryStats(data);
+        }
+      } catch (err) {
+        // Silent fail for periodic refresh
+      }
     }, 30000); // Refresh summary every 30 seconds
 
     return () => clearInterval(interval);
-  }, [status, fetchSummaryStats]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, kioskId]); // Only recreate interval when auth state or kiosk changes
 
   // Delete handlers
   const handleDeleteSelected = async () => {

@@ -43,11 +43,18 @@ export async function GET(request: NextRequest) {
       // Start from 5 seconds ago to avoid race conditions with history loading
       let lastMessageTime = new Date(Date.now() - 5000).toISOString();
       let lastMessageIds = new Set<string>();
+      let isControllerClosed = false;
 
       // Send initial connection message
       const sendMessage = (data: object) => {
-        const message = `data: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(message));
+        if (isControllerClosed) return;
+        try {
+          const message = `data: ${JSON.stringify(data)}\n\n`;
+          controller.enqueue(encoder.encode(message));
+        } catch (error) {
+          console.error('[Kiosk Chat Stream] Error sending message:', error);
+          isControllerClosed = true;
+        }
       };
 
       sendMessage({ type: 'connected', kioskId, sessionId });
@@ -55,23 +62,28 @@ export async function GET(request: NextRequest) {
 
       // Load recent messages to avoid sending duplicates
       // Get messages from the last 30 seconds to build a set of known IDs
-      let recentQuery = supabaseServer
-        .from('kiosk_chat_messages')
-        .select('id, created_at')
-        .eq('kiosk_id', kioskId)
-        .gte('created_at', new Date(Date.now() - 30000).toISOString());
-      
-      // STRICT: Only get messages from this session
-      if (sessionId) {
-        recentQuery = recentQuery.eq('session_id', sessionId);
-      }
-      
-      const { data: recentMessages } = await recentQuery.order('created_at', { ascending: false });
+      try {
+        let recentQuery = supabaseServer
+          .from('kiosk_chat_messages')
+          .select('id, created_at')
+          .eq('kiosk_id', kioskId)
+          .gte('created_at', new Date(Date.now() - 30000).toISOString());
+        
+        // STRICT: Only get messages from this session
+        if (sessionId) {
+          recentQuery = recentQuery.eq('session_id', sessionId);
+        }
+        
+        const { data: recentMessages } = await recentQuery.order('created_at', { ascending: false });
 
-      if (recentMessages && recentMessages.length > 0) {
-        recentMessages.forEach((msg) => lastMessageIds.add(msg.id));
-        // Use the most recent message time as baseline if available
-        lastMessageTime = recentMessages[0].created_at;
+        if (recentMessages && recentMessages.length > 0) {
+          recentMessages.forEach((msg) => lastMessageIds.add(msg.id));
+          // Use the most recent message time as baseline if available
+          lastMessageTime = recentMessages[0].created_at;
+        }
+      } catch (error) {
+        console.error('[Kiosk Chat Stream] Error loading recent messages:', error);
+        // Continue anyway - stream should still work
       }
 
       let pollInterval: NodeJS.Timeout | null = null;
@@ -79,6 +91,8 @@ export async function GET(request: NextRequest) {
 
       // Poll for new messages every 2 seconds
       const pollForMessages = async () => {
+        if (isControllerClosed) return;
+        
         try {
           // Build query for new messages
           let newMsgQuery = supabaseServer
@@ -148,6 +162,8 @@ export async function GET(request: NextRequest) {
 
       // Handle client disconnect
       const cleanup = () => {
+        if (isControllerClosed) return;
+        isControllerClosed = true;
         console.log('[Kiosk Chat Stream] Cleaning up');
         if (pollInterval) {
           clearInterval(pollInterval);
@@ -157,7 +173,11 @@ export async function GET(request: NextRequest) {
           clearInterval(heartbeatInterval);
           heartbeatInterval = null;
         }
-        controller.close();
+        try {
+          controller.close();
+        } catch (error) {
+          // Controller may already be closed
+        }
       };
 
       request.signal.addEventListener('abort', cleanup);
@@ -172,8 +192,10 @@ export async function GET(request: NextRequest) {
         }
       }, 30000); // Every 30 seconds
 
-      // Cleanup on stream close
-      return cleanup;
+      // Note: Don't return anything here - the stream stays open until cleanup is called
+    },
+    cancel() {
+      console.log('[Kiosk Chat Stream] Stream cancelled by client');
     },
   });
 

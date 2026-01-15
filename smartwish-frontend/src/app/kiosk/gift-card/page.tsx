@@ -1,0 +1,645 @@
+"use client";
+
+import { useRouter, useSearchParams } from "next/navigation";
+import { useDeviceMode } from "@/contexts/DeviceModeContext";
+import { useKiosk } from "@/contexts/KioskContext";
+import { useKioskConfig } from "@/hooks/useKioskConfig";
+import { useEffect, useState, Suspense } from "react";
+import { VirtualInput } from "@/components/VirtualInput";
+import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
+import QRCode from "qrcode";
+
+// Gift card brand type
+interface GiftCardBrand {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string;
+  min_amount: number;
+  max_amount: number;
+  description?: string;
+}
+
+// Purchased gift card response
+interface PurchasedGiftCard {
+  id: string;
+  cardNumber: string;
+  pin: string;
+  initialBalance: number;
+  expiresAt: string;
+  brand: {
+    name: string;
+    logo: string;
+  };
+}
+
+// Steps in the purchase flow
+type Step = "amount" | "success";
+
+function GiftCardPurchaseContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const brandId = searchParams.get("brandId");
+
+  const { isKiosk, isInitialized } = useDeviceMode();
+  const { kioskInfo } = useKiosk();
+  const { config: kioskConfig } = useKioskConfig();
+
+  const [step, setStep] = useState<Step>("amount");
+  const [brand, setBrand] = useState<GiftCardBrand | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Amount selection
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  const [customAmount, setCustomAmount] = useState<string>("");
+
+  // Payment modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  // Success state
+  const [purchasedCard, setPurchasedCard] = useState<PurchasedGiftCard | null>(
+    null
+  );
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
+  const [showPin, setShowPin] = useState(false);
+
+  // Email
+  const [email, setEmail] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+
+  // Get config values
+  const giftCardTileConfig = kioskConfig?.giftCardTile;
+  const discountPercent = giftCardTileConfig?.discountPercent || 0;
+  const presetAmounts = giftCardTileConfig?.presetAmounts || [25, 50, 100, 200];
+
+  // Calculate actual amount to charge
+  const actualAmount = selectedAmount
+    ? selectedAmount * (1 - discountPercent / 100)
+    : 0;
+
+  // Redirect non-kiosk users
+  useEffect(() => {
+    if (isInitialized && !isKiosk) {
+      router.replace("/");
+    }
+  }, [isKiosk, isInitialized, router]);
+
+  // Fetch brand info
+  useEffect(() => {
+    if (!brandId) {
+      setError("No gift card brand specified");
+      setLoading(false);
+      return;
+    }
+
+    const fetchBrand = async () => {
+      try {
+        const response = await fetch(
+          `/api/admin/gift-card-brands/${brandId}`
+        );
+        if (!response.ok) {
+          throw new Error("Failed to fetch gift card brand");
+        }
+        const data = await response.json();
+        setBrand(data.data);
+      } catch (err) {
+        console.error("Error fetching brand:", err);
+        setError("Failed to load gift card details");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBrand();
+  }, [brandId]);
+
+  // Generate QR code when card is purchased
+  useEffect(() => {
+    if (purchasedCard?.cardNumber) {
+      const redemptionUrl = `${window.location.origin}/redeem?card=${purchasedCard.cardNumber}`;
+      QRCode.toDataURL(redemptionUrl, {
+        width: 300,
+        margin: 2,
+        color: { dark: "#000000", light: "#ffffff" },
+      }).then(setQrCodeDataUrl);
+    }
+  }, [purchasedCard?.cardNumber]);
+
+  const handleAmountSelect = (amount: number) => {
+    setSelectedAmount(amount);
+    setCustomAmount("");
+  };
+
+  const handleCustomAmountChange = (value: string) => {
+    setCustomAmount(value);
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue) && numValue > 0) {
+      setSelectedAmount(numValue);
+    } else {
+      setSelectedAmount(null);
+    }
+  };
+
+  const handleContinueToPayment = () => {
+    if (!selectedAmount) return;
+
+    // Validate amount is within range
+    if (brand) {
+      if (selectedAmount < brand.min_amount) {
+        setError(`Minimum amount is $${brand.min_amount}`);
+        return;
+      }
+      if (selectedAmount > brand.max_amount) {
+        setError(`Maximum amount is $${brand.max_amount}`);
+        return;
+      }
+    }
+
+    setError(null);
+    
+    // Store gift card selection in localStorage for CardPaymentModal to pick up
+    // This follows the same pattern as the marketplace gift card selection
+    const giftCardSelection = {
+      brandId: brandId,
+      brandSlug: brand?.slug || '',
+      storeName: brand?.name || 'Gift Card',
+      storeLogo: brand?.logo_url || '',
+      amount: selectedAmount,
+      currency: 'USD',
+      status: 'pending',
+      isIssued: false,
+      source: 'smartwish', // SmartWish internal brand
+      selectedAt: new Date().toISOString(),
+    };
+    
+    // Use a unique key for this gift card purchase session
+    const giftCardKey = `giftCard_kiosk_${brandId}_${Date.now()}`;
+    localStorage.setItem(giftCardKey, JSON.stringify(giftCardSelection));
+    // Store the key so CardPaymentModal can find it
+    localStorage.setItem('kiosk_gift_card_key', giftCardKey);
+    
+    setShowPaymentModal(true);
+  };
+  
+  const handlePaymentSuccess = async (issuedGiftCard?: IssuedGiftCardData) => {
+    setShowPaymentModal(false);
+    
+    // If we got issued gift card data from the CardPaymentModal, use it
+    if (issuedGiftCard && issuedGiftCard.isIssued) {
+      // The gift card was issued successfully through CardPaymentModal
+      // Create a PurchasedGiftCard from the issued data
+      const purchasedCardData: PurchasedGiftCard = {
+        id: Date.now().toString(),
+        cardNumber: issuedGiftCard.code || '',
+        pin: issuedGiftCard.pin || '',
+        initialBalance: issuedGiftCard.amount,
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year from now
+        brand: {
+          name: issuedGiftCard.storeName,
+          logo: issuedGiftCard.storeLogo || '',
+        },
+      };
+      setPurchasedCard(purchasedCardData);
+      setStep("success");
+    } else {
+      // Fallback: Payment succeeded but no gift card data returned
+      // This shouldn't happen but handle it gracefully
+      console.warn('Payment succeeded but no gift card data returned');
+      
+      // Try to issue the gift card manually
+      try {
+        const response = await fetch('/api/gift-cards/purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brandId: brandId,
+            amount: selectedAmount,
+            kioskId: kioskInfo?.kioskId || '',
+            discountPercent: discountPercent,
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.giftCard) {
+            const purchasedCardData: PurchasedGiftCard = {
+              id: data.giftCard.id || Date.now().toString(),
+              cardNumber: data.giftCard.cardNumber || '',
+              pin: data.giftCard.pin || '',
+              initialBalance: data.giftCard.balance || selectedAmount || 0,
+              expiresAt: data.giftCard.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              brand: {
+                name: brand?.name || 'Gift Card',
+                logo: brand?.logo_url || '',
+              },
+            };
+            setPurchasedCard(purchasedCardData);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to issue gift card:', err);
+      }
+      
+      setStep("success");
+    }
+    
+    // Clean up localStorage
+    const storedKey = localStorage.getItem('kiosk_gift_card_key');
+    if (storedKey) {
+      localStorage.removeItem(storedKey);
+      localStorage.removeItem('kiosk_gift_card_key');
+    }
+  };
+
+  const handleEmailGiftCard = async () => {
+    if (!email || !email.includes("@") || !purchasedCard) {
+      alert("Please enter a valid email address");
+      return;
+    }
+
+    setEmailSending(true);
+    try {
+      const response = await fetch("/api/gift-cards/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cardId: purchasedCard.id,
+          email: email,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send email");
+      }
+
+      setEmailSent(true);
+    } catch (error) {
+      console.error("Failed to send email:", error);
+      alert("Failed to send email. Please take a photo instead.");
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const handleDone = () => {
+    router.push("/kiosk/home");
+  };
+
+  const formatCardNumber = (num: string) => {
+    const clean = num.replace(/\s/g, "");
+    if (clean.length === 16) {
+      return `${clean.slice(0, 4)} ${clean.slice(4, 8)} ${clean.slice(8, 12)} ${clean.slice(12, 16)}`;
+    }
+    return num;
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Copied to clipboard!");
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !brand) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-900 flex items-center justify-center p-6">
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 max-w-md text-center">
+          <div className="text-6xl mb-4">❌</div>
+          <h2 className="text-2xl font-bold text-white mb-4">Error</h2>
+          <p className="text-gray-300 mb-6">{error}</p>
+          <button
+            onClick={() => router.push("/kiosk/home")}
+            className="px-8 py-4 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-500 transition-colors"
+          >
+            Return Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-900 flex flex-col items-center justify-center p-6 lg:p-10">
+      {/* Animated background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 -left-32 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />
+        <div
+          className="absolute bottom-1/4 -right-32 w-[500px] h-[500px] bg-teal-500/20 rounded-full blur-3xl animate-pulse"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+
+      {/* Back button */}
+      <button
+        onClick={() => {
+          if (showPaymentModal) {
+            setShowPaymentModal(false);
+          } else if (step === "amount") {
+            router.push("/kiosk/home");
+          }
+        }}
+        className={`absolute top-6 left-6 flex items-center gap-2 text-white/70 hover:text-white transition-colors ${step === "success" || showPaymentModal ? "hidden" : ""}`}
+      >
+        <svg
+          className="w-6 h-6"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 19l-7-7 7-7"
+          />
+        </svg>
+        <span className="text-lg">Back</span>
+      </button>
+
+      {/* Main content */}
+      <div className="relative w-full max-w-2xl">
+        {/* Amount Selection Step */}
+        {step === "amount" && brand && (
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 lg:p-12 border border-white/20">
+            {/* Brand header */}
+            <div className="text-center mb-8">
+              {brand.logo_url && (
+                <img
+                  src={brand.logo_url}
+                  alt={brand.name}
+                  className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-white/10 p-2 object-contain"
+                />
+              )}
+              <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2">
+                {giftCardTileConfig?.displayName || brand.name}
+              </h1>
+              <p className="text-gray-300">
+                {giftCardTileConfig?.description ||
+                  brand.description ||
+                  "Choose your gift card amount"}
+              </p>
+              {discountPercent > 0 && (
+                <div className="mt-4 inline-block bg-gradient-to-r from-amber-400 to-orange-500 text-white font-bold px-6 py-2 rounded-full">
+                  🎉 {discountPercent}% OFF!
+                </div>
+              )}
+            </div>
+
+            {/* Preset amounts */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {presetAmounts.map((amount) => (
+                <button
+                  key={amount}
+                  onClick={() => handleAmountSelect(amount)}
+                  className={`p-6 rounded-2xl border-2 transition-all duration-300 ${
+                    selectedAmount === amount && customAmount === ""
+                      ? "border-emerald-400 bg-emerald-500/20 scale-[1.02]"
+                      : "border-white/20 bg-white/5 hover:border-emerald-400/50 hover:bg-white/10"
+                  }`}
+                >
+                  <span className="text-3xl lg:text-4xl font-bold text-white">
+                    ${amount}
+                  </span>
+                  {discountPercent > 0 && (
+                    <div className="mt-2">
+                      <span className="text-gray-400 line-through text-sm">
+                        ${amount.toFixed(2)}
+                      </span>
+                      <span className="text-emerald-400 font-semibold ml-2">
+                        Pay ${(amount * (1 - discountPercent / 100)).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom amount */}
+            <div className="mb-8">
+              <label className="block text-white text-sm font-medium mb-2">
+                Or enter custom amount ($
+                {brand.min_amount} - ${brand.max_amount})
+              </label>
+              <VirtualInput
+                type="number"
+                value={customAmount}
+                onChange={(e) => handleCustomAmountChange(e.target.value)}
+                placeholder={`$${brand.min_amount} - $${brand.max_amount}`}
+                className="w-full text-2xl"
+              />
+            </div>
+
+            {/* Error message */}
+            {error && (
+              <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-300 text-center">
+                {error}
+              </div>
+            )}
+
+            {/* Continue button */}
+            <button
+              onClick={handleContinueToPayment}
+              disabled={!selectedAmount}
+              className={`w-full py-5 rounded-2xl text-xl font-bold transition-all duration-300 ${
+                selectedAmount
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02]"
+                  : "bg-gray-600/50 text-gray-400 cursor-not-allowed"
+              }`}
+            >
+              {selectedAmount
+                ? `Continue - Pay $${actualAmount.toFixed(2)}`
+                : "Select an amount"}
+            </button>
+          </div>
+        )}
+
+        {/* Success Step */}
+        {step === "success" && purchasedCard && (
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 lg:p-12 border border-white/20">
+            {/* Success header */}
+            <div className="text-center mb-8">
+              <div className="text-6xl mb-4">🎉</div>
+              <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2">
+                Your Gift Card is Ready!
+              </h1>
+              <p className="text-gray-300">
+                Save these details to use your gift card
+              </p>
+            </div>
+
+            {/* QR Code */}
+            {qrCodeDataUrl && (
+              <div className="flex justify-center mb-8">
+                <div className="bg-white p-4 rounded-2xl shadow-lg">
+                  <img
+                    src={qrCodeDataUrl}
+                    alt="Gift Card QR Code"
+                    className="w-64 h-64"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Card details */}
+            <div className="bg-white/5 rounded-2xl p-6 mb-6 border border-white/10 space-y-4">
+              {/* Card Number */}
+              <div>
+                <p className="text-gray-400 text-sm mb-1">Card Number</p>
+                <button
+                  onClick={() => copyToClipboard(purchasedCard.cardNumber)}
+                  className="w-full text-left"
+                >
+                  <p className="font-mono text-2xl lg:text-3xl text-white tracking-wider hover:text-emerald-400 transition-colors">
+                    {formatCardNumber(purchasedCard.cardNumber)}
+                  </p>
+                  <p className="text-emerald-400 text-xs mt-1">Tap to copy</p>
+                </button>
+              </div>
+
+              {/* PIN */}
+              <div>
+                <p className="text-gray-400 text-sm mb-1">PIN</p>
+                <div className="flex items-center gap-4">
+                  <p className="font-mono text-2xl text-white tracking-widest">
+                    {showPin ? purchasedCard.pin : "●●●●"}
+                  </p>
+                  <button
+                    onClick={() => setShowPin(!showPin)}
+                    className="px-4 py-2 bg-white/10 rounded-lg text-sm text-white hover:bg-white/20 transition-colors"
+                  >
+                    {showPin ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Balance & Expiry */}
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Balance</p>
+                  <p className="text-2xl font-bold text-emerald-400">
+                    ${purchasedCard.initialBalance.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Expires</p>
+                  <p className="text-lg text-white">
+                    {new Date(purchasedCard.expiresAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Photo prompt */}
+            <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-2xl p-6 mb-6 text-center">
+              <div className="text-3xl mb-2">📱</div>
+              <p className="text-white font-semibold">
+                Take a photo of this screen
+              </p>
+              <p className="text-emerald-300 text-sm">
+                to save your gift card details
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-4 my-6">
+              <div className="flex-1 h-px bg-white/20" />
+              <span className="text-gray-400 text-sm">OR</span>
+              <div className="flex-1 h-px bg-white/20" />
+            </div>
+
+            {/* Email option */}
+            <div className="bg-white/5 rounded-2xl p-6 mb-8 border border-white/10">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-2xl">📧</span>
+                <span className="text-white font-semibold">
+                  Email my gift card
+                </span>
+              </div>
+              <div className="space-y-4">
+                <VirtualInput
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  disabled={emailSent}
+                  className="w-full"
+                />
+                <button
+                  onClick={handleEmailGiftCard}
+                  disabled={emailSending || emailSent || !email}
+                  className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 ${
+                    emailSent
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
+                      : "bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  {emailSending
+                    ? "Sending..."
+                    : emailSent
+                      ? "✓ Email Sent!"
+                      : "Send to Email"}
+                </button>
+              </div>
+            </div>
+
+            {/* Done button */}
+            <button
+              onClick={handleDone}
+              className="w-full py-5 rounded-2xl text-xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg hover:shadow-emerald-500/50 hover:scale-[1.02] transition-all duration-300"
+            >
+              Done - Return Home
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Payment Modal - Using the same modal as greeting cards and stickers */}
+      <CardPaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        onPaymentSuccess={handlePaymentSuccess}
+        cardId={`gift-card-${brandId}`}
+        cardName={brand?.name || 'Gift Card'}
+        action="print"
+        giftCardAmount={selectedAmount || 0}
+        productType="gift-card"
+        giftCardBrandId={brandId || ''}
+        giftCardDiscountPercent={discountPercent}
+        kioskId={kioskInfo?.kioskId || ''}
+      />
+    </div>
+  );
+}
+
+// Main export with Suspense wrapper
+export default function KioskGiftCardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-900 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-white text-lg">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <GiftCardPurchaseContent />
+    </Suspense>
+  );
+}

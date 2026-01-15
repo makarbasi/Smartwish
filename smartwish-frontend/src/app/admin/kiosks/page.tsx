@@ -78,6 +78,15 @@ type KioskConfig = {
     frameThreshold: number; // Frames before saving image (default 10)
     httpPort: number; // Port for local image server (default 8765)
   };
+  giftCardTile?: {
+    enabled: boolean; // Master toggle - show/hide the tile
+    visibility: 'visible' | 'hidden' | 'disabled'; // visible=show, hidden=don't show, disabled=show but grayed out
+    brandId: string | null; // UUID of the gift card brand to sell
+    discountPercent: number; // Discount percentage (0-100) for this kiosk
+    displayName?: string; // Optional custom display name
+    description?: string; // Optional custom description
+    presetAmounts?: number[]; // Quick-select amounts
+  };
 };
 
 type Kiosk = {
@@ -143,6 +152,15 @@ const DEFAULT_CONFIG: KioskConfig = {
     dwellThresholdSeconds: 8,
     frameThreshold: 10,
     httpPort: 8765,
+  },
+  giftCardTile: {
+    enabled: false, // Disabled by default
+    visibility: 'hidden',
+    brandId: null,
+    discountPercent: 0,
+    displayName: 'Gift Card',
+    description: 'Purchase a gift card',
+    presetAmounts: [25, 50, 100, 200],
   },
 };
 
@@ -724,6 +742,14 @@ export default function KiosksAdminPage() {
                         <span className="ml-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                       )}
                     </Link>
+                    {/* Print Jobs button */}
+                    <Link
+                      href={`/admin/kiosks/${kiosk.kioskId}/print-jobs`}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal-50 px-3 py-2 text-sm font-medium text-teal-700 ring-1 ring-inset ring-teal-200 hover:bg-teal-100 transition-colors"
+                    >
+                      <PrinterIcon className="h-4 w-4" />
+                      Print Jobs
+                    </Link>
                     {/* Manager assignment button */}
                     <button
                       onClick={() => openManagersModal(kiosk)}
@@ -1045,6 +1071,14 @@ export default function KiosksAdminPage() {
   );
 }
 
+// Gift card brand type for dropdown
+type GiftCardBrandOption = {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string;
+};
+
 // Kiosk Form Modal Component
 function KioskFormModal({
   open,
@@ -1077,6 +1111,28 @@ function KioskFormModal({
   const [promotedGiftCardsText, setPromotedGiftCardsText] = useState(
     formData.config.promotedGiftCardIds?.join(", ") || ""
   );
+  
+  // Gift card brands for dropdown
+  const [giftCardBrands, setGiftCardBrands] = useState<GiftCardBrandOption[]>([]);
+  const [loadingBrands, setLoadingBrands] = useState(false);
+  
+  // Fetch gift card brands when modal opens
+  useEffect(() => {
+    if (open && giftCardBrands.length === 0 && !loadingBrands) {
+      setLoadingBrands(true);
+      fetch("/api/admin/gift-card-brands?includeInactive=false")
+        .then((res) => res.json())
+        .then((data) => {
+          setGiftCardBrands(data.data || []);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch gift card brands:", err);
+        })
+        .finally(() => {
+          setLoadingBrands(false);
+        });
+    }
+  }, [open, giftCardBrands.length]);
 
   // Sync local state when modal opens with new data
   useEffect(() => {
@@ -1866,6 +1922,251 @@ function KioskFormModal({
                               className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
                             />
                             <p className="text-xs text-gray-400 mt-1">Local HTTP port for images</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Gift Card Tile Configuration */}
+                    <div className="col-span-2 border-t pt-4 mt-2">
+                      <h5 className="text-sm font-semibold text-gray-800 mb-3">
+                        🎁 Gift Card Tile
+                      </h5>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Add a dedicated gift card purchase tile to the kiosk home screen. Users can buy a specific gift card brand with an optional discount.
+                      </p>
+
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <label className="text-sm font-medium text-gray-700">
+                            Enable Gift Card Tile
+                          </label>
+                          <p className="text-xs text-gray-500">
+                            Show gift card purchase option on kiosk home
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              config: {
+                                ...formData.config,
+                                giftCardTile: {
+                                  ...formData.config.giftCardTile,
+                                  enabled: !(formData.config.giftCardTile?.enabled ?? false),
+                                  visibility: formData.config.giftCardTile?.visibility ?? 'visible',
+                                  brandId: formData.config.giftCardTile?.brandId ?? null,
+                                  discountPercent: formData.config.giftCardTile?.discountPercent ?? 0,
+                                  displayName: formData.config.giftCardTile?.displayName ?? 'Gift Card',
+                                  description: formData.config.giftCardTile?.description ?? 'Purchase a gift card',
+                                  presetAmounts: formData.config.giftCardTile?.presetAmounts ?? [25, 50, 100, 200],
+                                },
+                              },
+                            })
+                          }
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${
+                            formData.config.giftCardTile?.enabled
+                              ? "bg-emerald-500"
+                              : "bg-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              formData.config.giftCardTile?.enabled
+                                ? "translate-x-5"
+                                : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {formData.config.giftCardTile?.enabled && (
+                        <div className="space-y-4 ml-4 pl-4 border-l-2 border-emerald-200">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Visibility</label>
+                            <select
+                              value={formData.config.giftCardTile?.visibility ?? 'visible'}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    giftCardTile: {
+                                      ...formData.config.giftCardTile!,
+                                      visibility: e.target.value as 'visible' | 'hidden' | 'disabled',
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                            >
+                              <option value="visible">Visible - Show tile</option>
+                              <option value="hidden">Hidden - Don&apos;t show tile</option>
+                              <option value="disabled">Disabled - Show grayed out</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Gift Card Brand</label>
+                            {loadingBrands ? (
+                              <div className="text-sm text-gray-400 py-2">Loading brands...</div>
+                            ) : giftCardBrands.length === 0 ? (
+                              <div className="text-sm text-amber-600 py-2">
+                                No gift card brands found. <a href="/admin/gift-card-brands" className="underline">Create one first</a>
+                              </div>
+                            ) : (
+                              <select
+                                value={formData.config.giftCardTile?.brandId ?? ''}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    config: {
+                                      ...formData.config,
+                                      giftCardTile: {
+                                        ...formData.config.giftCardTile!,
+                                        brandId: e.target.value || null,
+                                      },
+                                    },
+                                  })
+                                }
+                                className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                              >
+                                <option value="">Select a gift card brand...</option>
+                                {giftCardBrands.map((brand) => (
+                                  <option key={brand.id} value={brand.id}>
+                                    {brand.name} ({brand.slug})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {/* Show selected brand logo and info */}
+                            {formData.config.giftCardTile?.brandId && (() => {
+                              const selectedBrand = giftCardBrands.find(b => b.id === formData.config.giftCardTile?.brandId);
+                              if (!selectedBrand) return null;
+                              return (
+                                <div className="mt-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-center gap-3">
+                                  {selectedBrand.logo_url ? (
+                                    <img
+                                      src={selectedBrand.logo_url}
+                                      alt={selectedBrand.name}
+                                      className="w-12 h-12 rounded-lg object-contain bg-white border border-gray-200"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center">
+                                      <GiftIcon className="w-6 h-6 text-emerald-600" />
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className="text-sm font-medium text-emerald-800">{selectedBrand.name}</p>
+                                    <p className="text-xs text-emerald-600 font-mono">{selectedBrand.slug}</p>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Discount %</label>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={formData.config.giftCardTile?.discountPercent ?? 0}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      config: {
+                                        ...formData.config,
+                                        giftCardTile: {
+                                          ...formData.config.giftCardTile!,
+                                          discountPercent: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)),
+                                        },
+                                      },
+                                    })
+                                  }
+                                  className="w-20 text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                                />
+                                <span className="text-sm text-gray-600">%</span>
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">0 = no discount</p>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Display Name</label>
+                              <input
+                                type="text"
+                                value={formData.config.giftCardTile?.displayName ?? 'Gift Card'}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    config: {
+                                      ...formData.config,
+                                      giftCardTile: {
+                                        ...formData.config.giftCardTile!,
+                                        displayName: e.target.value,
+                                      },
+                                    },
+                                  })
+                                }
+                                placeholder="Gift Card"
+                                className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Description</label>
+                            <input
+                              type="text"
+                              value={formData.config.giftCardTile?.description ?? ''}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    giftCardTile: {
+                                      ...formData.config.giftCardTile!,
+                                      description: e.target.value,
+                                    },
+                                  },
+                                })
+                              }
+                              placeholder="Purchase a gift card"
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Preset Amounts</label>
+                            <input
+                              type="text"
+                              value={(formData.config.giftCardTile?.presetAmounts ?? [25, 50, 100, 200]).join(', ')}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    giftCardTile: {
+                                      ...formData.config.giftCardTile!,
+                                      presetAmounts: e.target.value
+                                        .split(',')
+                                        .map(s => parseInt(s.trim()))
+                                        .filter(n => !isNaN(n) && n > 0),
+                                    },
+                                  },
+                                })
+                              }
+                              placeholder="25, 50, 100, 200"
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Comma-separated dollar amounts</p>
                           </div>
                         </div>
                       )}

@@ -17,6 +17,7 @@ import {
   Cog6ToothIcon,
   ShieldCheckIcon,
   ChatBubbleLeftRightIcon,
+  PhotoIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 
@@ -25,6 +26,7 @@ const navigation = [
   { name: "Chat", href: "/admin/chat", icon: ChatBubbleLeftRightIcon },
   { name: "Kiosks", href: "/admin/kiosks", icon: ComputerDesktopIcon },
   { name: "Managers", href: "/admin/managers", icon: UserGroupIcon },
+  { name: "Templates", href: "/admin/templates", icon: PhotoIcon },
   { name: "Gift Card Brands", href: "/admin/gift-card-brands", icon: GiftIcon },
   { name: "Gift Cards", href: "/admin/gift-cards", icon: CreditCardIcon },
 ];
