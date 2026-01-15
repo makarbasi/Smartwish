@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between, MoreThanOrEqual, LessThanOrEqual, In } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import * as crypto from 'crypto';
@@ -1286,5 +1286,135 @@ export class KioskConfigService {
     }
 
     return this.printLogRepo.save(log);
+  }
+
+  // ==================== Admin Print Log Methods ====================
+
+  /**
+   * Get all print logs for a specific kiosk (admin access)
+   */
+  async getAdminKioskPrintLogs(
+    kioskId: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      status?: PrintStatus;
+      productType?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+  ): Promise<{ logs: KioskPrintLog[]; total: number }> {
+    // Find the kiosk first
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    const where: any = { kioskConfigId: kiosk.id };
+    
+    if (options.status) {
+      where.status = options.status;
+    }
+    if (options.productType) {
+      where.productType = options.productType;
+    }
+    if (options.startDate || options.endDate) {
+      where.createdAt = {};
+      if (options.startDate) {
+        where.createdAt = MoreThanOrEqual(options.startDate);
+      }
+      if (options.endDate) {
+        where.createdAt = options.startDate 
+          ? Between(options.startDate, options.endDate)
+          : LessThanOrEqual(options.endDate);
+      }
+    }
+
+    const [logs, total] = await this.printLogRepo.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      take: options.limit || 50,
+      skip: options.offset || 0,
+      relations: ['kiosk'],
+    });
+
+    return { logs, total };
+  }
+
+  /**
+   * Update a print log (admin only)
+   */
+  async adminUpdatePrintLog(
+    logId: string,
+    data: { status?: string; errorMessage?: string; notes?: string },
+  ): Promise<KioskPrintLog> {
+    const log = await this.printLogRepo.findOne({ where: { id: logId } });
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    if (data.status) {
+      log.status = data.status as PrintStatus;
+      if (data.status === PrintStatus.COMPLETED || data.status === PrintStatus.FAILED) {
+        log.completedAt = new Date();
+      }
+    }
+    if (data.errorMessage !== undefined) {
+      log.errorMessage = data.errorMessage;
+    }
+    // Notes could be stored in errorMessage or we can add a field later
+
+    return this.printLogRepo.save(log);
+  }
+
+  /**
+   * Delete a single print log (admin only)
+   */
+  async deletePrintLog(logId: string): Promise<{ success: boolean; message: string }> {
+    const log = await this.printLogRepo.findOne({ where: { id: logId } });
+    if (!log) {
+      throw new NotFoundException(`Print log with ID ${logId} not found`);
+    }
+
+    await this.printLogRepo.remove(log);
+    return { success: true, message: 'Print log deleted successfully' };
+  }
+
+  /**
+   * Bulk delete print logs (admin only)
+   */
+  async bulkDeletePrintLogs(ids: string[]): Promise<{ success: boolean; deleted: number }> {
+    const result = await this.printLogRepo.delete(ids);
+    return { success: true, deleted: result.affected || 0 };
+  }
+
+  /**
+   * Delete print logs for a kiosk within a date range (admin only)
+   */
+  async deleteKioskPrintLogsInRange(
+    kioskId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<{ success: boolean; deleted: number }> {
+    // Find the kiosk first
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    const where: any = { kioskConfigId: kiosk.id };
+    
+    if (startDate || endDate) {
+      if (startDate && endDate) {
+        where.createdAt = Between(startDate, endDate);
+      } else if (startDate) {
+        where.createdAt = MoreThanOrEqual(startDate);
+      } else if (endDate) {
+        where.createdAt = LessThanOrEqual(endDate);
+      }
+    }
+
+    const result = await this.printLogRepo.delete(where);
+    return { success: true, deleted: result.affected || 0 };
   }
 }

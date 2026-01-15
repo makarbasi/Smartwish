@@ -174,7 +174,9 @@ export class DevicePairingServer {
    * Open browser to manager page
    */
   openManagerPage(baseUrl) {
-    const managerUrl = `${baseUrl}/manager?pair=true&port=${this.port}`;
+    // Use provided URL or default to production
+    const frontendUrl = baseUrl || 'https://app.smartwish.us';
+    const managerUrl = `${frontendUrl}/manager?pair=true&port=${this.port}`;
     console.log(`  🌐 Opening browser to: ${managerUrl}`);
     
     // Open browser based on platform

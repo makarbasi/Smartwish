@@ -1,16 +1,22 @@
 {
-  "cloudServerUrl": "https://smartwish.onrender.com",
+  "cloudServerUrl": "http://localhost:3001",
+  "frontendUrl": "http://localhost:3000",
   "defaultPrinter": "",
   "pollInterval": 10000,
   
   "surveillance": {
-    "enabled": true,
-    "kioskId": "YOUR_KIOSK_ID",
-    "apiKey": "YOUR_API_KEY",
+    "enabled": false,
+    "kioskId": "",
+    "apiKey": "",
     "webcamIndex": 0,
     "httpPort": 8765,
     "showPreview": false,
     "dwellThresholdSeconds": 8,
     "frameThreshold": 10
+  },
+
+  "_comments": {
+    "note": "This file is used as fallback. After pairing, config is fetched from cloud.",
+    "localDev": "For local development, set frontendUrl to http://localhost:3000"
   }
 }

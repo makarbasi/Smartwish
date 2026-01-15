@@ -14,7 +14,6 @@ import {
   ComputerDesktopIcon,
   CurrencyDollarIcon,
   DevicePhoneMobileIcon,
-  VideoCameraIcon,
 } from "@heroicons/react/24/outline";
 
 interface PrintStats {
@@ -34,11 +33,6 @@ interface KioskInfo {
   isActive: boolean;
   storeId: string;
   apiKey?: string;
-  surveillance?: {
-    enabled?: boolean;
-    webcamIndex?: number;
-    httpPort?: number;
-  };
 }
 
 interface PairingStatus {
@@ -117,9 +111,6 @@ export default function ManagerDashboard() {
           kioskName: kiosk.name || kiosk.kioskId,
           apiKey: kiosk.apiKey,
           storeId: kiosk.storeId,
-          config: {
-            surveillance: kiosk.surveillance || { enabled: false },
-          },
           pairedBy: 'manager',
         }),
       });
@@ -201,7 +192,7 @@ export default function ManagerDashboard() {
                 <div>
                   <p className="font-medium">Successfully paired!</p>
                   <p className="text-sm opacity-90">This device is now connected to: {pairingSuccess}</p>
-                  <p className="text-sm opacity-90 mt-1">The local agent will now start surveillance and print services.</p>
+                  <p className="text-sm opacity-90 mt-1">The local agent will now start print services.</p>
                 </div>
               </div>
             </div>
@@ -238,12 +229,6 @@ export default function ManagerDashboard() {
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`w-2 h-2 rounded-full ${kiosk.isActive ? 'bg-green-400' : 'bg-gray-400'}`} />
                           <span className="text-xs opacity-80">{kiosk.isActive ? 'Active' : 'Inactive'}</span>
-                          {kiosk.surveillance?.enabled && (
-                            <span className="flex items-center gap-1 text-xs opacity-80">
-                              <VideoCameraIcon className="h-3 w-3" />
-                              Surveillance
-                            </span>
-                          )}
                         </div>
                       </div>
                       <button
@@ -275,7 +260,7 @@ export default function ManagerDashboard() {
             <ol className="list-decimal list-inside space-y-1 mt-2">
               <li>Select a kiosk above to associate this device with it</li>
               <li>The local print agent will receive the kiosk configuration</li>
-              <li>Surveillance and printing will start automatically</li>
+              <li>Printing will start automatically</li>
               <li>You can close this page after pairing is complete</li>
             </ol>
           </div>

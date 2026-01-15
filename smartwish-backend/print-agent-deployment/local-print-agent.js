@@ -59,6 +59,10 @@ const CONFIG = {
   // Cloud server URL - change this to your deployed backend
   cloudServerUrl: fileConfig.cloudServerUrl || process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
 
+  // Frontend URL - for opening browser during pairing
+  // Use http://localhost:3000 for local development
+  frontendUrl: fileConfig.frontendUrl || process.env.FRONTEND_URL || 'https://app.smartwish.us',
+
   // Fallback default printer (only used if job has no printerName from kiosk config)
   // Per-kiosk printer settings are configured in /admin/kiosks
   defaultPrinter: fileConfig.defaultPrinter || process.env.DEFAULT_PRINTER || '',
@@ -952,8 +956,9 @@ async function waitForPairing(pairingServer) {
     };
 
     // Open browser to manager page
-    const frontendUrl = process.env.FRONTEND_URL || 'https://smartwish.vercel.app';
-    pairingServer.openManagerPage(frontendUrl);
+    // Use frontendUrl from config (default: https://app.smartwish.us)
+    // For local dev, set frontendUrl in config.json to http://localhost:3000
+    pairingServer.openManagerPage(CONFIG.frontendUrl);
 
     console.log('\n  ⏳ Waiting for manager to pair this device...');
     console.log('  📱 The manager page should open automatically.');
@@ -987,9 +992,13 @@ async function main() {
   let pairing = await pairingServer.loadPairing();
   let surveillanceConfig = null;
   
+  // Always open browser to manager portal so manager can verify/change kiosk
+  console.log('\n  🌐 Opening manager portal...');
+  pairingServer.openManagerPage(CONFIG.frontendUrl);
+  
   // Check if we have a valid pairing
   if (!pairing || !pairing.kioskId || !pairing.apiKey) {
-    console.log('\n  📱 Device not paired to any kiosk');
+    console.log('  📱 Device not paired to any kiosk');
     
     // Check if we have local config as fallback
     if (CONFIG.surveillance.kioskId && CONFIG.surveillance.apiKey && 
@@ -1005,6 +1014,9 @@ async function main() {
       // Wait for manager to pair device
       pairing = await waitForPairing(pairingServer);
     }
+  } else {
+    console.log(`  📱 Currently paired to: ${pairing.kioskName || pairing.kioskId}`);
+    console.log('  💡 Manager can re-pair to a different kiosk from the browser');
   }
   
   // Fetch latest config from cloud

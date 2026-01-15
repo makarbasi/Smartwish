@@ -11,7 +11,7 @@ The local print agent runs on each kiosk device to handle printing and surveilla
 
 2. **First Time Setup**
    - Run `start-print-agent.bat` (Windows) or `node local-print-agent.js`
-   - A browser will open to the SmartWish Manager dashboard
+   - A browser will open to the SmartWish Manager dashboard (https://app.smartwish.us)
    - Log in with your manager credentials
    - Select the kiosk you want to pair with this device
    - Click "Pair Device"
@@ -19,6 +19,22 @@ The local print agent runs on each kiosk device to handle printing and surveilla
 3. **Auto-Start on Windows**
    - Run `install-autostart.bat` to configure auto-start on login
    - This creates a shortcut in your Startup folder
+
+## Local Development
+
+For local development, edit `config.json`:
+```json
+{
+  "frontendUrl": "http://localhost:3000",
+  ...
+}
+```
+
+Or set the environment variable:
+```bash
+set FRONTEND_URL=http://localhost:3000
+node local-print-agent.js
+```
 
 ## How It Works
 

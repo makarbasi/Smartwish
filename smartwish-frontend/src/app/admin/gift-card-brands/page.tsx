@@ -72,18 +72,26 @@ export default function GiftCardBrandsPage() {
     }
   }, [status, router]);
 
-  // Fetch brands
+  // Fetch brands - track if already fetched to prevent duplicate calls in Strict Mode
+  const [hasFetched, setHasFetched] = useState(false);
+  
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === "authenticated" && !hasFetched) {
+      setHasFetched(true);
       fetchBrands();
     }
-  }, [status]);
+  }, [status, hasFetched]);
 
   const fetchBrands = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch("/api/admin/gift-card-brands?includeInactive=true");
       if (!response.ok) {
+        if (response.status === 429) {
+          setError("Too many requests. Please wait a moment and refresh.");
+          return;
+        }
         throw new Error("Failed to fetch gift card brands");
       }
       const data = await response.json();

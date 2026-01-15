@@ -20,8 +20,12 @@ if %errorlevel% neq 0 (
 
 REM Set environment variables (defaults - will be overridden by cloud config after pairing)
 set CLOUD_SERVER_URL=https://smartwish.onrender.com
-set FRONTEND_URL=https://smartwish.vercel.app
+set FRONTEND_URL=https://app.smartwish.us
 set POLL_INTERVAL=10000
+
+REM For local development, uncomment the line below:
+
+set FRONTEND_URL=http://localhost:3000
 
 REM Start the print agent
 echo ============================================

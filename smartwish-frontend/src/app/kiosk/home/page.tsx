@@ -7,6 +7,15 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import useSWR from "swr";
 
+// Gift card brand type
+interface GiftCardBrand {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string;
+  description?: string;
+}
+
 // Cache keys
 const TEMPLATES_CACHE_KEY = 'swr_cache_/api/templates?limit=5&sort=popularity';
 const STICKERS_CACHE_KEY = 'swr_cache_/api/stickers?limit=200';
@@ -138,6 +147,28 @@ export default function KioskHomePage() {
   // Check if features are enabled (default to true if not set)
   const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;
   const stickersEnabled = kioskConfig?.stickersEnabled !== false;
+  
+  // Gift card tile configuration
+  const giftCardTileConfig = kioskConfig?.giftCardTile;
+  const giftCardTileEnabled = giftCardTileConfig?.enabled && giftCardTileConfig?.visibility === 'visible';
+  const giftCardTileDisabled = giftCardTileConfig?.enabled && giftCardTileConfig?.visibility === 'disabled';
+  const showGiftCardTile = giftCardTileEnabled || giftCardTileDisabled;
+
+  // Fetch gift card brand info when brandId is set
+  const [giftCardBrand, setGiftCardBrand] = useState<GiftCardBrand | null>(null);
+  
+  useEffect(() => {
+    if (giftCardTileConfig?.brandId) {
+      fetch(`/api/admin/gift-card-brands/${giftCardTileConfig.brandId}`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (data?.data) {
+            setGiftCardBrand(data.data);
+          }
+        })
+        .catch((err) => console.error('Failed to fetch gift card brand:', err));
+    }
+  }, [giftCardTileConfig?.brandId]);
 
   // Track if component has mounted (for hydration-safe rendering)
   const [hasMounted, setHasMounted] = useState(false);
@@ -346,6 +377,11 @@ export default function KioskHomePage() {
     router.push("/stickers");
   };
 
+  const handleSelectGiftCard = () => {
+    if (!giftCardTileEnabled || !giftCardTileConfig?.brandId) return;
+    router.push(`/kiosk/gift-card?brandId=${giftCardTileConfig.brandId}`);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-6 lg:p-10 overflow-hidden">
       {/* Animated background elements */}
@@ -368,7 +404,7 @@ export default function KioskHomePage() {
         </p>
       </div>
 
-      {/* Product Selection Cards */}
+      {/* Product Selection Cards - Main Row */}
       <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 max-w-7xl w-full">
         
         {/* Greeting Cards Option */}
@@ -581,6 +617,138 @@ export default function KioskHomePage() {
           </div>
         </button>
       </div>
+
+      {/* Gift Card Option - Separate Row, Centered */}
+      {showGiftCardTile && (
+        <div className="relative flex justify-center w-full max-w-7xl mt-8 lg:mt-12">
+          <button
+            onClick={handleSelectGiftCard}
+            disabled={giftCardTileDisabled || !giftCardTileConfig?.brandId}
+            className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none w-full max-w-xl min-h-[320px] lg:min-h-[360px] ${
+              giftCardTileEnabled && giftCardTileConfig?.brandId
+                ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-emerald-400/50 cursor-pointer'
+                : 'opacity-50 cursor-not-allowed border-white/10'
+            }`}
+          >
+            {/* Glow effect on hover */}
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/0 to-teal-600/0 group-hover:from-emerald-600/20 group-hover:to-teal-600/20 transition-all duration-500" />
+            
+            {/* Discount badge */}
+            {giftCardTileConfig?.discountPercent && giftCardTileConfig.discountPercent > 0 && (
+              <div className="absolute top-4 right-4 z-20">
+                <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-white text-sm font-bold px-4 py-2 rounded-full shadow-lg animate-pulse">
+                  {giftCardTileConfig.discountPercent}% OFF!
+                </div>
+              </div>
+            )}
+            
+            {/* Horizontal layout for gift card tile */}
+            <div className="absolute inset-0 flex items-center">
+              {/* Left side - Gift Card Brand Logo or Generic Visuals */}
+              <div className="flex-shrink-0 w-1/2 h-full flex items-center justify-center">
+                <div className="relative w-64 h-40 flex items-center justify-center">
+                  {/* Show brand logo if available - fills the entire space */}
+                  {hasMounted && giftCardBrand?.logo_url ? (
+                    <div className="relative w-full h-full rounded-2xl bg-white/10 backdrop-blur-sm border-2 border-white/30 shadow-2xl overflow-hidden transition-all duration-500 group-hover:shadow-emerald-500/50 group-hover:scale-105 group-hover:border-emerald-400/50">
+                      <Image
+                        src={giftCardBrand.logo_url}
+                        alt={giftCardBrand.name}
+                        fill
+                        className="object-contain p-6"
+                        sizes="256px"
+                      />
+                      {/* Decorative overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-emerald-500/5 pointer-events-none" />
+                    </div>
+                  ) : hasMounted ? (
+                    /* Gift card stack animation - fallback when no brand logo */
+                    <>
+                      {/* Back card */}
+                      <div 
+                        className="absolute w-40 h-24 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-2xl border-2 border-white/30 transition-all duration-500 group-hover:shadow-emerald-500/40"
+                        style={{
+                          transform: 'translateY(-6px) rotate(-6deg) scale(0.9)',
+                        }}
+                      >
+                        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/20 to-transparent" />
+                        <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
+                          <div className="w-6 h-4 rounded bg-amber-300/60" />
+                          <div className="w-10 h-1.5 rounded bg-white/30" />
+                        </div>
+                      </div>
+                      
+                      {/* Middle card */}
+                      <div 
+                        className="absolute w-40 h-24 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-500 shadow-2xl border-2 border-white/30 transition-all duration-500 group-hover:shadow-teal-500/40"
+                        style={{
+                          transform: 'translateY(0px) rotate(0deg) scale(0.95)',
+                        }}
+                      >
+                        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/20 to-transparent" />
+                        <div className="absolute top-2 right-2">
+                          <div className="text-white/60 text-lg">🎁</div>
+                        </div>
+                      </div>
+                      
+                      {/* Front card */}
+                      <div 
+                        className="absolute w-40 h-24 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 shadow-2xl border-2 border-white/40 transition-all duration-500 group-hover:shadow-emerald-500/50 group-hover:scale-105"
+                        style={{
+                          transform: 'translateY(6px) rotate(6deg)',
+                        }}
+                      >
+                        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/20 to-transparent" />
+                        <div className="absolute top-2 left-2 text-white/90 font-bold text-xs">
+                          Gift Card
+                        </div>
+                        <div className="absolute top-2 right-2">
+                          <div className="text-white text-lg">💳</div>
+                        </div>
+                        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-4 rounded bg-amber-400/80" />
+                            <div className="w-12 h-1.5 rounded bg-white/40" />
+                          </div>
+                          <div className="text-white/80 text-[10px] font-mono">****</div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    /* Fallback shown during SSR */
+                    <div className="w-40 h-24 rounded-xl bg-gradient-to-br from-emerald-400/30 to-teal-400/30 border-2 border-white/20 flex items-center justify-center">
+                      <div className="text-white/60 text-3xl">🎁</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Right side - Content */}
+              <div className="flex-1 pr-8 py-8">
+                <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-2 group-hover:text-emerald-200 transition-colors duration-300 drop-shadow-lg">
+                  {giftCardTileConfig?.displayName || 'Gift Card'}
+                </h2>
+                <p className="text-sm md:text-base text-gray-300 mb-6 drop-shadow-md">
+                  {giftCardTileConfig?.description || 'Purchase a gift card for yourself or a loved one'}
+                </p>
+                
+                {/* CTA */}
+                <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-full font-semibold text-base transition-all duration-300 ${
+                  giftCardTileEnabled && giftCardTileConfig?.brandId
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/40 group-hover:shadow-emerald-500/60'
+                    : 'bg-gray-600/50 text-gray-400'
+                }`}>
+                  <span>{giftCardTileEnabled && giftCardTileConfig?.brandId ? 'Buy Now' : 'Coming Soon'}</span>
+                  {giftCardTileEnabled && giftCardTileConfig?.brandId && (
+                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* Footer hint */}
       <div className="relative mt-10 lg:mt-14 text-center">
