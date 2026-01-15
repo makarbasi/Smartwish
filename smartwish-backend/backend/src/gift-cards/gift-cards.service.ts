@@ -688,6 +688,7 @@ export class GiftCardsService {
     brandName?: string;
   }): Promise<{ success: boolean; error?: string }> {
     const nodemailer = await import('nodemailer');
+    const QRCode = await import('qrcode');
 
     // Check if email configuration is available
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -714,6 +715,15 @@ export class GiftCardsService {
       // Verify connection
       await transporter.verify();
 
+      // Generate QR code as Buffer for attachment
+      const frontendUrl = process.env.FRONTEND_URL || 'https://smartwish.us';
+      const qrContent = `${frontendUrl}/redeem?card=${data.cardNumber}`;
+      const qrCodeBuffer = await QRCode.toBuffer(qrContent, {
+        width: 200,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' },
+      });
+
       // Format card number
       const formatCardNumber = (num: string) => {
         const clean = num.replace(/\s/g, '');
@@ -736,6 +746,13 @@ export class GiftCardsService {
         from: process.env.EMAIL_USER,
         to: data.email,
         subject: `Your ${brandName} Gift Card 🎁`,
+        attachments: [
+          {
+            filename: 'qrcode.png',
+            content: qrCodeBuffer,
+            cid: 'qrcode', // Same as the cid value in the <img> tag
+          },
+        ],
         html: `
           <!DOCTYPE html>
           <html>
@@ -752,6 +769,12 @@ export class GiftCardsService {
                 </div>
                 
                 <div style="background: white; border-radius: 16px; padding: 32px; margin-top: 20px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                  <!-- QR Code Section -->
+                  <div style="text-align: center; margin-bottom: 24px;">
+                    <img src="cid:qrcode" alt="QR Code" style="width: 200px; height: 200px; border-radius: 8px;" />
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 8px;">Scan to redeem</p>
+                  </div>
+                  
                   <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                     <p style="color: #6b7280; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">Card Number</p>
                     <p style="font-family: 'Courier New', monospace; font-size: 24px; letter-spacing: 4px; color: #1f2937; margin: 0; font-weight: bold;">
