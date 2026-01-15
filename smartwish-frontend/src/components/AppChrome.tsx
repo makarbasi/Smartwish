@@ -10,6 +10,7 @@ import { useDeviceMode } from '@/contexts/DeviceModeContext'
 import { useKioskInactivity } from '@/hooks/useKioskInactivity'
 import KioskScreenSaver from '@/components/KioskScreenSaver'
 import KioskProductSwitcher from '@/components/KioskProductSwitcher'
+import KioskChat from '@/components/KioskChat'
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const p = usePathname()
@@ -61,6 +62,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       
       {/* Kiosk Screen Saver */}
       <KioskScreenSaver isVisible={showScreenSaver} onExit={exitScreenSaver} />
+      
+      {/* Kiosk Chat */}
+      <KioskChat />
     </>
   )
 }

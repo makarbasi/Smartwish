@@ -28,6 +28,8 @@ import { fileURLToPath } from 'url';
 import ipp from 'ipp';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { getSurveillanceManager } from './surveillance-manager.js';
+import { DevicePairingServer, fetchKioskConfig } from './device-pairing.js';
 
 const execAsync = promisify(exec);
 
@@ -35,19 +37,39 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // =============================================================================
-// CONFIGURATION - Modify these values
+// LOAD CONFIGURATION FROM FILE OR ENVIRONMENT
+// =============================================================================
+
+// Try to load config.json if it exists
+let fileConfig = {};
+const configPath = path.join(__dirname, 'config.json');
+try {
+  const configData = await fs.readFile(configPath, 'utf-8');
+  fileConfig = JSON.parse(configData);
+  console.log('📁 Loaded configuration from config.json');
+} catch (err) {
+  // Config file doesn't exist or is invalid, use defaults
+  console.log('📁 No config.json found, using environment variables');
+}
+
+// =============================================================================
+// CONFIGURATION - File config takes precedence, then env vars, then defaults
 // =============================================================================
 const CONFIG = {
   // Cloud server URL - change this to your deployed backend
-  cloudServerUrl: process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
+  cloudServerUrl: fileConfig.cloudServerUrl || process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
+
+  // Frontend URL - for opening browser during pairing
+  // Use http://localhost:3000 for local development
+  frontendUrl: fileConfig.frontendUrl || process.env.FRONTEND_URL || 'https://app.smartwish.us',
 
   // Fallback default printer (only used if job has no printerName from kiosk config)
   // Per-kiosk printer settings are configured in /admin/kiosks
-  defaultPrinter: process.env.DEFAULT_PRINTER || 'HPIE4B65B (HP OfficeJet Pro 9130e Series)',
+  defaultPrinter: fileConfig.defaultPrinter || process.env.DEFAULT_PRINTER || '',
 
   // How often to poll for new jobs (milliseconds)
   // Using 10 seconds to reduce rate limit pressure on Render free tier
-  pollInterval: process.env.POLL_INTERVAL || 10000,
+  pollInterval: fileConfig.pollInterval || parseInt(process.env.POLL_INTERVAL || '10000', 10),
   
   // How long to wait before retrying after rate limit (milliseconds)
   rateLimitBackoff: 10000,
@@ -57,6 +79,19 @@ const CONFIG = {
 
   // Paper configuration
   dpi: 300,
+
+  // Surveillance configuration - config.json takes precedence over env vars
+  surveillance: {
+    enabled: fileConfig.surveillance?.enabled ?? (process.env.SURVEILLANCE_ENABLED === 'true'),
+    kioskId: fileConfig.surveillance?.kioskId || process.env.KIOSK_ID || 'default-kiosk',
+    apiKey: fileConfig.surveillance?.apiKey || process.env.KIOSK_API_KEY || '',
+    webcamIndex: fileConfig.surveillance?.webcamIndex ?? parseInt(process.env.SURVEILLANCE_WEBCAM || '0', 10),
+    httpPort: fileConfig.surveillance?.httpPort ?? parseInt(process.env.SURVEILLANCE_PORT || '8765', 10),
+    showPreview: fileConfig.surveillance?.showPreview ?? (process.env.SURVEILLANCE_PREVIEW === 'true'),
+    pythonPath: fileConfig.surveillance?.pythonPath || process.env.PYTHON_PATH || 'python',
+    dwellThresholdSeconds: fileConfig.surveillance?.dwellThresholdSeconds ?? 8,
+    frameThreshold: fileConfig.surveillance?.frameThreshold ?? 10,
+  },
 };
 
 // Paper size configurations
@@ -870,6 +905,68 @@ async function clearJobQueue() {
   console.log('');
 }
 
+async function startSurveillance(surveillanceConfig) {
+  const config = surveillanceConfig || CONFIG.surveillance;
+  
+  if (!config.enabled) {
+    console.log('  📹 Surveillance: Disabled');
+    return null;
+  }
+
+  console.log('\n' + '─'.repeat(60));
+  console.log('  📹 SURVEILLANCE MODULE');
+  console.log('─'.repeat(60));
+
+  const surveillanceManager = getSurveillanceManager({
+    kioskId: config.kioskId,
+    serverUrl: CONFIG.cloudServerUrl,
+    apiKey: config.apiKey,
+    webcamIndex: config.webcamIndex ?? 0,
+    httpPort: config.httpPort ?? 8765,
+    showPreview: config.showPreview ?? false,
+    pythonPath: config.pythonPath || 'python',
+    dwellThreshold: config.dwellThresholdSeconds ?? 8,
+    frameThreshold: config.frameThreshold ?? 10,
+    autoRestart: true,
+  });
+
+  const started = await surveillanceManager.start();
+  
+  if (started) {
+    console.log('  ✅ Surveillance started successfully');
+    console.log(`  🌐 Image server: http://localhost:${config.httpPort || 8765}`);
+  } else {
+    console.log('  ⚠️ Surveillance failed to start');
+  }
+
+  console.log('─'.repeat(60) + '\n');
+  
+  return surveillanceManager;
+}
+
+/**
+ * Wait for device pairing if not already paired
+ */
+async function waitForPairing(pairingServer) {
+  return new Promise((resolve) => {
+    // Set callback for when device is paired
+    pairingServer.onPaired = (pairing) => {
+      console.log(`\n  ✅ Device paired to kiosk: ${pairing.kioskName || pairing.kioskId}`);
+      resolve(pairing);
+    };
+
+    // Open browser to manager page
+    // Use frontendUrl from config (default: https://app.smartwish.us)
+    // For local dev, set frontendUrl in config.json to http://localhost:3000
+    pairingServer.openManagerPage(CONFIG.frontendUrl);
+
+    console.log('\n  ⏳ Waiting for manager to pair this device...');
+    console.log('  📱 The manager page should open automatically.');
+    console.log('  📋 After logging in, select a kiosk and click "Pair Device"');
+    console.log('');
+  });
+}
+
 async function main() {
   console.log('═'.repeat(60));
   console.log('  🖨️  SMARTWISH LOCAL PRINT AGENT');
@@ -879,14 +976,103 @@ async function main() {
   console.log('');
 
   await ensureTempDir();
+  
+  // =========================================================================
+  // DEVICE PAIRING - Get kiosk identity from cloud
+  // =========================================================================
+  
+  const pairingServer = new DevicePairingServer({
+    port: 8766,
+  });
+  
+  // Start pairing server
+  await pairingServer.start();
+  
+  // Load existing pairing
+  let pairing = await pairingServer.loadPairing();
+  let surveillanceConfig = null;
+  
+  // Always open browser to manager portal so manager can verify/change kiosk
+  console.log('\n  🌐 Opening manager portal...');
+  pairingServer.openManagerPage(CONFIG.frontendUrl);
+  
+  // Check if we have a valid pairing
+  if (!pairing || !pairing.kioskId || !pairing.apiKey) {
+    console.log('  📱 Device not paired to any kiosk');
+    
+    // Check if we have local config as fallback
+    if (CONFIG.surveillance.kioskId && CONFIG.surveillance.apiKey && 
+        CONFIG.surveillance.kioskId !== 'default-kiosk' && 
+        CONFIG.surveillance.kioskId !== 'YOUR_KIOSK_ID') {
+      console.log('  📁 Using local config.json configuration');
+      pairing = {
+        kioskId: CONFIG.surveillance.kioskId,
+        apiKey: CONFIG.surveillance.apiKey,
+        config: { surveillance: CONFIG.surveillance },
+      };
+    } else {
+      // Wait for manager to pair device
+      pairing = await waitForPairing(pairingServer);
+    }
+  } else {
+    console.log(`  📱 Currently paired to: ${pairing.kioskName || pairing.kioskId}`);
+    console.log('  💡 Manager can re-pair to a different kiosk from the browser');
+  }
+  
+  // Fetch latest config from cloud
+  console.log(`\n  ☁️  Fetching config for kiosk: ${pairing.kioskId}`);
+  const cloudConfig = await fetchKioskConfig(CONFIG.cloudServerUrl, pairing.kioskId, pairing.apiKey);
+  
+  if (cloudConfig) {
+    console.log(`  ✅ Got cloud config for: ${cloudConfig.name || pairing.kioskId}`);
+    surveillanceConfig = {
+      enabled: cloudConfig.surveillance?.enabled ?? false,
+      kioskId: pairing.kioskId,
+      apiKey: pairing.apiKey,
+      webcamIndex: cloudConfig.surveillance?.webcamIndex ?? 0,
+      httpPort: cloudConfig.surveillance?.httpPort ?? 8765,
+      dwellThresholdSeconds: cloudConfig.surveillance?.dwellThresholdSeconds ?? 8,
+      frameThreshold: cloudConfig.surveillance?.frameThreshold ?? 10,
+      showPreview: cloudConfig.surveillance?.showPreview ?? false,
+    };
+    
+    // Update default printer from cloud config
+    if (cloudConfig.printerName) {
+      CONFIG.defaultPrinter = cloudConfig.printerName;
+    }
+  } else {
+    console.log('  ⚠️  Could not fetch cloud config, using pairing config');
+    surveillanceConfig = pairing.config?.surveillance || CONFIG.surveillance;
+    surveillanceConfig.kioskId = pairing.kioskId;
+    surveillanceConfig.apiKey = pairing.apiKey;
+  }
+  
+  console.log('');
   await listPrinters();
   await fetchKioskPrinterConfigs();
   
   // Clear old jobs from queue - start fresh every time
   await clearJobQueue();
 
+  // Start surveillance if enabled in cloud config
+  const surveillanceManager = await startSurveillance(surveillanceConfig);
+
   console.log('🔄 Waiting for print jobs...');
+  console.log(`   Kiosk: ${pairing.kioskId}`);
   console.log('   Press Ctrl+C to stop\n');
+
+  // Handle graceful shutdown
+  const shutdown = () => {
+    console.log('\n\n⏹️  Shutting down...');
+    if (surveillanceManager) {
+      surveillanceManager.stop();
+    }
+    pairingServer.stop();
+    process.exit(0);
+  };
+  
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
   // Initial poll
   await pollForJobs();

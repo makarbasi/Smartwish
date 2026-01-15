@@ -167,16 +167,44 @@ export const KioskSessionProvider: React.FC<KioskSessionProviderProps> = ({ chil
     };
   }, []);
 
-  // ==================== Cleanup on Unmount ====================
+  // ==================== Cleanup on Unmount & Window Close ====================
 
   useEffect(() => {
-    return () => {
-      // End session on unmount if still active
-      if (kioskSessionService.isActive) {
-        kioskSessionService.endSession('abandoned');
+    // Handle window close/unload
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // End session when window is closing
+      if (kioskSessionService.isActive && kioskSessionService.currentSessionId) {
+        const sessionId = kioskSessionService.currentSessionId;
+        const outcome = 'abandoned';
+        
+        // Use fetch with keepalive for reliable delivery even if page is closing
+        // This will continue even after the page unloads
+        fetch('/api/kiosk/session/end', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, outcome }),
+          keepalive: true, // Critical: keeps request alive after page closes
+        }).catch(() => {
+          // Ignore errors - request may not complete but browser will try
+        });
+        
+        // Mark session as ended locally immediately
+        kioskSessionService.state = 'idle';
+        kioskSessionService.sessionId = null;
+        kioskSessionService.kioskId = null;
       }
     };
-  }, []);
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      // End session on unmount if still active (normal navigation)
+      if (kioskSessionService.isActive) {
+        endSession('abandoned');
+      }
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [endSession]);
 
   // ==================== Event Tracking Wrappers ====================
 

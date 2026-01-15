@@ -17,8 +17,8 @@ interface UseKioskInactivityOptions {
 const MOUSE_MOVE_THROTTLE = 5000; // milliseconds
 const TOUCH_MOVE_THROTTLE = 5000; // milliseconds
 
-// Pages where screen saver should never appear
-const EXCLUDED_PATHS = ['/admin', '/managers'];
+// Pages where screen saver and timeout should never appear
+const EXCLUDED_PATHS = ['/admin', '/manager', '/managers'];
 
 // QR code upload timeout (matches the session TTL)
 const QR_UPLOAD_TIMEOUT = 10 * 60 * 1000; // 10 minutes
@@ -73,6 +73,9 @@ export function useKioskInactivity({
     const navigateToHome = useCallback(async () => {
         console.log("🖥️ [KioskInactivity] navigateToHome() - current path:", pathname);
         
+        // Dispatch event to clear chat history
+        window.dispatchEvent(new CustomEvent('kiosk-timeout'));
+        
         // End the kiosk session due to timeout
         // Always call handleTimeout - the service has its own guard for inactive sessions
         if (kioskSession) {
@@ -108,8 +111,17 @@ export function useKioskInactivity({
                         localStorage.removeItem(key);
                     }
                 });
-                sessionStorage.clear();
-                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data");
+                
+                // Clear sessionStorage but preserve chat session key (already reset by resetSession)
+                const sessionKeysToKeep = ['kiosk_chat_session_'];
+                const sessionKeys = Object.keys(sessionStorage);
+                sessionKeys.forEach(key => {
+                    const shouldKeep = sessionKeysToKeep.some(prefix => key.startsWith(prefix));
+                    if (!shouldKeep) {
+                        sessionStorage.removeItem(key);
+                    }
+                });
+                console.log("🖥️ [KioskInactivity] 🧹 Cleared user data (preserved chat session)");
             } catch (error) {
                 console.error("🖥️ [KioskInactivity] Error clearing storage:", error);
             }

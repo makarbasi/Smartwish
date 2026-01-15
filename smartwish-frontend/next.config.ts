@@ -54,6 +54,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'assets.tillo.io',
+        port: '',
+        pathname: '/**',
+      },
     ],
     // Cache images for 24 hours (86400 seconds = 1 day)
     minimumCacheTTL: 86400,

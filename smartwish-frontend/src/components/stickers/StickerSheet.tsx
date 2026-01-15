@@ -1,12 +1,25 @@
 "use client";
 
 import StickerCircle from "./StickerCircle";
+import StickerGiftCardSlot from "./StickerGiftCardSlot";
 
 export interface StickerSlot {
   id: number;
   imageUrl: string | null;
   editedImageBlob: Blob | null;
   originalImageUrl?: string | null;
+}
+
+// Gift card data interface
+export interface GiftCardSlotData {
+  storeName: string;
+  storeLogo?: string;
+  amount: number;
+  qrCode?: string;
+  redemptionLink?: string;
+  status?: 'pending' | 'issued';
+  isIssued?: boolean;
+  brandSlug?: string;
 }
 
 interface StickerSheetProps {
@@ -18,6 +31,11 @@ interface StickerSheetProps {
   onSlotEdit?: (index: number) => void;
   onSlotCopy?: (index: number) => void;
   copySourceIndex?: number | null;
+  // Gift card props
+  giftCardData?: GiftCardSlotData | null;
+  giftCardSlotIndex?: number | null;
+  pendingGiftCardQr?: string;
+  onGiftCardClear?: () => void;
 }
 
 /**
@@ -77,6 +95,11 @@ export default function StickerSheet({
   onSlotEdit,
   onSlotCopy,
   copySourceIndex = null,
+  // Gift card props
+  giftCardData = null,
+  giftCardSlotIndex = null,
+  pendingGiftCardQr = '',
+  onGiftCardClear,
 }: StickerSheetProps) {
   // Ensure we always have 6 slots
   const normalizedSlots = Array.from({ length: 6 }, (_, i) => slots[i] || {
@@ -129,6 +152,9 @@ export default function StickerSheet({
         {normalizedSlots.map((slot, index) => {
           const [centerX, centerY] = CIRCLE_POSITIONS[index];
           
+          // Check if this slot should show a gift card
+          const isGiftCardSlot = giftCardData && giftCardSlotIndex === index;
+          
           return (
             <div
               key={slot.id}
@@ -140,19 +166,34 @@ export default function StickerSheet({
                 aspectRatio: '1 / 1', // Ensures perfect circle
               }}
             >
-              <StickerCircle
-                index={index}
-                imageUrl={slot.imageUrl}
-                isSelected={selectedIndex === index}
-                isCompact={isCompact}
-                onClick={() => onSlotClick(index)}
-                onClear={() => onSlotClear(index)}
-                onEdit={onSlotEdit ? () => onSlotEdit(index) : undefined}
-                onCopy={onSlotCopy ? () => onSlotCopy(index) : undefined}
-                isCopySource={copySourceIndex === index}
-                isCopyTarget={copySourceIndex !== null && copySourceIndex !== index}
-                useFullSize
-              />
+              {isGiftCardSlot ? (
+                // Render gift card slot
+                <StickerGiftCardSlot
+                  index={index}
+                  giftCardData={giftCardData}
+                  pendingQrCode={pendingGiftCardQr}
+                  isSelected={selectedIndex === index}
+                  isCompact={isCompact}
+                  onClick={() => onSlotClick(index)}
+                  onClear={onGiftCardClear}
+                  useFullSize
+                />
+              ) : (
+                // Render regular sticker circle
+                <StickerCircle
+                  index={index}
+                  imageUrl={slot.imageUrl}
+                  isSelected={selectedIndex === index}
+                  isCompact={isCompact}
+                  onClick={() => onSlotClick(index)}
+                  onClear={() => onSlotClear(index)}
+                  onEdit={onSlotEdit ? () => onSlotEdit(index) : undefined}
+                  onCopy={onSlotCopy ? () => onSlotCopy(index) : undefined}
+                  isCopySource={copySourceIndex === index}
+                  isCopyTarget={copySourceIndex !== null && copySourceIndex !== index}
+                  useFullSize
+                />
+              )}
             </div>
           );
         })}
@@ -168,7 +209,8 @@ export default function StickerSheet({
       {isCompact && (
         <div className="text-center mt-2">
           <span className="text-xs text-gray-400">
-            {normalizedSlots.filter((s) => s.imageUrl).length} of 6 stickers
+            {normalizedSlots.filter((s, i) => s.imageUrl || (giftCardData && giftCardSlotIndex === i)).length} of 6 stickers
+            {giftCardData && " (incl. gift card)"}
           </span>
         </div>
       )}
