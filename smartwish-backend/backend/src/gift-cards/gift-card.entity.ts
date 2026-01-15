@@ -68,11 +68,11 @@ export class GiftCard {
   @Column({ name: 'purchase_order_id', type: 'varchar', length: 255, nullable: true })
   purchaseOrderId?: string | null;
 
-  @Column({ name: 'kiosk_id', type: 'uuid', nullable: true })
-  kioskId?: string | null;
+  // Note: kiosk_id removed - get kiosk info from linked order via purchase_order_id
+  // This avoids UUID/VARCHAR type mismatch with kiosk_configs table
 
   @Column({ type: 'jsonb', nullable: true })
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any>; // Only stores: { pin: "1234" } for admin access
 
   @OneToMany(() => GiftCardTransaction, (tx) => tx.giftCard)
   transactions?: GiftCardTransaction[];

@@ -18,6 +18,7 @@ import {
   CheckBalanceDto,
   RedeemGiftCardDto,
   UpdateGiftCardStatusDto,
+  EmailGiftCardDto,
 } from './dto/gift-card.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
@@ -69,6 +70,31 @@ export class GiftCardsPublicController {
   ) {
     const card = await this.giftCardsService.lookupCard(cardCode, cardNumber);
     return { success: true, card };
+  }
+
+  /**
+   * Send gift card details via email (public - for kiosk)
+   */
+  @Public()
+  @Post('email')
+  async emailGiftCard(@Body() dto: EmailGiftCardDto) {
+    const result = await this.giftCardsService.sendGiftCardEmail({
+      email: dto.email,
+      cardNumber: dto.cardNumber,
+      pin: dto.pin,
+      balance: dto.balance,
+      expiresAt: dto.expiresAt,
+      brandName: dto.brandName,
+    });
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error || 'Failed to send email',
+      };
+    }
+
+    return { success: true, message: 'Gift card details sent to email' };
   }
 }
 
@@ -212,7 +238,6 @@ export class AdminGiftCardsController {
         activatedAt: card.activatedAt,
         expiresAt: card.expiresAt,
         purchaseOrderId: card.purchaseOrderId,
-        kioskId: card.kioskId,
         brand: card.brand ? {
           id: card.brand.id,
           name: card.brand.name,
@@ -243,7 +268,6 @@ export class AdminGiftCardsController {
         activatedAt: card.activatedAt,
         expiresAt: card.expiresAt,
         purchaseOrderId: card.purchaseOrderId,
-        kioskId: card.kioskId,
         metadata: card.metadata,
         brand: card.brand ? {
           id: card.brand.id,

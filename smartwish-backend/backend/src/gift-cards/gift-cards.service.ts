@@ -199,7 +199,8 @@ export class GiftCardsService {
     expiresAt.setMonth(expiresAt.getMonth() + brand.expiryMonths);
 
     // Create card
-    // Store PIN in metadata for admin access (stored securely, only accessible to admins)
+    // Note: kiosk_id, discount, etc. are stored on the ORDER (via purchase_order_id)
+    // Only PIN is stored in metadata for admin viewing
     const card = this.cardRepo.create({
       brandId: dto.brandId,
       cardNumber,
@@ -209,10 +210,9 @@ export class GiftCardsService {
       currentBalance: dto.amount,
       status: GiftCardStatus.ACTIVE,
       expiresAt,
-      purchaseOrderId: dto.paymentIntentId,
-      kioskId: dto.kioskId,
+      purchaseOrderId: dto.paymentIntentId || dto.orderId,
       metadata: {
-        pin: pin, // Store PIN in metadata for admin viewing (only accessible via admin endpoints)
+        pin, // Store PIN in metadata for admin viewing (only accessible via admin endpoints)
       },
     });
     const savedCard = await this.cardRepo.save(card);
@@ -225,7 +225,6 @@ export class GiftCardsService {
       balanceBefore: 0,
       balanceAfter: dto.amount,
       description: `Initial purchase of ${brand.name} gift card`,
-      kioskId: dto.kioskId,
       referenceId: dto.paymentIntentId,
     });
 
@@ -675,5 +674,130 @@ export class GiftCardsService {
         brandName: t.giftCard?.brand?.name,
       })),
     };
+  }
+
+  /**
+   * Send gift card details via email
+   */
+  async sendGiftCardEmail(data: {
+    email: string;
+    cardNumber: string;
+    pin: string;
+    balance: number;
+    expiresAt: string;
+    brandName?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    const nodemailer = await import('nodemailer');
+
+    // Check if email configuration is available
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('❌ Email configuration missing');
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    try {
+      // Create transporter
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.office365.com',
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
+        secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+        tls: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2',
+        },
+      });
+
+      // Verify connection
+      await transporter.verify();
+
+      // Format card number
+      const formatCardNumber = (num: string) => {
+        const clean = num.replace(/\s/g, '');
+        if (clean.length === 16) {
+          return `${clean.slice(0, 4)} ${clean.slice(4, 8)} ${clean.slice(8, 12)} ${clean.slice(12, 16)}`;
+        }
+        return num;
+      };
+
+      // Format expiry date
+      const expiresDate = new Date(data.expiresAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const brandName = data.brandName || 'Gift Card';
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: data.email,
+        subject: `Your ${brandName} Gift Card 🎁`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Your SmartWish Gift Card</title>
+            </head>
+            <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); border-radius: 16px; padding: 24px; text-align: center; color: white;">
+                  <h1 style="margin: 0 0 8px 0; font-size: 28px;">🎁 Your ${brandName} Gift Card</h1>
+                  <p style="margin: 0; opacity: 0.9;">from SmartWish</p>
+                </div>
+                
+                <div style="background: white; border-radius: 16px; padding: 32px; margin-top: 20px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                  <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <p style="color: #6b7280; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">Card Number</p>
+                    <p style="font-family: 'Courier New', monospace; font-size: 24px; letter-spacing: 4px; color: #1f2937; margin: 0; font-weight: bold;">
+                      ${formatCardNumber(data.cardNumber)}
+                    </p>
+                  </div>
+                  
+                  <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <p style="color: #6b7280; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">PIN</p>
+                    <p style="font-family: 'Courier New', monospace; font-size: 20px; color: #1f2937; margin: 0; font-weight: bold;">
+                      ${data.pin}
+                    </p>
+                  </div>
+                  
+                  <div style="display: flex; gap: 20px; margin-top: 20px;">
+                    <div style="flex: 1; text-align: center; padding: 16px; background: #ecfdf5; border-radius: 12px;">
+                      <p style="color: #059669; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase;">Balance</p>
+                      <p style="color: #059669; font-size: 28px; font-weight: bold; margin: 0;">$${data.balance.toFixed(2)}</p>
+                    </div>
+                    <div style="flex: 1; text-align: center; padding: 16px; background: #fef3c7; border-radius: 12px;">
+                      <p style="color: #d97706; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase;">Expires</p>
+                      <p style="color: #d97706; font-size: 16px; font-weight: bold; margin: 0;">${expiresDate}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px; padding: 16px;">
+                  <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                    Keep this email safe. You'll need the card number and PIN to use your gift card.
+                  </p>
+                  <p style="color: #9ca3af; font-size: 11px; margin-top: 12px;">
+                    © ${new Date().getFullYear()} SmartWish. All rights reserved.
+                  </p>
+                </div>
+              </div>
+            </body>
+          </html>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Gift card email sent to ${data.email}`);
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ Error sending gift card email:', error.message);
+      return { success: false, error: error.message || 'Failed to send email' };
+    }
   }
 }
