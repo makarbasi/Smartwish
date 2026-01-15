@@ -1,17 +1,9 @@
 {
-  "kioskId": "test_kiosk1",
-  "kioskName": "Test_kiosk1",
-  "apiKey": "80310b13ab43efb7a63e4c6c042f7704d47c1a3a6b982a03",
+  "kioskId": "laptop_kiosk",
+  "kioskName": "laptop_kiosk",
+  "apiKey": "538c1f4bb6d62a41e25b4af6707860bdfaa85862bfe4e57e",
   "storeId": null,
-  "config": {
-    "surveillance": {
-      "enabled": true,
-      "httpPort": 8765,
-      "webcamIndex": 0,
-      "frameThreshold": 10,
-      "dwellThresholdSeconds": 8
-    }
-  },
-  "pairedAt": "2026-01-14T17:51:09.634Z",
+  "config": {},
+  "pairedAt": "2026-01-15T18:04:00.694Z",
   "pairedBy": "manager"
 }

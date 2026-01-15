@@ -239,8 +239,7 @@ class SessionRecordingService {
     }
 
     try {
-      // Use html2canvas for full page capture
-      // Fall back to simpler capture if not available
+      // Capture screenshot of current page state
       const dataUrl = await this.captureScreenshot();
       
       if (dataUrl) {
@@ -257,32 +256,182 @@ class SessionRecordingService {
   private async captureScreenshot(): Promise<string | null> {
     if (!this.ctx || !this.canvas) return null;
 
+    // Use DOM snapshot directly - html2canvas doesn't support oklch() colors
+    // which are used throughout the app via Tailwind CSS
+    return await this.captureDOMSnapshot();
+  }
+
+  /**
+   * Capture a DOM-based snapshot
+   * Creates a visual representation of the current page state with element positions
+   */
+  private async captureDOMSnapshot(): Promise<string | null> {
+    if (!this.ctx || !this.canvas) return null;
+
     try {
-      // Dynamically import html2canvas
-      const html2canvas = (await import('html2canvas')).default;
-      
-      const capturedCanvas = await html2canvas(document.body, {
-        scale: 0.5, // Reduce resolution for performance
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#1a1a2e',
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-      
-      // Draw to our target size canvas
-      this.ctx.drawImage(
-        capturedCanvas, 
-        0, 0, capturedCanvas.width, capturedCanvas.height,
-        0, 0, TARGET_WIDTH, TARGET_HEIGHT
+      // Create a gradient background matching the app theme
+      const gradient = this.ctx.createLinearGradient(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+      gradient.addColorStop(0, '#0f0f23');
+      gradient.addColorStop(1, '#1a1a2e');
+      this.ctx.fillStyle = gradient;
+      this.ctx.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+
+      // Calculate scale factor
+      const scaleX = TARGET_WIDTH / window.innerWidth;
+      const scaleY = TARGET_HEIGHT / window.innerHeight;
+      const scale = Math.min(scaleX, scaleY);
+
+      // Draw visual representation of page elements
+      this.drawPageElements(scale);
+
+      // Draw header overlay with page info
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      this.ctx.fillRect(0, 0, TARGET_WIDTH, 60);
+
+      // Draw page title
+      this.ctx.fillStyle = '#f8fafc';
+      this.ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+      const pageTitle = document.title || 'SmartWish Kiosk';
+      this.ctx.fillText(this.truncateText(pageTitle, 50), 20, 35);
+
+      // Draw current path
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.font = '14px system-ui, -apple-system, sans-serif';
+      this.ctx.fillText(window.location.pathname, 20, 52);
+
+      // Draw recording indicator (top right)
+      this.ctx.fillStyle = '#ef4444';
+      this.ctx.beginPath();
+      this.ctx.arc(TARGET_WIDTH - 25, 30, 8, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.fillStyle = '#fca5a5';
+      this.ctx.font = 'bold 11px system-ui';
+      this.ctx.fillText('● REC', TARGET_WIDTH - 70, 35);
+
+      // Draw timestamp
+      const timestamp = new Date().toLocaleTimeString();
+      this.ctx.fillStyle = '#64748b';
+      this.ctx.font = '12px system-ui';
+      this.ctx.fillText(timestamp, TARGET_WIDTH - 80, 52);
+
+      // Draw footer with frame info
+      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+      this.ctx.fillRect(0, TARGET_HEIGHT - 30, TARGET_WIDTH, 30);
+      this.ctx.fillStyle = '#64748b';
+      this.ctx.font = '11px monospace';
+      this.ctx.fillText(
+        `Frame ${this.frames.length + 1} | Session: ${this.sessionId?.substring(0, 8)}... | ${window.innerWidth}x${window.innerHeight}`,
+        20,
+        TARGET_HEIGHT - 10
       );
-      
+
       return this.canvas.toDataURL('image/jpeg', JPEG_QUALITY);
     } catch (error) {
-      console.error('[Recording] Screenshot capture error, using fallback:', error);
-      // Fallback: Create a simple visual representation
+      console.error('[Recording] DOM snapshot failed:', error);
       return await this.captureViewportFallback();
     }
+  }
+
+  /**
+   * Draw visual representations of page elements
+   */
+  private drawPageElements(scale: number): void {
+    if (!this.ctx) return;
+
+    // Get important elements to represent visually
+    const elementsToCapture = [
+      ...Array.from(document.querySelectorAll('button, a, img, h1, h2, h3, input, [role="button"]')),
+      ...Array.from(document.querySelectorAll('.card, [class*="card"], [class*="Card"]')),
+    ].slice(0, 100); // Limit to prevent performance issues
+
+    elementsToCapture.forEach((element) => {
+      try {
+        const rect = element.getBoundingClientRect();
+        
+        // Skip elements outside viewport or too small
+        if (rect.width < 10 || rect.height < 10) return;
+        if (rect.top > window.innerHeight || rect.left > window.innerWidth) return;
+        if (rect.bottom < 0 || rect.right < 0) return;
+
+        const x = rect.left * scale;
+        const y = rect.top * scale + 60; // Offset for header
+        const width = rect.width * scale;
+        const height = rect.height * scale;
+
+        // Clamp to canvas bounds
+        if (y + height > TARGET_HEIGHT - 30) return;
+
+        const tagName = element.tagName.toLowerCase();
+        
+        // Draw element representation based on type
+        if (tagName === 'img') {
+          // Image placeholder
+          this.ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+          this.ctx.fillRect(x, y, width, height);
+          this.ctx.strokeStyle = '#3b82f6';
+          this.ctx.lineWidth = 1;
+          this.ctx.strokeRect(x, y, width, height);
+          // Draw image icon
+          this.ctx.fillStyle = '#3b82f6';
+          this.ctx.font = '10px system-ui';
+          this.ctx.fillText('🖼', x + width/2 - 5, y + height/2 + 3);
+        } else if (tagName === 'button' || element.getAttribute('role') === 'button') {
+          // Button
+          this.ctx.fillStyle = 'rgba(99, 102, 241, 0.4)';
+          this.ctx.fillRect(x, y, width, height);
+          this.ctx.strokeStyle = '#6366f1';
+          this.ctx.lineWidth = 2;
+          this.ctx.strokeRect(x, y, width, height);
+          // Draw button text
+          const text = element.textContent?.trim() || '';
+          if (text && width > 30) {
+            this.ctx.fillStyle = '#e0e7ff';
+            this.ctx.font = `${Math.min(12, height * 0.5)}px system-ui`;
+            this.ctx.fillText(this.truncateText(text, Math.floor(width / 6)), x + 4, y + height/2 + 4);
+          }
+        } else if (tagName === 'a') {
+          // Link
+          this.ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
+          this.ctx.fillRect(x, y, width, height);
+          this.ctx.strokeStyle = '#22c55e';
+          this.ctx.lineWidth = 1;
+          this.ctx.strokeRect(x, y, width, height);
+        } else if (tagName === 'input') {
+          // Input field
+          this.ctx.fillStyle = 'rgba(251, 191, 36, 0.2)';
+          this.ctx.fillRect(x, y, width, height);
+          this.ctx.strokeStyle = '#fbbf24';
+          this.ctx.lineWidth = 1;
+          this.ctx.strokeRect(x, y, width, height);
+        } else if (tagName.match(/^h[1-3]$/)) {
+          // Headings
+          const text = element.textContent?.trim() || '';
+          if (text) {
+            this.ctx.fillStyle = '#f8fafc';
+            const fontSize = tagName === 'h1' ? 18 : tagName === 'h2' ? 14 : 12;
+            this.ctx.font = `bold ${fontSize}px system-ui`;
+            this.ctx.fillText(this.truncateText(text, 60), x, y + height/2 + fontSize/3);
+          }
+        } else if (element.classList?.toString().includes('card') || element.classList?.toString().includes('Card')) {
+          // Cards
+          this.ctx.fillStyle = 'rgba(148, 163, 184, 0.15)';
+          this.ctx.fillRect(x, y, width, height);
+          this.ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+          this.ctx.lineWidth = 1;
+          this.ctx.strokeRect(x, y, width, height);
+        }
+      } catch {
+        // Skip elements that throw errors
+      }
+    });
+  }
+
+  /**
+   * Truncate text to a maximum length
+   */
+  private truncateText(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
   }
 
   private async captureViewportFallback(): Promise<string | null> {
