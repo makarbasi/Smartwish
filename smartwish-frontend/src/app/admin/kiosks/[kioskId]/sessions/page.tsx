@@ -21,6 +21,7 @@ import {
   CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  VideoCameraIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import type { KioskSession, SessionSummary, SessionOutcome } from "@/types/kioskSession";
@@ -76,6 +77,7 @@ export default function KioskSessionsPage({
   const [hasSearch, setHasSearch] = useState(false);
   const [hasUpload, setHasUpload] = useState(false);
   const [hasEditor, setHasEditor] = useState(false);
+  const [hasRecording, setHasRecording] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   // Pagination
@@ -116,6 +118,7 @@ export default function KioskSessionsPage({
         if (hasSearch) params.set("hasSearch", "true");
         if (hasUpload) params.set("hasUpload", "true");
         if (hasEditor) params.set("hasEditor", "true");
+        if (hasRecording) params.set("hasRecording", "true");
 
         const response = await fetch(`/api/admin/kiosks/${kioskId}/sessions?${params}`);
         if (!response.ok) {
@@ -133,7 +136,7 @@ export default function KioskSessionsPage({
     };
 
     fetchSessions();
-  }, [status, kioskId, page, outcomeFilter, startDate, endDate, hasSearch, hasUpload, hasEditor]);
+  }, [status, kioskId, page, outcomeFilter, startDate, endDate, hasSearch, hasUpload, hasEditor, hasRecording]);
 
   const handleDelete = async () => {
     if (!sessionToDelete) return;
@@ -453,6 +456,22 @@ export default function KioskSessionsPage({
                       Used Editor
                     </label>
                   </div>
+
+                  <div className="flex items-end gap-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={hasRecording}
+                        onChange={(e) => {
+                          setHasRecording(e.target.checked);
+                          setPage(1);
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                      <VideoCameraIcon className="h-4 w-4 text-gray-500" />
+                      Has Recording
+                    </label>
+                  </div>
                 </div>
               )}
             </div>
@@ -499,6 +518,9 @@ export default function KioskSessionsPage({
                               <span className="text-sm text-gray-900">
                                 {formatDate(session.startedAt)}
                               </span>
+                              {session.hasRecording && (
+                                <VideoCameraIcon className="h-4 w-4 text-indigo-500" title="Has recording" />
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskConfig } from "@/hooks/useKioskConfig";
+import { useKioskSession } from "@/contexts/KioskSessionContext";
 import { useEffect, useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import useSWR from "swr";
@@ -136,6 +137,7 @@ export default function KioskHomePage() {
   const router = useRouter();
   const { isKiosk, isInitialized } = useDeviceMode();
   const { config: kioskConfig } = useKioskConfig();
+  const { startSession, trackTileSelect } = useKioskSession();
   
   // Debug logging for page lifecycle
   console.log("🏠 [KioskHome] Render:", {
@@ -367,18 +369,27 @@ export default function KioskHomePage() {
     }
   }, [isKiosk, isInitialized, router]);
 
-  const handleSelectGreetingCards = () => {
+  const handleSelectGreetingCards = async () => {
     if (!greetingCardsEnabled) return;
+    // Start session and track tile selection
+    await startSession();
+    trackTileSelect('greeting_cards');
     router.push("/templates");
   };
 
-  const handleSelectStickers = () => {
+  const handleSelectStickers = async () => {
     if (!stickersEnabled) return;
+    // Start session and track tile selection
+    await startSession();
+    trackTileSelect('stickers');
     router.push("/stickers");
   };
 
-  const handleSelectGiftCard = () => {
+  const handleSelectGiftCard = async () => {
     if (!giftCardTileEnabled || !giftCardTileConfig?.brandId) return;
+    // Start session and track tile selection
+    await startSession();
+    trackTileSelect('gift_card', { brandId: giftCardTileConfig.brandId });
     router.push(`/kiosk/gift-card?brandId=${giftCardTileConfig.brandId}`);
   };
 

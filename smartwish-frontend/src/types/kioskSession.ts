@@ -34,6 +34,9 @@ export interface KioskSession {
   reachedCheckout: boolean;
   completedPayment: boolean;
   
+  // Recording
+  hasRecording: boolean;
+  
   createdAt: string;
   updatedAt: string;
 }
@@ -44,6 +47,7 @@ export type SessionEventType =
   // Navigation events
   | 'page_view'
   | 'page_exit'
+  | 'tile_select' // Which tile user selected from kiosk home
   
   // Interaction events
   | 'click'
@@ -265,6 +269,7 @@ export interface KioskSessionRow {
   used_pintura_editor: boolean;
   reached_checkout: boolean;
   completed_payment: boolean;
+  has_recording: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -302,6 +307,7 @@ export function sessionRowToSession(row: KioskSessionRow): KioskSession {
     usedPinturaEditor: row.used_pintura_editor,
     reachedCheckout: row.reached_checkout,
     completedPayment: row.completed_payment,
+    hasRecording: row.has_recording,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -20,6 +20,7 @@ import {
   BuildingStorefrontIcon,
   TicketIcon,
   ChatBubbleLeftRightIcon,
+  VideoCameraIcon,
 } from "@heroicons/react/24/outline";
 
 interface DashboardStats {
@@ -91,6 +92,14 @@ const quickActions = [
     href: "/admin/chat",
     icon: ChatBubbleLeftRightIcon,
     iconBg: "bg-indigo-500",
+    iconColor: "text-white",
+  },
+  {
+    name: "Session Recordings",
+    description: "Review recorded kiosk sessions and user behavior",
+    href: "/admin/recordings",
+    icon: VideoCameraIcon,
+    iconBg: "bg-rose-500",
     iconColor: "text-white",
   },
 ];
