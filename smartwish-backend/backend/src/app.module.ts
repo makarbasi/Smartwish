@@ -50,6 +50,8 @@ import { KioskConfigModule } from './kiosks/kiosk-config.module';
 import { StickersModule } from './stickers/stickers.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
 import { SurveillanceModule } from './surveillance/surveillance.module';
+import { SalesRepresentativesModule } from './sales-representatives/sales-representatives.module';
+import { EarningsModule } from './earnings/earnings.module';
 
 @Module({
   imports: [
@@ -108,6 +110,8 @@ import { SurveillanceModule } from './surveillance/surveillance.module';
     StickersModule,
     GiftCardsModule,
     SurveillanceModule,
+    SalesRepresentativesModule,
+    EarningsModule,
   ],
   controllers: [AppController, SharingController, TemplatesEnhancedController],
   providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService, GeminiEmbeddingService],
