@@ -1,0 +1,17 @@
+{
+  "kioskId": "test_kiosk1",
+  "kioskName": "Test_kiosk1",
+  "apiKey": "80310b13ab43efb7a63e4c6c042f7704d47c1a3a6b982a03",
+  "storeId": null,
+  "config": {
+    "surveillance": {
+      "enabled": true,
+      "httpPort": 8765,
+      "webcamIndex": 0,
+      "frameThreshold": 10,
+      "dwellThresholdSeconds": 8
+    }
+  },
+  "pairedAt": "2026-01-14T17:51:09.634Z",
+  "pairedBy": "manager"
+}

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftIcon, PrinterIcon } from "@heroicons/react/24/outline";
 import useSWR from "swr";
 import jsPDF from "jspdf";
+import QRCode from "qrcode";
 
 import StickerSheet, { StickerSlot } from "@/components/stickers/StickerSheet";
 import StickerCarousel, { StickerItem } from "@/components/stickers/StickerCarousel";
@@ -12,11 +13,27 @@ import StickerGallery, { Sticker } from "@/components/stickers/StickerGallery";
 import StickerSlotModeSelector, { SlotMode } from "@/components/stickers/StickerSlotModeSelector";
 import UploadQRCode from "@/components/stickers/UploadQRCode";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
-import CardPaymentModal from "@/components/CardPaymentModal";
+import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskInactivity } from "@/hooks/useKioskInactivity";
 import { useSessionTracking } from "@/hooks/useSessionTracking";
+
+// Gift card data interface
+interface GiftCardData {
+  storeName: string;
+  storeLogo?: string;
+  amount: number;
+  qrCode?: string;
+  redemptionLink?: string;
+  code?: string;
+  pin?: string;
+  status?: 'pending' | 'issued';
+  isIssued?: boolean;
+  brandSlug?: string;
+  brandId?: string;
+  source?: 'smartwish' | 'tillo';
+}
 
 // Extended slot type with upload flag
 interface ExtendedStickerSlot extends StickerSlot {
@@ -47,8 +64,9 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json());
 // Sticker sheet price
 const STICKER_SHEET_PRICE = 3.99;
 
-export default function StickersPage() {
+function StickersContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isKiosk } = useDeviceMode();
   const { config: kioskConfig, kioskInfo } = useKiosk();
   
@@ -80,6 +98,102 @@ export default function StickersPage() {
 
   // Generate a stable kiosk session ID for this session
   const [kioskSessionId] = useState<string>(() => crypto.randomUUID());
+  
+  // Generate a stable sticker session ID for gift card storage
+  const [stickerSessionId] = useState<string>(() => {
+    // Try to get existing session ID from localStorage, or generate new one
+    if (typeof window !== 'undefined') {
+      const existingId = localStorage.getItem('stickerSessionId');
+      if (existingId) return existingId;
+      const newId = `sticker-${crypto.randomUUID()}`;
+      localStorage.setItem('stickerSessionId', newId);
+      return newId;
+    }
+    return `sticker-${crypto.randomUUID()}`;
+  });
+  
+  // Gift card state
+  const [giftCardData, setGiftCardData] = useState<GiftCardData | null>(null);
+  const [pendingGiftCardQr, setPendingGiftCardQr] = useState<string>('');
+  const [giftCardSlotIndex, setGiftCardSlotIndex] = useState<number | null>(null);
+  
+  // Check if gift card is pending (not yet issued)
+  const isGiftCardPending = giftCardData && (giftCardData.isIssued === false || giftCardData.status === 'pending');
+  
+  // Generate pending QR code for gift cards not yet issued
+  useEffect(() => {
+    if (isGiftCardPending && typeof window !== 'undefined') {
+      const pendingUrl = `${window.location.origin}/gift-pending`;
+      QRCode.toDataURL(pendingUrl, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#d97706', // Amber color for pending
+          light: '#ffffff'
+        },
+        errorCorrectionLevel: 'H'
+      }).then((url: string) => {
+        setPendingGiftCardQr(url);
+        console.log('✅ Pending gift card QR generated for sticker page');
+      }).catch((err: Error) => {
+        console.error('Failed to generate pending QR code:', err);
+      });
+    } else if (!isGiftCardPending) {
+      setPendingGiftCardQr(''); // Clear pending QR when card is issued
+    }
+  }, [isGiftCardPending]);
+  
+  // Load gift card from localStorage on mount (handles return from marketplace)
+  useEffect(() => {
+    const showGift = searchParams.get('showGift') === 'true';
+    
+    // Try to load existing gift card data
+    const loadGiftCard = () => {
+      const storedData = localStorage.getItem(`giftCard_${stickerSessionId}`);
+      if (storedData) {
+        try {
+          const giftData = JSON.parse(storedData);
+          console.log('🎁 Loaded gift card for stickers:', giftData);
+          setGiftCardData(giftData);
+          
+          // If we have a stored slot index, use it
+          const storedSlotIndex = localStorage.getItem(`giftCardSlot_${stickerSessionId}`);
+          if (storedSlotIndex !== null) {
+            setGiftCardSlotIndex(parseInt(storedSlotIndex, 10));
+          } else if (giftCardSlotIndex === null) {
+            // Default to first empty slot or slot 0
+            const emptySlotIndex = slots.findIndex(s => !s.imageUrl);
+            setGiftCardSlotIndex(emptySlotIndex >= 0 ? emptySlotIndex : 0);
+          }
+        } catch (err) {
+          console.error('Failed to parse gift card data:', err);
+        }
+      }
+    };
+    
+    loadGiftCard();
+    
+    // If showGift=true, we just returned from marketplace with a gift card selection
+    if (showGift) {
+      console.log('🎁 Returned from marketplace with gift card');
+      // Clear the showGift param from URL without reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete('showGift');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams, stickerSessionId]);
+  
+  // Remove gift card handler
+  const handleRemoveGiftCard = useCallback(() => {
+    setGiftCardData(null);
+    setPendingGiftCardQr('');
+    setGiftCardSlotIndex(null);
+    // Remove from localStorage
+    localStorage.removeItem(`giftCard_${stickerSessionId}`);
+    localStorage.removeItem(`giftCardSlot_${stickerSessionId}`);
+    localStorage.removeItem(`giftCardMeta_${stickerSessionId}`);
+    console.log('🗑️ Gift card removed from sticker session:', stickerSessionId);
+  }, [stickerSessionId]);
 
   // Sticker slots state (6 slots for Avery 94513)
   const [slots, setSlots] = useState<ExtendedStickerSlot[]>(
@@ -127,8 +241,8 @@ export default function StickersPage() {
     thumbnailUrl: s.thumbnailUrl,
   }));
 
-  // Count filled slots
-  const filledSlotsCount = slots.filter((s) => s.imageUrl).length;
+  // Count filled slots (includes gift card slot if present)
+  const filledSlotsCount = slots.filter((s, i) => s.imageUrl || (giftCardData && giftCardSlotIndex === i)).length;
 
   // Handle back to home
   const handleBackToHome = () => {
@@ -183,7 +297,7 @@ export default function StickersPage() {
     setViewMode("mode-selection");
   }, [copySourceIndex, handleExitCopyMode, handleCopyToSlot]);
 
-  // Handle mode selection (sticker browse vs upload)
+  // Handle mode selection (sticker browse vs upload vs gift card)
   const handleModeSelect = useCallback((mode: SlotMode) => {
     if (selectedSlotIndex === null) return;
 
@@ -195,8 +309,16 @@ export default function StickersPage() {
       setViewMode("upload-qr");
       // Pause inactivity timer for QR upload (10 minutes to match QR code expiry)
       pauseForQRUpload();
+    } else if (mode === "gift-card") {
+      // Save the slot index for gift card
+      setGiftCardSlotIndex(selectedSlotIndex);
+      localStorage.setItem(`giftCardSlot_${stickerSessionId}`, selectedSlotIndex.toString());
+      
+      // Navigate to marketplace with return URL
+      const returnUrl = encodeURIComponent(`/stickers?showGift=true`);
+      router.push(`/marketplace?returnTo=${returnUrl}&mode=sticker&sessionId=${stickerSessionId}`);
     }
-  }, [selectedSlotIndex, pauseForQRUpload]);
+  }, [selectedSlotIndex, pauseForQRUpload, stickerSessionId, router]);
 
   // Handle closing mode selector
   const handleCloseModeSelector = useCallback(() => {
@@ -383,11 +505,30 @@ export default function StickersPage() {
   };
 
   // Handle payment success
-  const handlePaymentSuccess = async () => {
+  const handlePaymentSuccess = async (issuedGiftCard?: IssuedGiftCardData) => {
     console.log("🎯 handlePaymentSuccess called - starting sticker print flow");
     
+    // If a gift card was issued after payment, update our state with the real QR code
+    if (issuedGiftCard) {
+      console.log("🎁 Gift card issued after payment:", issuedGiftCard.storeName, "$" + issuedGiftCard.amount);
+      setGiftCardData({
+        ...giftCardData,
+        ...issuedGiftCard,
+        status: 'issued',
+        isIssued: true,
+      });
+      // Update localStorage with issued gift card data
+      localStorage.setItem(`giftCard_${stickerSessionId}`, JSON.stringify({
+        ...giftCardData,
+        ...issuedGiftCard,
+        status: 'issued',
+        isIssued: true,
+      }));
+    }
+    
     // Track payment success and print start
-    trackPaymentSuccess({ printType: 'sticker', amount: STICKER_SHEET_PRICE });
+    const totalAmount = STICKER_SHEET_PRICE + (giftCardData?.amount || 0);
+    trackPaymentSuccess({ printType: 'sticker', amount: totalAmount });
     trackPrintStart('sticker');
     
     setIsPrinting(true);
@@ -575,50 +716,123 @@ export default function StickersPage() {
 
     // Draw each sticker on the canvas
     for (let i = 0; i < 6; i++) {
-      const imageData = imageBase64Array[i];
       const [centerX, centerY] = CIRCLE_CENTERS[i];
-
-      if (imageData) {
+      
+      // Check if this slot is a gift card slot
+      const isGiftCardSlot = giftCardData && giftCardSlotIndex === i;
+      
+      if (isGiftCardSlot && giftCardData) {
         try {
-          // Load image
-          const img = new Image();
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = reject;
-            img.src = imageData;
-          });
-
-          // Calculate aspect ratio
-          const imgAspect = img.width / img.height;
-
-          // Calculate scale factor to fit within 375px circle (2.5 inches at 150 DPI)
-          // Both width and height must fit within the circle diameter
-          // Image should be centered at (centerX, centerY)
-          let drawWidth: number;
-          let drawHeight: number;
-          let drawX: number;
-          let drawY: number;
-
-          if (imgAspect > 1) {
-            // Image is wider than tall - fit to width (375px) to ensure it fits
-            // This ensures width = 375px and height < 375px
-            drawWidth = CIRCLE_DIAMETER_PX;
-            drawHeight = CIRCLE_DIAMETER_PX / imgAspect;
-            drawX = centerX - drawWidth / 2; // Center horizontally at circle center
-            drawY = centerY - drawHeight / 2; // Center vertically at circle center
-          } else {
-            // Image is taller than wide or square - fit to height (375px) to ensure it fits
-            // This ensures height = 375px and width < 375px
-            drawHeight = CIRCLE_DIAMETER_PX;
-            drawWidth = CIRCLE_DIAMETER_PX * imgAspect;
-            drawX = centerX - drawWidth / 2; // Center horizontally at circle center
-            drawY = centerY - drawHeight / 2; // Center vertically at circle center
+          console.log(`🎁 Drawing gift card in slot ${i + 1}`);
+          
+          // Get the QR code to use (real if issued, pending otherwise)
+          const qrCodeSrc = giftCardData.isIssued ? giftCardData.qrCode : pendingGiftCardQr;
+          
+          if (qrCodeSrc) {
+            // Load QR code image
+            const qrImg = new Image();
+            await new Promise<void>((resolve, reject) => {
+              qrImg.onload = () => resolve();
+              qrImg.onerror = reject;
+              qrImg.src = qrCodeSrc;
+            });
+            
+            // QR code takes 60% of the circle diameter (centered in upper portion)
+            const qrSize = CIRCLE_DIAMETER_PX * 0.6;
+            const qrX = centerX - qrSize / 2;
+            const qrY = centerY - CIRCLE_DIAMETER_PX * 0.35;
+            
+            ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
           }
-
-          // Draw image perfectly centered in the 3" circle
-          ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+          
+          // Draw store logo if available (below QR code)
+          if (giftCardData.storeLogo) {
+            try {
+              const logoImg = new Image();
+              logoImg.crossOrigin = "anonymous";
+              await new Promise<void>((resolve, reject) => {
+                logoImg.onload = () => resolve();
+                logoImg.onerror = () => resolve(); // Continue even if logo fails
+                logoImg.src = giftCardData.storeLogo!;
+              });
+              
+              // Logo is smaller, positioned below QR code
+              const logoSize = CIRCLE_DIAMETER_PX * 0.2;
+              const logoX = centerX - CIRCLE_DIAMETER_PX * 0.25;
+              const logoY = centerY + CIRCLE_DIAMETER_PX * 0.15;
+              
+              ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+            } catch {
+              console.log("Could not load store logo for print");
+            }
+          }
+          
+          // Draw store name and amount text
+          ctx.fillStyle = "#1f2937";
+          ctx.font = "bold 18px Arial, sans-serif";
+          ctx.textAlign = "center";
+          
+          // Amount
+          const amountText = `$${giftCardData.amount}`;
+          ctx.fillText(amountText, centerX + CIRCLE_DIAMETER_PX * 0.1, centerY + CIRCLE_DIAMETER_PX * 0.25);
+          
+          // Store name (smaller)
+          ctx.font = "14px Arial, sans-serif";
+          ctx.fillStyle = "#4b5563";
+          const storeName = giftCardData.storeName.length > 15 
+            ? giftCardData.storeName.substring(0, 15) + "..." 
+            : giftCardData.storeName;
+          ctx.fillText(storeName, centerX, centerY + CIRCLE_DIAMETER_PX * 0.38);
+          
         } catch (error) {
-          console.error(`Error adding sticker ${i + 1} to JPG:`, error);
+          console.error(`Error adding gift card to slot ${i + 1}:`, error);
+        }
+      } else {
+        // Regular sticker image
+        const imageData = imageBase64Array[i];
+        
+        if (imageData) {
+          try {
+            // Load image
+            const img = new Image();
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = reject;
+              img.src = imageData;
+            });
+
+            // Calculate aspect ratio
+            const imgAspect = img.width / img.height;
+
+            // Calculate scale factor to fit within 375px circle (2.5 inches at 150 DPI)
+            // Both width and height must fit within the circle diameter
+            // Image should be centered at (centerX, centerY)
+            let drawWidth: number;
+            let drawHeight: number;
+            let drawX: number;
+            let drawY: number;
+
+            if (imgAspect > 1) {
+              // Image is wider than tall - fit to width (375px) to ensure it fits
+              // This ensures width = 375px and height < 375px
+              drawWidth = CIRCLE_DIAMETER_PX;
+              drawHeight = CIRCLE_DIAMETER_PX / imgAspect;
+              drawX = centerX - drawWidth / 2; // Center horizontally at circle center
+              drawY = centerY - drawHeight / 2; // Center vertically at circle center
+            } else {
+              // Image is taller than wide or square - fit to height (375px) to ensure it fits
+              // This ensures height = 375px and width < 375px
+              drawHeight = CIRCLE_DIAMETER_PX;
+              drawWidth = CIRCLE_DIAMETER_PX * imgAspect;
+              drawX = centerX - drawWidth / 2; // Center horizontally at circle center
+              drawY = centerY - drawHeight / 2; // Center vertically at circle center
+            }
+
+            // Draw image perfectly centered in the 3" circle
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+          } catch (error) {
+            console.error(`Error adding sticker ${i + 1} to JPG:`, error);
+          }
         }
       }
     }
@@ -1043,6 +1257,10 @@ export default function StickersPage() {
                       onSlotEdit={handleSlotEdit}
                       onSlotCopy={handleSlotCopy}
                       copySourceIndex={copySourceIndex}
+                      giftCardData={giftCardData}
+                      giftCardSlotIndex={giftCardSlotIndex}
+                      pendingGiftCardQr={pendingGiftCardQr}
+                      onGiftCardClear={handleRemoveGiftCard}
                     />
                   </div>
                 </div>
@@ -1106,6 +1324,10 @@ export default function StickersPage() {
               onSlotEdit={handleSlotEdit}
               onSlotCopy={handleSlotCopy}
               copySourceIndex={copySourceIndex}
+              giftCardData={giftCardData}
+              giftCardSlotIndex={giftCardSlotIndex}
+              pendingGiftCardQr={pendingGiftCardQr}
+              onGiftCardClear={handleRemoveGiftCard}
             />
           ) : null}
         </div>
@@ -1239,6 +1461,7 @@ export default function StickersPage() {
           slotIndex={selectedSlotIndex}
           onSelectMode={handleModeSelect}
           onClose={handleCloseModeSelector}
+          hasGiftCard={!!giftCardData}
         />
       )}
 
@@ -1272,15 +1495,32 @@ export default function StickersPage() {
             setPrintStatus('idle');
           }
         }}
-        onPaymentSuccess={() => handlePaymentSuccess()}
+        onPaymentSuccess={(issuedGiftCard) => handlePaymentSuccess(issuedGiftCard)}
         cardId={stickerOrderId}
-        cardName="Sticker Sheet"
+        cardName={giftCardData ? `Sticker Sheet + ${giftCardData.storeName} Gift Card` : "Sticker Sheet"}
         action="print"
         productType="stickers"
         stickerCount={filledSlotsCount}
+        giftCardAmount={giftCardData?.amount}
         printStatus={printStatus}
         printError={printError || undefined}
       />
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams hook
+export default function StickersPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-pink-200 border-t-pink-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-500">Loading sticker studio...</p>
+        </div>
+      </div>
+    }>
+      <StickersContent />
+    </Suspense>
   );
 }

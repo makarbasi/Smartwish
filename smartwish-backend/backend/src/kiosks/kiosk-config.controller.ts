@@ -434,6 +434,20 @@ export class LocalPrintAgentController {
       body.error,
     );
   }
+
+  /**
+   * Get kiosk config for device pairing
+   * Used by local print agent when paired via manager dashboard
+   */
+  @Public()
+  @Get('kiosk-config/:kioskId')
+  async getKioskConfigForPairing(@Param('kioskId') kioskId: string) {
+    const config = await this.kioskService.getKioskConfigForPairing(kioskId);
+    if (!config) {
+      return { error: 'Kiosk not found' };
+    }
+    return config;
+  }
 }
 
 /**
@@ -443,6 +457,29 @@ export class LocalPrintAgentController {
 @UseGuards(JwtAuthGuard)
 export class AdminPrintLogController {
   constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * Get all print logs for a specific kiosk (admin access)
+   */
+  @Get('kiosk/:kioskId')
+  async getKioskPrintLogs(
+    @Param('kioskId') kioskId: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('status') status?: string,
+    @Query('productType') productType?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.kioskService.getAdminKioskPrintLogs(kioskId, {
+      limit: limit ? parseInt(limit) : undefined,
+      offset: offset ? parseInt(offset) : undefined,
+      status: status as any,
+      productType,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+  }
 
   /**
    * Get a single print log by ID (admin access)
@@ -481,5 +518,50 @@ export class AdminPrintLogController {
     @Request() req: any,
   ) {
     return this.kioskService.reprintJob(logId, req.user.id);
+  }
+
+  /**
+   * Update print log status (admin only)
+   */
+  @Put(':logId')
+  async updatePrintLog(
+    @Param('logId') logId: string,
+    @Body() body: { status?: string; errorMessage?: string; notes?: string },
+  ) {
+    return this.kioskService.adminUpdatePrintLog(logId, body);
+  }
+
+  /**
+   * Delete a single print log (admin only)
+   */
+  @Delete(':logId')
+  async deletePrintLog(@Param('logId') logId: string) {
+    return this.kioskService.deletePrintLog(logId);
+  }
+
+  /**
+   * Bulk delete print logs (admin only)
+   */
+  @Delete('bulk/delete')
+  async bulkDeletePrintLogs(@Body() body: { ids: string[] }) {
+    if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new BadRequestException('ids array is required');
+    }
+    return this.kioskService.bulkDeletePrintLogs(body.ids);
+  }
+
+  /**
+   * Delete all print logs for a kiosk within a date range (admin only)
+   */
+  @Delete('kiosk/:kioskId/range')
+  async deleteKioskPrintLogsInRange(
+    @Param('kioskId') kioskId: string,
+    @Body() body: { startDate?: string; endDate?: string },
+  ) {
+    return this.kioskService.deleteKioskPrintLogsInRange(
+      kioskId,
+      body.startDate ? new Date(body.startDate) : undefined,
+      body.endDate ? new Date(body.endDate) : undefined,
+    );
   }
 }

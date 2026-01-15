@@ -15,6 +15,7 @@ const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : 
 // Gift card data returned after payment success
 // Exported so consuming components can use the same type
 export interface IssuedGiftCardData {
+  id?: string  // The actual gift card ID from the database
   storeName: string
   amount: number
   qrCode: string
@@ -26,7 +27,7 @@ export interface IssuedGiftCardData {
 }
 
 // Product types supported by the payment modal
-export type ProductType = 'card' | 'stickers'
+export type ProductType = 'card' | 'stickers' | 'gift-card'
 
 // Print status for tracking print progress
 export type PrintStatus = 'idle' | 'sending' | 'printing' | 'completed' | 'failed'
@@ -48,6 +49,12 @@ interface CardPaymentModalProps {
   printStatus?: PrintStatus
   // Optional: Error message if print failed
   printError?: string
+  // Optional: for gift-card product type - the brand ID
+  giftCardBrandId?: string
+  // Optional: for gift-card product type - discount percentage
+  giftCardDiscountPercent?: number
+  // Optional: for gift-card product type - kiosk ID
+  kioskId?: string
 }
 
 export default function CardPaymentModal({
@@ -62,7 +69,10 @@ export default function CardPaymentModal({
   productType = 'card',
   stickerCount,
   printStatus = 'idle',
-  printError
+  printError,
+  giftCardBrandId,
+  giftCardDiscountPercent,
+  kioskId
 }: CardPaymentModalProps) {
   if (!isOpen) return null
 
@@ -101,6 +111,9 @@ export default function CardPaymentModal({
         stickerCount={stickerCount}
         printStatus={printStatus}
         printError={printError}
+        giftCardBrandId={giftCardBrandId}
+        giftCardDiscountPercent={giftCardDiscountPercent}
+        kioskId={kioskId}
       />
     </Elements>
   )
@@ -122,7 +135,10 @@ function CardPaymentModalContent({
   productType = 'card',
   stickerCount = 0,
   printStatus = 'idle',
-  printError
+  printError,
+  giftCardBrandId,
+  giftCardDiscountPercent = 0,
+  kioskId
 }: CardPaymentModalProps) {
   const stripe = useStripe()
   const elements = useElements()
@@ -132,6 +148,8 @@ function CardPaymentModalContent({
 
   // Check if this is a sticker payment (simplified flow, no gift cards)
   const isStickers = productType === 'stickers'
+  // Check if this is a kiosk gift card purchase
+  const isKioskGiftCard = productType === 'gift-card'
 
   // Determine if we're in a printing state (to prevent modal close)
   const isPrintInProgress = printStatus === 'sending' || printStatus === 'printing'
@@ -141,7 +159,7 @@ function CardPaymentModalContent({
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
-  const [loadingPrice, setLoadingPrice] = useState(!isStickers) // Stickers have fixed price, no need to load
+  const [loadingPrice, setLoadingPrice] = useState(!isStickers && !isKioskGiftCard) // Stickers and gift cards have known prices
 
   // Promo code state
   const [promoCode, setPromoCode] = useState('')
@@ -215,7 +233,12 @@ function CardPaymentModalContent({
     const abortController = new AbortController()
     let isSubscribed = true
 
-    if (isOpen && cardId && userId) {
+    // For kiosk gift cards, we don't need cardId - we use giftCardBrandId instead
+    const canInitialize = isKioskGiftCard 
+      ? (isOpen && giftCardBrandId && propGiftCardAmount && userId)
+      : (isOpen && cardId && userId)
+
+    if (canInitialize) {
       initializePayment().catch(err => {
         if (isSubscribed && err.name !== 'AbortError') {
           console.error('Payment initialization error:', err)
@@ -230,7 +253,7 @@ function CardPaymentModalContent({
         clearInterval(checkPaymentIntervalRef.current)
       }
     }
-  }, [isOpen, cardId, userId])
+  }, [isOpen, cardId, userId, isKioskGiftCard, giftCardBrandId, propGiftCardAmount])
 
   // Generate QR code and start monitoring after session is created
   useEffect(() => {
@@ -383,6 +406,154 @@ function CardPaymentModalContent({
 
         setPaymentSessionId(sessionResult.session.id)
         console.log('✅ Sticker payment session created:', sessionResult.session.id)
+
+        setLoadingPrice(false)
+        return
+      }
+
+      // ======== KIOSK GIFT CARD: Direct gift card purchase from kiosk tile ========
+      if (isKioskGiftCard && giftCardBrandId && propGiftCardAmount) {
+        console.log('🎁 Kiosk gift card payment - using direct pricing')
+        const giftCardPrice = propGiftCardAmount
+        const discountAmount = giftCardPrice * (giftCardDiscountPercent / 100)
+        const chargeAmount = giftCardPrice - discountAmount
+        const processingFee = chargeAmount * 0.05 // 5% processing fee
+        const totalAmount = chargeAmount + processingFee
+
+        // Set price data directly
+        const giftCardPriceData = {
+          cardPrice: chargeAmount,
+          giftCardAmount: 0, // This is the gift card we're selling, not an attached gift card
+          processingFee: processingFee,
+          total: totalAmount,
+          originalGiftCardValue: giftCardPrice,
+          discountPercent: giftCardDiscountPercent,
+          discountAmount: discountAmount
+        }
+        setPriceData(giftCardPriceData)
+
+        // Step 1: Create order in database
+        // Note: For kiosk gift card purchases, we use the brandId as the cardId (it's a valid UUID)
+        // and orderType 'print' (backend only allows: print, send_ecard, sticker)
+        // The metadata.productType='kiosk-gift-card' identifies this as a gift card purchase.
+        console.log('📦 Creating kiosk gift card order in database...')
+        const orderResponse = await fetch(`${backendUrl}/orders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            // Use giftCardBrandId as cardId - it's a valid UUID that the backend can accept
+            cardId: giftCardBrandId,
+            orderType: 'print', // Backend only allows: print, send_ecard, sticker
+            cardName: cardName || 'Gift Card',
+            cardPrice: chargeAmount,
+            giftCardAmount: giftCardPrice,
+            processingFee: processingFee,
+            totalAmount: totalAmount,
+            currency: 'USD',
+            metadata: {
+              source: 'kiosk',
+              productType: 'kiosk-gift-card', // This identifies it as a gift card
+              brandId: giftCardBrandId,
+              kioskId: kioskId,
+              discountPercent: giftCardDiscountPercent,
+              originalValue: giftCardPrice,
+              chargeAmount: chargeAmount
+            }
+          })
+        })
+
+        if (!orderResponse.ok) {
+          const errorData = await orderResponse.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to create gift card order')
+        }
+
+        const orderResult = await orderResponse.json()
+
+        if (!orderResult.success || !orderResult.order || !orderResult.order.id) {
+          console.error('Invalid gift card order response:', orderResult)
+          throw new Error('Invalid response from gift card order creation')
+        }
+
+        const createdOrderId = orderResult.order.id
+        setOrderId(createdOrderId)
+        console.log('✅ Gift card order created:', createdOrderId)
+
+        // Step 2: Create Stripe payment intent
+        console.log('💳 Creating Stripe payment intent for gift card...')
+        const intentResponse = await fetch('/api/stripe/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: totalAmount,
+            currency: 'usd',
+            metadata: {
+              orderId: createdOrderId,
+              userId,
+              productType: 'kiosk-gift-card',
+              brandId: giftCardBrandId,
+              kioskId: kioskId,
+              originalValue: giftCardPrice,
+              chargeAmount: chargeAmount,
+              discountPercent: giftCardDiscountPercent,
+              processingFee: processingFee
+            }
+          })
+        })
+
+        const intentResult = await intentResponse.json()
+
+        if (!intentResponse.ok || !intentResult.clientSecret) {
+          throw new Error(intentResult.error || 'Failed to initialize gift card payment')
+        }
+
+        setClientSecret(intentResult.clientSecret)
+        console.log('✅ Gift card payment intent created:', intentResult.paymentIntentId)
+
+        // Step 3: Create payment session in database
+        const sessionId = `GIFTCARD-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        console.log('💳 Creating gift card payment session in database...')
+
+        const sessionResponse = await fetch(`${backendUrl}/orders/payment-sessions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            orderId: createdOrderId,
+            amount: totalAmount,
+            currency: 'USD',
+            stripePaymentIntentId: intentResult.paymentIntentId,
+            stripeClientSecret: intentResult.clientSecret,
+            initiatedFrom: 'kiosk',
+            paymentMethod: 'card_kiosk',
+            sessionId,
+            metadata: {
+              cardName: cardName || 'Gift Card',
+              productType: 'kiosk-gift-card',
+              brandId: giftCardBrandId,
+              kioskId: kioskId
+            }
+          })
+        })
+
+        if (!sessionResponse.ok) {
+          const errorData = await sessionResponse.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to create gift card payment session')
+        }
+
+        const sessionResult = await sessionResponse.json()
+
+        if (!sessionResult.success || !sessionResult.session || !sessionResult.session.id) {
+          console.error('Invalid gift card session response:', sessionResult)
+          throw new Error('Invalid response from gift card payment session creation')
+        }
+
+        setPaymentSessionId(sessionResult.session.id)
+        console.log('✅ Gift card payment session created:', sessionResult.session.id)
 
         setLoadingPrice(false)
         return
@@ -643,7 +814,14 @@ function CardPaymentModalContent({
 
     try {
       // ✅ FIX: Include orderId in QR code so mobile uses the SAME order as kiosk
-      const paymentUrl = `${window.location.origin}/payment?session=${paymentSessionId}&cardId=${cardId}&action=${action}&orderId=${orderId}`
+      // For kiosk gift cards, we include productType instead of cardId
+      let paymentUrl = `${window.location.origin}/payment?session=${paymentSessionId}&action=${action}&orderId=${orderId}`
+      
+      if (isKioskGiftCard) {
+        paymentUrl += `&productType=gift-card&brandId=${giftCardBrandId}`
+      } else {
+        paymentUrl += `&cardId=${cardId}`
+      }
 
       const qrCode = await QRCode.toDataURL(paymentUrl, {
         width: 250,
@@ -671,7 +849,10 @@ function CardPaymentModalContent({
       clearInterval(checkPaymentIntervalRef.current)
     }
 
-    console.log('💡 Mobile payment URL:', `${window.location.origin}/payment?session=${paymentSessionId}&cardId=${cardId}&action=${action}`)
+    const mobileUrl = isKioskGiftCard
+      ? `${window.location.origin}/payment?session=${paymentSessionId}&productType=gift-card&brandId=${giftCardBrandId}&action=${action}`
+      : `${window.location.origin}/payment?session=${paymentSessionId}&cardId=${cardId}&action=${action}`
+    console.log('💡 Mobile payment URL:', mobileUrl)
     console.log('🔄 Starting payment status polling...')
 
     // Poll the backend every 3 seconds to check if payment completed
@@ -731,6 +912,71 @@ function CardPaymentModalContent({
       // Wait a moment to show success message, then call callback
       setTimeout(() => {
         onPaymentSuccess(undefined)
+      }, 1500)
+      return
+    }
+
+    // Handle kiosk gift card issuance
+    if (isKioskGiftCard && giftCardBrandId && propGiftCardAmount) {
+      console.log('🎁 Kiosk gift card payment - issuing gift card')
+      
+      try {
+        // Issue the gift card via API
+        // Note: kioskId, discountPercent are already stored on the ORDER (via orderId)
+        const response = await fetch('/api/gift-cards/purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brandId: giftCardBrandId,
+            amount: propGiftCardAmount,
+            orderId: orderId, // Links gift card to order which has all the kiosk/discount info
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          console.log('✅ Kiosk gift card issued:', data)
+
+          if (data.giftCard) {
+            // Generate QR code for the gift card
+            let qrCodeDataUrl = ''
+            try {
+              const qrContent = data.giftCard.qrContent || data.giftCard.cardNumber || ''
+              if (qrContent) {
+                qrCodeDataUrl = await QRCode.toDataURL(qrContent, {
+                  width: 200,
+                  margin: 2,
+                  color: { dark: '#2d3748', light: '#ffffff' },
+                  errorCorrectionLevel: 'H'
+                })
+              }
+            } catch (qrError) {
+              console.error('Failed to generate QR code:', qrError)
+            }
+
+            issuedGiftCardData = {
+              id: data.giftCard.id,  // The actual database ID
+              storeName: cardName || 'Gift Card',
+              amount: propGiftCardAmount,
+              qrCode: qrCodeDataUrl,
+              storeLogo: '', // Can be fetched from brand if needed
+              redemptionLink: '',
+              code: data.giftCard.cardNumber,
+              pin: data.giftCard.pin,
+              isIssued: true
+            }
+          }
+        } else {
+          const errorData = await response.json()
+          console.error('❌ Failed to issue kiosk gift card:', errorData)
+        }
+      } catch (error) {
+        console.error('❌ Error issuing kiosk gift card:', error)
+      }
+
+      // Return the issued gift card data
+      setTimeout(() => {
+        onPaymentSuccess(issuedGiftCardData)
       }, 1500)
       return
     }
@@ -803,42 +1049,85 @@ function CardPaymentModalContent({
         if (giftCardSelection) {
           // Check if gift card is pending (not yet issued)
           if (giftCardSelection.status === 'pending' && !giftCardSelection.isIssued) {
-            console.log('🎁 Gift card is PENDING - calling Tillo API to issue')
+            // Determine if this is a SmartWish internal brand or Tillo
+            const isSmartWishBrand = giftCardSelection.source === 'smartwish'
+            console.log('🎁 Gift card is PENDING - issuing via', isSmartWishBrand ? 'SMARTWISH API' : 'TILLO API')
 
-            // Call Tillo API to issue the actual gift card
-            const response = await fetch('/api/tillo/issue', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                brandSlug: giftCardSelection.brandSlug,
-                amount: giftCardSelection.amount,
-                currency: giftCardSelection.currency || 'USD'
+            let response: Response
+            let data: any
+
+            if (isSmartWishBrand) {
+              // Validate brandId is a proper UUID before calling API
+              const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+              if (!giftCardSelection.brandId || !uuidRegex.test(giftCardSelection.brandId)) {
+                console.error('❌ Invalid brandId in gift card selection:', giftCardSelection.brandId)
+                console.error('❌ Full gift card selection:', JSON.stringify(giftCardSelection, null, 2))
+                throw new Error(`Invalid gift card brand ID. Please remove the gift card and try adding it again.`)
+              }
+
+              // Call SmartWish internal API to issue gift card
+              response = await fetch('/api/gift-cards/purchase', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  brandId: giftCardSelection.brandId,
+                  amount: giftCardSelection.amount,
+                  paymentIntentId: orderId,
+                })
               })
-            })
 
-            const data = await response.json()
+              data = await response.json()
 
-            console.log('🎁 Tillo API FULL response:', JSON.stringify(data, null, 2))
-            console.log('🎁 Tillo API response summary:', {
-              ok: response.ok,
-              success: data.success,
-              hasGiftCard: !!data.giftCard,
-              giftCard: data.giftCard ? {
-                url: data.giftCard.url,
-                redemptionUrl: data.giftCard.redemptionUrl,
-                code: data.giftCard.code ? '***PRESENT***' : 'N/A',
-                pin: data.giftCard.pin ? '***PRESENT***' : 'N/A',
-                orderId: data.giftCard.orderId
-              } : null,
-              error: data.error
-            })
+              console.log('🎁 SmartWish API response:', {
+                ok: response.ok,
+                success: data.success,
+                hasGiftCard: !!data.giftCard,
+                giftCard: data.giftCard ? {
+                  cardNumber: data.giftCard.cardNumber,
+                  pin: data.giftCard.pin ? '***PRESENT***' : 'N/A',
+                  balance: data.giftCard.balance,
+                  expiresAt: data.giftCard.expiresAt,
+                } : null,
+                error: data.error
+              })
+            } else {
+              // Call Tillo API to issue the actual gift card
+              response = await fetch('/api/tillo/issue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  brandSlug: giftCardSelection.brandSlug,
+                  amount: giftCardSelection.amount,
+                  currency: giftCardSelection.currency || 'USD'
+                })
+              })
+
+              data = await response.json()
+
+              console.log('🎁 Tillo API FULL response:', JSON.stringify(data, null, 2))
+              console.log('🎁 Tillo API response summary:', {
+                ok: response.ok,
+                success: data.success,
+                hasGiftCard: !!data.giftCard,
+                giftCard: data.giftCard ? {
+                  url: data.giftCard.url,
+                  redemptionUrl: data.giftCard.redemptionUrl,
+                  code: data.giftCard.code ? '***PRESENT***' : 'N/A',
+                  pin: data.giftCard.pin ? '***PRESENT***' : 'N/A',
+                  orderId: data.giftCard.orderId
+                } : null,
+                error: data.error
+              })
+            }
 
             // 🎁 Extract redemption URL - try multiple fields
-            const redemptionUrl = data.giftCard?.url || data.giftCard?.redemptionUrl || data.giftCard?.claim_url || ''
-            console.log('🎁 Extracted redemption URL:', redemptionUrl || 'NONE FOUND!')
+            const redemptionUrl = isSmartWishBrand 
+              ? '' // SmartWish cards use QR with card code, not redemption URL
+              : (data.giftCard?.url || data.giftCard?.redemptionUrl || data.giftCard?.claim_url || '')
+            console.log('🎁 Extracted redemption URL:', redemptionUrl || 'NONE (SmartWish uses QR code)')
 
             if (response.ok && data.success) {
-              console.log('✅ Gift card issued successfully after payment')
+              console.log('✅ Gift card issued successfully after payment via', isSmartWishBrand ? 'SmartWish' : 'Tillo')
 
               // Update localStorage with issued gift card data
               const issuedGiftCard = {
@@ -846,13 +1135,16 @@ function CardPaymentModalContent({
                 status: 'issued',
                 isIssued: true,
                 issuedAt: new Date().toISOString(),
-                // Add the actual gift card data from Tillo - try multiple URL fields
+                // Add the actual gift card data - different fields for SmartWish vs Tillo
                 redemptionLink: redemptionUrl,
-                code: data.giftCard?.code,
+                code: isSmartWishBrand ? data.giftCard?.cardNumber : data.giftCard?.code,
                 pin: data.giftCard?.pin,
-                orderId: data.giftCard?.orderId || data.giftCard?.clientRequestId,
-                expiryDate: data.giftCard?.expiryDate,
-                qrCode: '' // Will be generated below
+                cardNumber: isSmartWishBrand ? data.giftCard?.cardNumber : undefined,
+                cardCode: isSmartWishBrand ? data.giftCard?.cardCode : undefined,
+                orderId: isSmartWishBrand ? data.giftCard?.id : (data.giftCard?.orderId || data.giftCard?.clientRequestId),
+                expiryDate: isSmartWishBrand ? data.giftCard?.expiresAt : data.giftCard?.expiryDate,
+                qrCode: '', // Will be generated below
+                source: isSmartWishBrand ? 'smartwish' : 'tillo'
               }
 
               console.log('🎁 Issued gift card redemptionLink set to:', issuedGiftCard.redemptionLink || 'EMPTY!')
@@ -862,13 +1154,24 @@ function CardPaymentModalContent({
                 amount: issuedGiftCard.amount,
                 redemptionLink: issuedGiftCard.redemptionLink || 'N/A',
                 code: issuedGiftCard.code ? '***' : 'N/A',
-                hasStoreLogo: !!issuedGiftCard.storeLogo
+                hasStoreLogo: !!issuedGiftCard.storeLogo,
+                source: issuedGiftCard.source
               })
 
               // Generate QR code for the redemption link or code
-              // Always generate a QR code - either from URL, code, or a fallback
-              let qrContent = issuedGiftCard.redemptionLink || '';
-              let qrSource = 'redemptionLink';
+              // For SmartWish cards, use the qrContent from API
+              // For Tillo cards, use redemption URL or code
+              let qrContent = '';
+              let qrSource = '';
+
+              if (isSmartWishBrand && data.giftCard?.qrContent) {
+                // SmartWish: use the QR content from the API (contains card code for lookup)
+                qrContent = data.giftCard.qrContent;
+                qrSource = 'smartwish_qr';
+              } else {
+                qrContent = issuedGiftCard.redemptionLink || '';
+                qrSource = 'redemptionLink';
+              }
 
               console.log('🎁 QR content check - redemptionLink:', issuedGiftCard.redemptionLink || 'EMPTY')
               console.log('🎁 QR content check - code:', issuedGiftCard.code || 'EMPTY')
@@ -977,7 +1280,7 @@ function CardPaymentModalContent({
                   localStorage.setItem(metaKey, JSON.stringify({
                     storeName: issuedGiftCard.storeName,
                     amount: issuedGiftCard.amount,
-                    source: 'tillo',
+                    source: issuedGiftCard.source || (isSmartWishBrand ? 'smartwish' : 'tillo'),
                     status: 'issued',
                     issuedAt: issuedGiftCard.issuedAt,
                     isEncrypted: true
