@@ -38,6 +38,9 @@ export function useSessionTracking() {
       trackClick: noopWithParams as (event: MouseEvent | TouchEvent, zone?: InteractionZone, details?: SessionEventDetails) => void,
       trackSearch: noopWithParams as (query: string, resultCount?: number) => void,
       
+      // Tile selection tracking
+      trackTileSelect: noopWithParams as (tileType: 'greeting_cards' | 'stickers' | 'gift_card', details?: SessionEventDetails) => void,
+      
       // Sticker tracking
       trackStickerBrowse: noop,
       trackStickerSelect: noopWithParams as (details?: SessionEventDetails) => void,
@@ -89,6 +92,10 @@ export function useSessionTracking() {
     
     // Search tracking
     trackSearch: session.trackSearch,
+    
+    // Tile selection tracking
+    trackTileSelect: (tileType: 'greeting_cards' | 'stickers' | 'gift_card', details?: SessionEventDetails) =>
+      session.trackTileSelect(tileType, details),
     
     // Sticker tracking
     trackStickerBrowse: () => session.trackStickerEvent('browse'),

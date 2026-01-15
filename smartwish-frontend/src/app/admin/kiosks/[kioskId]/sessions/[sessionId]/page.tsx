@@ -15,6 +15,9 @@ import {
   XCircleIcon,
   PrinterIcon,
   PaperAirplaneIcon,
+  VideoCameraIcon,
+  PlayIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import type {
@@ -23,6 +26,23 @@ import type {
   SessionJourneyStep,
   SessionOutcome,
 } from "@/types/kioskSession";
+
+interface SessionRecording {
+  id: string;
+  sessionId: string;
+  kioskId: string;
+  storageUrl: string | null;
+  thumbnailUrl: string | null;
+  duration: number | null;
+  fileSize: number | null;
+  format: string;
+  resolution: string;
+  frameRate: number;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  createdAt: string;
+}
 
 interface SessionDetailResponse {
   session: KioskSession;
@@ -103,6 +123,12 @@ export default function SessionDetailPage({
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set([0]));
   const [showRawEvents, setShowRawEvents] = useState(false);
 
+  // Recording state
+  const [recording, setRecording] = useState<SessionRecording | null>(null);
+  const [recordingLoading, setRecordingLoading] = useState(true);
+  const [showDeleteRecordingModal, setShowDeleteRecordingModal] = useState(false);
+  const [deletingRecording, setDeletingRecording] = useState(false);
+
   // Delete modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -143,6 +169,31 @@ export default function SessionDetailPage({
     fetchSession();
   }, [status, kioskId, sessionId]);
 
+  // Fetch recording
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    const fetchRecording = async () => {
+      setRecordingLoading(true);
+
+      try {
+        const response = await fetch(
+          `/api/admin/kiosks/${kioskId}/sessions/${sessionId}/recording`
+        );
+        if (response.ok) {
+          const result = await response.json();
+          setRecording(result.recording || null);
+        }
+      } catch (err) {
+        console.error("Error fetching recording:", err);
+      } finally {
+        setRecordingLoading(false);
+      }
+    };
+
+    fetchRecording();
+  }, [status, kioskId, sessionId]);
+
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -162,6 +213,35 @@ export default function SessionDetailPage({
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleDeleteRecording = async () => {
+    setDeletingRecording(true);
+    try {
+      const response = await fetch(
+        `/api/admin/kiosks/${kioskId}/sessions/${sessionId}/recording`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to delete recording");
+      }
+
+      setRecording(null);
+      setShowDeleteRecordingModal(false);
+    } catch (err) {
+      console.error("Error deleting recording:", err);
+      alert(err instanceof Error ? err.message : "Failed to delete recording");
+    } finally {
+      setDeletingRecording(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number | null): string => {
+    if (!bytes) return "-";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const toggleStep = (index: number) => {
@@ -415,6 +495,111 @@ export default function SessionDetailPage({
           <p className="text-gray-700 leading-relaxed">{behaviorSummary}</p>
         </div>
 
+        {/* Session Recording */}
+        <div className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200 p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <VideoCameraIcon className="h-5 w-5 text-gray-500" />
+              <h3 className="text-lg font-semibold text-gray-900">
+                Session Recording
+              </h3>
+            </div>
+            {recording && recording.storageUrl && (
+              <div className="flex items-center gap-2">
+                <a
+                  href={recording.storageUrl}
+                  download
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 hover:text-indigo-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <ArrowDownTrayIcon className="h-4 w-4" />
+                  Download
+                </a>
+                <button
+                  onClick={() => setShowDeleteRecordingModal(true)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+
+          {recordingLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : recording && recording.storageUrl ? (
+            <div className="space-y-4">
+              {/* Video Player */}
+              <div className="relative bg-gray-900 rounded-xl overflow-hidden aspect-video">
+                {recording.format === 'webm' || recording.format === 'mp4' ? (
+                  <video
+                    src={recording.storageUrl}
+                    controls
+                    className="w-full h-full object-contain"
+                    poster={recording.thumbnailUrl || undefined}
+                  >
+                    Your browser does not support video playback.
+                  </video>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-white">
+                    <div className="text-center">
+                      <PlayIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                      <p className="text-lg">Recording available for download</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Format: {recording.format}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Recording Metadata */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Duration</p>
+                  <p className="font-semibold text-gray-900">
+                    {formatDuration(recording.duration)}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">File Size</p>
+                  <p className="font-semibold text-gray-900">
+                    {formatFileSize(recording.fileSize)}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Resolution</p>
+                  <p className="font-semibold text-gray-900">
+                    {recording.resolution || '-'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Frame Rate</p>
+                  <p className="font-semibold text-gray-900">
+                    {recording.frameRate} FPS
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-gray-500 text-xs mb-1">Status</p>
+                  <p className="font-semibold text-gray-900 capitalize">
+                    {recording.status}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <VideoCameraIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="text-lg font-medium">No recording available</p>
+              <p className="text-sm mt-1">
+                This session was not recorded or the recording was deleted.
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* User Journey */}
         <div className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200 p-6 mb-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">
@@ -658,6 +843,67 @@ export default function SessionDetailPage({
                       className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50 transition-colors"
                     >
                       {deleting ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Delete Recording Confirmation Modal */}
+      <Transition appear show={showDeleteRecordingModal} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-50"
+          onClose={() => setShowDeleteRecordingModal(false)}
+        >
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 shadow-xl transition-all">
+                  <Dialog.Title className="text-lg font-semibold text-gray-900">
+                    Delete Recording
+                  </Dialog.Title>
+                  <p className="mt-2 text-sm text-gray-500">
+                    Are you sure you want to delete this session recording? 
+                    The video file will be permanently removed from storage. 
+                    This action cannot be undone.
+                  </p>
+                  <div className="mt-6 flex gap-3 justify-end">
+                    <button
+                      onClick={() => setShowDeleteRecordingModal(false)}
+                      className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDeleteRecording}
+                      disabled={deletingRecording}
+                      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50 transition-colors"
+                    >
+                      {deletingRecording ? "Deleting..." : "Delete Recording"}
                     </button>
                   </div>
                 </Dialog.Panel>

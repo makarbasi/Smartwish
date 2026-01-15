@@ -11,6 +11,7 @@ import TemplateCard from "@/components/TemplateCard";
 import TemplateCardSkeleton from "@/components/TemplateCardSkeleton";
 import FloatingSearch from "@/components/FloatingSearch";
 import { AuthModalProvider, useAuthModal } from "@/contexts/AuthModalContext";
+import { useSessionTracking } from "@/hooks/useSessionTracking";
 
 
 type ApiTemplate = {
@@ -181,6 +182,18 @@ function TemplatesPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const { authModalOpen, openAuthModal, closeAuthModal, setRedirectUrl } = useAuthModal();
+  
+  // Session tracking for analytics
+  const {
+    trackCardBrowse,
+    trackCardSelect,
+    trackCardSearch,
+  } = useSessionTracking();
+
+  // Track page browse on mount for session analytics
+  useEffect(() => {
+    trackCardBrowse();
+  }, [trackCardBrowse]);
 
   // Debug: Track authModalOpen state changes (only when it changes)
   useEffect(() => {
@@ -471,6 +484,13 @@ function TemplatesPageContent() {
   const handlePreviewTemplate = (template: TemplateCard) => {
     console.log("🎬 handlePreviewTemplate called with:", template.name);
     setPreviewProduct(template);
+    
+    // Track card selection for session analytics
+    trackCardSelect({
+      itemId: template.id,
+      itemTitle: template.name,
+      itemCategory: template.category_name || template.category_display_name,
+    });
 
     // Small delay to prevent immediate outside click detection
     setTimeout(() => {

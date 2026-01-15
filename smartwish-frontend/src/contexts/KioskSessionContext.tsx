@@ -35,6 +35,10 @@ interface KioskSessionContextType {
     details?: SessionEventDetails
   ) => void;
   trackSearch: (query: string, resultCount?: number) => void;
+  trackTileSelect: (
+    tileType: 'greeting_cards' | 'stickers' | 'gift_card',
+    details?: SessionEventDetails
+  ) => void;
   trackStickerEvent: (
     action: 'browse' | 'select' | 'search' | 'upload_start' | 'upload_complete',
     details?: SessionEventDetails
@@ -231,6 +235,14 @@ export const KioskSessionProvider: React.FC<KioskSessionProviderProps> = ({ chil
     kioskSessionService.trackSearch(query, resultCount);
   }, []);
 
+  const trackTileSelect = useCallback((
+    tileType: 'greeting_cards' | 'stickers' | 'gift_card',
+    details?: SessionEventDetails
+  ) => {
+    if (!kioskSessionService.isActive) return;
+    kioskSessionService.trackTileSelect(tileType, details);
+  }, []);
+
   const trackStickerEvent = useCallback((
     action: 'browse' | 'select' | 'search' | 'upload_start' | 'upload_complete',
     details?: SessionEventDetails
@@ -290,6 +302,7 @@ export const KioskSessionProvider: React.FC<KioskSessionProviderProps> = ({ chil
     trackEvent,
     trackClick,
     trackSearch,
+    trackTileSelect,
     trackStickerEvent,
     trackCardEvent,
     trackGiftCardEvent,

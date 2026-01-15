@@ -31,6 +31,7 @@ export async function GET(
     const hasSearch = searchParams.get('hasSearch');
     const hasUpload = searchParams.get('hasUpload');
     const hasEditor = searchParams.get('hasEditor');
+    const hasRecording = searchParams.get('hasRecording');
 
     // Verify kiosk exists
     const { data: kiosk, error: kioskError } = await supabase
@@ -73,6 +74,10 @@ export async function GET(
 
     if (hasEditor === 'true') {
       query = query.eq('used_pintura_editor', true);
+    }
+
+    if (hasRecording === 'true') {
+      query = query.eq('has_recording', true);
     }
 
     // Pagination
