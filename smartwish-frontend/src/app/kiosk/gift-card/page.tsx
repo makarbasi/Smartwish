@@ -191,7 +191,7 @@ function GiftCardPurchaseContent() {
       // The gift card was issued successfully through CardPaymentModal
       // Create a PurchasedGiftCard from the issued data
       const purchasedCardData: PurchasedGiftCard = {
-        id: Date.now().toString(),
+        id: issuedGiftCard.id || '',  // Use the actual database ID
         cardNumber: issuedGiftCard.code || '',
         pin: issuedGiftCard.pin || '',
         initialBalance: issuedGiftCard.amount,
@@ -265,8 +265,13 @@ function GiftCardPurchaseContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cardId: purchasedCard.id,
           email: email,
+          // Pass card data directly instead of ID
+          cardNumber: purchasedCard.cardNumber,
+          pin: purchasedCard.pin,
+          balance: purchasedCard.initialBalance,
+          expiresAt: purchasedCard.expiresAt,
+          brandName: purchasedCard.brand?.name || 'Gift Card',
         }),
       });
 

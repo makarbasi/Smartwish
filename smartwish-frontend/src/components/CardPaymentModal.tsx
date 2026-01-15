@@ -15,6 +15,7 @@ const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : 
 // Gift card data returned after payment success
 // Exported so consuming components can use the same type
 export interface IssuedGiftCardData {
+  id?: string  // The actual gift card ID from the database
   storeName: string
   amount: number
   qrCode: string
@@ -921,15 +922,14 @@ function CardPaymentModalContent({
       
       try {
         // Issue the gift card via API
+        // Note: kioskId, discountPercent are already stored on the ORDER (via orderId)
         const response = await fetch('/api/gift-cards/purchase', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             brandId: giftCardBrandId,
             amount: propGiftCardAmount,
-            kioskId: kioskId,
-            discountPercent: giftCardDiscountPercent,
-            orderId: orderId,
+            orderId: orderId, // Links gift card to order which has all the kiosk/discount info
           }),
         })
 
@@ -955,6 +955,7 @@ function CardPaymentModalContent({
             }
 
             issuedGiftCardData = {
+              id: data.giftCard.id,  // The actual database ID
               storeName: cardName || 'Gift Card',
               amount: propGiftCardAmount,
               qrCode: qrCodeDataUrl,

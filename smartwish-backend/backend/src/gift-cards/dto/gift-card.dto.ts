@@ -94,11 +94,12 @@ export class PurchaseGiftCardDto {
 
   @IsOptional()
   @IsString()
-  paymentIntentId?: string;
+  paymentIntentId?: string; // Stripe payment intent ID
 
   @IsOptional()
-  @IsUUID()
-  kioskId?: string;
+  @IsString()
+  orderId?: string; // Order ID - used as purchase_order_id to link to order
+  // Note: kioskId, discountPercent etc. are stored on the ORDER, not the gift card
 }
 
 export class CheckBalanceDto {
@@ -141,4 +142,27 @@ export class UpdateGiftCardStatusDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+// ==================== Email DTO ====================
+
+export class EmailGiftCardDto {
+  @IsString()
+  email!: string;
+
+  @IsString()
+  cardNumber!: string;
+
+  @IsString()
+  pin!: string;
+
+  @IsNumber()
+  balance!: number;
+
+  @IsString()
+  expiresAt!: string;
+
+  @IsOptional()
+  @IsString()
+  brandName?: string;
 }
