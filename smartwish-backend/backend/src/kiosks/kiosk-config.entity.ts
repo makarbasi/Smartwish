@@ -44,6 +44,15 @@ export class KioskConfig {
   @JoinColumn({ name: 'created_by' })
   creator?: User;
 
+  // Sales representative assignment
+  @Index()
+  @Column({ name: 'sales_representative_id', type: 'uuid', nullable: true })
+  salesRepresentativeId?: string | null;
+
+  // Manager commission percent
+  @Column({ name: 'manager_commission_percent', type: 'decimal', precision: 5, scale: 2, default: 20.00 })
+  managerCommissionPercent!: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
