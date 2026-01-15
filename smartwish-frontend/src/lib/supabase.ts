@@ -2,12 +2,11 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// For client-side usage, Next.js requires NEXT_PUBLIC_ prefix
-// Add these to your frontend .env.local:
-// NEXT_PUBLIC_SUPABASE_URL=https://kfitmirodgoduifcsyug.supabase.co
-// NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+// Support both naming conventions
+// Note: For browser/client-side, only NEXT_PUBLIC_ prefixed vars are accessible
+// The non-prefixed fallback only works during SSR
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 // Create a single instance of the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

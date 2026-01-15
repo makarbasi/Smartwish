@@ -22,9 +22,20 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   VideoCameraIcon,
+  PlayIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import type { KioskSession, SessionSummary, SessionOutcome } from "@/types/kioskSession";
+
+interface SessionRecording {
+  id: string;
+  sessionId: string;
+  storageUrl: string | null;
+  thumbnailUrl: string | null;
+  duration: number | null;
+  status: string;
+}
 
 interface SessionsResponse {
   sessions: KioskSession[];
@@ -88,6 +99,12 @@ export default function KioskSessionsPage({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<KioskSession | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Video modal
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [selectedRecording, setSelectedRecording] = useState<SessionRecording | null>(null);
+  const [recordingLoading, setRecordingLoading] = useState(false);
+  const [recordingsCache, setRecordingsCache] = useState<Record<string, SessionRecording>>({});
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -169,6 +186,44 @@ export default function KioskSessionsPage({
       alert(err instanceof Error ? err.message : "Failed to delete session");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleOpenRecording = async (sessionId: string) => {
+    // Check if we have it cached
+    if (recordingsCache[sessionId]) {
+      setSelectedRecording(recordingsCache[sessionId]);
+      setShowVideoModal(true);
+      return;
+    }
+
+    setRecordingLoading(true);
+    setShowVideoModal(true);
+    
+    try {
+      const response = await fetch(`/api/admin/kiosks/${kioskId}/sessions/${sessionId}/recording`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch recording");
+      }
+      
+      const data = await response.json();
+      const recording: SessionRecording = {
+        id: data.recording.id,
+        sessionId: sessionId,
+        storageUrl: data.recording.storageUrl,
+        thumbnailUrl: data.recording.thumbnailUrl,
+        duration: data.recording.durationSeconds,
+        status: data.recording.status,
+      };
+      
+      setRecordingsCache(prev => ({ ...prev, [sessionId]: recording }));
+      setSelectedRecording(recording);
+    } catch (err) {
+      console.error("Error fetching recording:", err);
+      setShowVideoModal(false);
+      alert("Failed to load recording");
+    } finally {
+      setRecordingLoading(false);
     }
   };
 
@@ -519,7 +574,18 @@ export default function KioskSessionsPage({
                                 {formatDate(session.startedAt)}
                               </span>
                               {session.hasRecording && (
-                                <VideoCameraIcon className="h-4 w-4 text-indigo-500" title="Has recording" />
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleOpenRecording(session.id);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+                                  title="Watch recording"
+                                >
+                                  <PlayIcon className="h-3 w-3" />
+                                  <span className="text-xs font-medium">Watch</span>
+                                </button>
                               )}
                             </div>
                           </td>
@@ -684,6 +750,115 @@ export default function KioskSessionsPage({
                       {deleting ? "Deleting..." : "Delete"}
                     </button>
                   </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Video Recording Modal */}
+      <Transition appear show={showVideoModal} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-50"
+          onClose={() => {
+            setShowVideoModal(false);
+            setSelectedRecording(null);
+          }}
+        >
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 shadow-2xl transition-all">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+                    <div className="flex items-center gap-3">
+                      <VideoCameraIcon className="h-6 w-6 text-indigo-400" />
+                      <Dialog.Title className="text-lg font-semibold text-white">
+                        Session Recording
+                      </Dialog.Title>
+                      {selectedRecording?.duration && (
+                        <span className="text-sm text-gray-400">
+                          ({formatDuration(selectedRecording.duration)})
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowVideoModal(false);
+                        setSelectedRecording(null);
+                      }}
+                      className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Video Player */}
+                  <div className="relative bg-black aspect-video">
+                    {recordingLoading ? (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : selectedRecording?.storageUrl ? (
+                      <video
+                        controls
+                        autoPlay
+                        className="w-full h-full"
+                        src={selectedRecording.storageUrl}
+                        poster={selectedRecording.thumbnailUrl || undefined}
+                      >
+                        Your browser does not support the video tag.
+                      </video>
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
+                        <VideoCameraIcon className="h-16 w-16 mb-4" />
+                        <p className="text-lg">Recording not available</p>
+                        <p className="text-sm">
+                          {selectedRecording?.status === "pending"
+                            ? "Recording is still being processed"
+                            : "Recording file could not be loaded"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer with actions */}
+                  {selectedRecording?.storageUrl && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
+                      <p className="text-sm text-gray-400">
+                        Captured at 1 FPS
+                      </p>
+                      <a
+                        href={selectedRecording.storageUrl}
+                        download
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+                      >
+                        Download Recording
+                      </a>
+                    </div>
+                  )}
                 </Dialog.Panel>
               </Transition.Child>
             </div>

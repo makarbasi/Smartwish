@@ -54,7 +54,10 @@ export default function KioskActivationPage() {
         throw new Error(errorData.error || "Failed to fetch kiosks");
       }
       const data = await response.json();
-      setKiosks(Array.isArray(data) ? data : []);
+      // API returns { kiosks: [...] }, extract the array
+      const kiosksArray = Array.isArray(data) ? data : (data.kiosks || []);
+      console.log("[KioskActivation] Fetched kiosks:", kiosksArray.length);
+      setKiosks(kiosksArray);
     } catch (err) {
       console.error("Error fetching kiosks:", err);
       setError(err instanceof Error ? err.message : "Failed to load kiosks");

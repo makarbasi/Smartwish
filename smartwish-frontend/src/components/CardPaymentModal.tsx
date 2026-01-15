@@ -7,6 +7,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useSession } from 'next-auth/react'
 import QRCode from 'qrcode'
+import { useKioskInactivity } from '@/hooks/useKioskInactivity'
 
 // Initialize Stripe
 const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
@@ -145,6 +146,9 @@ function CardPaymentModalContent({
 
   // ✅ Use NextAuth session for authentication
   const { data: session, status: sessionStatus } = useSession()
+  
+  // Extend inactivity timeout during payment
+  const { pauseForPayment, resumeFromPayment } = useKioskInactivity()
 
   // Check if this is a sticker payment (simplified flow, no gift cards)
   const isStickers = productType === 'stickers'
@@ -175,6 +179,18 @@ function CardPaymentModalContent({
   const [paymentQRCode, setPaymentQRCode] = useState('')
 
   const checkPaymentIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Extend inactivity timeout when payment modal is open
+  useEffect(() => {
+    if (isOpen) {
+      pauseForPayment()
+    }
+    return () => {
+      if (isOpen) {
+        resumeFromPayment()
+      }
+    }
+  }, [isOpen, pauseForPayment, resumeFromPayment])
 
   // ✅ Get authentication from NextAuth session (no localStorage)
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'
