@@ -54,42 +54,41 @@ try {
 }
 
 // =============================================================================
-// CONFIGURATION - File config takes precedence, then env vars, then defaults
+// CONFIGURATION - All settings from config.json (single source of truth)
 // =============================================================================
 const CONFIG = {
-  // Cloud server URL - change this to your deployed backend
-  cloudServerUrl: fileConfig.cloudServerUrl || process.env.CLOUD_SERVER_URL || 'https://smartwish.onrender.com',
+  // Cloud connections (external)
+  cloudServerUrl: fileConfig.cloudServerUrl || 'https://smartwish.onrender.com',
+  frontendUrl: fileConfig.frontendUrl || 'https://app.smartwish.us',
 
-  // Frontend URL - for opening browser during pairing
-  // Use http://localhost:3000 for local development
-  frontendUrl: fileConfig.frontendUrl || process.env.FRONTEND_URL || 'https://app.smartwish.us',
+  // Printer settings
+  defaultPrinter: fileConfig.defaultPrinter || '',
 
-  // Fallback default printer (only used if job has no printerName from kiosk config)
-  // Per-kiosk printer settings are configured in /admin/kiosks
-  defaultPrinter: fileConfig.defaultPrinter || process.env.DEFAULT_PRINTER || '',
-
-  // How often to poll for new jobs (milliseconds)
-  // Using 10 seconds to reduce rate limit pressure on Render free tier
-  pollInterval: fileConfig.pollInterval || parseInt(process.env.POLL_INTERVAL || '10000', 10),
-  
-  // How long to wait before retrying after rate limit (milliseconds)
+  // Polling settings
+  pollInterval: fileConfig.pollInterval || 10000,
   rateLimitBackoff: 10000,
 
-  // Temporary directory for downloaded files
+  // Local directories
   tempDir: path.join(__dirname, 'temp-print-jobs'),
 
   // Paper configuration
   dpi: 300,
 
-  // Surveillance configuration - config.json takes precedence over env vars
+  // Local service ports (these run on THIS machine, not cloud)
+  localServices: {
+    pairingPort: fileConfig.localServices?.pairingPort || 8766,
+    surveillancePort: fileConfig.localServices?.surveillancePort || fileConfig.surveillance?.httpPort || 8765,
+  },
+
+  // Surveillance configuration
   surveillance: {
-    enabled: fileConfig.surveillance?.enabled ?? (process.env.SURVEILLANCE_ENABLED === 'true'),
-    kioskId: fileConfig.surveillance?.kioskId || process.env.KIOSK_ID || 'default-kiosk',
-    apiKey: fileConfig.surveillance?.apiKey || process.env.KIOSK_API_KEY || '',
-    webcamIndex: fileConfig.surveillance?.webcamIndex ?? parseInt(process.env.SURVEILLANCE_WEBCAM || '0', 10),
-    httpPort: fileConfig.surveillance?.httpPort ?? parseInt(process.env.SURVEILLANCE_PORT || '8765', 10),
-    showPreview: fileConfig.surveillance?.showPreview ?? (process.env.SURVEILLANCE_PREVIEW === 'true'),
-    pythonPath: fileConfig.surveillance?.pythonPath || process.env.PYTHON_PATH || 'python',
+    enabled: fileConfig.surveillance?.enabled ?? false,
+    kioskId: fileConfig.surveillance?.kioskId || 'default-kiosk',
+    apiKey: fileConfig.surveillance?.apiKey || '',
+    webcamIndex: fileConfig.surveillance?.webcamIndex ?? 0,
+    httpPort: fileConfig.surveillance?.httpPort ?? 8765,
+    showPreview: fileConfig.surveillance?.showPreview ?? false,
+    pythonPath: fileConfig.surveillance?.pythonPath || 'python',
     dwellThresholdSeconds: fileConfig.surveillance?.dwellThresholdSeconds ?? 8,
     frameThreshold: fileConfig.surveillance?.frameThreshold ?? 10,
   },
@@ -935,7 +934,7 @@ async function startSurveillance(surveillanceConfig) {
   
   if (started) {
     console.log('  ✅ Surveillance started successfully');
-    console.log(`  🌐 Image server: http://localhost:${config.httpPort || 8765}`);
+    console.log(`  🌐 Image server (LOCAL): http://localhost:${config.httpPort || 8765}`);
   } else {
     console.log('  ⚠️ Surveillance failed to start');
   }
@@ -1015,8 +1014,16 @@ async function main() {
   console.log('═'.repeat(60));
   console.log('  🖨️  SMARTWISH LOCAL PRINT AGENT');
   console.log('═'.repeat(60));
-  console.log(`  Server: ${CONFIG.cloudServerUrl}`);
-  console.log(`  Poll Interval: ${CONFIG.pollInterval}ms`);
+  console.log('');
+  console.log('  📡 CLOUD CONNECTIONS:');
+  console.log(`     Backend API: ${CONFIG.cloudServerUrl}`);
+  console.log(`     Frontend:    ${CONFIG.frontendUrl}`);
+  console.log('');
+  console.log('  💻 LOCAL SERVICES (on this machine):');
+  console.log(`     Pairing:     http://localhost:${CONFIG.localServices.pairingPort}`);
+  console.log(`     Surveillance: http://localhost:${CONFIG.localServices.surveillancePort}`);
+  console.log('');
+  console.log(`  ⏱️  Poll Interval: ${CONFIG.pollInterval}ms`);
   console.log('');
 
   await ensureTempDir();
@@ -1026,7 +1033,7 @@ async function main() {
   // =========================================================================
   
   const pairingServer = new DevicePairingServer({
-    port: 8766,
+    port: CONFIG.localServices.pairingPort,
   });
   
   // Start pairing server

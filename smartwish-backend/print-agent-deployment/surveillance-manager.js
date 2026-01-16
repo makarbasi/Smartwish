@@ -78,7 +78,7 @@ export class SurveillanceManager {
     console.log(`  [Surveillance] 🎥 Starting surveillance for kiosk: ${this.config.kioskId}`);
     console.log(`  [Surveillance] Python: ${this.config.pythonPath}`);
     console.log(`  [Surveillance] Webcam: ${this.config.webcamIndex}`);
-    console.log(`  [Surveillance] Image server: http://localhost:${this.config.httpPort}`);
+    console.log(`  [Surveillance] Image server (LOCAL): http://localhost:${this.config.httpPort}`);
 
     this.process = spawn(this.config.pythonPath, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -180,7 +180,7 @@ export class SurveillanceManager {
       webcamIndex: this.config.webcamIndex,
       httpPort: this.config.httpPort,
       restartCount: this.restartCount,
-      imageServerUrl: `http://localhost:${this.config.httpPort}`,
+      imageServerUrl: `http://localhost:${this.config.httpPort}`, // Local service on this machine
     };
   }
 

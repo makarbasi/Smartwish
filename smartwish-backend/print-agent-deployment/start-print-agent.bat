@@ -2,9 +2,8 @@
 REM ============================================
 REM SmartWish Local Print Agent Launcher
 REM ============================================
-REM This script starts the local print agent.
-REM On first run, it will open the browser for device pairing.
-REM After pairing, it remembers the kiosk and starts automatically.
+REM All configuration is in config.json
+REM Edit config.json to change settings.
 REM ============================================
 
 cd /d "%~dp0"
@@ -18,22 +17,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM Set environment variables (defaults - will be overridden by cloud config after pairing)
-set CLOUD_SERVER_URL=https://smartwish.onrender.com
-set FRONTEND_URL=https://app.smartwish.us
-set POLL_INTERVAL=10000
-
-REM For local development, uncomment the line below:
-
-REM set FRONTEND_URL=http://localhost:3000
-
 REM Start the print agent
 echo ============================================
-echo Starting SmartWish Local Print Agent...
+echo   SmartWish Local Print Agent
 echo ============================================
 echo.
-echo If this is your first time, a browser will open
-echo for you to pair this device with a kiosk.
+echo   Configuration: config.json
+echo.
+echo   NOTE: localhost:8765 and localhost:8766 are
+echo   LOCAL services on this machine, not cloud connections.
 echo.
 
 node local-print-agent.js

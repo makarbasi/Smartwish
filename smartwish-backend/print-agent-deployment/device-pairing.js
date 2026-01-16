@@ -154,7 +154,7 @@ export class DevicePairingServer {
       });
 
       this.server.listen(this.port, () => {
-        console.log(`  🔗 Device pairing server: http://localhost:${this.port}`);
+        console.log(`  🔗 Device pairing server (LOCAL): http://localhost:${this.port}`);
         resolve(this.server);
       });
     });

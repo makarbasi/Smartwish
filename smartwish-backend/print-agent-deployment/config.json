@@ -1,8 +1,16 @@
 {
+  "_readme": "=== SMARTWISH PRINT AGENT CONFIGURATION ===",
+  
   "cloudServerUrl": "https://smartwish.onrender.com",
   "frontendUrl": "https://app.smartwish.us",
   "defaultPrinter": "",
   "pollInterval": 10000,
+  
+  "localServices": {
+    "_note": "These ports are for LOCAL HTTP servers on THIS machine (not cloud)",
+    "pairingPort": 8766,
+    "surveillancePort": 8765
+  },
   
   "surveillance": {
     "enabled": false,
@@ -16,7 +24,9 @@
   },
 
   "_comments": {
-    "note": "This file is used as fallback. After pairing, config is fetched from cloud.",
-    "localDev": "For local development, change cloudServerUrl to http://localhost:3001 and frontendUrl to http://localhost:3000"
+    "cloudServerUrl": "Backend API (Render)",
+    "frontendUrl": "Frontend URL for browser (Vercel/custom domain)",
+    "localServices": "localhost:8765 = camera stream, localhost:8766 = device pairing",
+    "localDev": "For local dev: cloudServerUrl=http://localhost:3001, frontendUrl=http://localhost:3000"
   }
 }
