@@ -1086,11 +1086,14 @@ export class AppController {
 
         if (!global.printJobQueue) {
           global.printJobQueue = [];
+          console.log(`📋 Created new print job queue`);
         }
         global.printJobQueue.push(printJob as any);
 
         console.log(`✅ Sticker print job ${jobId} queued for local print agent`);
-        console.log(`   Run 'node local-print-agent.js' on your local PC to process this job`);
+        console.log(`   Queue size: ${global.printJobQueue.length} job(s)`);
+        console.log(`   Printer IP: ${printerIP}`);
+        console.log(`   JPG URL: ${jpgUrl?.substring(0, 50)}...`);
 
         res.json({
           message: 'Sticker print job queued successfully',
@@ -1244,6 +1247,10 @@ export class AppController {
   async getPrintJobs(@Res() res: Response) {
     try {
       const jobs = (global as any).printJobQueue || [];
+      // Log queue status periodically (every request)
+      if (jobs.length > 0) {
+        console.log(`📋 [print-jobs] Returning ${jobs.length} job(s): ${jobs.map((j: any) => `${j.id}(${j.status})`).join(', ')}`);
+      }
       res.json({ jobs });
     } catch (error) {
       console.error('Error getting print jobs:', error);
@@ -1337,16 +1344,31 @@ export class AppController {
       const job = jobs.find((j) => j.id === jobId);
 
       if (!job) {
-        // Job not in queue = it was completed and cleared by local agent
-        // Return a synthetic "completed" status so frontend stops polling
-        console.log(`📋 Job ${jobId} not in queue - returning completed (was cleared)`);
-        return res.json({ 
-          job: { 
-            id: jobId, 
-            status: 'completed',
-            clearedFromQueue: true 
-          } 
-        });
+        // Job not in queue - check if it was ever completed
+        const completedJobs = (global as any).completedPrintJobs || new Set();
+        
+        if (completedJobs.has(jobId)) {
+          // Job was actually completed by print agent
+          console.log(`📋 Job ${jobId} was completed and cleared`);
+          return res.json({ 
+            job: { 
+              id: jobId, 
+              status: 'completed',
+              clearedFromQueue: true 
+            } 
+          });
+        } else {
+          // Job was never seen or was lost (server restart, etc.)
+          console.log(`⚠️ Job ${jobId} not found in queue - returning pending (may have been lost)`);
+          return res.json({ 
+            job: { 
+              id: jobId, 
+              status: 'pending',
+              notInQueue: true,
+              message: 'Job not found in queue. It may still be processing or was lost due to server restart.'
+            } 
+          });
+        }
       }
 
       res.json({ job });
@@ -1383,6 +1405,15 @@ export class AppController {
 
       if (error) {
         global.printJobQueue[jobIndex].error = error;
+      }
+
+      // Track completed jobs so we can distinguish from lost jobs
+      if (status === 'completed') {
+        if (!(global as any).completedPrintJobs) {
+          (global as any).completedPrintJobs = new Set();
+        }
+        (global as any).completedPrintJobs.add(jobId);
+        console.log(`✅ Print job ${jobId} marked as completed`);
       }
 
       console.log(`Print job ${jobId} status updated to: ${status}`);

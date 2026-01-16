@@ -273,36 +273,121 @@ async function waitForPrintComplete(printerName, timeoutMs = 60000) {
   return true; // Assume completed after timeout
 }
 
+/**
+ * Print PDF using Windows PowerShell (handles printer names with special characters better)
+ */
+async function printPdfWithPowerShell(pdfPath, printerName) {
+  const absolutePath = path.resolve(pdfPath);
+  
+  // Write a temporary PowerShell script to avoid escaping issues
+  const tempScriptPath = path.join(CONFIG.tempDir, 'print-job.ps1');
+  const psScript = `
+$printer = "${printerName}"
+$pdfPath = "${absolutePath.replace(/\\/g, '\\\\')}"
+
+# Try Adobe Reader first (better quality)
+$acrobat = "C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe"
+$reader = "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+
+if (Test-Path $acrobat) {
+  Write-Host "Using Acrobat DC"
+  Start-Process -FilePath $acrobat -ArgumentList "/t", "\`"$pdfPath\`"", "\`"$printer\`"" -Wait -WindowStyle Hidden
+} elseif (Test-Path $reader) {
+  Write-Host "Using Acrobat Reader"
+  Start-Process -FilePath $reader -ArgumentList "/t", "\`"$pdfPath\`"", "\`"$printer\`"" -Wait -WindowStyle Hidden
+} else {
+  Write-Host "Using Windows default print handler"
+  # Use Windows Shell to print
+  $shell = New-Object -ComObject Shell.Application
+  $shell.NameSpace(0).ParseName($pdfPath).InvokeVerb("Print")
+  Start-Sleep -Seconds 5
+}
+`;
+  
+  await fs.writeFile(tempScriptPath, psScript, 'utf-8');
+  
+  try {
+    await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, {
+      windowsHide: true,
+      timeout: 60000,
+    });
+  } finally {
+    // Cleanup script file
+    try { await fs.unlink(tempScriptPath); } catch {}
+  }
+}
+
 async function printPdf(pdfPath, printerName) {
   console.log(`  🖨️ Printing to: ${printerName}`);
   console.log(`  📄 Settings: Letter, Landscape, Duplex (flip short edge), Color`);
 
-  // Print options for pdf-to-printer (uses SumatraPDF on Windows)
-  // https://github.com/artiebits/pdf-to-printer
-  const printOptions = {
-    printer: printerName,
-    // Duplex options: 'simplex', 'duplex', 'duplexshort', 'duplexlong'
-    // For landscape greeting cards: use 'duplexshort' (flip on short edge)
-    side: 'duplexshort',
-    // Scale: 'noscale', 'shrink', 'fit'
-    scale: 'noscale',
-    // Color printing (not monochrome)
-    monochrome: false,
-  };
-
-  try {
-    await print(pdfPath, printOptions);
-    console.log('  ✅ Print job sent to Windows spooler');
-  } catch (err) {
-    console.warn('  ⚠️ Print with duplex options failed:', err.message);
-    console.warn('  📝 Trying basic print...');
-    // Fallback: try basic print (duplex should be set in printer defaults)
-    await print(pdfPath, { printer: printerName });
-    console.log('  ✅ Print job sent using printer defaults');
-  }
+  const absolutePath = path.resolve(pdfPath);
   
-  // NOW MONITOR WINDOWS PRINT QUEUE FOR REAL COMPLETION
-  await waitForPrintComplete(printerName, 120000); // 2 minute timeout
+  // Some printer names have brackets [XXX] which cause command line issues
+  // Try with simplified name first (remove brackets portion)
+  const simplifiedName = printerName.replace(/\s*\[.*?\]\s*$/, '').trim();
+  const hasSpecialChars = printerName !== simplifiedName || /[[\](){}]/.test(printerName);
+  
+  if (hasSpecialChars) {
+    console.log(`  📝 Printer name has special characters, will try simplified: "${simplifiedName}"`);
+  }
+
+  // Method 1: Try pdf-to-printer with simplified name (if different)
+  if (hasSpecialChars && simplifiedName) {
+    try {
+      const printOptions = {
+        printer: simplifiedName,
+        side: 'duplexshort',
+        scale: 'noscale',
+        monochrome: false,
+      };
+      await print(absolutePath, printOptions);
+      console.log('  ✅ Print job sent via SumatraPDF (simplified name)');
+      await waitForPrintComplete(simplifiedName, 120000);
+      return;
+    } catch (err) {
+      console.warn('  ⚠️ SumatraPDF (simplified) failed:', err.message.split('\n')[0]);
+    }
+  }
+
+  // Method 2: Try pdf-to-printer with original name
+  try {
+    const printOptions = {
+      printer: printerName,
+      side: 'duplexshort',
+      scale: 'noscale',
+      monochrome: false,
+    };
+    await print(absolutePath, printOptions);
+    console.log('  ✅ Print job sent via SumatraPDF');
+    await waitForPrintComplete(printerName, 120000);
+    return;
+  } catch (err) {
+    console.warn('  ⚠️ SumatraPDF failed:', err.message.split('\n')[0]);
+  }
+    
+  // Method 3: Try basic SumatraPDF without options
+  try {
+    console.log('  📝 Trying basic SumatraPDF...');
+    await print(absolutePath, { printer: printerName });
+    console.log('  ✅ Print job sent via SumatraPDF (basic)');
+    await waitForPrintComplete(printerName, 120000);
+    return;
+  } catch (err2) {
+    console.warn('  ⚠️ Basic SumatraPDF also failed:', err2.message.split('\n')[0]);
+  }
+      
+  // Method 4: Use PowerShell (handles special characters in printer names)
+  try {
+    console.log('  📝 Trying PowerShell printing...');
+    await printPdfWithPowerShell(absolutePath, printerName);
+    console.log('  ✅ Print job sent via PowerShell');
+    await waitForPrintComplete(printerName, 120000);
+    return;
+  } catch (err3) {
+    console.error('  ❌ PowerShell printing failed:', err3.message);
+    throw new Error(`All print methods failed. Last error: ${err3.message}`);
+  }
 }
 
 // =============================================================================
