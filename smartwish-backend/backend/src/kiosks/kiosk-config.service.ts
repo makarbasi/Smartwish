@@ -1204,6 +1204,90 @@ export class KioskConfigService {
     }));
   }
 
+  // ==================== Printer Status ====================
+
+  /**
+   * Update printer status for a kiosk
+   * Called by the local print agent to report printer health
+   */
+  async updatePrinterStatus(
+    kioskId: string,
+    status: {
+      timestamp: string;
+      online: boolean;
+      printerState: string;
+      printerIP?: string;
+      printerName?: string;
+      ink?: Record<string, { level: number; state: string }>;
+      paper?: Record<string, { level: number; description: string; state: string }>;
+      errors?: Array<{ code: string; message: string; [key: string]: any }>;
+      warnings?: Array<{ code: string; message: string; [key: string]: any }>;
+      printQueue?: {
+        jobCount: number;
+        jobs: Array<{ id: number; status: string; name?: string }>;
+        hasErrors?: boolean;
+      };
+    },
+  ): Promise<{ success: boolean; kioskId: string }> {
+    // Find kiosk by kioskId (the friendly ID, not UUID)
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    // Store printer status in the config
+    const config = kiosk.config as Record<string, any> || {};
+    config.printerStatus = {
+      ...status,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    // Check if there are critical issues that need immediate attention
+    const hasCriticalErrors = status.errors?.some(e => 
+      ['no_paper', 'paper_jam', 'no_ink', 'door_open', 'offline'].includes(e.code)
+    );
+
+    // Update kiosk record
+    kiosk.config = config;
+    await this.kioskRepo.save(kiosk);
+
+    // Log status if there are issues
+    if (hasCriticalErrors || !status.online) {
+      console.log(`[PrinterStatus] ⚠️ Kiosk ${kioskId} printer issue:`, {
+        online: status.online,
+        errors: status.errors?.map(e => e.code),
+      });
+    }
+
+    return { success: true, kioskId };
+  }
+
+  /**
+   * Get printer status for a kiosk
+   */
+  async getPrinterStatus(kioskId: string): Promise<any | null> {
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    const config = kiosk.config as Record<string, any> || {};
+    return config.printerStatus || null;
+  }
+
+  /**
+   * Get printer status by kiosk UUID (for frontend polling)
+   */
+  async getPrinterStatusById(id: string): Promise<any | null> {
+    const kiosk = await this.kioskRepo.findOne({ where: { id } });
+    if (!kiosk) {
+      return null;
+    }
+
+    const config = kiosk.config as Record<string, any> || {};
+    return config.printerStatus || null;
+  }
+
   /**
    * Get full config for a specific kiosk (for device pairing)
    * Returns kiosk config including surveillance settings

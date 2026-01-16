@@ -53,6 +53,50 @@ export class KioskPublicController {
   async getConfigById(@Param('id') id: string) {
     return this.kioskService.getConfigById(id);
   }
+
+  /**
+   * Update printer status (called by local print agent)
+   * Stores printer health data for display on kiosk UI
+   */
+  @Public()
+  @Post('printer-status')
+  async updatePrinterStatus(
+    @Body()
+    body: {
+      kioskId: string;
+      status: {
+        timestamp: string;
+        online: boolean;
+        printerState: string;
+        printerIP?: string;
+        printerName?: string;
+        ink?: Record<string, { level: number; state: string }>;
+        paper?: Record<string, { level: number; description: string; state: string }>;
+        errors?: Array<{ code: string; message: string; [key: string]: any }>;
+        warnings?: Array<{ code: string; message: string; [key: string]: any }>;
+        printQueue?: {
+          jobCount: number;
+          jobs: Array<{ id: number; status: string; name?: string }>;
+          hasErrors?: boolean;
+        };
+      };
+    },
+  ) {
+    if (!body.kioskId || !body.status) {
+      throw new BadRequestException('kioskId and status are required');
+    }
+    return this.kioskService.updatePrinterStatus(body.kioskId, body.status);
+  }
+
+  /**
+   * Get printer status by kiosk UUID (for frontend polling)
+   */
+  @Public()
+  @Get('printer-status/:id')
+  async getPrinterStatus(@Param('id') id: string) {
+    const status = await this.kioskService.getPrinterStatusById(id);
+    return { status };
+  }
 }
 
 // ==================== Manager Public Endpoints ====================

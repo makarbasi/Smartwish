@@ -7,6 +7,7 @@ import { useKioskSession } from "@/contexts/KioskSessionContext";
 import { useEffect, useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import useSWR from "swr";
+import { PrinterAlertBanner, PrinterStatusIndicator } from "@/components/PrinterAlertBanner";
 
 // Gift card brand type
 interface GiftCardBrand {
@@ -493,6 +494,9 @@ export default function KioskHomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-6 lg:p-10 overflow-hidden">
+      {/* Printer Alert Banner - shows when there are printer issues */}
+      <PrinterAlertBanner position="top" showWarnings={true} />
+      
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 -left-32 w-[500px] h-[500px] bg-purple-500/20 rounded-full blur-3xl animate-pulse" />
@@ -867,6 +871,10 @@ export default function KioskHomePage() {
           Touch a card to begin
           <span className="inline-block w-12 h-[1px] bg-gradient-to-l from-transparent to-gray-600" />
         </p>
+        {/* Printer status indicator - subtle, shows when printer is ready */}
+        <div className="mt-4 flex justify-center">
+          <PrinterStatusIndicator size="sm" showLabel={true} />
+        </div>
       </div>
 
       {/* Sticker rain animation styles - smooth, continuous fall with linear timing */}

@@ -30,6 +30,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { getSurveillanceManager } from './surveillance-manager.js';
 import { DevicePairingServer, fetchKioskConfig } from './device-pairing.js';
+import { PrinterStatusMonitor } from './printer-status-monitor.js';
 
 const execAsync = promisify(exec);
 
@@ -945,6 +946,49 @@ async function startSurveillance(surveillanceConfig) {
 }
 
 /**
+ * Start printer status monitoring
+ */
+function startPrinterStatusMonitor(printerConfig) {
+  console.log('\n' + '─'.repeat(60));
+  console.log('  🖨️  PRINTER STATUS MONITOR');
+  console.log('─'.repeat(60));
+
+  const printerStatusMonitor = new PrinterStatusMonitor({
+    printerIP: printerConfig.printerIP || null,
+    printerName: printerConfig.printerName || CONFIG.defaultPrinter || null,
+    kioskId: printerConfig.kioskId,
+    apiKey: printerConfig.apiKey,
+    serverUrl: CONFIG.cloudServerUrl,
+    snmpCommunity: printerConfig.snmpCommunity || 'public',
+    pollInterval: 30000, // Check every 30 seconds
+    reportInterval: 60000, // Report to server every minute
+    onStatusChange: (status) => {
+      // Log significant status changes
+      if (status.errors?.length > 0) {
+        console.log('\n  🚨 PRINTER ALERT:');
+        status.errors.forEach(err => console.log(`     ❌ ${err.message}`));
+      }
+    },
+    onError: (error) => {
+      console.error('  ❌ Printer monitor error:', error.message);
+    },
+  });
+
+  printerStatusMonitor.start();
+  
+  console.log(`  ✅ Printer monitoring started`);
+  if (printerConfig.printerIP) {
+    console.log(`  📡 Monitoring IP: ${printerConfig.printerIP} (SNMP)`);
+  }
+  if (printerConfig.printerName) {
+    console.log(`  🏷️  Monitoring queue: ${printerConfig.printerName} (Windows)`);
+  }
+  console.log('─'.repeat(60) + '\n');
+
+  return printerStatusMonitor;
+}
+
+/**
  * Wait for device pairing if not already paired
  */
 async function waitForPairing(pairingServer) {
@@ -1057,6 +1101,15 @@ async function main() {
   // Start surveillance if enabled in cloud config
   const surveillanceManager = await startSurveillance(surveillanceConfig);
 
+  // Start printer status monitoring
+  const printerStatusMonitor = startPrinterStatusMonitor({
+    printerIP: cloudConfig?.printerIP || null,
+    printerName: cloudConfig?.printerName || CONFIG.defaultPrinter || null,
+    kioskId: pairing.kioskId,
+    apiKey: pairing.apiKey,
+    snmpCommunity: cloudConfig?.snmpCommunity || 'public',
+  });
+
   console.log('🔄 Waiting for print jobs...');
   console.log(`   Kiosk: ${pairing.kioskId}`);
   console.log('   Press Ctrl+C to stop\n');
@@ -1064,6 +1117,9 @@ async function main() {
   // Handle graceful shutdown
   const shutdown = () => {
     console.log('\n\n⏹️  Shutting down...');
+    if (printerStatusMonitor) {
+      printerStatusMonitor.stop();
+    }
     if (surveillanceManager) {
       surveillanceManager.stop();
     }

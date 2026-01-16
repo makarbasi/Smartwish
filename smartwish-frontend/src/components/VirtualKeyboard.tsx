@@ -19,27 +19,46 @@ export default function VirtualKeyboard() {
   const [layoutName, setLayoutName] = React.useState('default')
   const [capsLock, setCapsLock] = React.useState(false)
 
+  // Disable virtual keyboard for admin routes
+  const isAdminRoute = pathname?.startsWith('/admin')
+  
+  // Hide keyboard if it's visible and user navigated to admin route
+  useEffect(() => {
+    if (isAdminRoute && isKeyboardVisible) {
+      hideKeyboard()
+    }
+  }, [isAdminRoute, isKeyboardVisible, hideKeyboard])
+
+  // Reset layout when keyboard is hidden or input type changes
+  // (Must be called before any early returns to maintain hooks order)
+  useEffect(() => {
+    if (isAdminRoute) return // Skip logic for admin routes
+    if (!isKeyboardVisible) {
+      setLayoutName('default')
+      setCapsLock(false)
+    }
+  }, [isKeyboardVisible, inputType, isAdminRoute])
+
+  // Sync keyboard display with input value (only when not typing)
+  // (Must be called before any early returns to maintain hooks order)
+  useEffect(() => {
+    if (isAdminRoute) return // Skip logic for admin routes
+    if (keyboardRef.current && isKeyboardVisible && !isUpdatingFromKeyboard.current) {
+      console.log('[VirtualKeyboard] Syncing keyboard display with value:', inputValue)
+      keyboardRef.current.setInput(inputValue)
+    }
+  }, [inputValue, isKeyboardVisible, isAdminRoute])
+
+  // Early return for admin routes - AFTER all hooks
+  if (isAdminRoute) {
+    return null
+  }
+
   // Get virtual keyboard config (with defaults - if no config, assume enabled)
   const virtualKeyboardEnabled = kioskConfig?.virtualKeyboard?.enabled !== false
   const showBuiltInKeyboard = kioskConfig?.virtualKeyboard?.showBuiltInKeyboard !== false
 
   console.log('🎹 [VirtualKeyboard] Component rendering...', { isKeyboardVisible, isKiosk, virtualKeyboardEnabled, showBuiltInKeyboard })
-
-  // Reset layout when keyboard is hidden or input type changes
-  useEffect(() => {
-    if (!isKeyboardVisible) {
-      setLayoutName('default')
-      setCapsLock(false)
-    }
-  }, [isKeyboardVisible, inputType])
-
-  // Sync keyboard display with input value (only when not typing)
-  useEffect(() => {
-    if (keyboardRef.current && isKeyboardVisible && !isUpdatingFromKeyboard.current) {
-      console.log('[VirtualKeyboard] Syncing keyboard display with value:', inputValue)
-      keyboardRef.current.setInput(inputValue)
-    }
-  }, [inputValue, isKeyboardVisible])
 
   const onChange = (input: string) => {
     console.log('[VirtualKeyboard] onChange triggered, input:', input)
@@ -166,6 +185,7 @@ export default function VirtualKeyboard() {
   const isLoginPage = pathname?.includes('/sign-in')
 
   // Show keyboard area if: (Kiosk mode AND virtualKeyboard enabled) OR on login page
+  // (Admin routes already handled with early return above)
   const shouldEnableKeyboardSupport = (isKiosk && virtualKeyboardEnabled) || isLoginPage
   
   // Only show our built-in keyboard if the setting is enabled (or on login page where we always need it)

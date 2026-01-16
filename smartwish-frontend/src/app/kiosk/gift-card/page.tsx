@@ -8,6 +8,7 @@ import { useSessionTracking } from "@/hooks/useSessionTracking";
 import { useEffect, useState, Suspense } from "react";
 import { VirtualInput } from "@/components/VirtualInput";
 import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
+import { PrinterAlertBanner } from "@/components/PrinterAlertBanner";
 import QRCode from "qrcode";
 
 // Gift card brand type
@@ -367,6 +368,9 @@ function GiftCardPurchaseContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-900 flex flex-col items-center justify-center p-6 lg:p-10">
+      {/* Printer Alert Banner - shows when there are printer issues */}
+      <PrinterAlertBanner position="top" showWarnings={false} />
+      
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 -left-32 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />

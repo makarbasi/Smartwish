@@ -95,14 +95,18 @@ if (!process.env.AUTH_SECRET) {
   );
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
-  secret: process.env.AUTH_SECRET,
-  providers: [
-    GoogleProvider({
-      clientId: process.env.AUTH_GOOGLE_ID!,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
-    }),
-    CredentialsProvider({
+// Build providers array conditionally
+const providers = [
+  // Only include Google provider if credentials are present
+  ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET
+    ? [
+        GoogleProvider({
+          clientId: process.env.AUTH_GOOGLE_ID,
+          clientSecret: process.env.AUTH_GOOGLE_SECRET,
+        }),
+      ]
+    : []),
+  CredentialsProvider({
       name: "credentials",
       credentials: { 
         email: { label: "Email", type: "email" }, 
@@ -130,7 +134,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!resp.ok) {
             const errorText = await resp.text();
             console.log("NextAuth login error:", errorText);
-            throw new Error("Invalid credentials");
+            
+            // Handle specific error cases
+            if (resp.status === 429) {
+              throw new Error("RateLimited");
+            }
+            if (resp.status >= 500) {
+              throw new Error("ServerError");
+            }
+            throw new Error("InvalidCredentials");
           }
 
           const data = await resp.json();
@@ -159,7 +171,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       },
     }),
-  ],
+]
+
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: process.env.AUTH_SECRET,
+  providers,
 
   session: { strategy: "jwt" },
   jwt: { maxAge: 60 * 60 * 24 * 30 }, // 30 days
