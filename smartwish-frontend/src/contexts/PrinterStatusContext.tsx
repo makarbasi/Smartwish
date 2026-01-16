@@ -182,10 +182,9 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
   const fetchStatus = useCallback(async () => {
     if (!kioskInfo?.id) return;
 
-    // Prevent duplicate fetches
-    if (fetchedKioskIdRef.current === kioskInfo.id && status !== null) {
-      // Just refresh, don't set loading
-    } else {
+    // Only show loading on first fetch for this kiosk
+    const isFirstFetch = fetchedKioskIdRef.current !== kioskInfo.id;
+    if (isFirstFetch) {
       setIsLoading(true);
       fetchedKioskIdRef.current = kioskInfo.id;
     }
@@ -211,9 +210,11 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (error) {
       console.error('[PrinterStatus] Failed to fetch status:', error);
     } finally {
-      setIsLoading(false);
+      if (isFirstFetch) {
+        setIsLoading(false);
+      }
     }
-  }, [kioskInfo?.id, status]);
+  }, [kioskInfo?.id]); // Removed 'status' from dependencies to prevent infinite loop
 
   // Start/stop polling based on kiosk activation
   useEffect(() => {
