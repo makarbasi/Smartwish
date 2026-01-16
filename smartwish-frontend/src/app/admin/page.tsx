@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
@@ -104,8 +104,15 @@ export default function AdminDashboardPage() {
       error: null,
     },
   });
+  
+  // Ref to prevent duplicate API calls (React Strict Mode runs effects twice)
+  const hasLoadedStats = useRef(false);
 
   useEffect(() => {
+    // Only fetch once to prevent duplicate calls from React Strict Mode
+    if (hasLoadedStats.current) return;
+    hasLoadedStats.current = true;
+    
     // Fetch all stats in parallel
     fetchKioskStats();
     fetchManagerStats();
