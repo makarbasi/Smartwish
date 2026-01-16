@@ -676,7 +676,7 @@ export class AppController {
   <image x="50" y="40" width="280" height="280" href="data:${qrMimeType};base64,${qrBase64}" preserveAspectRatio="xMidYMid meet"/>
   ${storeLogo ? `
   <rect x="370" y="40" width="280" height="280" rx="24" ry="24" fill="white"/>
-  <image x="370" y="40" width="280" height="280" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>
+  <image x="370" y="40" width="280" height="280" href="${storeLogo}" preserveAspectRatio="none"/>
   ` : ''}
   <text x="350" y="390" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="600" fill="#1f2937">${storeName}</text>
   <text x="350" y="450" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" fill="#4b5563">$${amount}</text>
@@ -1900,7 +1900,7 @@ export class AppController {
   ${storeLogo ? `
   <!-- Company logo on right (same size as QR code) -->
   <rect x="370" y="40" width="280" height="280" rx="24" ry="24" fill="white"/>
-  <image x="370" y="40" width="280" height="280" href="${storeLogo}" preserveAspectRatio="xMidYMid meet"/>
+  <image x="370" y="40" width="280" height="280" href="${storeLogo}" preserveAspectRatio="none"/>
   ` : ''}
   
   <!-- Company name and amount centered below both -->
