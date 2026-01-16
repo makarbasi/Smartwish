@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useKioskConfig } from "@/hooks/useKioskConfig";
+import { useSessionTracking } from "@/hooks/useSessionTracking";
 import { useEffect, useState, Suspense } from "react";
 import { VirtualInput } from "@/components/VirtualInput";
 import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
@@ -44,6 +45,13 @@ function GiftCardPurchaseContent() {
   const { isKiosk, isInitialized } = useDeviceMode();
   const { kioskInfo } = useKiosk();
   const { config: kioskConfig } = useKioskConfig();
+  
+  // Session tracking for analytics
+  const {
+    trackGiftCardBrowse,
+    trackGiftCardSelect,
+    trackGiftCardPurchase,
+  } = useSessionTracking();
 
   const [step, setStep] = useState<Step>("amount");
   const [brand, setBrand] = useState<GiftCardBrand | null>(null);
@@ -85,6 +93,11 @@ function GiftCardPurchaseContent() {
       router.replace("/");
     }
   }, [isKiosk, isInitialized, router]);
+
+  // Track gift card page browse on mount
+  useEffect(() => {
+    trackGiftCardBrowse();
+  }, [trackGiftCardBrowse]);
 
   // Fetch brand info
   useEffect(() => {
@@ -130,6 +143,12 @@ function GiftCardPurchaseContent() {
   const handleAmountSelect = (amount: number) => {
     setSelectedAmount(amount);
     setCustomAmount("");
+    // Track gift card amount selection
+    trackGiftCardSelect({
+      amount,
+      itemId: brandId || undefined,
+      itemTitle: brand?.name,
+    });
   };
 
   const handleCustomAmountChange = (value: string) => {
@@ -185,6 +204,14 @@ function GiftCardPurchaseContent() {
   
   const handlePaymentSuccess = async (issuedGiftCard?: IssuedGiftCardData) => {
     setShowPaymentModal(false);
+    
+    // Track successful gift card purchase
+    trackGiftCardPurchase({
+      amount: selectedAmount || 0,
+      itemId: brandId || undefined,
+      itemTitle: brand?.name,
+      paymentMethod: 'card',
+    });
     
     // If we got issued gift card data from the CardPaymentModal, use it
     if (issuedGiftCard && issuedGiftCard.isIssued) {
