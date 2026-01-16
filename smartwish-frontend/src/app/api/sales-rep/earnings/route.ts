@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { auth } from '@/auth';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session?.user) {
+    const session = await auth();
+    if (!session?.user?.access_token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       {
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${(session as any).accessToken || ''}`,
+          Authorization: `Bearer ${session.user.access_token}`,
         },
       }
     );
