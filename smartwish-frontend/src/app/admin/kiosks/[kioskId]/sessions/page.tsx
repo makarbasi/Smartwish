@@ -105,6 +105,10 @@ export default function KioskSessionsPage({
   const [selectedRecording, setSelectedRecording] = useState<SessionRecording | null>(null);
   const [recordingLoading, setRecordingLoading] = useState(false);
   const [recordingsCache, setRecordingsCache] = useState<Record<string, SessionRecording>>({});
+  
+  // Delete recording modal
+  const [showDeleteRecordingModal, setShowDeleteRecordingModal] = useState(false);
+  const [deletingRecording, setDeletingRecording] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -232,6 +236,48 @@ export default function KioskSessionsPage({
       alert("Failed to load recording");
     } finally {
       setRecordingLoading(false);
+    }
+  };
+
+  const handleDeleteRecording = async () => {
+    if (!selectedRecording) return;
+    
+    setDeletingRecording(true);
+    try {
+      const response = await fetch(
+        `/api/admin/kiosks/${kioskId}/sessions/${selectedRecording.sessionId}/recording`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to delete recording");
+      }
+
+      // Remove from cache
+      setRecordingsCache(prev => {
+        const newCache = { ...prev };
+        delete newCache[selectedRecording.sessionId];
+        return newCache;
+      });
+
+      // Update sessions list to remove hasRecording flag
+      setData(prev => prev ? {
+        ...prev,
+        sessions: prev.sessions.map(s => 
+          s.id === selectedRecording.sessionId 
+            ? { ...s, hasRecording: false } 
+            : s
+        )
+      } : null);
+
+      setShowDeleteRecordingModal(false);
+      setShowVideoModal(false);
+      setSelectedRecording(null);
+    } catch (err) {
+      console.error("Error deleting recording:", err);
+      alert(err instanceof Error ? err.message : "Failed to delete recording");
+    } finally {
+      setDeletingRecording(false);
     }
   };
 
@@ -853,20 +899,110 @@ export default function KioskSessionsPage({
                   </div>
 
                   {/* Footer with actions */}
-                  {selectedRecording?.storageUrl && (
+                  {selectedRecording && (
                     <div className="flex items-center justify-between px-6 py-4 border-t border-gray-700">
-                      <p className="text-sm text-gray-400">
-                        Captured at 1 FPS
-                      </p>
-                      <a
-                        href={selectedRecording.storageUrl}
-                        download
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
-                      >
-                        Download Recording
-                      </a>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-gray-400">
+                          Captured at 1 FPS
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setShowDeleteRecordingModal(true)}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/40 text-red-400 hover:text-red-300 text-sm font-medium transition-colors border border-red-600/30"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                          Delete
+                        </button>
+                        {selectedRecording.storageUrl && (
+                          <a
+                            href={selectedRecording.storageUrl}
+                            download
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+                          >
+                            Download Recording
+                          </a>
+                        )}
+                      </div>
                     </div>
                   )}
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Delete Recording Confirmation Modal */}
+      <Transition appear show={showDeleteRecordingModal} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-[60]"
+          onClose={() => setShowDeleteRecordingModal(false)}
+        >
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-xl bg-gray-900 p-6 shadow-2xl transition-all border border-gray-700">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 rounded-full bg-red-500/20">
+                      <TrashIcon className="h-6 w-6 text-red-400" />
+                    </div>
+                    <Dialog.Title className="text-lg font-semibold text-white">
+                      Delete Recording
+                    </Dialog.Title>
+                  </div>
+                  
+                  <p className="text-gray-400 mb-6">
+                    Are you sure you want to delete this session recording? This will permanently remove the video file and cannot be undone.
+                  </p>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setShowDeleteRecordingModal(false)}
+                      className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition-colors"
+                      disabled={deletingRecording}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDeleteRecording}
+                      disabled={deletingRecording}
+                      className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {deletingRecording ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <TrashIcon className="h-4 w-4" />
+                          Delete Recording
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </Dialog.Panel>
               </Transition.Child>
             </div>
