@@ -83,9 +83,11 @@ export async function GET(
   }
 }
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
 /**
  * DELETE /api/admin/kiosks/[kioskId]/sessions/[sessionId]
- * Delete a session and its events
+ * Delete a session, its events, and any associated recording (including storage files)
  */
 export async function DELETE(
   request: NextRequest,
@@ -100,10 +102,10 @@ export async function DELETE(
 
     const { kioskId, sessionId } = await params;
 
-    // Verify session belongs to this kiosk
+    // Verify session belongs to this kiosk and check if it has a recording
     const { data: sessionData, error: sessionError } = await supabase
       .from('kiosk_sessions')
-      .select('id')
+      .select('id, has_recording')
       .eq('id', sessionId)
       .eq('kiosk_id', kioskId)
       .single();
@@ -112,13 +114,35 @@ export async function DELETE(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
+    // If session has a recording, delete it via backend first (to clean up storage files)
+    if (sessionData.has_recording) {
+      console.log(`[Session] Session ${sessionId} has recording, deleting via backend...`);
+      try {
+        const recordingResponse = await fetch(
+          `${BACKEND_URL}/admin/kiosks/${kioskId}/sessions/${sessionId}/recording`,
+          { method: 'DELETE' }
+        );
+        
+        if (recordingResponse.ok) {
+          console.log(`[Session] Recording deleted for session: ${sessionId}`);
+        } else {
+          // Log but continue - recording files might be orphaned but session can still be deleted
+          console.warn(`[Session] Failed to delete recording for session ${sessionId}:`, 
+            await recordingResponse.text());
+        }
+      } catch (recError) {
+        console.warn(`[Session] Error calling recording delete for session ${sessionId}:`, recError);
+        // Continue with session deletion
+      }
+    }
+
     // Delete events first (cascade should handle this, but being explicit)
     await supabase
       .from('kiosk_session_events')
       .delete()
       .eq('session_id', sessionId);
 
-    // Delete session
+    // Delete session (this will also cascade delete session_recordings record if still exists)
     const { error: deleteError } = await supabase
       .from('kiosk_sessions')
       .delete()

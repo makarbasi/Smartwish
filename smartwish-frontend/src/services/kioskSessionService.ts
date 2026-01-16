@@ -3,6 +3,7 @@
  * 
  * Handles event collection, batching, and sending to the backend.
  * Designed for minimal performance impact with batched network calls.
+ * Also integrates with screen recording for session playback.
  */
 
 import type {
@@ -13,6 +14,7 @@ import type {
   LogEventRequest,
   SessionOutcome,
 } from '@/types/kioskSession';
+import { sessionRecordingService } from './sessionRecordingService';
 
 // ==================== Configuration ====================
 
@@ -180,6 +182,9 @@ class KioskSessionService {
 
       console.log('[SessionService] Session started:', this.sessionId);
       
+      // Start screen recording (non-blocking)
+      this.startRecording();
+      
       // Persist state to survive HMR
       this.persistSessionState();
       
@@ -188,6 +193,35 @@ class KioskSessionService {
       console.error('[SessionService] Failed to start session:', error);
       this.state = 'idle';
       return null;
+    }
+  }
+
+  /**
+   * Start screen recording for the session (non-blocking)
+   */
+  private async startRecording(): Promise<void> {
+    if (!this.sessionId || !this.kioskId) return;
+
+    try {
+      await sessionRecordingService.startRecording(this.sessionId, this.kioskId);
+      console.log('[SessionService] Screen recording started');
+    } catch (error) {
+      console.error('[SessionService] Failed to start recording (non-critical):', error);
+      // Recording failure should not affect session tracking
+    }
+  }
+
+  /**
+   * Stop screen recording (non-blocking)
+   */
+  private async stopRecording(): Promise<void> {
+    if (!sessionRecordingService.isRecording) return;
+
+    try {
+      await sessionRecordingService.stopRecording();
+      console.log('[SessionService] Screen recording stopped');
+    } catch (error) {
+      console.error('[SessionService] Failed to stop recording (non-critical):', error);
     }
   }
 
@@ -204,6 +238,9 @@ class KioskSessionService {
 
     // Track session end event
     this.trackEvent('session_end', this.currentPage, undefined, { outcome });
+
+    // Stop screen recording (non-blocking, but wait for completion)
+    await this.stopRecording();
 
     // Flush remaining events
     await this.flushEvents();
@@ -253,6 +290,12 @@ class KioskSessionService {
 
     console.log('[SessionService] Processing timeout, ending session as abandoned');
     this.trackEvent('session_timeout', this.currentPage);
+    
+    // Cancel recording on timeout (don't bother uploading abandoned sessions that timed out)
+    if (sessionRecordingService.isRecording) {
+      sessionRecordingService.cancelRecording();
+    }
+    
     await this.endSession('abandoned');
   }
 
@@ -411,6 +454,19 @@ class KioskSessionService {
     details?: SessionEventDetails
   ): void {
     this.trackEvent(action, this.currentPage, 'main-content', details);
+  }
+
+  /**
+   * Track tile selection from kiosk home
+   */
+  trackTileSelect(
+    tileType: 'greeting_cards' | 'stickers' | 'gift_card',
+    details?: SessionEventDetails
+  ): void {
+    this.trackEvent('tile_select', '/kiosk/home', 'main-content', {
+      tileType,
+      ...details,
+    });
   }
 
   // ==================== Batch Processing ====================

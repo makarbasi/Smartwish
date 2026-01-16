@@ -6,12 +6,20 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+// Support both naming conventions for environment variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+// Log which env vars are being used (helpful for debugging)
+console.log('[SupabaseServer] Environment loaded:', {
+  url: supabaseUrl ? supabaseUrl.substring(0, 40) + '...' : 'MISSING',
+  serviceRoleKey: supabaseServiceRoleKey ? 'SET (' + supabaseServiceRoleKey.length + ' chars)' : 'MISSING',
+  anonKey: supabaseAnonKey ? 'SET (' + supabaseAnonKey.length + ' chars)' : 'MISSING',
+});
 
 if (!supabaseUrl) {
-  console.warn('[SupabaseServer] Missing NEXT_PUBLIC_SUPABASE_URL');
+  console.error('[SupabaseServer] ❌ Missing SUPABASE_URL - Supabase will not work!');
 }
 
 // Prefer service role key for server-side operations (bypasses RLS)
@@ -19,13 +27,13 @@ if (!supabaseUrl) {
 const supabaseKey = supabaseServiceRoleKey || supabaseAnonKey;
 
 if (!supabaseKey) {
-  console.warn('[SupabaseServer] Missing both SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  console.error('[SupabaseServer] ❌ Missing both SUPABASE_SERVICE_ROLE_KEY and SUPABASE_ANON_KEY');
 }
 
 if (supabaseServiceRoleKey) {
-  console.log('[SupabaseServer] Using service role key (bypasses RLS)');
-} else {
-  console.warn('[SupabaseServer] Using anon key (may be blocked by RLS policies)');
+  console.log('[SupabaseServer] ✅ Using SERVICE ROLE key (bypasses RLS)');
+} else if (supabaseAnonKey) {
+  console.warn('[SupabaseServer] ⚠️ Using ANON key (may be blocked by RLS policies)');
 }
 
 // Create a server-side Supabase client

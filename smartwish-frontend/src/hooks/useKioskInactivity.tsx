@@ -26,6 +26,9 @@ const QR_UPLOAD_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 // Print job timeout
 const PRINT_JOB_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
+// Payment timeout multiplier
+const PAYMENT_TIMEOUT_MULTIPLIER = 2; // Double timeout during payment
+
 // Flag to temporarily disable screen saver display (but keep redirect logic)
 const SCREEN_SAVER_DISABLED = true; // Set to false to re-enable screen saver
 
@@ -56,6 +59,9 @@ export function useKioskInactivity({
     const isPausedRef = useRef<boolean>(false);
     const pauseReasonRef = useRef<string | null>(null);
     const customTimeoutRef = useRef<number | null>(null);
+    
+    // Timeout multiplier (used during payment to give user more time)
+    const timeoutMultiplierRef = useRef<number>(1);
 
     // Clear all timers
     const clearTimers = useCallback(() => {
@@ -147,13 +153,16 @@ export function useKioskInactivity({
         lastActivityRef.current = Date.now();
         clearTimers();
 
-        // Use custom timeout if set, otherwise use defaults
-        const effectiveScreenSaverTimeout = customTimeoutRef.current || screenSaverTimeout;
-        const effectiveResetTimeout = customTimeoutRef.current || resetTimeout;
+        // Apply timeout multiplier (used during payment)
+        const multiplier = timeoutMultiplierRef.current;
+        
+        // Use custom timeout if set, otherwise use defaults with multiplier
+        const effectiveScreenSaverTimeout = customTimeoutRef.current || (screenSaverTimeout * multiplier);
+        const effectiveResetTimeout = customTimeoutRef.current || (resetTimeout * multiplier);
 
         // Set screen saver timer (only if screen saver is enabled)
         if (!SCREEN_SAVER_DISABLED) {
-            console.log("🖥️ [KioskInactivity] ⏱️ Setting screen saver timer:", effectiveScreenSaverTimeout / 1000, "s");
+            console.log("🖥️ [KioskInactivity] ⏱️ Setting screen saver timer:", effectiveScreenSaverTimeout / 1000, "s", multiplier > 1 ? `(${multiplier}x multiplier)` : '');
             screenSaverTimerRef.current = setTimeout(() => {
                 console.log("🖥️ [KioskInactivity] ⏰ Screen saver timer fired - showing screen saver");
                 isExitingRef.current = false;
@@ -165,7 +174,7 @@ export function useKioskInactivity({
         }
 
         // Set reset timer - navigate to home
-        console.log("🖥️ [KioskInactivity] ⏱️ Setting reset timer:", effectiveResetTimeout / 1000, "s");
+        console.log("🖥️ [KioskInactivity] ⏱️ Setting reset timer:", effectiveResetTimeout / 1000, "s", multiplier > 1 ? `(${multiplier}x multiplier)` : '');
         resetTimerRef.current = setTimeout(() => {
             console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired");
             navigateToHome();
@@ -210,6 +219,20 @@ export function useKioskInactivity({
     const pauseForPrinting = useCallback(() => {
         pauseInactivity('printing', PRINT_JOB_TIMEOUT);
     }, [pauseInactivity]);
+
+    // Extend timeout for payment (double the normal timeout)
+    const pauseForPayment = useCallback(() => {
+        console.log("🖥️ [KioskInactivity] 💳 Extending timeout for payment (2x multiplier)");
+        timeoutMultiplierRef.current = PAYMENT_TIMEOUT_MULTIPLIER;
+        resetActivity();
+    }, [resetActivity]);
+
+    // Resume normal timeout after payment
+    const resumeFromPayment = useCallback(() => {
+        console.log("🖥️ [KioskInactivity] 💳 Resuming normal timeout after payment");
+        timeoutMultiplierRef.current = 1;
+        resetActivity();
+    }, [resetActivity]);
 
     // Exit screen saver and reset timers
     const exitScreenSaver = useCallback(() => {
@@ -329,5 +352,7 @@ export function useKioskInactivity({
         resumeInactivity,
         pauseForQRUpload,
         pauseForPrinting,
+        pauseForPayment,
+        resumeFromPayment,
     };
 }
