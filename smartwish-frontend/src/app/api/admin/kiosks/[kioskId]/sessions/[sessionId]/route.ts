@@ -83,7 +83,7 @@ export async function GET(
   }
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com';
 
 /**
  * DELETE /api/admin/kiosks/[kioskId]/sessions/[sessionId]
