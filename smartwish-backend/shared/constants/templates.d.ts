@@ -1,0 +1,28 @@
+import type { Template, Category, TemplateStats } from '../types/templates';
+export declare const CATEGORIES: Record<string, Category>;
+export declare const TEMPLATES: Record<string, Template>;
+export declare const getAllCategories: () => Category[];
+export declare const getCategoryNames: () => string[];
+export declare const getCategoryById: (categoryId: string) => Category | null;
+export declare const getTemplateById: (templateId: string) => Template | null;
+export declare const getAllTemplates: () => Template[];
+export declare const getTemplatesByCategory: (categoryId: string) => Template[];
+export declare const searchTemplates: (searchTerm: string) => Template[];
+export declare const getTemplateKeys: () => string[];
+export declare const validateTemplate: (template: any) => boolean;
+export declare const getTemplateStats: () => TemplateStats;
+declare const _default: {
+    CATEGORIES: Record<string, Category>;
+    TEMPLATES: Record<string, Template>;
+    getAllCategories: () => Category[];
+    getCategoryNames: () => string[];
+    getCategoryById: (categoryId: string) => Category | null;
+    getTemplateById: (templateId: string) => Template | null;
+    getAllTemplates: () => Template[];
+    getTemplatesByCategory: (categoryId: string) => Template[];
+    searchTemplates: (searchTerm: string) => Template[];
+    getTemplateKeys: () => string[];
+    validateTemplate: (template: any) => boolean;
+    getTemplateStats: () => TemplateStats;
+};
+export default _default;

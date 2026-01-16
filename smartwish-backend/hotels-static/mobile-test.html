@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Touch Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        
+        .test-button {
+            width: 200px;
+            height: 100px;
+            background: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            margin: 20px;
+            cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .test-button:active {
+            transform: scale(0.95);
+            background: #3730a3;
+        }
+        
+        .photo-slot-test {
+            width: 200px;
+            height: 150px;
+            background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+            border: 2px dashed #9ca3af;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px;
+            cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .photo-slot-test:active {
+            transform: scale(0.98);
+            border-color: #4f46e5;
+        }
+        
+        .log {
+            background: #1f2937;
+            color: #10b981;
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        
+        .info {
+            background: #dbeafe;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mobile Touch Test</h1>
+    
+    <div class="info">
+        <p><strong>Device Info:</strong></p>
+        <p>Screen Width: <span id="screenWidth"></span>px</p>
+        <p>Is Mobile: <span id="isMobile"></span></p>
+        <p>User Agent: <span id="userAgent"></span></p>
+    </div>
+    
+    <button class="test-button" id="testButton">Tap Me (Button)</button>
+    
+    <div class="photo-slot-test" id="photoSlot">
+        📷 Tap to Add Photo
+    </div>
+    
+    <div class="log" id="log"></div>
+    
+    <script>
+        function log(message) {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.innerHTML += `[${timestamp}] ${message}<br>`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(message);
+        }
+        
+        function isMobile() {
+            return window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+        
+        // Display device info
+        document.getElementById('screenWidth').textContent = window.innerWidth;
+        document.getElementById('isMobile').textContent = isMobile();
+        document.getElementById('userAgent').textContent = navigator.userAgent;
+        
+        // Test button events
+        const testButton = document.getElementById('testButton');
+        testButton.addEventListener('click', () => {
+            log('Button clicked!');
+        });
+        
+        testButton.addEventListener('touchstart', () => {
+            log('Button touch start');
+        });
+        
+        testButton.addEventListener('touchend', () => {
+            log('Button touch end');
+        });
+        
+        // Test photo slot events
+        const photoSlot = document.getElementById('photoSlot');
+        
+        photoSlot.addEventListener('click', () => {
+            log('Photo slot clicked!');
+        });
+        
+        if (isMobile()) {
+            log('Mobile device detected - adding touch events');
+            
+            let touchStarted = false;
+            
+            photoSlot.addEventListener('touchstart', (e) => {
+                log('Photo slot touch start');
+                touchStarted = true;
+            }, { passive: false });
+            
+            photoSlot.addEventListener('touchend', (e) => {
+                log('Photo slot touch end');
+                if (touchStarted) {
+                    e.preventDefault();
+                    log('Touch end handled - preventing default');
+                    touchStarted = false;
+                }
+            }, { passive: false });
+            
+            photoSlot.addEventListener('touchcancel', () => {
+                log('Photo slot touch cancel');
+                touchStarted = false;
+            });
+        } else {
+            log('Desktop device detected');
+        }
+        
+        log('Mobile test page loaded');
+    </script>
+</body>
+</html>

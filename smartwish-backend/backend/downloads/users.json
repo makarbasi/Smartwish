@@ -1,0 +1,65 @@
+[
+  {
+    "id": 1,
+    "email": "test@example.com",
+    "password": "$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi",
+    "name": "Amin karbasi",
+    "createdAt": "2025-01-04T21:00:00.000Z",
+    "updatedAt": "2025-07-05T05:51:21.128Z",
+    "phoneNumber": "14086008316",
+    "socialMedia": {
+      "facebook": "https://facebook.com/testuser",
+      "instagram": "https://instagram.com/testuser",
+      "tiktok": "",
+      "snapchat": ""
+    },
+    "interests": [
+      "reading",
+      "hiking"
+    ],
+    "hobbies": [
+      "Outdoor Activities",
+      "Reading",
+      "Fitness",
+      "Cooking",
+      "Gardening"
+    ],
+    "profileImage": "/uploads/profile-images/profile_1_1751694681121.png"
+  },
+  {
+    "id": 2,
+    "email": "Elai@gmail.com",
+    "password": "$2b$10$LuE/b5B0Jb1FEarcson5dOA1apoX1EGckddNbqXWOPPU7S75qcYyq",
+    "name": "Elai",
+    "createdAt": "2025-07-04T21:58:11.098Z",
+    "updatedAt": "2025-07-04T21:58:11.098Z",
+    "socialMedia": {},
+    "interests": [],
+    "hobbies": []
+  },
+  {
+    "id": 3,
+    "email": "ma.karbasi@gmail.com",
+    "password": "$2b$10$Wq2.7Q3asC/7wth5a0yLrOdeWUM63R21ozk5r6SJgAp65RV5JEuFG",
+    "name": "Amin",
+    "createdAt": "2025-07-06T16:15:48.420Z",
+    "updatedAt": "2025-07-19T16:02:01.561Z",
+    "profileImage": "/uploads/profile-images/profile_3_1752939460867.webp",
+    "socialMedia": {
+      "facebook": "",
+      "instagram": "",
+      "tiktok": "",
+      "snapchat": ""
+    },
+    "interests": [],
+    "hobbies": []
+  },
+  {
+    "id": 4,
+    "email": "ma.karbasi3Amindoc2@gmail.com",
+    "password": "$2b$10$odk45jsgO49ClZoFfqCikO0W16/slfdSypepOV3ew8BSlm3lVZxva",
+    "name": "Amin",
+    "createdAt": "2025-08-08T16:13:53.126Z",
+    "updatedAt": "2025-08-08T16:13:53.126Z"
+  }
+]

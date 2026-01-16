@@ -1,437 +1,560 @@
-"use client"
+"use client";
 
-import { useMemo, useState, useEffect, useRef, Suspense } from 'react'
-import dynamic from 'next/dynamic'
-import Image from 'next/image'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { HeartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
-import { EllipsisHorizontalIcon, MagnifyingGlassIcon, FlagIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { Dialog, DialogBackdrop, DialogPanel, Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
-import HTMLFlipBook from "react-pageflip"
-import useSWR from 'swr'
-import HeroSearch from '@/components/HeroSearch'
-// Lazy-load the heavy editor (Pintura) only on the client when needed
-const GiftCardEditorSimple = dynamic(() => import('@/components/GiftCardEditorSimple'), {
-  ssr: false,
-})
+import { useMemo, useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
+import useSWR from "swr";
+import AuthModal from "@/components/AuthModal";
+import TemplatePreviewModal from "@/components/TemplatePreviewModal";
+import TemplateCard from "@/components/TemplateCard";
+import TemplateCardSkeleton from "@/components/TemplateCardSkeleton";
+import FloatingSearch from "@/components/FloatingSearch";
+import { AuthModalProvider, useAuthModal } from "@/contexts/AuthModalContext";
+import { useSessionTracking } from "@/hooks/useSessionTracking";
+
 
 type ApiTemplate = {
-  id: string
-  slug: string
-  title: string
-  category_id: string
-  author_id: string
-  description: string
-  price: string | number
-  language: string
-  region: string
-  status: string
-  popularity: number
-  num_downloads: number
-  cover_image: string
-  current_version: string
-  published_at: string
-  created_at: string
-  updated_at: string
-  image_1: string
-  image_2: string
-  image_3: string
-  image_4: string
-  category_name?: string
-  category_display_name?: string
-  author?: string
-}
+  id: string;
+  slug: string;
+  title: string;
+  category_id: string;
+  author_id: string;
+  description: string;
+  author_name?: { name: string };
+  price: string | number;
+  language: string;
+  region: string;
+  status: string;
+  popularity: number;
+  num_downloads: number;
+  cover_image: string;
+  current_version: string;
+  published_at: string;
+  created_at: string;
+  updated_at: string;
+  image_1: string;
+  image_2: string;
+  image_3: string;
+  image_4: string;
+  category_name?: string;
+  category_display_name?: string;
+  author?: string;
+  message?: string;
+  card_message?: string;
+  text?: string;
+  tags?: string[];
+};
 
 type ApiResponse = {
-  success: boolean
-  data: ApiTemplate[]
-  count?: number
-  total?: number
-}
+  success: boolean;
+  data: ApiTemplate[];
+  count?: number;
+  total?: number;
+};
 
 type Category = {
-  id: string
-  name: string
-  description: string
-  slug: string
-  created_at: string
-  updated_at: string
-}
+  id: string;
+  name: string;
+  description: string;
+  slug: string;
+  created_at: string;
+  updated_at: string;
+};
 
 type CategoriesResponse = {
-  success: boolean
-  data: Category[]
-  count: number
-}
+  success: boolean;
+  data: Category[];
+  count: number;
+};
 
-type TemplateCard = {
-  id: string
-  name: string
-  price: string
-  rating: number
-  reviewCount: number
-  imageSrc: string
-  imageAlt: string
-  publisher: { name: string; avatar: string }
-  downloads: number
-  likes: number
-  pages?: string[]
-}
+type TemplateMetadata = {
+  slug?: string;
+  description?: string;
+  message?: string;
+  card_message?: string;
+  text?: string;
+  cover_image?: string;
+  coverImage?: string;
+  image_1?: string;
+  image_2?: string;
+  image_3?: string;
+  image_4?: string;
+  tags?: string[];
+  language?: string;
+  region?: string;
+  priceValue?: number;
+  title?: string;
+};
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
+export type TemplateCard = {
+  id: string;
+  name: string;
+  price: string;
+  rating: number;
+  reviewCount: number;
+  imageSrc: string;
+  imageAlt: string;
+  publisher: { name: string; avatar: string };
+  downloads: number;
+  likes: number;
+  pages?: string[];
+  category_id?: string;
+  category_name?: string;
+  category_display_name?: string;
+  isLiked?: boolean;
+  metadata?: TemplateMetadata;
+};
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 // Transform API data to TemplateCard format
 function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
   // Handle price field which can be string or number
-  const priceValue = typeof apiTemplate.price === 'string' ? parseFloat(apiTemplate.price) : apiTemplate.price
-  const formattedPrice = priceValue > 0 ? `$${priceValue.toFixed(2)}` : '$0'
-  
+  const priceValue =
+    typeof apiTemplate.price === "string"
+      ? parseFloat(apiTemplate.price)
+      : apiTemplate.price;
+  const formattedPrice = priceValue > 0 ? `$${priceValue.toFixed(2)}` : "$0";
+
   return {
     id: apiTemplate.id,
     name: apiTemplate.title,
     price: formattedPrice,
-    rating: Math.min(5, Math.max(1, Math.round(apiTemplate.popularity / 20))), // Convert popularity to 1-5 rating
-    reviewCount: Math.floor(apiTemplate.num_downloads / 10), // Estimate reviews from downloads
+    rating: Math.min(5, Math.max(1, Math.round(apiTemplate.popularity / 20))),
+    reviewCount: Math.floor(apiTemplate.num_downloads / 10),
     imageSrc: apiTemplate.image_1,
     imageAlt: `${apiTemplate.title} template`,
-    publisher: { 
-      name: apiTemplate.author || 'SmartWish Studio', 
-      avatar: 'https://i.pravatar.cc/80?img=1' 
+    publisher: {
+      name: apiTemplate.author_name?.name || apiTemplate.author || "SmartWish Studio",
+      avatar: "https://i.pravatar.cc/80?img=1",
     },
     downloads: apiTemplate.num_downloads,
-    likes: Math.floor(apiTemplate.num_downloads / 10), // Estimate likes from downloads
-    pages: [apiTemplate.image_1, apiTemplate.image_2, apiTemplate.image_3, apiTemplate.image_4].filter(Boolean)
-  }
+    category_id: apiTemplate.category_id,
+    category_name: apiTemplate.category_name,
+    category_display_name: apiTemplate.category_display_name,
+    likes: apiTemplate.popularity,
+    pages: [
+      apiTemplate.image_1,
+      apiTemplate.image_2,
+      apiTemplate.image_3,
+      apiTemplate.image_4,
+    ].filter(Boolean),
+    metadata: {
+      slug: apiTemplate.slug,
+      description: apiTemplate.description,
+      message: apiTemplate.message,
+      card_message: apiTemplate.card_message,
+      text: apiTemplate.text,
+      cover_image: apiTemplate.cover_image,
+      coverImage: apiTemplate.cover_image,
+      image_1: apiTemplate.image_1,
+      image_2: apiTemplate.image_2,
+      image_3: apiTemplate.image_3,
+      image_4: apiTemplate.image_4,
+      tags: apiTemplate.tags,
+      language: apiTemplate.language,
+      region: apiTemplate.region,
+      priceValue,
+      title: apiTemplate.title,
+    },
+  };
 }
-
-function TemplateCardSkeleton() {
-  return (
-    <div className="group cursor-pointer rounded-2xl bg-white ring-1 ring-gray-200">
-      <div className="relative overflow-hidden rounded-t-2xl">
-        <div className="aspect-[640/989] w-full bg-gray-200 animate-pulse" />
-        <div className="absolute right-3 top-3 flex gap-2">
-          <div className="h-8 w-16 bg-gray-300 rounded-lg animate-pulse"></div>
-          <div className="h-8 w-8 bg-gray-300 rounded-lg animate-pulse"></div>
-        </div>
-      </div>
-      <div className="px-4 pt-3 pb-5 text-left">
-        <div className="flex items-start justify-between gap-3">
-          <div className="h-5 bg-gray-200 rounded animate-pulse w-3/4"></div>
-          <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse"></div>
-        </div>
-        <div className="mt-1.5 h-4 bg-gray-200 rounded animate-pulse w-1/2"></div>
-      </div>
-    </div>
-  )
-}
-
 
 function TemplatesPageContent() {
-  const sp = useSearchParams()
-  const q = sp?.get('q') ?? ''
-  const region = sp?.get('region') ?? ''
-  const language = sp?.get('language') ?? ''
-  const category = sp?.get('category') ?? ''
-  const pageFromQuery = sp?.get('page') ?? '1'
-  const initialPage = Math.max(1, parseInt(pageFromQuery || '1', 10) || 1)
-  const [previewOpen, setPreviewOpen] = useState(false)
-  const [previewProduct, setPreviewProduct] = useState<TemplateCard | null>(null)
-  const [editorOpen, setEditorOpen] = useState(false)
-  const [editorProduct, setEditorProduct] = useState<TemplateCard | null>(null)
-  const [page, setPage] = useState<number>(initialPage)
-  const [selectedCategory, setSelectedCategory] = useState<string>(category)
-  const router = useRouter()
+  const { data: session, status } = useSession();
+  const sp = useSearchParams();
+  const q = sp?.get("q") ?? "";
+  const region = sp?.get("region") ?? "";
+  const language = sp?.get("language") ?? "";
+  const author = sp?.get("author") ?? "";
+  const category = sp?.get("category") ?? "";
+  const pageFromQuery = sp?.get("page") ?? "1";
+  const initialPage = Math.max(1, parseInt(pageFromQuery || "1", 10) || 1);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewProduct, setPreviewProduct] = useState<TemplateCard | null>(
+    null
+  );
+
+  const [page, setPage] = useState<number>(initialPage);
+  const [selectedCategory, setSelectedCategory] = useState<string>(category);
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const router = useRouter();
+  const pathname = usePathname();
+  const { authModalOpen, openAuthModal, closeAuthModal, setRedirectUrl } = useAuthModal();
   
-  console.log('🔍 Template page state:', { editorOpen, editorProduct: editorProduct?.name, previewOpen, previewProduct: previewProduct?.name })
-  
+  // Session tracking for analytics
+  const {
+    trackCardBrowse,
+    trackCardSelect,
+    trackCardSearch,
+  } = useSessionTracking();
+
+  // Track page browse on mount for session analytics
+  useEffect(() => {
+    trackCardBrowse();
+  }, [trackCardBrowse]);
+
+  // Debug: Track authModalOpen state changes (only when it changes)
+  useEffect(() => {
+    console.log("🎭 PARENT AuthModal state changed to:", authModalOpen);
+    if (authModalOpen) {
+      console.log("✅ AuthModal should now be visible!");
+    }
+  }, [authModalOpen]);
+
+  // Debug: Track auth state changes (only when status changes)
+  useEffect(() => {
+    console.log("🔒 Auth state changed:", {
+      session: !!session,
+      status,
+      user: session?.user?.email,
+    });
+  }, [session, status]);
+
   // Fetch categories
-  const { data: categoriesResponse } = useSWR<CategoriesResponse>('/api/categories', fetcher)
-  const categories = categoriesResponse?.data || []
+  const { data: categoriesResponse } = useSWR<CategoriesResponse>(
+    "/api/categories",
+    fetcher
+  );
+  const categories = categoriesResponse?.data || [];
 
   // Build API URL with query parameters
   const apiUrl = useMemo(() => {
-    const params = new URLSearchParams()
-    if (q) params.set('q', q)
-    if (region && region !== 'Any region') params.set('region', region)
-    if (language && language !== 'Any language') params.set('language', language)
-    if (selectedCategory) params.set('category_id', selectedCategory)
-    const queryString = params.toString()
-    return `/api/templates${queryString ? `?${queryString}` : ''}`
-  }, [q, region, language, selectedCategory])
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (region && region !== "Any region") params.set("region", region);
+    if (language && language !== "Any language")
+      params.set("language", language);
+    if (author && author !== "Any author") params.set("author", author);
+    if (selectedCategory) params.set("category_id", selectedCategory);
+    const queryString = params.toString();
+    return `/api/templates${queryString ? `?${queryString}` : ""}`;
+  }, [q, region, language, author, selectedCategory]);
 
   // Fetch data using SWR
-  const { data: apiResponse, error, isLoading } = useSWR<ApiResponse>(apiUrl, fetcher)
+  const {
+    data: apiResponse,
+    error,
+    isLoading,
+  } = useSWR<ApiResponse>(apiUrl, fetcher);
+
+  // Detect API route error responses (status 500 returns a JSON with `error` key)
+  const apiRouteError = useMemo(() => {
+    const maybeError = (apiResponse as any)?.error;
+    return typeof maybeError === 'string' && maybeError.length > 0;
+  }, [apiResponse]);
 
   const products = useMemo(() => {
-    if (!apiResponse?.data) return []
-    return apiResponse.data.map(transformApiTemplate)
-  }, [apiResponse])
+    if (!apiResponse?.data) return [];
+    return apiResponse.data.map(transformApiTemplate);
+  }, [apiResponse]);
 
-  const pageSize = 9
-  const totalPages = Math.max(1, Math.ceil(products.length / pageSize))
-  const safePage = Math.min(Math.max(1, page), totalPages)
+  // Removed: batch like-status fetch (template likes are not used)
+
+  const pageSize = 9;
+  const totalPages = Math.max(1, Math.ceil(products.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
   const pagedProducts = useMemo(() => {
-    const start = (safePage - 1) * pageSize
-    return products.slice(start, start + pageSize)
-  }, [products, safePage])
+    const start = (safePage - 1) * pageSize;
+    const sliced = products.slice(start, start + pageSize);
+    // Merge like status with products
+    return sliced.map(product => ({
+      ...product,
+      isLiked: false,
+      likes: likeCounts[product.id] !== undefined ? likeCounts[product.id] : product.likes,
+    }));
+  }, [products, safePage, likeCounts]);
+
+  // Handler for when a like is updated
+  const handleLikeUpdate = useCallback((templateId: string, _isLiked: boolean, newLikesCount: number) => {
+    setLikeCounts(prev => ({ ...prev, [templateId]: newLikesCount }));
+  }, []);
 
   useEffect(() => {
-    setPage(initialPage)
-  }, [initialPage])
+    setPage(initialPage);
+  }, [initialPage]);
 
   // Sync selectedCategory with URL parameter
   useEffect(() => {
-    setSelectedCategory(category)
-  }, [category])
+    setSelectedCategory(category);
+  }, [category]);
 
   // Reset page when filters change
   useEffect(() => {
-    setPage(1)
-  }, [q, region, language, selectedCategory])
+    setPage(1);
+  }, [q, region, language, author, selectedCategory]);
+
+  // Hide scrollbar while keeping scroll functionality when on this page
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.add("scrollbar-hide");
+    document.documentElement.classList.add("scrollbar-hide");
+    return () => {
+      document.body.classList.remove("scrollbar-hide");
+      document.documentElement.classList.remove("scrollbar-hide");
+    };
+  }, []);
 
   // Check for template to auto-open from landing page
   useEffect(() => {
-    const openTemplateId = sessionStorage.getItem('openTemplateId')
+    const openTemplateId = sessionStorage.getItem("openTemplateId");
     if (openTemplateId && products.length > 0) {
       // Find the template in the current products
-      const template = products.find(p => p.id === openTemplateId)
+      const template = products.find((p) => p.id === openTemplateId);
       if (template) {
-        setPreviewProduct(template)
-        setPreviewOpen(true)
+        setPreviewProduct(template);
+        setPreviewOpen(true);
         // Clear the stored ID
-        sessionStorage.removeItem('openTemplateId')
+        sessionStorage.removeItem("openTemplateId");
       }
     }
-  }, [products])
+  }, [products]);
 
   const goToPage = (next: number) => {
-    const target = Math.min(Math.max(1, next), totalPages)
-    setPage(target)
-    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-    params.set('page', String(target))
-    router.push(`/templates?${params.toString()}`)
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
+    const target = Math.min(Math.max(1, next), totalPages);
+    setPage(target);
+    const params = new URLSearchParams(
+      typeof window !== "undefined" ? window.location.search : ""
+    );
+    params.set("page", String(target));
+    router.push(`/templates?${params.toString()}`);
+    if (typeof window !== "undefined")
+      window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-  const openEditor = async (product: TemplateCard) => {
-    console.log('🚀 Opening editor for:', product.name)
-    
-    try {
-      // Convert external image to blob URL for Pintura compatibility
-      const blobImageUrl = await convertImageToBlob(product.imageSrc)
-      
-      // Create a new product object with the blob URL
-      const productWithBlobImage = {
-        ...product,
-        imageSrc: blobImageUrl
-      }
-      
-      setEditorProduct(productWithBlobImage)
-      setPreviewOpen(false)
-      setEditorOpen(true)
-    } catch (error) {
-      console.error('❌ Failed to open editor:', error)
-      alert('Failed to load image for editing. Please try again.')
-    }
-  }
+  const openEditor = useCallback(
+    async (product: TemplateCard) => {
+      console.log("🚀 openEditor function called!");
+      console.log("🎭 Product:", product);
+      console.log("🔒 Session:", session);
+      console.log("📊 Status:", status);
 
-  // Convert external image URL to blob URL for Pintura
-  const convertImageToBlob = async (imageUrl: string): Promise<string> => {
-    try {
-      console.log('🔄 Converting image to blob URL for Pintura compatibility:', imageUrl)
-      
-      // Check if it's already a blob URL
-      if (imageUrl.startsWith('blob:')) {
-        console.log('✅ Image is already a blob URL, returning as-is:', imageUrl)
-        return imageUrl
+      // Always close preview modal first
+      setPreviewOpen(false);
+
+      // Check authentication
+      if (!session || status !== "authenticated") {
+        console.log("❌ User not authenticated, opening auth modal");
+        console.log("🔍 Session:", session);
+        console.log("🔍 Status:", status);
+        // When using a template, redirect to the template editor after sign-in
+        const editorUrl = `/my-cards/template-editor?templateId=${product.id}&templateName=${encodeURIComponent(product.name)}`;
+        setRedirectUrl(editorUrl);
+        openAuthModal();
+        return;
       }
+
+      console.log("✅ User is authenticated, opening editor immediately");
+
+      const flowStart = performance.now();
+      console.log(`⏱️ [FLOW] Starting at ${flowStart.toFixed(1)}ms`);
+
+      // Generate a temporary ID for optimistic navigation
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const idGenTime = performance.now();
+      console.log(`⏱️ [FLOW] Temp ID generated in ${(idGenTime - flowStart).toFixed(1)}ms`);
       
-      // For demonstration: treat local images as "server" images that need blob conversion
-      // In real app, you'd only do this for external URLs
-      console.log('🌐 Fetching image as if from server...')
+      // Store template data in sessionStorage for immediate editor access
+      const templateData = {
+        id: tempId,
+        templateId: product.id,
+        name: product.name,
+        pages: product.pages || [],
+        categoryId: product.category_id || '1',
+        categoryName: product.category_display_name || product.category_name || 'General',
+        metadata: product.metadata,
+        isTemporary: true, // Flag to indicate this is not yet saved
+      };
       
-      const response = await fetch(imageUrl)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`)
-      }
+      sessionStorage.setItem(`pendingTemplate_${tempId}`, JSON.stringify(templateData));
+      const storageTime = performance.now();
+      console.log(`⏱️ [FLOW] Data stored in sessionStorage in ${(storageTime - idGenTime).toFixed(1)}ms`);
       
-      console.log('📦 Converting response to blob...')
-      const blob = await response.blob()
-      const blobUrl = URL.createObjectURL(blob)
+      console.log("📝 Navigating to editor with temp ID:", tempId);
       
-      console.log('✅ Successfully created blob URL:', blobUrl)
-      console.log('📊 Blob details:', {
-        size: blob.size,
-        type: blob.type,
-        blobUrl: blobUrl
+      // Navigate immediately to editor
+      const navStart = performance.now();
+      router.push(`/my-cards/${tempId}?mode=template`);
+      const navEnd = performance.now();
+      console.log(`⏱️ [FLOW] Navigation initiated in ${(navEnd - navStart).toFixed(1)}ms`);
+      console.log(`⏱️ [FLOW] Total time to navigation: ${(navEnd - flowStart).toFixed(1)}ms`);
+
+      // Start background save (fire and forget)
+      console.log("🎨 Starting background copy to saved designs...");
+      
+      // Get price from product (formatted string like "$2.99") or metadata
+      const priceValue = product.metadata?.priceValue 
+        || (typeof product.price === 'string' ? parseFloat(product.price.replace('$', '')) : product.price)
+        || 1.99;
+      
+      const copyPayload = {
+        title: product.name,
+        categoryId: product.category_id || '1',
+        categoryName: product.category_display_name || product.category_name || 'General',
+        price: priceValue, // ✅ Include price in copy payload
+        templateMeta: product.metadata
+          ? {
+              ...product.metadata,
+              id: product.id,
+              title: product.metadata.title || product.name,
+              price: priceValue, // ✅ Also include in metadata
+            }
+          : undefined,
+        fallbackImages: product.pages,
+      };
+
+      const copyStart =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+
+      fetch(`/api/templates/${product.id}/copy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(copyPayload),
       })
-      
-      return blobUrl
-    } catch (error) {
-      console.error('❌ Failed to convert image to blob:', error)
-      console.log('🔄 Falling back to original URL:', imageUrl)
-      // Fallback to original URL
-      return imageUrl
+        .then(async (response) => {
+          const copyEnd =
+            typeof performance !== "undefined" && typeof performance.now === "function"
+              ? performance.now()
+              : Date.now();
+          console.log(
+            `⏱️ Background copy duration: ${(copyEnd - copyStart).toFixed(1)}ms`
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to copy template (${response.status})`);
+          }
+
+          const savedDesignResult = await response.json();
+          console.log("✅ Background copy completed:", savedDesignResult);
+
+          if (savedDesignResult.success && savedDesignResult.data) {
+            const savedDesignId = savedDesignResult.data.id;
+            
+            // Store the mapping from temp ID to real ID
+            sessionStorage.setItem(`tempIdMap_${tempId}`, savedDesignId);
+            
+            // Notify the editor that save is complete
+            window.dispatchEvent(new CustomEvent('templateSaved', {
+              detail: { tempId, savedDesignId, savedDesign: savedDesignResult.data }
+            }));
+            
+            console.log("📢 Dispatched templateSaved event");
+          }
+        })
+        .catch((error) => {
+          console.error("❌ Background copy failed:", error);
+          // Notify editor of failure
+          window.dispatchEvent(new CustomEvent('templateSaveFailed', {
+            detail: { tempId, error: error.message }
+          }));
+        });
+    },
+    [session, status, openAuthModal, setRedirectUrl, pathname, router]
+  );
+
+  // Handle successful authentication - close auth modal and redirect to redirect URL or default
+  useEffect(() => {
+    // Only run this effect when user becomes authenticated AND auth modal is open
+    if (
+      session &&
+      status === "authenticated" &&
+      authModalOpen
+    ) {
+      console.log(
+        "🎉 User authenticated successfully, closing auth modal"
+      );
+      closeAuthModal();
+      // Don't redirect here - let the sign-in page handle the redirect
     }
-  }
+  }, [
+    session,
+    status,
+    authModalOpen,
+    closeAuthModal,
+  ]);
 
-  // Demo: Create multi-page template images for testing
-  const getTemplateImages = (product: TemplateCard) => {
-    // For demo purposes, we'll create a 2-page template
-    // In a real app, this would come from the template data
-    const images = [
-      product.imageSrc, // Front page
-      product.imageSrc  // Back page (using same image for demo)
-    ]
+
+  const handlePreviewTemplate = (template: TemplateCard) => {
+    console.log("🎬 handlePreviewTemplate called with:", template.name);
+    setPreviewProduct(template);
     
-    return images
-  }
+    // Track card selection for session analytics
+    trackCardSelect({
+      itemId: template.id,
+      itemTitle: template.name,
+      itemCategory: template.category_name || template.category_display_name,
+    });
 
-  const productHref = '/product/template'
+    // Small delay to prevent immediate outside click detection
+    setTimeout(() => {
+      setPreviewOpen(true);
+      console.log("✅ Preview modal should now be open");
+    }, 50);
+  };
+
+  const handleAuthRequired = useCallback(() => {
+    console.log("🚨🚨🚨 HANDLE AUTH REQUIRED CALLED 🚨🚨🚨");
+    setRedirectUrl(pathname + (typeof window !== "undefined" ? window.location.search : ""));
+    openAuthModal();
+  }, [openAuthModal, setRedirectUrl, pathname]);
 
   return (
     <main className="pb-24">
       <div className="px-4 pt-6 sm:px-6 lg:px-8" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          
-          {/* sticky show-on-scroll-up search */}
-          <FloatingSearch initialQuery={q} categories={categories} selectedCategory={selectedCategory} />
-          
-          <section>
-            {isLoading ? (
-              <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
-                {Array(9).fill(0).map((_, i) => (
+        {/* sticky show-on-scroll-up search */}
+        <FloatingSearch
+          initialQuery={q}
+          categories={categories}
+          selectedCategory={selectedCategory}
+        />
+
+        <section>
+          {isLoading ? (
+            <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
+              {Array(9)
+                .fill(0)
+                .map((_, i) => (
                   <TemplateCardSkeleton key={`skeleton-${i}`} />
                 ))}
-              </div>
-            ) : error ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
-                Failed to load templates. Please try again later.
-              </div>
-            ) : products.length === 0 ? (
-              <div className="rounded-lg border border-gray-200 p-12 text-center text-gray-600">No templates found.</div>
-            ) : (
-              <>
+            </div>
+          ) : (error || apiRouteError) ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
+              Failed to load templates. Please try again later.
+            </div>
+          ) : products.length === 0 ? (
+            <div className="rounded-lg border border-gray-200 p-12 text-center text-gray-600">
+              No templates found.
+            </div>
+          ) : (
+            <>
               <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
-                {pagedProducts.map((p, index) => {
-                  const href = productHref
-                  return (
-                    <div
-                      key={p.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        console.log('📋 Template card clicked for:', p.name)
-                        alert(`Clicked on ${p.name}`)
-                        setPreviewProduct(p)
-                        setPreviewOpen(true)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setPreviewProduct(p)
-                          setPreviewOpen(true)
-                        }
-                      }}
-                      className="group cursor-pointer rounded-2xl bg-white ring-1 ring-gray-200 transition-shadow hover:shadow-sm"
-                    >
-                      <div className="relative overflow-hidden rounded-t-2xl">
-                        <a
-                          href={href}
-                          className="block overflow-hidden"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setPreviewProduct(p)
-                            setPreviewOpen(true)
-                          }}
-                        >
-                          <Image
-                            alt={p.imageAlt}
-                            src={p.imageSrc}
-                            width={640}
-                            height={989}
-                            className="aspect-[640/989] w-full bg-gray-100 object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                          />
-                        </a>
-                        <div className="absolute right-3 top-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
-                          <button className="inline-flex items-center gap-1 rounded-lg bg-black/80 px-2.5 py-1.5 text-white shadow-sm hover:bg-black" onClick={(e) => e.stopPropagation()}>
-                            <HeartIcon className="h-4 w-4 text-white drop-shadow" />
-                            <span className="text-xs">{p.likes.toLocaleString()}</span>
-                          </button>
-                          <Menu as="div" className="relative inline-block text-left">
-                            <MenuButton className="inline-flex items-center justify-center rounded-lg bg-black/80 p-1.5 text-white shadow-sm hover:bg-black" onClick={(e) => e.stopPropagation()}>
-                              <EllipsisHorizontalIcon className="h-4 w-4" />
-                            </MenuButton>
-                            <MenuItems
-                              anchor={{
-                                to: (index + 1) % 2 === 0 ? "bottom start" : "bottom end",
-                                gap: 8
-                              }}
-                              className="z-50 w-72 origin-top-right rounded-xl bg-white text-gray-900 shadow-2xl ring-1 ring-black/5 transition data-closed:scale-95 data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
-                            >
-                              <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold leading-snug">
-                                {p.name}
-                              </div>
-                              <div className="py-1">
-                                <MenuItem>
-                                  <button
-                                    onClick={() => {
-                                      setPreviewProduct(p)
-                                      setPreviewOpen(true)
-                                    }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-gray-50"
-                                  >
-                                    <MagnifyingGlassIcon className="h-4 w-4 text-gray-500" />
-                                    Preview template
-                                  </button>
-                                </MenuItem>
-                                <MenuItem>
-                                  <button className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-gray-50">
-                                    <FlagIcon className="h-4 w-4 text-gray-500" />
-                                    Report
-                                  </button>
-                                </MenuItem>
-                              </div>
-                            </MenuItems>
-                          </Menu>
-                        </div>
-
-                      </div>
-                      <div className="px-4 pt-3 pb-5 text-left">
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="line-clamp-1 text-[16px] font-semibold leading-6 text-gray-900">
-                            <a
-                              href={href}
-                              className="relative inline-block"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setPreviewProduct(p)
-                                setPreviewOpen(true)
-                              }}
-                            >
-                              {p.name}
-                            </a>
-                          </h3>
-                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${p.price === '$0' ? 'bg-green-50 text-green-700 ring-green-200' : 'bg-gray-100 text-gray-900 ring-gray-200'}`}>
-                            {p.price === '$0' ? 'Free' : p.price}
-                          </span>
-                        </div>
-                        <div className="mt-1.5 text-[13px] text-gray-600">
-                          by <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">{p.publisher.name}</a>
-                        </div>
-                        {/* bottom row removed: likes are shown on the image; price is overlaid */}
-                      </div>
-                    </div>
-                  )
-                })}
+                {pagedProducts.map((template, index) => (
+                  <TemplateCard
+                    key={`${template.id}-${index}`}
+                    template={template}
+                    index={index}
+                    onPreview={handlePreviewTemplate}
+                    onAuthRequired={handleAuthRequired}
+                    onLikeUpdate={handleLikeUpdate}
+                  />
+                ))}
               </div>
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <nav className="mt-10 flex justify-center" aria-label="Pagination">
+                <nav
+                  className="mt-10 flex justify-center"
+                  aria-label="Pagination"
+                >
                   <div className="inline-flex items-center gap-1 rounded-full bg-white px-1.5 py-1 shadow-sm ring-1 ring-gray-300">
                     <button
                       onClick={() => goToPage(safePage - 1)}
@@ -441,15 +564,20 @@ function TemplatesPageContent() {
                     >
                       <ChevronLeftIcon className="h-5 w-5" />
                     </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => goToPage(p)}
-                        className={`flex size-9 items-center justify-center rounded-full text-sm ring-1 ring-transparent ${p === safePage ? 'bg-indigo-600 text-white ring-indigo-600' : 'text-gray-700 hover:bg-gray-50'}`}
-                      >
-                        {p}
-                      </button>
-                    ))}
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                      (p) => (
+                        <button
+                          key={p}
+                          onClick={() => goToPage(p)}
+                          className={`flex size-9 items-center justify-center rounded-full text-sm ring-1 ring-transparent ${p === safePage
+                              ? "bg-indigo-600 text-white ring-indigo-600"
+                              : "text-gray-700 hover:bg-gray-50"
+                            }`}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
                     <button
                       onClick={() => goToPage(safePage + 1)}
                       disabled={safePage === totalPages}
@@ -461,342 +589,25 @@ function TemplatesPageContent() {
                   </div>
                 </nav>
               )}
-              </>
-            )}
-          </section>
-
-          {/* My cards moved to /my-cards */}
+            </>
+          )}
+        </section>
       </div>
+
+      {/* Template Preview Modal */}
       {previewProduct && (
-        <TemplatePreviewModal 
-          open={previewOpen} 
-          onClose={setPreviewOpen} 
+        <TemplatePreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
           product={previewProduct}
           onCustomize={openEditor}
         />
       )}
-      {editorProduct && (
-        <GiftCardEditorSimple
-          open={editorOpen}
-          onClose={(open: boolean) => {
-            console.log('Editor close called with:', open)
-            setEditorOpen(open)
-            if (!open) {
-              setEditorProduct(null)
-            }
-          }}
-          templateName={editorProduct.name}
-          templateImages={(() => {
-            const images = getTemplateImages(editorProduct)
-            console.log('🎬 Passing template images to GiftCardEditorSimple:', images)
-            return images
-          })()}
-        />
-      )}
+
+      {/* Auth Modal - shared for both main page and preview modal */}
+      <AuthModal open={authModalOpen} onClose={closeAuthModal} />
     </main>
-  )
-}
-
-function TemplatePreviewModal({ open, onClose, product, onCustomize }: { 
-  open: boolean; 
-  onClose: (v: boolean) => void; 
-  product: TemplateCard | null;
-  onCustomize: (product: TemplateCard) => Promise<void>;
-}) {
-  const [currentPage, setCurrentPage] = useState(0)
-  const flipBookRef = useRef<any>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  
-  if (!product) return null
-  
-  const templatePages = product.pages || [product.imageSrc]
-  const totalPages = templatePages.length
-  
-  const handleNextPage = () => {
-    // Check if we're on desktop (flipbook is visible)
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      // Desktop: use flipbook
-      if (flipBookRef.current && currentPage < totalPages - 1) {
-        flipBookRef.current.pageFlip().flipNext()
-      }
-    } else {
-      // Tablet/Mobile: use scroll navigation
-      if (currentPage < totalPages - 1) {
-        scrollToPage(currentPage + 1)
-      }
-    }
-  }
-  
-  const handlePrevPage = () => {
-    // Check if we're on desktop (flipbook is visible)
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      // Desktop: use flipbook
-      if (flipBookRef.current && currentPage > 0) {
-        flipBookRef.current.pageFlip().flipPrev()
-      }
-    } else {
-      // Tablet/Mobile: use scroll navigation
-      if (currentPage > 0) {
-        scrollToPage(currentPage - 1)
-      }
-    }
-  }
-  
-  const handlePageFlip = (e: { data: number }) => {
-    setCurrentPage(e.data)
-  }
-  
-  // Handle scroll to update current page indicator
-  const handleScroll = () => {
-    if (!scrollContainerRef.current) return
-    
-    const container = scrollContainerRef.current
-    const scrollLeft = container.scrollLeft
-    const containerWidth = container.clientWidth
-    const newPage = Math.round(scrollLeft / containerWidth)
-    
-    if (newPage !== currentPage && newPage >= 0 && newPage < totalPages) {
-      setCurrentPage(newPage)
-    }
-  }
-  
-  // Scroll to specific page
-  const scrollToPage = (pageIndex: number) => {
-    if (!scrollContainerRef.current) return
-    
-    const container = scrollContainerRef.current
-    const containerWidth = container.clientWidth
-    const scrollLeft = pageIndex * containerWidth
-    
-    container.scrollTo({
-      left: scrollLeft,
-      behavior: 'smooth'
-    })
-    setCurrentPage(pageIndex)
-  }
-  
-  // Reset to first page when modal opens
-  useEffect(() => {
-    if (open) {
-      setCurrentPage(0)
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTo({ left: 0 })
-      }
-    }
-  }, [open])
-  
-  return (
-    <Dialog open={open} onClose={onClose} className="relative z-50">
-      <DialogBackdrop className="fixed inset-0 bg-black/40" />
-      <div className="fixed inset-0 overflow-y-auto p-4 sm:p-8">
-        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 sm:grid-cols-[2fr_1fr]">
-          <DialogPanel className="col-span-1 rounded-2xl bg-transparent">
-            <div className="relative overflow-hidden rounded-xl bg-white shadow-2xl">
-              {/* Desktop: Flipbook View */}
-              <div className="hidden lg:flex items-center justify-center relative" onClick={(e) => e.stopPropagation()}>
-                {/* Previous Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handlePrevPage()
-                  }}
-                  disabled={currentPage === 0}
-                  className="absolute left-8 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronLeftIcon className="h-6 w-6" />
-                </button>
-                
-                {/* Flipbook Container */}
-                <div className="flipbook-container-desktop">
-                  <HTMLFlipBook
-                    ref={flipBookRef}
-                    width={400}
-                    height={550}
-                    size="fixed"
-                    startPage={0}
-                    minWidth={200}
-                    maxWidth={1000}
-                    minHeight={200}
-                    maxHeight={1000}
-                    style={{}}
-                    maxShadowOpacity={0.8}
-                    showCover={true}
-                    mobileScrollSupport={false}
-                    onFlip={handlePageFlip}
-                    className="flipbook-shadow"
-                    flippingTime={800}
-                    usePortrait={false}
-                    startZIndex={10}
-                    autoSize={false}
-                    clickEventForward={true}
-                    useMouseEvents={true}
-                    swipeDistance={30}
-                    showPageCorners={true}
-                    disableFlipByClick={false}
-                    drawShadow={true}
-                  >
-                    {templatePages.map((page, index) => (
-                      <div key={index} className="page-hard">
-                        <div className="page-content w-full h-full relative">
-                          <Image
-                            src={page}
-                            alt={`${product.imageAlt} - Page ${index + 1}`}
-                            width={400}
-                            height={550}
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </HTMLFlipBook>
-                </div>
-                
-                {/* Next Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleNextPage()
-                  }}
-                  disabled={currentPage === totalPages - 1}
-                  className="absolute right-8 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronRightIcon className="h-6 w-6" />
-                </button>
-                
-                {/* Page indicator */}
-                <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 bg-black/60 text-white px-3 py-1 rounded-full text-sm backdrop-blur-sm">
-                  {currentPage + 1} / {totalPages}
-                </div>
-              </div>
-
-              {/* Tablet & Mobile: Scrollable Pages View */}
-              <div className="lg:hidden relative" onClick={(e) => e.stopPropagation()}>
-                {/* Previous Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handlePrevPage()
-                  }}
-                  disabled={currentPage === 0}
-                  className="absolute left-4 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronLeftIcon className="h-5 w-5" />
-                </button>
-                
-                <div 
-                  ref={scrollContainerRef}
-                  className="overflow-x-auto scrollbar-hide"
-                  onScroll={handleScroll}
-                >
-                  <div className="flex snap-x snap-mandatory">
-                    {templatePages.map((page, index) => (
-                      <div key={index} className="flex-none w-full snap-center">
-                        <Image 
-                          src={page} 
-                          alt={`${product.imageAlt} - Page ${index + 1}`} 
-                          width={600} 
-                          height={800} 
-                          className="w-full" 
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Next Page Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleNextPage()
-                  }}
-                  disabled={currentPage === totalPages - 1}
-                  className="absolute right-4 top-1/2 z-20 -translate-y-1/2 p-3 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm"
-                >
-                  <ChevronRightIcon className="h-5 w-5" />
-                </button>
-                
-                {/* Page indicator dots */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                  {templatePages.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        scrollToPage(index)
-                      }}
-                      className={`w-2 h-2 rounded-full transition-all ${
-                        index === currentPage ? 'bg-white' : 'bg-white/50'
-                      }`}
-                    />
-                  ))}
-                </div>
-                
-                {/* Page counter */}
-                <div className="absolute top-4 right-4 bg-black/60 text-white px-2 py-1 rounded-full text-xs backdrop-blur-sm">
-                  {currentPage + 1}/{totalPages}
-                </div>
-              </div>
-            </div>
-          </DialogPanel>
-          
-          {/* Desktop Sidebar */}
-          <div className="relative rounded-xl bg-white p-6 text-gray-900 shadow-2xl ring-1 ring-gray-100">
-            <button onClick={() => onClose(false)} className="absolute right-3 top-3 rounded-md p-1 text-gray-500 hover:bg-gray-100">
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-            <h2 className="text-xl font-bold leading-snug">{product.name}</h2>
-            <div className="mt-2 text-sm text-gray-600">By {product.publisher.name}</div>
-            <div className="mt-1 text-xs text-gray-500">Document (A4 Portrait) • 21 × 29.7 cm • {totalPages} pages</div>
-            <button 
-              onClick={() => {
-                console.log('🎯 Redirecting to my-cards for template:', product.name)
-                window.location.href = '/my-cards'
-              }}
-              className="mt-5 inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-            >
-              Customize this template
-            </button>
-            <div className="mt-3 flex items-center gap-2 text-sm text-gray-700">
-              <button className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 hover:bg-gray-200">
-                <HeartIcon className="h-4 w-4 text-rose-500" />
-                {product.likes.toLocaleString()}
-              </button>
-            </div>
-            <div className="mt-4 text-xs text-gray-500">This template may contain paid elements</div>
-          </div>
-        </div>
-      </div>
-    </Dialog>
-  )
-}
-
-function FloatingSearch({ initialQuery, categories, selectedCategory }: { initialQuery: string; categories?: Category[]; selectedCategory?: string }) {
-  const [visible, setVisible] = useState(true)
-  const prevY = useRef<number>(0)
-  useEffect(() => {
-    prevY.current = window.scrollY
-    const onScroll = () => {
-      const y = window.scrollY
-      if (y > prevY.current + 10) {
-        // scrolling down
-        setVisible(false)
-      } else if (y < prevY.current - 10) {
-        // scrolling up
-        setVisible(true)
-      }
-      prevY.current = y
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  return (
-    <div className={`sticky top-4 z-30 mb-6 transition-all duration-200 ${visible ? 'opacity-100 translate-y-0' : 'pointer-events-none -translate-y-3 opacity-0'}`}>
-      <div className="mx-auto max-w-3xl">
-  <HeroSearch initialQuery={initialQuery} categories={categories} selectedCategory={selectedCategory} />
-      </div>
-    </div>
-  )
+  );
 }
 
 // Add global styles for flipbook
@@ -805,23 +616,23 @@ const FlipbookStyles = () => (
     .flipbook-shadow {
       filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.3));
     }
-    
+
     .flipbook-container-desktop {
       display: flex;
       justify-content: center;
       align-items: center;
       padding: 0;
     }
-    
+
     .scrollbar-hide {
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
-    
+
     .scrollbar-hide::-webkit-scrollbar {
       display: none;
     }
-    
+
     .page-hard {
       width: 100%;
       height: 100%;
@@ -835,7 +646,7 @@ const FlipbookStyles = () => (
       -webkit-backface-visibility: hidden;
       transform: translateZ(0);
     }
-    
+
     .page-content {
       width: 100%;
       height: 100%;
@@ -848,15 +659,17 @@ const FlipbookStyles = () => (
       transform: translateZ(0);
     }
   `}</style>
-)
+);
 
 export default function TemplatesPage() {
   return (
     <>
       <FlipbookStyles />
-      <Suspense fallback={<div>Loading...</div>}>
-        <TemplatesPageContent />
-      </Suspense>
+      <AuthModalProvider>
+        <Suspense fallback={<div>Loading...</div>}>
+          <TemplatesPageContent />
+        </Suspense>
+      </AuthModalProvider>
     </>
-  )
+  );
 }

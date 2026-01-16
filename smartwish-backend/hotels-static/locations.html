@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Future Locations - SmartWish</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="SmartWish Logo">
+
+            </a>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </a>
+                <a href="locations.html" class="nav-link active">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Locations</span>
+                </a>
+
+                <a href="contact.html" class="nav-link">
+                    <i class="fas fa-envelope"></i>
+                    <span>Contact</span>
+                </a>
+            </div>
+            <button class="hamburger" id="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobile-menu">
+        <div class="mobile-nav-links">
+            <a href="index.html" class="nav-link">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </a>
+            <a href="locations.html" class="nav-link active">
+                <i class="fas fa-map-marker-alt"></i>
+                <span>Locations</span>
+            </a>
+
+            <a href="contact.html" class="nav-link">
+                <i class="fas fa-envelope"></i>
+                <span>Contact</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Hero Section -->
+    <section class="locations-hero">
+        <div class="container">
+            <h1>Future Kiosk Locations</h1>
+            <p>Discover where SmartWish will be available next. Our global expansion brings photo printing convenience
+                to premium hotels worldwide.</p>
+        </div>
+    </section>
+
+    <!-- Map Section -->
+    <section class="map-section">
+        <div class="container">
+            <div class="map-container">
+                <div id="map"></div>
+                <div class="map-controls">
+                    <button id="reset-view" class="map-control-btn">Reset View</button>
+                    <div class="location-counter">
+                        <span id="location-count">8</span> locations coming soon
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Locations Grid -->
+    <section class="locations-grid-section">
+        <div class="container">
+            <h2>All Locations</h2>
+            <div class="locations-grid" id="locations-grid">
+                <!-- Locations will be populated by JavaScript -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Location Details Modal -->
+    <div id="location-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div class="modal-body">
+                <h3 id="modal-title"></h3>
+                <div class="modal-info">
+                    <div class="modal-address">
+                        <strong>Address:</strong>
+                        <span id="modal-address"></span>
+                    </div>
+                    <div class="modal-status">
+                        <strong>Status:</strong>
+                        <span id="modal-status" class="status-badge"></span>
+                    </div>
+                    <div class="modal-launch">
+                        <strong>Expected Launch:</strong>
+                        <span id="modal-launch"></span>
+                    </div>
+                </div>
+                <div class="modal-description">
+                    <p id="modal-description"></p>
+                </div>
+                <div class="modal-amenities">
+                    <strong>Features:</strong>
+                    <div id="modal-amenities" class="amenities-list"></div>
+                </div>
+                <div class="modal-actions">
+                    <button id="get-directions" class="btn-primary">Get Directions</button>
+                    <button id="notify-me" class="btn-secondary">Notify When Available</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo">
+                        <img src="logo.png" alt="SmartWish Logo">
+
+                    </div>
+                    <p>Bringing your digital memories to life, one print at a time.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="locations.html">Locations</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                        <li><a href="#about">About</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <ul>
+                        <li><a href="contact.html">Help Center</a></li>
+                        <li><a href="#privacy">Privacy Policy</a></li>
+                        <li><a href="#terms">Terms of Service</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 SmartWish. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Ensure Leaflet is loaded before our script
+        window.addEventListener('load', function() {
+            if (typeof L === 'undefined') {
+                console.error('Leaflet library failed to load');
+            }
+        });
+    </script>
+    <script src="locations.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,149 @@
+import { NextRequest } from 'next/server';
+import { auth } from '@/auth';
+import { supabaseServer } from '@/lib/supabaseServer';
+
+/**
+ * GET /api/admin/chat/stream
+ * Server-Sent Events endpoint for real-time admin chat updates
+ * Backend handles Supabase Realtime subscription and streams updates to frontend
+ */
+export async function GET(request: NextRequest) {
+  // Check authentication
+  const authSession = await auth();
+  if (!authSession?.user) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Create a readable stream for SSE
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+
+      // Track last message timestamp to detect new messages (per connection)
+      // Start from 5 seconds ago to avoid race conditions with history loading
+      let lastMessageTime = new Date(Date.now() - 5000).toISOString();
+      let lastMessageIds = new Set<string>();
+
+      // Send initial connection message
+      const sendMessage = (data: object) => {
+        const message = `data: ${JSON.stringify(data)}\n\n`;
+        controller.enqueue(encoder.encode(message));
+      };
+
+      sendMessage({ type: 'connected' });
+      sendMessage({ type: 'status', status: 'connected' });
+
+      // Load recent messages to avoid sending duplicates
+      // Get messages from the last 30 seconds to build a set of known IDs
+      const { data: recentMessages } = await supabaseServer
+        .from('kiosk_chat_messages')
+        .select('id, created_at')
+        .gte('created_at', new Date(Date.now() - 30000).toISOString())
+        .order('created_at', { ascending: false });
+
+      if (recentMessages && recentMessages.length > 0) {
+        recentMessages.forEach((msg) => lastMessageIds.add(msg.id));
+        // Use the most recent message time as baseline if available
+        lastMessageTime = recentMessages[0].created_at;
+      }
+
+      let pollInterval: NodeJS.Timeout | null = null;
+      let heartbeatInterval: NodeJS.Timeout | null = null;
+
+      // Poll for new messages every 2 seconds
+      const pollForMessages = async () => {
+        try {
+          const { data: newMessages, error } = await supabaseServer
+            .from('kiosk_chat_messages')
+            .select('*')
+            .gt('created_at', lastMessageTime)
+            .order('created_at', { ascending: true });
+
+          if (error) {
+            console.error('[Admin Chat Stream] Poll error:', error);
+            return;
+          }
+
+          if (newMessages && newMessages.length > 0) {
+            // Send new messages
+            newMessages.forEach((message) => {
+              if (!lastMessageIds.has(message.id)) {
+                sendMessage({
+                  type: 'message',
+                  message,
+                });
+                lastMessageIds.add(message.id);
+              }
+            });
+
+            // Update last message time
+            const latestMessage = newMessages[newMessages.length - 1];
+            lastMessageTime = latestMessage.created_at;
+          }
+
+          // Also check for updated messages (read status changes)
+          const { data: updatedMessages } = await supabaseServer
+            .from('kiosk_chat_messages')
+            .select('*')
+            .gt('updated_at', lastMessageTime)
+            .order('updated_at', { ascending: true });
+
+          if (updatedMessages && updatedMessages.length > 0) {
+            updatedMessages.forEach((message) => {
+              sendMessage({
+                type: 'message_updated',
+                message,
+              });
+            });
+          }
+        } catch (error) {
+          console.error('[Admin Chat Stream] Poll error:', error);
+        }
+      };
+
+      // Start polling
+      pollInterval = setInterval(pollForMessages, 2000); // Poll every 2 seconds
+
+      // Handle client disconnect
+      const cleanup = () => {
+        console.log('[Admin Chat Stream] Cleaning up');
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+        controller.close();
+      };
+
+      request.signal.addEventListener('abort', cleanup);
+
+      // Keep connection alive with periodic heartbeat
+      heartbeatInterval = setInterval(() => {
+        try {
+          sendMessage({ type: 'heartbeat', timestamp: Date.now() });
+        } catch (error) {
+          // Client disconnected
+          cleanup();
+        }
+      }, 30000); // Every 30 seconds
+
+      // Cleanup on stream close
+      return cleanup;
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no', // Disable buffering for nginx
+    },
+  });
+}

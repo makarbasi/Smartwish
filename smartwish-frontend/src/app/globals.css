@@ -2,7 +2,131 @@
 @import "./styles/theme.css";
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Pixshop animations */
+@keyframes slide-in-right {
+    from {
+        opacity: 0;
+        transform: translateX(20px) scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+.animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out forwards;
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.animate-fade-in {
+    animation: fade-in 0.3s ease-out forwards;
+}
+
+.bg-gradient-radial {
+    background: radial-gradient(circle, var(--tw-gradient-stops));
+}
+
+/* Gift Card Animation - flies from center to card cover */
+@keyframes gift-card-fly-custom {
+    0% {
+        opacity: 0;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+    }
+
+    15% {
+        opacity: 1;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(1.3) rotate(5deg);
+    }
+
+    30% {
+        opacity: 1;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(1.1) rotate(-3deg);
+    }
+
+    75% {
+        opacity: 0.9;
+        left: var(--target-x);
+        top: var(--target-y);
+        transform: translate(-50%, -50%) scale(0.35) rotate(0deg);
+    }
+
+    100% {
+        opacity: 0;
+        left: var(--target-x);
+        top: var(--target-y);
+        transform: translate(-50%, -50%) scale(0.15) rotate(0deg);
+    }
+}
+
+.gift-card-svg {
+    filter: drop-shadow(0 25px 50px rgba(99, 102, 241, 0.4)) drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
+}
+
+/* Fix input field text visibility - ensure text is always visible */
+input[type="text"]:not([readonly]),
+input[type="email"]:not([readonly]),
+input[type="password"]:not([readonly]),
+input[type="tel"]:not([readonly]),
+input[type="number"]:not([readonly]),
+input[type="search"]:not([readonly]),
+textarea:not([readonly]) {
+    color: #111827 !important; /* Force visible dark text */
+    -webkit-text-fill-color: #111827 !important; /* Override Safari autofill */
+}
+
+/* Ensure input value displays fully */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="number"],
+input[type="search"] {
+    min-width: 0 !important; /* Critical for flex inputs */
+    overflow: visible !important; /* Show all characters */
+    text-overflow: clip !important; /* Don't use ellipsis */
+}
+
+/* Fix for inputs inside flex containers - ensure they can grow */
+/* Only apply to DIRECT children of flex containers, not all descendents */
+.flex > input[type="text"],
+.flex > input[type="email"],
+.flex > input[type="password"],
+.flex > input[type="search"],
+.flex-1 > input[type="text"],
+.flex-1 > input[type="email"],
+.flex-1 > input[type="password"],
+.flex-1 > input[type="search"] {
+    min-width: 0 !important;
+    flex: 1 1 0% !important; /* Allow flex growth */
+}
+
+/* Ensure placeholder is visible */
+input::placeholder,
+textarea::placeholder {
+    color: #9ca3af !important;
+    opacity: 1 !important;
 }

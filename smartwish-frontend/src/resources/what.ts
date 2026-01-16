@@ -17,16 +17,16 @@ export const whatYouGet: WhatItem[] = [
     span: 7,
   },
   {
-    title: 'Create from Scratch',
+    title: 'Design with AI',
     description:
-      'You can also decide to create your card from scratch with a set tools and elements at your disposal.',
+      'Harness the power of artificial intelligence to generate unique designs. Customize colors, styles, and elements with intelligent suggestions tailored to your preferences.',
     image: WHAT_BASE + 'what-to-get-2.jpg',
     span: 5,
   },
   {
-    title: 'Adjust Parameters for Customization',
+    title: 'Print instantly at nearest Store',
     description:
-      'Fine-tune the brightness, contrast, colors, and so much more with intuitive parameter adjustment tools.',
+      'Get a professional finish by printing at a SmartWish kiosk in a store near you. It’s fast, convenient, and guarantees a high-quality card every time',
     image: WHAT_BASE + 'what-to-get-3.jpg',
     span: 5,
   },
@@ -34,7 +34,7 @@ export const whatYouGet: WhatItem[] = [
     title: 'Save and Share Your Creations',
     description:
       'Save to your device or share it directly with friends and followers on social media. Share off beautiful designs with just a click.',
-    image: WHAT_BASE + 'what-to-get-1.jpg',
+    image: WHAT_BASE + 'what-to-get-4.png',
     span: 7,
   },
 ]
