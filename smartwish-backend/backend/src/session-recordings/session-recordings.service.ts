@@ -258,7 +258,7 @@ export class SessionRecordingsService {
   }
 
   /**
-   * Delete recording and its files
+   * Delete recording and its files from storage
    */
   async deleteRecording(recordingId: string) {
     const supabase = this.supabaseService.getClient();
@@ -275,19 +275,34 @@ export class SessionRecordingsService {
       throw new Error('Recording not found');
     }
 
+    this.logger.log(`Deleting recording ${recordingId} for session ${recording.session_id}`);
+
     // Delete files from storage
     const filesToDelete: string[] = [];
-    if (recording.storage_path) filesToDelete.push(recording.storage_path);
-    if (recording.thumbnail_path) filesToDelete.push(recording.thumbnail_path);
+    if (recording.storage_path) {
+      filesToDelete.push(recording.storage_path);
+      this.logger.log(`  - Will delete video: ${recording.storage_path}`);
+    }
+    if (recording.thumbnail_path) {
+      filesToDelete.push(recording.thumbnail_path);
+      this.logger.log(`  - Will delete thumbnail: ${recording.thumbnail_path}`);
+    }
 
     if (filesToDelete.length > 0) {
-      const { error: storageError } = await supabase.storage
+      this.logger.log(`Deleting ${filesToDelete.length} files from storage bucket 'session-recordings'...`);
+      
+      const { data: deleteData, error: storageError } = await supabase.storage
         .from('session-recordings')
         .remove(filesToDelete);
 
       if (storageError) {
-        this.logger.warn('Error deleting recording files:', storageError);
+        this.logger.error(`Error deleting storage files: ${storageError.message}`, storageError);
+        // Don't throw - continue to delete DB record even if storage fails
+      } else {
+        this.logger.log(`Successfully deleted ${deleteData?.length || 0} files from storage`);
       }
+    } else {
+      this.logger.log('No storage files to delete for this recording');
     }
 
     // Delete database record
@@ -301,17 +316,25 @@ export class SessionRecordingsService {
       throw new Error('Failed to delete recording');
     }
 
-    // Update session
+    this.logger.log(`Deleted recording database record: ${recordingId}`);
+
+    // Update session to indicate no recording
     if (recording.session_id) {
-      await supabase
+      const { error: updateError } = await supabase
         .from('kiosk_sessions')
         .update({ has_recording: false })
         .eq('id', recording.session_id);
+      
+      if (updateError) {
+        this.logger.warn(`Failed to update session has_recording flag: ${updateError.message}`);
+      } else {
+        this.logger.log(`Updated session ${recording.session_id} has_recording = false`);
+      }
     }
 
-    this.logger.log(`Deleted recording: ${recordingId}`);
+    this.logger.log(`✅ Successfully deleted recording: ${recordingId}`);
 
-    return { success: true };
+    return { success: true, deletedFiles: filesToDelete };
   }
 }
 
