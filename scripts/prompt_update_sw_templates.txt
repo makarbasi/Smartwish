@@ -1,0 +1,78 @@
+You are an automation agent responsible for updating the "sw_templates" table in my Supabase database with complete and accurate metadata for each greeting card design.
+
+Here are the details you need to follow carefully:
+
+1. **Folders & Files**
+   - My main directory contains multiple subfolders, each representing a card category such as:
+     - Birthday (BirthdayCardBasic, BirthdayFloral, BirthdayFunny)
+     - Congratulations
+     - Holidays (ChristmasCardBundle)
+     - Thanksgiving
+     - Thankyou
+     - Graduation
+   - Each subfolder contains two JSON files per card:
+       - metadata.json
+       - insidenote.json
+     Both files include a `"filename"` field linking them to the corresponding card image.
+     each card, has two images , one then has a specific name, which is mentioned in the filename and the other one is inside_<filename>
+
+2. **Supabase Storage Paths**
+   Each category's images are uploaded to Supabase storage at these base URLs:
+   - BirthdayCardBasic → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/BirthdayCardBasic/`
+   - BirthdayFloral → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/BirthdayFloral/`
+   - BirthdayFunny → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/BirthdayFunny/`
+   - Congratulations → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Congratulation/`
+   - Holidays (ChristmasCardBundle) → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Holidays/`
+   - Thanksgiving → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Thanksgiving/`
+   - Thankyou → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Thankyou/`
+   - Graduation → `https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Graduation/`
+
+3. **Blank and Logo Images**
+   - image_3 → `"C:\\Users\\makar\\OneDrive\\OLD\\E-Learning\\projects\\SmartWish\\Code\\Smartwish\\scripts\\blank.png"`
+   - image_4 → `"C:\\Users\\makar\\OneDrive\\OLD\\E-Learning\\projects\\SmartWish\\Code\\Smartwish\\scripts\\blank_logo.png"`
+
+4. **Fields to Populate in `sw_templates`**
+   For each card:
+   - **title** → Extracted from the `filename` (use a readable form, e.g., replace underscores with spaces and capitalize words)
+   - **category_id** → Match to the correct ID from the `sw_categories` table by name (Birthday, Thankyou, Anniversary, Graduation, Congratulations, Holidays, Thanksgiving)
+   - **author_id** → Smartwish Studio ID
+   - **description** → from `metadata.json["description"]`
+   - **price** → `2.99`
+   - **cover_image** → mentioned in filename
+   - **target_audience** → from `metadata.json["recipient"]`
+   - **occasion_type** → from `metadata.json["occasion"]`
+   - **style_type** → from `metadata.json["style"]`
+   - **image_1** → Main card image file name
+   - **image_2** → `inside_<filename>` 
+   - **image_3** → blank page path
+   - **image_4** → logo page path
+   - **search_keywords** → from `metadata.json["keywords"]`
+   - **message** → from `insidenote.json["inside_note"]`
+   - **embedding_vector** → from `insidenote.json["embedding"]`
+   - **embedding_updated_at** → set to the current timestamp
+
+5. **Other Rules**
+   - Each card entry must have a unique slug (use lowercase and hyphen-separated filename)
+   - Skip duplicates if the slug already exists.
+   - If any field is missing in JSON, leave it `NULL` or default.
+   - Commit all changes in a batch operation for efficiency.
+
+6. **Goal**
+   Generate and execute the necessary batch update or `UPSERT` SQL commands for all cards to insert or update their records in the `sw_templates` table based on the above rules.
+
+7. **Credentials**
+   Use these Supabase credentials to connect and update:
+SUPABASE_URL=https://kfitmirodgoduifcsyug.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmaXRtaXJvZGdvZHVpZmNzeXVnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDY5MDkxOCwiZXhwIjoyMDcwMjY2OTE4fQ.A7i0TAn_EP6DGrFVLI4gVEnbsBBqJwsDVA7WvOBMIys
+
+
+
+8. **Output**
+- Log each successfully updated card with title and category.
+- Report any skipped or failed entries with the reason.
+
+Your task: 
+- Parse all folders and JSON files.
+- Match them with their uploaded images.
+- Generate a complete `UPSERT` (insert or update) for each card row in `sw_templates`.
+- Use the correct public Supabase storage path for every image file.

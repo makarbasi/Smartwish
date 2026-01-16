@@ -1,0 +1,13 @@
+# custom_tracker.yaml
+tracker_type: botsort
+track_high_thresh: 0.3
+track_low_thresh: 0.05
+new_track_thresh: 0.3
+track_buffer: 1800      # Increases "memory" to ~60 seconds (at 30fps)
+match_thresh: 0.6       # Lowered from 0.7 for more flexible re-matching
+fuse_score: True
+gmc_method: sparseOptFlow
+proximity_thresh: 0.5
+appearance_thresh: 0.25
+with_reid: True         # Crucial for matching visual "fingerprints"
+model: auto

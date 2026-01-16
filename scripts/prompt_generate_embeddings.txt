@@ -1,0 +1,101 @@
+You are a data-processing and AI-integration assistant.
+Your task is to recursively process a folder structure containing subfolders of greeting card data, generate text embeddings for each card using the Google Gemini Embedding API, and save those embeddings into the correct JSON file.
+folder address : C:\Users\makar\OneDrive\OLD\E-Learning\projects\SmartWish\Designs\Series1_original\Series\
+
+
+Each pair of JSON files refers to the same set of cards.
+Each card has a matching "filename" key in both files.
+
+🧩 Your Tasks
+
+Iterate through all subfolders in the main directory.
+
+In each subfolder:
+
+Load metadata.json → contains descriptive fields for multiple cards.
+
+Load insidenote.json → contains filename and inside_note for the same cards.
+
+Match records between metadata.json and insidenote.json using the "filename" field.
+
+For each card, build a combined text input to send to Gemini for embedding.
+
+🧾 Embedding Text Template
+
+Combine key fields into one text block for better semantic representation:
+
+Title: {title}
+Description: {description}
+Occasion: {occasion}
+Emotion: {emotion}
+Recipient: {recipient}
+Visible Text: {visible_text}
+Inside Note: {inside_note}
+Keywords: {keywords}
+Style: {style}
+Colors: {colors}
+
+
+Ignore non-semantic fields like filename, background, price, or IDs.
+
+⚙️ Embedding Generation Instructions
+
+Use the Google Gemini Embedding API (recommended model: models/embedding-001 or latest available).
+
+Use batch requests for efficiency — group multiple card texts per API call (e.g., 50 per batch).
+
+For each text, receive a vector embedding array.
+
+Example (Python pseudocode):
+
+import google.generativeai as genai
+import os
+genai.configure(api_key=os.environ.get('GOOGLE_API_KEY'))
+
+texts = [combined_text1, combined_text2, ...]
+response = genai.embed_content(
+    model="models/embedding-001",
+    content=texts
+)
+embeddings = response['embedding']
+
+💾 Save Results
+
+For each matching record in insidenote.json,
+add a new key "embedding" containing the numeric vector array.
+
+Preserve all existing data in insidenote.json.
+
+Save the updated file in the same folder, overwriting the original.
+
+Example:
+
+{
+  "filename": "birthday (1).png",
+  "inside_note": "May your special day be filled with gentle moments...",
+  "embedding": [0.128, -0.273, 0.412, ...]
+}
+
+⚡ Performance & Reliability Guidelines
+
+Use batch size between 20–50 items per embedding call.
+
+Use exponential backoff on API rate limits.
+
+Log processed folders and counts to track progress.
+
+Skip and log any card where required fields are missing.
+
+✅ Final Output
+
+Each insidenote.json will contain an additional "embedding" field for each record.
+
+All files remain valid JSON.
+
+The agent returns a summary such as:
+
+✅ Processed 152 folders, 1,843 cards total.
+✅ Added embeddings to all insidenote.json files.
+
+
+Now perform these steps for all subfolders in the main directory.

@@ -1,0 +1,14 @@
+# Copy this content to a new file named .env.local in the smartwish-frontend directory
+# Replace the placeholder values with your actual Stripe keys
+
+# Stripe API Keys
+# Get your keys from https://dashboard.stripe.com/apikeys
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_publishable_key_here
+STRIPE_SECRET_KEY=sk_test_your_secret_key_here
+
+# Stripe Webhook Secret (for production webhook verification)
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
+
+# Application URL
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+

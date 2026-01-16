@@ -1,1 +1,0 @@
-This folder expects a PNG file named wishcards-2.png. Replace this note after adding the image.

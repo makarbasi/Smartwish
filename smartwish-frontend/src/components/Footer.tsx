@@ -1,4 +1,5 @@
 import type { SVGProps } from "react";
+import Image from 'next/image'
 
 const navigation = {
 
@@ -72,9 +73,11 @@ export default function Footer() {
     <footer className="bg-white">
       <div className="mx-auto max-w-7xl px-6 pt-16 pb-8 sm:pt-24 lg:px-8 lg:pt-32">
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
-          <img
-            alt="SmartWish"
+          <Image
+            alt="Smartwish"
             src="/resources/logo/logo-full.png"
+            width={160}
+            height={48}
             className="h-24 w-auto"
           />
           <div className="mt-4 grid grid-cols-2 gap-8 xl:col-span-2 xl:mt-0">

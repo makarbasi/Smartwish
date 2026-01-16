@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Upload Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        .preview {
+            margin-top: 20px;
+        }
+        .preview img {
+            max-width: 100%;
+            max-height: 300px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .log {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>File Upload Test</h1>
+    <p>This page tests file upload functionality in Android WebView.</p>
+    
+    <div class="upload-area">
+        <h3>Test File Upload</h3>
+        <input type="file" id="fileInput" accept="image/*" class="file-input">
+        <button onclick="document.getElementById('fileInput').click()">Select Image</button>
+    </div>
+    
+    <div class="preview" id="preview"></div>
+    <div class="log" id="log"></div>
+
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.textContent += new Date().toLocaleTimeString() + ': ' + message + '\n';
+            console.log(message);
+        }
+
+        log('Page loaded successfully');
+
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+
+        fileInput.addEventListener('change', function(e) {
+            log('File input change event triggered');
+            const file = e.target.files[0];
+            
+            if (file) {
+                log('File selected: ' + file.name + ' (' + file.size + ' bytes, ' + file.type + ')');
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    log('File read successfully');
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.onload = function() {
+                        log('Image loaded: ' + img.width + 'x' + img.height);
+                    };
+                    img.onerror = function() {
+                        log('Error loading image');
+                    };
+                    preview.innerHTML = '';
+                    preview.appendChild(img);
+                };
+                reader.onerror = function() {
+                    log('Error reading file');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                log('No file selected');
+            }
+        });
+
+        // Test if FileReader is available
+        if (typeof FileReader !== 'undefined') {
+            log('FileReader is available');
+        } else {
+            log('FileReader is NOT available');
+        }
+
+        // Test if file input is supported
+        if (fileInput.type === 'file') {
+            log('File input is supported');
+        } else {
+            log('File input is NOT supported');
+        }
+    </script>
+</body>
+</html> 

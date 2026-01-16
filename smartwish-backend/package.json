@@ -1,0 +1,24 @@
+{
+  "name": "smartwish-backend",
+  "version": "1.0.0",
+  "description": "Smartwish Backend with Hotels Subdomain Support",
+  "main": "backend/dist/backend/src/main.js",
+  "scripts": {
+    "build": "cd backend && npm install && npm run build",
+    "start": "cd backend && npm run start:prod",
+    "dev": "cd backend && npm run start:dev",
+    "postinstall": "cd backend && npm install"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-repo/smartwish-backend.git"
+  },
+  "author": "Smartwish Team",
+  "license": "MIT"
+}

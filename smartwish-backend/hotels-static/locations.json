@@ -1,0 +1,107 @@
+[
+  {
+    "id": 1,
+    "name": "The Irvine Garden Inn",
+    "address": "2855 Main St, Irvine, CA 92614",
+    "city": "Irvine",
+    "country": "United States",
+    "coordinates": {
+      "lat": 33.6846,
+      "lng": -117.8265
+    },
+    "status": "Coming Soon",
+    "expectedLaunch": "Q4 2025",
+    "amenities": ["Garden Views", "Boutique Printing", "Personalized Service"],
+    "description": "A charming boutique inn nestled in Irvine's quiet residential area, offering intimate photo printing services with personalized attention to detail."
+  },
+  {
+    "id": 2,
+    "name": "Spectrum View Inn",
+    "address": "4200 Barranca Pkwy, Irvine, CA 92604",
+    "city": "Irvine",
+    "country": "United States",
+    "coordinates": {
+      "lat": 33.6518,
+      "lng": -117.7392
+    },
+    "status": "Coming Soon",
+    "expectedLaunch": "Q4 2025",
+    "amenities": ["Modern Design", "Express Printing", "Digital Gallery"],
+    "description": "A contemporary boutique inn near Irvine Spectrum, featuring state-of-the-art photo printing technology for the modern traveler."
+  },
+  {
+    "id": 3,
+    "name": "Orange County Heritage Inn",
+    "address": "1855 Michelson Dr, Irvine, CA 92612",
+    "city": "Irvine",
+    "country": "United States",
+    "coordinates": {
+      "lat": 33.6891,
+      "lng": -117.8156
+    },
+    "status": "Coming Soon",
+    "expectedLaunch": "Q4 2025",
+    "amenities": ["Heritage Prints", "Custom Framing", "Archival Quality"],
+    "description": "A family-owned inn celebrating Orange County's heritage, specializing in archival-quality photo printing and custom framing services."
+  },
+  {
+    "id": 4,
+    "name": "The Tustin Rose Inn",
+    "address": "14252 Culver Dr, Irvine, CA 92604",
+    "city": "Irvine",
+    "country": "United States",
+    "coordinates": {
+      "lat": 33.7081,
+      "lng": -117.7894
+    },
+    "status": "Coming Soon",
+    "expectedLaunch": "Q4 2025",
+    "amenities": ["Rose Garden Views", "Vintage Printing", "Tea Service"],
+    "description": "A quaint Victorian-style inn with beautiful rose gardens, offering vintage-inspired photo printing services in a peaceful setting."
+  },
+  {
+    "id": 5,
+    "name": "Silver Lake Pool & Inn",
+    "address": "4141 Santa Monica Blvd, Los Angeles, CA 90029",
+    "city": "Los Angeles",
+    "country": "United States",
+    "coordinates": {
+      "lat": 34.0928,
+      "lng": -118.2737
+    },
+    "status": "Coming Soon",
+    "expectedLaunch": "Q4 2025",
+    "amenities": ["Poolside Printing", "Artist Community", "Creative Workshops"],
+    "description": "A trendy boutique inn in the heart of Silver Lake's creative community, offering unique poolside photo printing experiences."
+  },
+  {
+    "id": 6,
+    "name": "Channel Road Inn",
+    "address": "219 W Channel Rd, Santa Monica, CA 90402",
+    "city": "Los Angeles",
+    "country": "United States",
+    "coordinates": {
+      "lat": 34.0194,
+      "lng": -118.5136
+    },
+    "status": "Coming Soon",
+    "expectedLaunch": "Q4 2025",
+    "amenities": ["Ocean Views", "Beach Prints", "Sunset Sessions"],
+    "description": "A charming coastal inn in Santa Monica Canyon, just blocks from the beach, specializing in stunning ocean and sunset photography prints."
+  },
+  {
+    "id": 7,
+    "name": "The Venice Garden Inn",
+    "address": "327 Washington Blvd, Venice, CA 90291",
+    "city": "Los Angeles",
+    "country": "United States",
+    "coordinates": {
+      "lat": 33.9892,
+      "lng": -118.4695
+    },
+    "status": "Coming Soon",
+    "expectedLaunch": "Q4 2024",
+    "amenities": ["Bohemian Style", "Artistic Prints", "Garden Patio"],
+    "description": "A bohemian-style inn near Venice Beach with lush garden patios, offering artistic photo printing services that capture Venice's unique spirit."
+  }
+]

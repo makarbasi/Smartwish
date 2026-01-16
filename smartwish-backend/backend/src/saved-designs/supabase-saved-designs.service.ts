@@ -1,0 +1,1913 @@
+import { Injectable, Inject } from '@nestjs/common';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { v5 as uuidv5 } from 'uuid';
+import { GeminiEmbeddingService } from '../services/gemini-embedding.service';
+
+export interface SavedDesign {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  designData: {
+    templateKey: string;
+    pages: Array<{
+      header: string;
+      image: string;
+      text: string;
+      footer: string;
+    }>;
+    editedPages: Record<number, string>;
+  };
+  thumbnail?: string;
+  category: string;
+  createdAt: Date;
+  updatedAt: Date;
+  // Image fields for generated card images
+  imageUrls?: string[];
+  imageTimestamp?: number;
+  // Additional metadata fields for consistency with Template
+  author?: string;
+  upload_time?: string;
+  price?: number;
+  language?: string;
+  region?: string;
+  popularity?: number;
+  num_downloads?: number;
+  searchKeywords?: string[];
+  // Status field for future use
+  status?:
+  | 'draft'
+  | 'published'
+  | 'archived'
+  | 'template_candidate'
+  | 'published_to_templates';
+  // New fields for sw_templates compatibility
+  templateId?: string;
+  slug?: string;
+  categoryId?: string;
+  authorId?: string;
+  createdByUserId?: string;
+  coverImage?: string;
+  image1?: string;
+  image2?: string;
+  image3?: string;
+  image4?: string;
+  isFeatured?: boolean;
+  isUserGenerated?: boolean;
+  tags?: string[];
+  currentVersion?: string;
+  publishedAt?: Date;
+  sourceTemplateId?: string;
+  // Metadata field for storing additional data like gift cards
+  metadata?: any;
+}
+
+@Injectable()
+export class SupabaseSavedDesignsService {
+  private supabase: SupabaseClient;
+
+  constructor(
+    private readonly embeddingService: GeminiEmbeddingService,
+  ) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const anonKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl) {
+      console.warn('SUPABASE_URL not found - Supabase service unavailable');
+      return;
+    }
+
+    if (!serviceRoleKey && !anonKey) {
+      console.warn(
+        'Neither SUPABASE_SERVICE_ROLE_KEY nor SUPABASE_ANON_KEY found - Supabase service unavailable',
+      );
+      return;
+    }
+
+    // Prefer service role key for better permissions
+    const supabaseKey = serviceRoleKey || anonKey;
+    if (!supabaseKey) {
+      console.warn('No Supabase key found - Supabase service unavailable');
+      return;
+    }
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+
+    if (serviceRoleKey) {
+      console.log(
+        '✅ Supabase connected with service role key (full permissions)',
+      );
+    } else {
+      console.log('⚠️ Supabase connected with anon key (limited permissions)');
+    }
+  }
+
+  isAvailable(): boolean {
+    return !!this.supabase;
+  }
+
+  private getUuidForUserId(userId: string): string {
+    // Deterministic UUID derived from userId to ensure stability across restarts
+    return uuidv5(String(userId), uuidv5.DNS);
+  }
+
+  async saveDesign(
+    userId: string,
+    designData: Omit<SavedDesign, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
+  ): Promise<SavedDesign> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    // Extract page images from designData or use direct image fields
+    let page1Image = null,
+      page2Image = null,
+      page3Image = null,
+      page4Image = null;
+
+    if (designData.designData?.pages) {
+      page1Image = designData.designData.pages[0]?.image || null;
+      page2Image = designData.designData.pages[1]?.image || null;
+      page3Image = designData.designData.pages[2]?.image || null;
+      page4Image = designData.designData.pages[3]?.image || null;
+    }
+
+    // Use direct image fields if provided (override page images)
+    page1Image = designData.image1 || page1Image;
+    page2Image = designData.image2 || page2Image;
+    page3Image = designData.image3 || page3Image;
+    page4Image = designData.image4 || page4Image;
+
+    // Create unique copies of template images before saving
+    console.log('Checking for template images to copy...');
+    const images = [page1Image, page2Image, page3Image, page4Image];
+    const uniqueImages = await Promise.all(
+      images.map(async (imageUrl, index) => {
+        if (imageUrl && imageUrl.includes('supabase') && imageUrl.includes('templates/images/')) {
+          try {
+            console.log(`Creating unique copy for page ${index + 1}: ${imageUrl}`);
+            // Create a unique image for each page, even if source is the same
+            const uniqueImageUrl = await this.copyImageWithPageIndex(imageUrl, userId, index);
+            console.log(`✅ Created unique copy for page ${index + 1}: ${uniqueImageUrl}`);
+            return uniqueImageUrl;
+          } catch (error) {
+            console.error(`Failed to copy image for page ${index + 1}:`, error);
+            return imageUrl; // Keep original if copy fails
+          }
+        }
+        return imageUrl;
+      })
+    );
+
+    // Update the page images with unique copies
+    page1Image = uniqueImages[0];
+    page2Image = uniqueImages[1];
+    page3Image = uniqueImages[2];
+    page4Image = uniqueImages[3];
+
+    // Also update the designData pages with unique images
+    let updatedDesignData = designData.designData;
+    if (updatedDesignData?.pages) {
+      updatedDesignData = {
+        ...updatedDesignData,
+        pages: updatedDesignData.pages.map((page, index) => ({
+          ...page,
+          image: uniqueImages[index] || page.image
+        }))
+      };
+    }
+
+    // Update thumbnail to use unique copy if it's a template image
+    let updatedThumbnail = designData.thumbnail;
+    if (updatedThumbnail && updatedThumbnail.includes('supabase') && updatedThumbnail.includes('templates/images/')) {
+      try {
+        console.log(`Creating unique copy for thumbnail: ${updatedThumbnail}`);
+        // Use page index -1 for thumbnail to make it distinct from pages
+        updatedThumbnail = await this.copyImageWithPageIndex(updatedThumbnail, userId, -1);
+        console.log(`✅ Created unique copy for thumbnail: ${updatedThumbnail}`);
+      } catch (error) {
+        console.error('Failed to copy thumbnail:', error);
+        // Keep original if copy fails
+      }
+    }
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .insert({
+        author_id: userId, // Maps to user ID who created the design
+        title: designData.title,
+        description: designData.description,
+        category_id: designData.categoryId, // Use categoryId if provided
+        price: designData.price !== null && designData.price !== undefined ? parseFloat(designData.price.toString()) : 0,
+        language: designData.language || 'en',
+        region: designData.region || 'US',
+        status: designData.status || 'draft',
+        popularity: designData.popularity || 0,
+        num_downloads: designData.num_downloads || 0,
+        cover_image: updatedThumbnail || page1Image, // Use updated thumbnail or first page as cover
+        // Store individual page images with unique copies
+        image_1: page1Image,
+        image_2: page2Image,
+        image_3: page3Image,
+        image_4: page4Image,
+        search_keywords: designData.searchKeywords || [],
+        tags: designData.tags || [],
+        // Keep minimal metadata for backward compatibility with updated design data
+        metadata: {
+          designData: updatedDesignData,
+          imageUrls: designData.imageUrls || [],
+          imageTimestamp: designData.imageTimestamp,
+          author: designData.author || 'User',
+          templateId: designData.templateId,
+          slug: designData.slug,
+          authorId: designData.authorId,
+          createdByUserId: designData.createdByUserId || userId,
+          coverImage: designData.coverImage,
+          isFeatured: designData.isFeatured,
+          isUserGenerated: designData.isUserGenerated,
+          currentVersion: designData.currentVersion,
+          sourceTemplateId: designData.sourceTemplateId,
+        },
+        // Set timestamps if this is from a template copy
+        submitted_at: designData.publishedAt ? new Date().toISOString() : null,
+        reviewed_at: null,
+        reviewed_by_user_id: null,
+        review_notes: null,
+        is_user_generated: designData.isUserGenerated || true,
+        original_saved_design_id: designData.sourceTemplateId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error saving design to Supabase:', error);
+      throw new Error('Failed to save design');
+    }
+
+    return this.mapDatabaseRecordToSavedDesign(data);
+  }
+
+  async getUserDesigns(userId: string): Promise<SavedDesign[]> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('author_id', userId)
+      // Get all designs regardless of status - frontend will filter as needed
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching user designs from Supabase:', error);
+      throw new Error('Failed to fetch designs');
+    }
+
+    console.log(`getUserDesigns: Found ${data?.length || 0} designs for user ${userId}`);
+    return data.map((record) => this.mapDatabaseRecordToSavedDesign(record));
+  }
+
+  async getDesignById(
+    userId: string,
+    designId: string,
+  ): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .eq('author_id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching design from Supabase:', error);
+      return null;
+    }
+
+    return this.mapDatabaseRecordToSavedDesign(data);
+  }
+
+  async getPublicDesignById(designId: string): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log('🔍 Supabase Service - Fetching design:', designId);
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .single();
+
+    if (error) {
+      console.error('❌ Supabase query error:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.error('❌ No data returned from Supabase');
+      return null;
+    }
+
+    console.log('✅ Raw data from Supabase:');
+    console.log('  - ID:', data.id);
+    console.log('  - Title:', data.title);
+    console.log('  - Price (raw from DB):', data.price);
+    console.log('  - Price (type):', typeof data.price);
+
+    const mapped = this.mapDatabaseRecordToSavedDesign(data);
+    
+    console.log('✅ After mapping:');
+    console.log('  - Price (mapped):', mapped.price);
+    console.log('  - Price (type):', typeof mapped.price);
+
+    return mapped;
+  }
+
+  async updateDesign(
+    userId: string,
+    designId: string,
+    updates: Partial<SavedDesign>,
+  ): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log('🔄 SupabaseService updateDesign - Design ID:', designId);
+    console.log(
+      '🔄 SupabaseService updateDesign - Updates:',
+      JSON.stringify(updates, null, 2),
+    );
+    console.log(
+      '🔄 SupabaseService updateDesign - CategoryId:',
+      updates.categoryId,
+    );
+
+    // First, get the current record to preserve existing metadata
+    const { data: currentRecord, error: fetchError } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .eq('author_id', userId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching current design:', fetchError);
+      return null;
+    }
+
+    const currentMetadata = currentRecord.metadata || {};
+
+    // Build update data for the new schema
+    const updateData: any = {};
+
+    // Direct field updates
+    if (updates.title) updateData.title = updates.title;
+    if (updates.description) updateData.description = updates.description;
+    if (updates.categoryId) {
+      updateData.category_id = updates.categoryId;
+      console.log(
+        '🎯 SupabaseService - Setting category_id in updateData:',
+        updates.categoryId,
+      );
+    }
+    if (updates.price !== undefined) updateData.price = updates.price;
+    if (updates.language) updateData.language = updates.language;
+    if (updates.region) updateData.region = updates.region;
+    if (updates.popularity !== undefined)
+      updateData.popularity = updates.popularity;
+    if (updates.num_downloads !== undefined)
+      updateData.num_downloads = updates.num_downloads;
+    if (updates.searchKeywords)
+      updateData.search_keywords = updates.searchKeywords;
+    if (updates.status) updateData.status = updates.status;
+    if (updates.thumbnail) updateData.cover_image = updates.thumbnail;
+    if (updates.tags) updateData.tags = updates.tags;
+    if (updates.slug) updateData.slug = updates.slug;
+    if (updates.isUserGenerated !== undefined)
+      updateData.is_user_generated = updates.isUserGenerated;
+    if (updates.publishedAt !== undefined) {
+      updateData.published_at = updates.publishedAt
+        ? updates.publishedAt.toISOString()
+        : null;
+    }
+    // Always update the updated_at timestamp when making any changes
+    updateData.updated_at = new Date().toISOString();
+    if (updates.sourceTemplateId)
+      updateData.original_saved_design_id = updates.sourceTemplateId;
+
+    // Extract and update individual page images from designData or direct image fields
+    if (updates.designData?.pages) {
+      if (updates.designData.pages[0]?.image)
+        updateData.image_1 = updates.designData.pages[0].image;
+      if (updates.designData.pages[1]?.image)
+        updateData.image_2 = updates.designData.pages[1].image;
+      if (updates.designData.pages[2]?.image)
+        updateData.image_3 = updates.designData.pages[2].image;
+      if (updates.designData.pages[3]?.image)
+        updateData.image_4 = updates.designData.pages[3].image;
+    }
+
+    // Direct image field updates (override page images if provided)
+    if (updates.image1) updateData.image_1 = updates.image1;
+    if (updates.image2) updateData.image_2 = updates.image2;
+    if (updates.image3) updateData.image_3 = updates.image3;
+    if (updates.image4) updateData.image_4 = updates.image4;
+
+    // Update metadata with new values
+    const newMetadata = {
+      ...currentMetadata,
+    };
+
+    if (updates.designData) newMetadata.designData = updates.designData;
+    if (updates.imageUrls) newMetadata.imageUrls = updates.imageUrls;
+    if (updates.imageTimestamp)
+      newMetadata.imageTimestamp = updates.imageTimestamp;
+    if (updates.author) newMetadata.author = updates.author;
+    if (updates.templateId) newMetadata.templateId = updates.templateId;
+    if (updates.authorId) newMetadata.authorId = updates.authorId;
+    if (updates.createdByUserId)
+      newMetadata.createdByUserId = updates.createdByUserId;
+    if (updates.coverImage) newMetadata.coverImage = updates.coverImage;
+    if (updates.image1) newMetadata.image1 = updates.image1;
+    if (updates.image2) newMetadata.image2 = updates.image2;
+    if (updates.image3) newMetadata.image3 = updates.image3;
+    if (updates.image4) newMetadata.image4 = updates.image4;
+    if (updates.isFeatured !== undefined)
+      newMetadata.isFeatured = updates.isFeatured;
+    if (updates.currentVersion)
+      newMetadata.currentVersion = updates.currentVersion;
+
+    // Handle metadata updates (including gift card data)
+    if (updates.metadata) {
+      Object.assign(newMetadata, updates.metadata);
+      console.log('🎁 SupabaseService - Merging metadata updates:', updates.metadata);
+    }
+
+    // Only update metadata if we have changes
+    if (
+      Object.keys(newMetadata).length > Object.keys(currentMetadata).length ||
+      JSON.stringify(newMetadata) !== JSON.stringify(currentMetadata)
+    ) {
+      updateData.metadata = newMetadata;
+    }
+
+    console.log(
+      '🎯 SupabaseService - Final updateData before database update:',
+      JSON.stringify(updateData, null, 2),
+    );
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .update(updateData)
+      .eq('id', designId)
+      .eq('author_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating design in Supabase:', error);
+      return null;
+    }
+
+    console.log(
+      '✅ SupabaseService - Database update successful, returning mapped design',
+    );
+    const result = this.mapDatabaseRecordToSavedDesign(data);
+    console.log(
+      '✅ SupabaseService - Final result categoryId:',
+      result.categoryId,
+    );
+    return result;
+  }
+
+  async deleteDesign(userId: string, designId: string): Promise<boolean> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    const { error } = await this.supabase
+      .from('saved_designs')
+      .delete()
+      .eq('id', designId)
+      .eq('author_id', userId);
+
+    if (error) {
+      console.error('Error deleting design from Supabase:', error);
+      return false;
+    }
+
+    return true;
+  }
+
+  async duplicateDesign(
+    userId: string,
+    designId: string,
+    title?: string,
+  ): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    // First, get the original design
+    const originalDesign = await this.getDesignById(userId, designId);
+    if (!originalDesign) {
+      return null;
+    }
+
+    // Generate a unique title
+    let duplicateTitle = title;
+    if (!duplicateTitle) {
+      const existingDesigns = await this.getUserDesigns(userId);
+      const baseName = originalDesign.title || 'Design';
+      duplicateTitle = `${baseName} - Copy`;
+      let counter = 1;
+
+      while (
+        existingDesigns.some((design) => design.title === duplicateTitle)
+      ) {
+        counter++;
+        duplicateTitle = `${baseName} - Copy ${counter}`;
+      }
+    }
+
+    // Create the duplicate
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .insert({
+        user_id: userId,
+        title: duplicateTitle,
+        description:
+          originalDesign.description || `Copy of ${originalDesign.title}`,
+        category: originalDesign.category,
+        design_data: originalDesign.designData,
+        thumbnail: originalDesign.thumbnail,
+        image_urls: originalDesign.imageUrls || [],
+        image_timestamp: originalDesign.imageTimestamp,
+        author: originalDesign.author || 'User',
+        price: originalDesign.price || 0,
+        language: originalDesign.language || 'en',
+        region: originalDesign.region || 'US',
+        popularity: 0,
+        num_downloads: 0,
+        search_keywords: originalDesign.searchKeywords || [],
+        status: 'draft',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error duplicating design in Supabase:', error);
+      throw new Error('Failed to duplicate design');
+    }
+
+    return this.mapDatabaseRecordToSavedDesign(data);
+  }
+
+  async getPublishedDesigns(): Promise<SavedDesign[]> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log('Fetching published designs from saved_designs table...');
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('status', 'published')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching published designs from Supabase:', error);
+      throw new Error('Failed to fetch published designs');
+    }
+
+    return data.map((record) => this.mapDatabaseRecordToSavedDesign(record));
+  }
+
+  async getUserPublishedDesigns(userId: string): Promise<SavedDesign[]> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log('Fetching published designs for userId:', userId);
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('author_id', userId)
+      .eq('status', 'published')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error(
+        'Error fetching user published designs from Supabase:',
+        error,
+      );
+      throw new Error('Failed to fetch user published designs');
+    }
+
+    console.log(`Found ${data.length} published designs in Supabase`);
+
+    return data.map((record) => this.mapDatabaseRecordToSavedDesign(record));
+  }
+
+  async publishDesign(
+    userId: string,
+    designId: string,
+    title?: string,
+    categoryId?: string,
+    description?: string,
+  ): Promise<SavedDesign | null> {
+    const updateData: any = {
+      status: 'published',
+      publishedAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    // Add title, category_id and description if provided
+    if (title) {
+      updateData.title = title;
+    }
+    if (categoryId) {
+      updateData.category_id = categoryId;
+    }
+    if (description) {
+      updateData.description = description;
+    }
+
+    console.log('📤 publishDesign - Updating design with:', updateData);
+
+    const updated = await this.updateDesign(userId, designId, updateData);
+    if (updated) {
+      try {
+        await this.ensureTemplateForSavedDesign(updated.id, userId);
+      } catch (e) {
+        console.error('publishDesign: ensureTemplateForSavedDesign failed', e);
+      }
+    }
+    return updated;
+  }
+
+  async publishDesignWithMetadata(
+    userId: string,
+    designId: string,
+    metadata: {
+      title: string;
+      description: string;
+      category: string;
+      searchKeywords: string[];
+      language?: string;
+      region?: string;
+    },
+  ): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log(
+      `Publishing design ${designId} for user ${userId} with metadata:`,
+      metadata,
+    );
+
+    const updateData = {
+      status: 'published',
+      title: metadata.title,
+      description: metadata.description,
+      category: metadata.category,
+      search_keywords: metadata.searchKeywords,
+      language: metadata.language || 'en',
+      region: metadata.region || 'US',
+      upload_time: new Date().toISOString(),
+      popularity: 0,
+      num_downloads: 0,
+      price: 0,
+      updated_at: new Date().toISOString(),
+    };
+
+    console.log('Update data for publishing:', updateData);
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .update(updateData)
+      .eq('id', designId)
+      .eq('author_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error publishing design with metadata:', error);
+      throw new Error('Failed to publish design');
+    }
+
+    console.log('Design published successfully:', data);
+    const mapped = data ? this.mapDatabaseRecordToSavedDesign(data) : null;
+    if (mapped) {
+      try {
+        await this.ensureTemplateForSavedDesign(mapped.id, userId);
+      } catch (e) {
+        console.error(
+          'publishDesignWithMetadata: ensureTemplateForSavedDesign failed',
+          e,
+        );
+      }
+    }
+    return mapped;
+  }
+
+  async unpublishDesign(
+    userId: string,
+    designId: string,
+  ): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log(`Unpublishing design ${designId} for user ${userId}`);
+
+    // First, let's check if the design exists at all (without RLS)
+    const { data: designCheck, error: checkError } = await this.supabase
+      .from('saved_designs')
+      .select('id, author_id, status, title')
+      .eq('id', designId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking design existence:', checkError);
+    }
+
+    if (!designCheck) {
+      // Check if it exists in templates instead
+      const { data: templateCheck } = await this.supabase
+        .from('sw_templates')
+        .select('id, original_saved_design_id, title, author_id')
+        .eq('id', designId)
+        .maybeSingle();
+
+      if (templateCheck) {
+        console.error(`Design ${designId} is a template, not a saved design. Use original_saved_design_id: ${templateCheck.original_saved_design_id}`);
+        return null;
+      }
+
+      console.error(`Design ${designId} does not exist in saved_designs table or sw_templates table`);
+      console.log(`💡 Hint: This design may have been deleted. Try refreshing the page.`);
+      return null;
+    }
+
+    console.log(`Design found:`, {
+      id: designCheck.id,
+      author_id: designCheck.author_id,
+      status: designCheck.status,
+      title: designCheck.title,
+      requestingUserId: userId,
+      authorIdMatch: designCheck.author_id === userId
+    });
+
+    if (designCheck.author_id !== userId) {
+      console.error(`User ${userId} is not the author of design ${designId}. Author is: ${designCheck.author_id}`);
+      return null;
+    }
+
+    // Check if design is actually published
+    const publishedStatuses = ['published', 'published_to_templates'];
+    if (!publishedStatuses.includes(designCheck.status)) {
+      console.warn(`Design ${designId} has status "${designCheck.status}", not a published status. Allowing unpublish anyway...`);
+    }
+
+    // First revert status
+    const reverted = await this.updateDesign(userId, designId, {
+      status: 'draft',
+      publishedAt: null as any,
+      updatedAt: new Date(),
+    });
+
+    if (!reverted) {
+      console.error(`Failed to update design ${designId} to draft status`);
+      return null;
+    }
+
+    console.log(`Design ${designId} status reverted to draft`);
+
+    // Remove associated template(s)
+    try {
+      console.log(`Deleting templates for design ${designId}...`);
+      const { data: deletedTemplates, error } = await this.supabase
+        .from('sw_templates')
+        .delete()
+        .eq('original_saved_design_id', designId)
+        .select();
+
+      if (error) {
+        console.error('unpublishDesign: failed to delete template', error);
+        // Don't throw - allow unpublish to succeed even if template deletion fails
+      } else {
+        console.log(`Successfully deleted ${deletedTemplates?.length || 0} template(s) for design ${designId}`);
+      }
+    } catch (e) {
+      console.error('unpublishDesign: template cleanup error', e);
+      // Don't throw - allow unpublish to succeed even if template deletion fails
+    }
+
+    console.log(`Successfully unpublished design ${designId}`);
+    return reverted;
+  }
+
+  private mapDatabaseRecordToSavedDesign(record: any): SavedDesign {
+    // Extract data from the new schema
+    const metadata = record.metadata || {};
+
+    // Create pages array from individual image columns
+    const pages = [
+      {
+        header: 'Page 1',
+        image: record.image_1 || '',
+        text: '',
+        footer: '',
+      },
+      {
+        header: 'Page 2',
+        image: record.image_2 || '',
+        text: '',
+        footer: '',
+      },
+      {
+        header: 'Page 3',
+        image: record.image_3 || '',
+        text: '',
+        footer: '',
+      },
+      {
+        header: 'Page 4',
+        image: record.image_4 || '',
+        text: '',
+        footer: '',
+      },
+    ]; // Keep all 4 pages for proper card display
+
+    // Create design data with pages from individual columns or fallback to metadata
+    const designData = metadata.designData || {
+      templateKey: metadata.templateKey || 'custom',
+      pages: pages,
+      editedPages: {},
+    };
+
+    // If we have individual image columns, prioritize them over metadata
+    if (record.image_1 || record.image_2 || record.image_3 || record.image_4) {
+      designData.pages = pages;
+      console.log('🔄 Using individual image columns for design:', record.id);
+      console.log('📸 Individual images:', {
+        image1: record.image_1 ? 'Present' : 'Empty',
+        image2: record.image_2 ? 'Present' : 'Empty',
+        image3: record.image_3 ? 'Present' : 'Empty',
+        image4: record.image_4 ? 'Present' : 'Empty',
+      });
+    } else {
+      console.log(
+        '⚠️ No individual image columns found for design:',
+        record.id,
+        'using metadata',
+      );
+    }
+
+    return {
+      id: record.id,
+      userId: record.author_id, // Maps to the user who created this design
+      title: record.title,
+      description: record.description,
+      category: 'General', // Default category since we're using category_id now
+      designData: designData,
+      thumbnail: record.cover_image,
+      imageUrls:
+        metadata.imageUrls ||
+        [record.image_1, record.image_2, record.image_3, record.image_4].filter(
+          Boolean,
+        ),
+      imageTimestamp: metadata.imageTimestamp,
+      author: metadata.author || 'User',
+      upload_time: record.created_at,
+      price: record.price !== null && record.price !== undefined ? parseFloat(record.price) : 0,
+      language: record.language || 'en',
+      region: record.region || 'US',
+      popularity: record.popularity || 0,
+      num_downloads: record.num_downloads || 0,
+      searchKeywords: record.search_keywords || [],
+      status: record.status as
+        | 'draft'
+        | 'published'
+        | 'archived'
+        | 'template_candidate'
+        | 'published_to_templates'
+        | undefined,
+      createdAt: new Date(record.created_at),
+      updatedAt: new Date(record.updated_at),
+      // New fields for sw_templates compatibility
+      templateId: metadata.templateId,
+      slug: record.slug,
+      categoryId: record.category_id,
+      authorId: record.author_id,
+      createdByUserId: metadata.createdByUserId || record.author_id,
+      coverImage: metadata.coverImage || record.cover_image,
+      // Use individual image columns
+      image1: record.image_1,
+      image2: record.image_2,
+      image3: record.image_3,
+      image4: record.image_4,
+      isFeatured: metadata.isFeatured || false,
+      isUserGenerated: record.is_user_generated || true,
+      tags: record.tags || [],
+      currentVersion: metadata.currentVersion,
+      publishedAt: record.published_at
+        ? new Date(record.published_at)
+        : undefined,
+      sourceTemplateId:
+        metadata.sourceTemplateId || record.original_saved_design_id,
+      // Include metadata field for gift card data and other additional data
+      metadata: record.metadata,
+    };
+  }
+
+  // New methods for sw_templates compatibility
+
+  /**
+   * Copy a template from sw_templates to saved_designs for user editing
+   */
+  async copyFromTemplate(
+    templateId: string,
+    userId: string,
+    title?: string,
+  ): Promise<SavedDesign | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log(`Copying template ${templateId} for user ${userId}`);
+
+    // Use the SQL function to copy template to saved_designs
+    const { data, error } = await this.supabase.rpc(
+      'copy_template_to_saved_design',
+      {
+        p_template_id: templateId,
+        p_user_id: userId,
+        p_title: title || null,
+      },
+    );
+
+    if (error) {
+      console.error('Error copying template:', error);
+      throw new Error('Failed to copy template');
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    // Fetch the created saved design
+    const { data: savedDesign, error: fetchError } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', data)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching copied design:', fetchError);
+      throw new Error('Failed to fetch copied design');
+    }
+
+    if (!savedDesign) {
+      return null;
+    }
+
+    // Now create unique copies of all images for this saved design
+    console.log('Creating unique image copies for saved design...');
+
+    try {
+      const imageFields = ['image_1', 'image_2', 'image_3', 'image_4', 'cover_image'];
+      const updateData: any = {};
+      let hasUpdates = false;
+
+      for (let i = 0; i < imageFields.length; i++) {
+        const field = imageFields[i];
+        const imageUrl = savedDesign[field];
+        if (imageUrl && imageUrl.includes('supabase') && imageUrl.includes('templates/images/')) {
+          try {
+            console.log(`Copying ${field}: ${imageUrl}`);
+            // Use page index for field-based copying (image_1 = page 0, etc.)
+            const pageIndex = field === 'cover_image' ? 0 : parseInt(field.split('_')[1]) - 1;
+            const uniqueImageUrl = await this.copyImageWithPageIndex(imageUrl, userId, pageIndex);
+            updateData[field] = uniqueImageUrl;
+            hasUpdates = true;
+            console.log(`✅ Created unique copy for ${field}: ${uniqueImageUrl}`);
+          } catch (copyError) {
+            console.error(`Failed to copy ${field}:`, copyError);
+            // Keep original URL if copy fails
+          }
+        }
+      }
+
+      // Also copy images from design_data if present
+      if (savedDesign.design_data && typeof savedDesign.design_data === 'object') {
+        const designData = savedDesign.design_data as any;
+
+        if (designData.pages && Array.isArray(designData.pages)) {
+          const updatedPages = await Promise.all(
+            designData.pages.map(async (page: any, index: number) => {
+              if (page.image && page.image.includes('supabase') && page.image.includes('templates/images/')) {
+                try {
+                  console.log(`Copying page image: ${page.image}`);
+                  const uniqueImageUrl = await this.copyImageWithPageIndex(page.image, userId, index);
+                  console.log(`✅ Created unique copy for page image: ${uniqueImageUrl}`);
+                  return { ...page, image: uniqueImageUrl };
+                } catch (copyError) {
+                  console.error('Failed to copy page image:', copyError);
+                  return page;
+                }
+              }
+              return page;
+            })
+          );
+
+          updateData.design_data = {
+            ...designData,
+            pages: updatedPages
+          };
+          hasUpdates = true;
+        }
+      }
+
+      // Update the saved design with unique image URLs
+      if (hasUpdates) {
+        console.log('Updating saved design with unique image URLs...');
+        const { error: updateError } = await this.supabase
+          .from('saved_designs')
+          .update(updateData)
+          .eq('id', data);
+
+        if (updateError) {
+          console.error('Error updating saved design with unique images:', updateError);
+          // Continue anyway - the design was created, just with original template images
+        } else {
+          console.log('✅ Successfully updated saved design with unique image URLs');
+
+          // Fetch the updated design
+          const { data: updatedDesign, error: refetchError } = await this.supabase
+            .from('saved_designs')
+            .select('*')
+            .eq('id', data)
+            .single();
+
+          if (!refetchError && updatedDesign) {
+            return this.mapDatabaseRecordToSavedDesign(updatedDesign);
+          }
+        }
+      }
+    } catch (imageError) {
+      console.error('Error during image copying process:', imageError);
+      // Continue with original saved design if image copying fails
+    }
+
+    return savedDesign
+      ? this.mapDatabaseRecordToSavedDesign(savedDesign)
+      : null;
+  }
+
+  /**
+   * Publish a saved design back to sw_templates
+   */
+  async publishToTemplates(
+    designId: string,
+    userId: string,
+  ): Promise<{ templateId: string; savedDesign: SavedDesign } | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log(
+      `Publishing design ${designId} to templates for user ${userId}`,
+    );
+
+    // Use the SQL function to publish saved_design to templates
+    const { data, error } = await this.supabase.rpc(
+      'publish_saved_design_to_templates',
+      {
+        p_design_id: designId,
+        p_user_id: userId,
+      },
+    );
+
+    if (error) {
+      console.error('Error publishing to templates:', error);
+      throw new Error('Failed to publish to templates');
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    // Fetch the updated saved design
+    const { data: savedDesign, error: fetchError } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching published design:', fetchError);
+      throw new Error('Failed to fetch published design');
+    }
+
+    if (!savedDesign) {
+      throw new Error('Failed to fetch updated saved design');
+    }
+
+    return {
+      templateId: data,
+      savedDesign: this.mapDatabaseRecordToSavedDesign(savedDesign),
+    };
+  }
+
+  /**
+   * Promote a saved_design row to sw_templates (direct insert with defaults).
+   * Unlike publishToTemplates (RPC), this performs explicit mapping & default assignment.
+   */
+  async promoteToTemplate(
+    designId: string,
+    userId: string,
+  ): Promise<{ template: any; savedDesign: SavedDesign } | null> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    // 1. Fetch saved design (ensure ownership)
+    const { data: designRecord, error: designError } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .eq('author_id', userId)
+      .single();
+
+    if (designError) {
+      console.error('promoteToTemplate: design fetch error', designError);
+      return null;
+    }
+
+    // 2. Prepare slug helper
+    const makeSlug = (title: string) =>
+      (title || 'untitled')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60);
+
+    const baseSlug = makeSlug(designRecord.title || 'untitled-design');
+    let finalSlug = baseSlug;
+
+    // 3. Ensure slug uniqueness
+    let slugCounter = 1;
+    while (true) {
+      const { data: existing, error: slugError } = await this.supabase
+        .from('sw_templates')
+        .select('id')
+        .eq('slug', finalSlug)
+        .maybeSingle();
+      if (slugError) {
+        console.warn(
+          'promoteToTemplate: slug check warning',
+          slugError.message,
+        );
+        break; // fallback to current slug
+      }
+      if (!existing) break;
+      slugCounter++;
+      finalSlug = `${baseSlug}-${slugCounter}`;
+    }
+
+    const metadata = designRecord.metadata || {};
+
+    // 4. Build template insert object with defaults
+    const nowIso = new Date().toISOString();
+    // sw_templates actual columns (from CSV): slug,title,category_id,author_id,description,price,language,region,status,popularity,num_downloads,cover_image,current_version,published_at,is_user_generated,original_saved_design_id,image_1..image_4,search_keywords,tags,metadata
+    const templateInsert: any = {
+      slug: finalSlug,
+      title: designRecord.title || 'Untitled Design',
+      description: designRecord.description || null,
+      category_id: designRecord.category_id || null,
+      author_id: userId, // Always use the userId of the person publishing the design
+      price: designRecord.price ?? 0,
+      language: designRecord.language || 'en',
+      region: designRecord.region || 'US',
+      status: 'published',
+      popularity: designRecord.popularity ?? 0,
+      num_downloads: designRecord.num_downloads ?? 0,
+      cover_image: designRecord.cover_image || designRecord.image_1 || null,
+      current_version: metadata.currentVersion || '1.0.0',
+      published_at: nowIso,
+      is_user_generated: designRecord.is_user_generated ?? true,
+      original_saved_design_id: designId, // Link back to the saved design being promoted
+      image_1: designRecord.image_1 || null,
+      image_2: designRecord.image_2 || null,
+      image_3: designRecord.image_3 || null,
+      image_4: designRecord.image_4 || null,
+      search_keywords: designRecord.search_keywords || [],
+      tags: designRecord.tags || [],
+      metadata: {
+        ...(designRecord.metadata || {}),
+        promotedFromSavedDesignId: designId,
+        promotedAt: nowIso,
+        // Store design pages inside metadata for potential use
+        designData: metadata.designData || {
+          templateKey: metadata.templateKey || 'custom',
+          pages: [
+            {
+              header: 'Page 1',
+              image: designRecord.image_1 || '',
+              text: '',
+              footer: '',
+            },
+            {
+              header: 'Page 2',
+              image: designRecord.image_2 || '',
+              text: '',
+              footer: '',
+            },
+            {
+              header: 'Page 3',
+              image: designRecord.image_3 || '',
+              text: '',
+              footer: '',
+            },
+            {
+              header: 'Page 4',
+              image: designRecord.image_4 || '',
+              text: '',
+              footer: '',
+            },
+          ],
+        },
+      },
+    };
+
+    // 5. Insert into sw_templates
+    const { data: templateRow, error: insertError } = await this.supabase
+      .from('sw_templates')
+      .insert(templateInsert)
+      .select(`
+        *,
+        sw_categories (
+          name,
+          display_name
+        )
+      `)
+      .single();
+
+    if (insertError) {
+      console.error('promoteToTemplate: insert error', insertError);
+      throw new Error('Failed to promote design to template');
+    }
+
+    // 5.5. Generate and store embedding for the new template
+    console.log(`[promoteToTemplate] Embedding service available: ${!!this.embeddingService}`);
+    if (this.embeddingService) {
+      try {
+        console.log(`[promoteToTemplate] Generating embedding for template ${templateRow.id}...`);
+        console.log(`[promoteToTemplate] Template data:`, {
+          id: templateRow.id,
+          title: templateRow.title,
+          description: templateRow.description,
+          category_id: templateRow.category_id,
+          category: templateRow.sw_categories
+        });
+
+        const semanticDescription = this.embeddingService.generateSemanticDescription({
+          ...templateRow,
+          category_name: templateRow.sw_categories?.name,
+          category_display_name: templateRow.sw_categories?.display_name,
+        });
+
+        console.log(`[promoteToTemplate] Semantic description generated:`, semanticDescription);
+
+        const embedding = await this.embeddingService.generateEmbedding(semanticDescription);
+
+        console.log(`[promoteToTemplate] Embedding generated, length: ${embedding?.length}`);
+
+        // Update template with embedding
+        const { error: embeddingError } = await this.supabase
+          .from('sw_templates')
+          .update({
+            semantic_description: semanticDescription,
+            embedding_vector: JSON.stringify(embedding),
+            embedding_updated_at: new Date().toISOString(),
+          })
+          .eq('id', templateRow.id);
+
+        if (embeddingError) {
+          console.error('[promoteToTemplate] Failed to store embedding:', embeddingError);
+        } else {
+          console.log(`[promoteToTemplate] ✅ Embedding generated and stored for template ${templateRow.id}`);
+        }
+      } catch (embeddingError) {
+        console.error('[promoteToTemplate] ❌ Failed to generate embedding:', embeddingError);
+        console.error('[promoteToTemplate] Error details:', embeddingError.message, embeddingError.stack);
+        // Continue without embedding - it's not critical to fail the whole operation
+      }
+    } else {
+      console.warn('[promoteToTemplate] ⚠️ Embedding service not available - skipping embedding generation');
+    }
+
+    // 6. Update saved_design metadata & status with templateId reference
+    const newMetadata = {
+      ...metadata,
+      templateId: templateRow.id,
+      currentVersion: templateInsert.current_version,
+    };
+    const { data: updatedDesign, error: updateError } = await this.supabase
+      .from('saved_designs')
+      .update({
+        status: 'published_to_templates',
+        metadata: newMetadata,
+        published_at: nowIso,
+        updated_at: nowIso,
+        slug: templateRow.slug,
+      })
+      .eq('id', designId)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error(
+        'promoteToTemplate: saved_design update error',
+        updateError,
+      );
+    }
+
+    return {
+      template: templateRow,
+      savedDesign: this.mapDatabaseRecordToSavedDesign(
+        updatedDesign || designRecord,
+      ),
+    };
+  }
+
+  /**
+   * Ensure a template exists for a saved design (idempotent). Called during publish.
+   */
+  private async ensureTemplateForSavedDesign(
+    designId: string,
+    userId: string,
+  ): Promise<void> {
+    if (!this.supabase) return;
+    // Already have a template?
+    const { data: existingTemplate, error: existingError } = await this.supabase
+      .from('sw_templates')
+      .select('id')
+      .eq('original_saved_design_id', designId)
+      .maybeSingle();
+    if (existingError) {
+      console.warn(
+        'ensureTemplateForSavedDesign: existing check error',
+        existingError.message,
+      );
+    }
+    if (existingTemplate) return;
+    // Fetch saved design record
+    const { data: designRecord, error: designError } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('id', designId)
+      .single();
+    if (designError || !designRecord) return;
+    // Reuse logic via promoteToTemplate but without status mutation (avoid recursion)
+    try {
+      await this.promoteToTemplate(designId, userId);
+    } catch (e) {
+      console.error('ensureTemplateForSavedDesign: promote failed', e);
+    }
+  }
+
+  /**
+   * Get templates that can be copied (from sw_templates)
+   */
+  async getAvailableTemplates(
+    userId?: string,
+    category?: string,
+    limit = 20,
+    offset = 0,
+  ): Promise<any[]> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log(
+      `Getting available templates for user ${userId}, category: ${category}`,
+    );
+
+    let query = this.supabase
+      .from('sw_templates')
+      .select(
+        `
+        *,
+        sw_categories(name)
+      `,
+      )
+      .eq('status', 'published')
+      // Order newest (most recently published) first; fall back to created_at for any rows lacking published_at
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (category) {
+      query = query.eq('category_id', category);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching available templates:', error);
+      throw new Error('Failed to fetch available templates');
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Get designs that have been published to templates
+   */
+  async getPublishedToTemplates(userId: string): Promise<SavedDesign[]> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    console.log(`Getting published to templates for user ${userId}`);
+
+    const { data, error } = await this.supabase
+      .from('saved_designs')
+      .select('*')
+      .eq('author_id', userId)
+      .eq('status', 'published_to_templates')
+      .order('published_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching published to templates:', error);
+      throw new Error('Failed to fetch published to templates');
+    }
+
+    return data
+      ? data.map((record) => this.mapDatabaseRecordToSavedDesign(record))
+      : [];
+  }
+
+  /**
+   * Copy an image from one location to another in Supabase Storage
+   */
+  async copyImage(originalImageUrl: string, userId: string): Promise<string> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    try {
+      // Extract the file path from the URL
+      const urlParts = originalImageUrl.split('/');
+      const bucketName = 'smartwish-assets'; // Based on your URL structure
+      const originalPath = urlParts
+        .slice(urlParts.indexOf('smartwish-assets') + 1)
+        .join('/');
+
+      // Generate a new path for the copied image
+      const timestamp = Date.now();
+      const fileName = originalPath.split('/').pop() || 'image.png';
+      const fileExtension = fileName.split('.').pop() || 'png';
+      const baseFileName = fileName.replace(`.${fileExtension}`, '');
+      const newFileName = `${baseFileName}_copy_${timestamp}.${fileExtension}`;
+      const newPath = `users/${userId}/designs/copied_images/${newFileName}`;
+
+      // Download the original image
+      const { data: originalData, error: downloadError } =
+        await this.supabase.storage.from(bucketName).download(originalPath);
+
+      if (downloadError) {
+        console.error('Error downloading original image:', downloadError);
+        throw new Error(
+          `Failed to download original image: ${downloadError.message}`,
+        );
+      }
+
+      // Upload the image to the new location
+      const { data: uploadData, error: uploadError } =
+        await this.supabase.storage
+          .from(bucketName)
+          .upload(newPath, originalData, {
+            contentType: originalData.type,
+            upsert: false,
+          });
+
+      if (uploadError) {
+        console.error('Error uploading copied image:', uploadError);
+        throw new Error(
+          `Failed to upload copied image: ${uploadError.message}`,
+        );
+      }
+
+      // Generate the public URL for the new image
+      const { data: publicUrlData } = this.supabase.storage
+        .from(bucketName)
+        .getPublicUrl(newPath);
+
+      if (!publicUrlData.publicUrl) {
+        throw new Error('Failed to generate public URL for copied image');
+      }
+
+      console.log(
+        `Image copied successfully: ${originalImageUrl} -> ${publicUrlData.publicUrl}`,
+      );
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      console.error('Error copying image:', error);
+      // Return the original URL as fallback
+      return originalImageUrl;
+    }
+  }
+
+  /**
+   * Copy an image from one location to another in Supabase Storage with page-specific naming
+   * This ensures each page gets a unique image copy, even if they share the same source
+   */
+  async copyImageWithPageIndex(originalImageUrl: string, userId: string, pageIndex: number): Promise<string> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    try {
+      // Extract the file path from the URL
+      const urlParts = originalImageUrl.split('/');
+      const bucketName = 'smartwish-assets'; // Based on your URL structure
+      const originalPath = urlParts
+        .slice(urlParts.indexOf('smartwish-assets') + 1)
+        .join('/');
+
+      // Generate a new path for the copied image with page index for uniqueness
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 9);
+      const fileName = originalPath.split('/').pop() || 'image.png';
+      const fileExtension = fileName.split('.').pop() || 'png';
+      const baseFileName = fileName.replace(`.${fileExtension}`, '');
+
+      // Handle thumbnail case (pageIndex = -1) separately
+      const pageIdentifier = pageIndex === -1 ? 'thumbnail' : `page${pageIndex + 1}`;
+      const newFileName = `${baseFileName}_${pageIdentifier}_${timestamp}_${randomId}.${fileExtension}`;
+      const newPath = `users/${userId}/designs/copied_images/${newFileName}`;
+
+      const logIdentifier = pageIndex === -1 ? 'thumbnail' : `page ${pageIndex + 1}`;
+      console.log(`🖼️ Creating unique copy for ${logIdentifier}:`);
+      console.log(`   Original: ${originalPath}`);
+      console.log(`   New path: ${newPath}`);
+
+      // Download the original image
+      const { data: originalData, error: downloadError } =
+        await this.supabase.storage.from(bucketName).download(originalPath);
+
+      if (downloadError) {
+        console.error('Error downloading original image:', downloadError);
+        throw new Error(
+          `Failed to download original image: ${downloadError.message}`,
+        );
+      }
+
+      // Upload the image to the new location
+      const { data: uploadData, error: uploadError } =
+        await this.supabase.storage
+          .from(bucketName)
+          .upload(newPath, originalData, {
+            contentType: originalData.type,
+            upsert: false,
+          });
+
+      if (uploadError) {
+        console.error('Error uploading copied image:', uploadError);
+        throw new Error(
+          `Failed to upload copied image: ${uploadError.message}`,
+        );
+      }
+
+      // Generate the public URL for the new image
+      const { data: publicUrlData } = this.supabase.storage
+        .from(bucketName)
+        .getPublicUrl(newPath);
+
+      if (!publicUrlData.publicUrl) {
+        throw new Error('Failed to generate public URL for copied image');
+      }
+
+      console.log(
+        `✅ Image copied successfully for ${logIdentifier}: ${originalImageUrl} -> ${publicUrlData.publicUrl}`,
+      );
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      const errorIdentifier = pageIndex === -1 ? 'thumbnail' : `page ${pageIndex + 1}`;
+      console.error(`Error copying image for ${errorIdentifier}:`, error);
+      // Return the original URL as fallback
+      return originalImageUrl;
+    }
+  }
+
+  /**
+   * Update the content of an existing image in Supabase Storage
+   */
+  async updateImageContent(supabaseUrl: string, newImageData: string): Promise<string> {
+    if (!this.supabase) {
+      throw new Error('Supabase not configured');
+    }
+
+    try {
+      console.log('🔄 Starting image update process');
+      console.log('📍 Supabase URL:', supabaseUrl);
+      console.log('📊 Image data preview:', newImageData.substring(0, 50) + '...');
+
+      // Extract the file path from the URL - handle both storage URLs and CDN URLs
+      let imagePath = '';
+      const bucketName = 'smartwish-assets';
+
+      if (supabaseUrl.includes('/storage/v1/object/public/')) {
+        // Handle storage API URL format
+        const storageIndex = supabaseUrl.indexOf('/storage/v1/object/public/');
+        const pathPart = supabaseUrl.substring(storageIndex + '/storage/v1/object/public/'.length);
+        const pathSegments = pathPart.split('/');
+        if (pathSegments[0] === bucketName) {
+          imagePath = pathSegments.slice(1).join('/');
+        }
+      } else if (supabaseUrl.includes(`/${bucketName}/`)) {
+        // Handle CDN URL format
+        const bucketIndex = supabaseUrl.indexOf(`/${bucketName}/`);
+        imagePath = supabaseUrl.substring(bucketIndex + `/${bucketName}/`.length);
+      }
+
+      if (!imagePath) {
+        throw new Error(`Could not extract file path from URL: ${supabaseUrl}`);
+      }
+
+      console.log('� Extracted image path:', imagePath);
+
+      // Convert base64 data URL to buffer
+      let base64Data: string;
+      let contentType = 'image/png'; // default
+
+      if (newImageData.startsWith('data:')) {
+        // Handle data URL format (data:image/png;base64,...)
+        const parts = newImageData.split(',');
+        if (parts.length !== 2) {
+          throw new Error('Invalid data URL format');
+        }
+
+        base64Data = parts[1];
+        const mimeMatch = newImageData.match(/^data:([^;]+)/);
+        if (mimeMatch) {
+          contentType = mimeMatch[1];
+        }
+      } else {
+        // Assume it's already base64 encoded
+        base64Data = newImageData;
+      }
+
+      if (!base64Data) {
+        throw new Error('No base64 data found in image data');
+      }
+
+      console.log('🔧 Content type:', contentType);
+      console.log('📏 Base64 data length:', base64Data.length);
+
+      // Convert base64 to buffer using Node.js Buffer (not atob which is browser-only)
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+
+      console.log('📦 Buffer size:', imageBuffer.length, 'bytes');
+
+      // Upload the new image content, replacing the existing file
+      const { data: uploadData, error: uploadError } =
+        await this.supabase.storage
+          .from(bucketName)
+          .upload(imagePath, imageBuffer, {
+            contentType,
+            upsert: true, // This will overwrite the existing file
+          });
+
+      if (uploadError) {
+        console.error('❌ Supabase upload error:', uploadError);
+        throw new Error(
+          `Failed to update image content: ${uploadError.message}`,
+        );
+      }
+
+      console.log('✅ Image content updated successfully in Supabase Storage');
+      console.log('📋 Upload data:', uploadData);
+
+      // Return the URL with a cache-busting parameter to force browser refresh
+      const timestamp = Date.now();
+      const urlWithCacheBust = supabaseUrl.includes('?')
+        ? `${supabaseUrl}&v=${timestamp}`
+        : `${supabaseUrl}?v=${timestamp}`;
+
+      console.log('🔗 Returning URL with cache bust:', urlWithCacheBust);
+      return urlWithCacheBust;
+    } catch (error) {
+      console.error('❌ Error updating image content:', error);
+      if (error instanceof Error) {
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+      }
+      throw error;
+    }
+  }
+
+
+  async updateImageUrlsInDesigns(userId: string, oldUrl: string, newUrl: string, designId?: string): Promise<number> {
+    try {
+      console.log('🔄 Updating saved designs to use new image URL...');
+      console.log('👤 User ID:', userId);
+      console.log('🔗 Old URL:', oldUrl);
+      console.log('🆕 New URL:', newUrl);
+      if (designId) {
+        console.log('🎯 Design ID filter:', designId);
+      }
+
+      // Extract the base URL without cache-busting parameters for comparison
+      const oldBaseUrl = oldUrl.split('?')[0];
+      const newBaseUrl = newUrl.split('?')[0];
+
+      // If base URLs are the same, we're just updating cache-busting parameters
+      const isVersionUpdate = oldBaseUrl === newBaseUrl;
+
+      if (isVersionUpdate) {
+        console.log('🔄 This is a version update (cache-busting), updating all matching URLs');
+      }
+
+      // Track unique design IDs that were updated
+      const updatedDesignIds = new Set<string>();
+
+      // Build the update query for each individual image column
+      // Note: thumbnail is stored in cover_image column, so we don't include both
+      const imageColumns = ['image_1', 'image_2', 'image_3', 'image_4', 'cover_image'];
+
+      for (const column of imageColumns) {
+        let query = this.supabase
+          .from('saved_designs')
+          .update({ [column]: newUrl })
+          .eq('author_id', userId)
+          .like(column, isVersionUpdate ? `${oldBaseUrl}*` : oldUrl);
+
+        // Filter by specific design if provided
+        if (designId) {
+          query = query.eq('id', designId);
+        }
+
+        const { data, error } = await query.select('id');
+
+        if (error) {
+          console.error(`❌ Error updating ${column}:`, error);
+          throw new Error(`Failed to update ${column}: ${error.message}`);
+        }
+
+        if (data && data.length > 0) {
+          console.log(`✅ Updated ${data.length} designs in ${column} column`);
+          // Track unique design IDs
+          data.forEach(design => updatedDesignIds.add(design.id));
+        }
+      }
+
+      // Update metadata.imageUrls if it exists (JSONB column)
+      // First, get all designs that might have imageUrls in their metadata
+      let metadataQuery = this.supabase
+        .from('saved_designs')
+        .select('id, metadata')
+        .eq('author_id', userId)
+        .not('metadata', 'is', null);
+
+      // Filter by specific design if provided
+      if (designId) {
+        metadataQuery = metadataQuery.eq('id', designId);
+      }
+
+      const { data: designsWithMetadata, error: fetchMetadataError } = await metadataQuery;
+
+      if (fetchMetadataError) {
+        console.error('❌ Error fetching designs with metadata:', fetchMetadataError);
+        throw new Error(`Failed to fetch designs: ${fetchMetadataError.message}`);
+      }
+
+      if (designsWithMetadata && designsWithMetadata.length > 0) {
+        for (const design of designsWithMetadata) {
+          if (design.metadata && design.metadata.imageUrls && Array.isArray(design.metadata.imageUrls)) {
+            let updated = false;
+            const updatedMetadata = { ...design.metadata };
+
+            updatedMetadata.imageUrls = design.metadata.imageUrls.map((url: string) => {
+              if (isVersionUpdate && url && url.startsWith(oldBaseUrl)) {
+                updated = true;
+                return newUrl;
+              } else if (!isVersionUpdate && url === oldUrl) {
+                updated = true;
+                return newUrl;
+              }
+              return url;
+            });
+
+            if (updated) {
+              const { error: updateError } = await this.supabase
+                .from('saved_designs')
+                .update({ metadata: updatedMetadata })
+                .eq('id', design.id);
+
+              if (updateError) {
+                console.error(`❌ Error updating metadata imageUrls for design ${design.id}:`, updateError);
+              } else {
+                console.log(`✅ Updated metadata imageUrls for design ${design.id}`);
+                updatedDesignIds.add(design.id);
+              }
+            }
+          }
+        }
+      }
+
+      // Update designData.pages stored in metadata (JSONB column)
+      // The design data is actually stored in the metadata column, not a separate design_data column
+      let metadataPagesQuery = this.supabase
+        .from('saved_designs')
+        .select('id, metadata')
+        .eq('author_id', userId)
+        .not('metadata', 'is', null);
+
+      // Filter by specific design if provided
+      if (designId) {
+        metadataPagesQuery = metadataPagesQuery.eq('id', designId);
+      }
+
+      const { data: designsWithMetadataPages, error: fetchMetadataPagesError } = await metadataPagesQuery;
+
+      if (fetchMetadataPagesError) {
+        console.error('❌ Error fetching designs with metadata pages:', fetchMetadataPagesError);
+        throw new Error(`Failed to fetch designs with metadata pages: ${fetchMetadataPagesError.message}`);
+      }
+
+      if (designsWithMetadataPages && designsWithMetadataPages.length > 0) {
+        for (const design of designsWithMetadataPages) {
+          if (design.metadata && design.metadata.designData && design.metadata.designData.pages && Array.isArray(design.metadata.designData.pages)) {
+            let updated = false;
+            const updatedMetadata = { ...design.metadata };
+            const updatedDesignData = { ...design.metadata.designData };
+
+            updatedDesignData.pages = design.metadata.designData.pages.map((page: any) => {
+              if (page.image) {
+                if (isVersionUpdate && page.image.startsWith(oldBaseUrl)) {
+                  updated = true;
+                  return { ...page, image: newUrl };
+                } else if (!isVersionUpdate && page.image === oldUrl) {
+                  updated = true;
+                  return { ...page, image: newUrl };
+                }
+              }
+              return page;
+            });
+
+            // Also check editedPages in metadata
+            if (design.metadata.designData.editedPages) {
+              for (const [pageIndex, pageImage] of Object.entries(design.metadata.designData.editedPages)) {
+                if (typeof pageImage === 'string') {
+                  if (isVersionUpdate && pageImage.startsWith(oldBaseUrl)) {
+                    updated = true;
+                    updatedDesignData.editedPages[pageIndex] = newUrl;
+                  } else if (!isVersionUpdate && pageImage === oldUrl) {
+                    updated = true;
+                    updatedDesignData.editedPages[pageIndex] = newUrl;
+                  }
+                }
+              }
+            }
+
+            if (updated) {
+              updatedMetadata.designData = updatedDesignData;
+              const { error: updateError } = await this.supabase
+                .from('saved_designs')
+                .update({ metadata: updatedMetadata })
+                .eq('id', design.id);
+
+              if (updateError) {
+                console.error(`❌ Error updating metadata designData for design ${design.id}:`, updateError);
+              } else {
+                console.log(`✅ Updated metadata designData for design ${design.id}`);
+                updatedDesignIds.add(design.id);
+              }
+            }
+          }
+        }
+      }
+
+      const totalUniqueDesigns = updatedDesignIds.size;
+      console.log(`✅ Total unique designs updated: ${totalUniqueDesigns}`);
+      return totalUniqueDesigns;
+    } catch (error) {
+      console.error('❌ Error updating image URLs in designs:', error);
+      throw error;
+    }
+  }
+}

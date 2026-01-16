@@ -46,6 +46,13 @@ tmp/
 temp/
 *.tmp
 
+# Local logs and temp
+.claude/
+.claude/settings.local.json
+
+# Backend downloads
+smartwish-backend/downloads/
+
 # Package manager locks (optional - some teams commit these)
 # package-lock.json
 # yarn.lock

@@ -1,0 +1,1290 @@
+[
+  {
+    "id": "0221b211-d5bd-4e01-b89b-cf71b975646f",
+    "cardId": "d1c4257d-6ff9-4691-a756-78ff411c549e",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "A SmartWish user",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T08:10:01.434Z",
+    "expiresAt": "2025-11-23T08:10:01.434Z",
+    "cardData": {
+      "id": "d1c4257d-6ff9-4691-a756-78ff411c549e",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Elegant Wedding Ceremony",
+      "description": "Updated on 8/19/2025",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583552271_page_2.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583553649_page_3.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583554497_page_4.png",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "wedding-elegant-ceremony",
+        "originalTemplate": {
+          "id": "328c241f-9b5f-48de-ada5-b7a2b930c17a",
+          "slug": "wedding-elegant-ceremony",
+          "title": "Elegant Wedding Ceremony",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Wedding/wedding_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T07:31:49.456595+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T07:31:49.456Z",
+      "updatedAt": "2025-08-25T07:31:49.456Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583552271_page_2.png",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583553649_page_3.png",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583554497_page_4.png",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "0d7bceb1-a4de-42d0-8c67-7ef4d381ac8f",
+    "cardId": "d1c4257d-6ff9-4691-a756-78ff411c549e",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "A SmartWish user",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T08:23:34.098Z",
+    "expiresAt": "2025-11-23T08:23:34.098Z",
+    "cardData": {
+      "id": "d1c4257d-6ff9-4691-a756-78ff411c549e",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Elegant Wedding Ceremony",
+      "description": "Updated on 8/19/2025",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583552271_page_2.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583553649_page_3.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583554497_page_4.png",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "wedding-elegant-ceremony",
+        "originalTemplate": {
+          "id": "328c241f-9b5f-48de-ada5-b7a2b930c17a",
+          "slug": "wedding-elegant-ceremony",
+          "title": "Elegant Wedding Ceremony",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Wedding/wedding_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T07:31:49.456595+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T07:31:49.456Z",
+      "updatedAt": "2025-08-25T07:31:49.456Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583550993_page_1.png",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583552271_page_2.png",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583553649_page_3.png",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/user_123/designs/updated_328c241f-9b5f-48de-ada5-b7a2b930c17a_1755583550810/1755583554497_page_4.png",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "236bdac4-c7d3-4d99-a5a5-62aee1c69e85",
+    "cardId": "24102d18-8c93-4af2-8965-b0972773888f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "A SmartWish user",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T14:54:58.325Z",
+    "expiresAt": "2025-11-23T14:54:58.325Z",
+    "cardData": {
+      "id": "24102d18-8c93-4af2-8965-b0972773888f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Vibrant Birthday Celebration",
+      "description": "A colorful and energetic birthday card featuring bright balloons, confetti, and festive elements. Perfect for celebrating life and joy with vibrant colors that bring happiness to any birthday occasion.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-celebration-vibrant",
+        "originalTemplate": {
+          "id": "2d4bdc4e-fafe-4e0a-94d8-1a33998f568e",
+          "slug": "birthday-celebration-vibrant",
+          "title": "Vibrant Birthday Celebration",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T08:40:44.010532+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T08:40:44.010Z",
+      "updatedAt": "2025-08-25T08:40:44.010Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "631d9fbd-dadf-48c9-af25-349fae24f4f7",
+    "cardId": "24102d18-8c93-4af2-8965-b0972773888f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "A SmartWish user",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T14:55:48.136Z",
+    "expiresAt": "2025-11-23T14:55:48.136Z",
+    "cardData": {
+      "id": "24102d18-8c93-4af2-8965-b0972773888f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Vibrant Birthday Celebration",
+      "description": "A colorful and energetic birthday card featuring bright balloons, confetti, and festive elements. Perfect for celebrating life and joy with vibrant colors that bring happiness to any birthday occasion.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-celebration-vibrant",
+        "originalTemplate": {
+          "id": "2d4bdc4e-fafe-4e0a-94d8-1a33998f568e",
+          "slug": "birthday-celebration-vibrant",
+          "title": "Vibrant Birthday Celebration",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T08:40:44.010532+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T08:40:44.010Z",
+      "updatedAt": "2025-08-25T08:40:44.010Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "c54c0c51-9fda-4de2-8557-0e0d86bde92e",
+    "cardId": "24102d18-8c93-4af2-8965-b0972773888f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "A SmartWish user",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T15:03:57.809Z",
+    "expiresAt": "2025-11-23T15:03:57.809Z",
+    "cardData": {
+      "id": "24102d18-8c93-4af2-8965-b0972773888f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Vibrant Birthday Celebration",
+      "description": "A colorful and energetic birthday card featuring bright balloons, confetti, and festive elements. Perfect for celebrating life and joy with vibrant colors that bring happiness to any birthday occasion.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-celebration-vibrant",
+        "originalTemplate": {
+          "id": "2d4bdc4e-fafe-4e0a-94d8-1a33998f568e",
+          "slug": "birthday-celebration-vibrant",
+          "title": "Vibrant Birthday Celebration",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T08:40:44.010532+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T08:40:44.010Z",
+      "updatedAt": "2025-08-25T08:40:44.010Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "b546f62c-6a1d-4f57-a77e-1542a901a583",
+    "cardId": "24102d18-8c93-4af2-8965-b0972773888f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T18:11:10.195Z",
+    "expiresAt": "2025-11-23T18:11:10.195Z",
+    "cardData": {
+      "id": "24102d18-8c93-4af2-8965-b0972773888f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Vibrant Birthday Celebration",
+      "description": "A colorful and energetic birthday card featuring bright balloons, confetti, and festive elements. Perfect for celebrating life and joy with vibrant colors that bring happiness to any birthday occasion.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-celebration-vibrant",
+        "originalTemplate": {
+          "id": "2d4bdc4e-fafe-4e0a-94d8-1a33998f568e",
+          "slug": "birthday-celebration-vibrant",
+          "title": "Vibrant Birthday Celebration",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T08:40:44.010532+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T08:40:44.010Z",
+      "updatedAt": "2025-08-25T08:40:44.010Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "2d8f6cbe-2c3c-4651-a4b5-fd272d2b79f9",
+    "cardId": "24102d18-8c93-4af2-8965-b0972773888f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T18:28:19.267Z",
+    "expiresAt": "2025-11-23T18:28:19.267Z",
+    "cardData": {
+      "id": "24102d18-8c93-4af2-8965-b0972773888f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Vibrant Birthday Celebration",
+      "description": "A colorful and energetic birthday card featuring bright balloons, confetti, and festive elements. Perfect for celebrating life and joy with vibrant colors that bring happiness to any birthday occasion.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-celebration-vibrant",
+        "originalTemplate": {
+          "id": "2d4bdc4e-fafe-4e0a-94d8-1a33998f568e",
+          "slug": "birthday-celebration-vibrant",
+          "title": "Vibrant Birthday Celebration",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T08:40:44.010532+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T08:40:44.010Z",
+      "updatedAt": "2025-08-25T08:40:44.010Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "e981f860-b929-477f-9c4f-9c274ce5e3aa",
+    "cardId": "24102d18-8c93-4af2-8965-b0972773888f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T18:41:10.920Z",
+    "expiresAt": "2025-11-23T18:41:10.920Z",
+    "cardData": {
+      "id": "24102d18-8c93-4af2-8965-b0972773888f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Vibrant Birthday Celebration",
+      "description": "A colorful and energetic birthday card featuring bright balloons, confetti, and festive elements. Perfect for celebrating life and joy with vibrant colors that bring happiness to any birthday occasion.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-celebration-vibrant",
+        "originalTemplate": {
+          "id": "2d4bdc4e-fafe-4e0a-94d8-1a33998f568e",
+          "slug": "birthday-celebration-vibrant",
+          "title": "Vibrant Birthday Celebration",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T08:40:44.010532+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T08:40:44.010Z",
+      "updatedAt": "2025-08-25T08:40:44.010Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "c8b8e00b-dd4f-48a6-83d3-207227032ceb",
+    "cardId": "24102d18-8c93-4af2-8965-b0972773888f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T18:41:14.770Z",
+    "expiresAt": "2025-11-23T18:41:14.770Z",
+    "cardData": {
+      "id": "24102d18-8c93-4af2-8965-b0972773888f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Vibrant Birthday Celebration",
+      "description": "A colorful and energetic birthday card featuring bright balloons, confetti, and festive elements. Perfect for celebrating life and joy with vibrant colors that bring happiness to any birthday occasion.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-celebration-vibrant",
+        "originalTemplate": {
+          "id": "2d4bdc4e-fafe-4e0a-94d8-1a33998f568e",
+          "slug": "birthday-celebration-vibrant",
+          "title": "Vibrant Birthday Celebration",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T08:40:44.010532+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T08:40:44.010Z",
+      "updatedAt": "2025-08-25T08:40:44.010Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_1.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "22dee017-d6e0-4ad3-809b-98e3f8b00369",
+    "cardId": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T18:48:40.317Z",
+    "expiresAt": "2025-11-23T18:48:40.317Z",
+    "cardData": {
+      "id": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Modern Minimalist Birthday",
+      "description": "A clean, contemporary birthday card with minimalist design principles. Features simple geometric shapes, modern typography, and plenty of white space for a sophisticated, uncluttered look.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-modern-minimalist",
+        "originalTemplate": {
+          "id": "7cf0bed8-56d6-4d26-ba3f-5f72eda59fac",
+          "slug": "birthday-modern-minimalist",
+          "title": "Modern Minimalist Birthday",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T18:45:37.688723+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T18:45:37.688Z",
+      "updatedAt": "2025-08-25T18:45:37.688Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "22185a3c-ccad-4cc5-9af2-de7dbf055098",
+    "cardId": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T18:54:39.192Z",
+    "expiresAt": "2025-11-23T18:54:39.192Z",
+    "cardData": {
+      "id": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Modern Minimalist Birthday",
+      "description": "A clean, contemporary birthday card with minimalist design principles. Features simple geometric shapes, modern typography, and plenty of white space for a sophisticated, uncluttered look.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-modern-minimalist",
+        "originalTemplate": {
+          "id": "7cf0bed8-56d6-4d26-ba3f-5f72eda59fac",
+          "slug": "birthday-modern-minimalist",
+          "title": "Modern Minimalist Birthday",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T18:45:37.688723+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T18:45:37.688Z",
+      "updatedAt": "2025-08-25T18:45:37.688Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "342760af-b3f6-453e-a3f0-b2b80695eb39",
+    "cardId": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T19:00:58.700Z",
+    "expiresAt": "2025-11-23T19:00:58.700Z",
+    "cardData": {
+      "id": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Modern Minimalist Birthday",
+      "description": "A clean, contemporary birthday card with minimalist design principles. Features simple geometric shapes, modern typography, and plenty of white space for a sophisticated, uncluttered look.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-modern-minimalist",
+        "originalTemplate": {
+          "id": "7cf0bed8-56d6-4d26-ba3f-5f72eda59fac",
+          "slug": "birthday-modern-minimalist",
+          "title": "Modern Minimalist Birthday",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T18:45:37.688723+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T18:45:37.688Z",
+      "updatedAt": "2025-08-25T18:45:37.688Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "1705e9da-b58b-4ed9-a70d-7751d1f1ab77",
+    "cardId": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T19:01:02.466Z",
+    "expiresAt": "2025-11-23T19:01:02.466Z",
+    "cardData": {
+      "id": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Modern Minimalist Birthday",
+      "description": "A clean, contemporary birthday card with minimalist design principles. Features simple geometric shapes, modern typography, and plenty of white space for a sophisticated, uncluttered look.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-modern-minimalist",
+        "originalTemplate": {
+          "id": "7cf0bed8-56d6-4d26-ba3f-5f72eda59fac",
+          "slug": "birthday-modern-minimalist",
+          "title": "Modern Minimalist Birthday",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T18:45:37.688723+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T18:45:37.688Z",
+      "updatedAt": "2025-08-25T18:45:37.688Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "eef5b756-38bf-49d9-8fe3-535071851d11",
+    "cardId": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+    "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "test@example.com",
+    "message": "",
+    "createdAt": "2025-08-25T19:10:40.442Z",
+    "expiresAt": "2025-11-23T19:10:40.442Z",
+    "cardData": {
+      "id": "1c1388a2-f871-4b8f-b587-0c400fc5d84f",
+      "userId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "title": "Modern Minimalist Birthday",
+      "description": "A clean, contemporary birthday card with minimalist design principles. Features simple geometric shapes, modern typography, and plenty of white space for a sophisticated, uncluttered look.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {},
+        "templateKey": "birthday-modern-minimalist",
+        "originalTemplate": {
+          "id": "7cf0bed8-56d6-4d26-ba3f-5f72eda59fac",
+          "slug": "birthday-modern-minimalist",
+          "title": "Modern Minimalist Birthday",
+          "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg"
+        }
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "imageUrls": [],
+      "author": "User",
+      "upload_time": "2025-08-25T18:45:37.688723+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-08-25T18:45:37.688Z",
+      "updatedAt": "2025-08-25T18:45:37.688Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "createdByUserId": "8fd5da80-237c-474a-9044-b5b447ca6c20",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/Birthday/birthday_3.jpg",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/templates/images/blank.jpg",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "181e49d7-411c-4a64-b169-3e784f1b908c",
+    "cardId": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+    "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "makarbasi@gmail.com",
+    "message": "Hi",
+    "createdAt": "2025-09-21T06:06:08.719Z",
+    "expiresAt": "2025-12-20T06:06:08.719Z",
+    "cardData": {
+      "id": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+      "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "title": "A Cool & Crafty Birthday Card",
+      "description": "Celebrate a January-born star with this fun and personalized coloring-style card. The simple, charming line art declares, \"all the cool people are born in January,\" making the recipient feel extra special. At the center is an adorable, hand-drawn cupcake with a single lit candle and star decorations, just waiting to be colored in or enjoyed as is. It’s a playful and unique way to acknowledge their birth month with a cool, understated, and creative touch.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {
+          "0": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+          "1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+          "2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+          "3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+        },
+        "templateKey": "custom"
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "imageUrls": [
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+      ],
+      "author": "User",
+      "upload_time": "2025-09-21T02:36:11.491653+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-09-21T02:36:11.491Z",
+      "updatedAt": "2025-09-21T03:23:24.912Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "createdByUserId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  },
+  {
+    "id": "09d26871-0997-4d9c-ba59-bca7c40420fa",
+    "cardId": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+    "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+    "recipientEmail": "ma.karbasi@gmail.com",
+    "senderName": "Amin karbasi",
+    "senderEmail": "makarbasi@gmail.com",
+    "message": "Hi",
+    "createdAt": "2025-09-21T06:06:15.562Z",
+    "expiresAt": "2025-12-20T06:06:15.562Z",
+    "cardData": {
+      "id": "e353ccf1-d5ea-4980-8147-603f87d1f789",
+      "userId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "title": "A Cool & Crafty Birthday Card",
+      "description": "Celebrate a January-born star with this fun and personalized coloring-style card. The simple, charming line art declares, \"all the cool people are born in January,\" making the recipient feel extra special. At the center is an adorable, hand-drawn cupcake with a single lit candle and star decorations, just waiting to be colored in or enjoyed as is. It’s a playful and unique way to acknowledge their birth month with a cool, understated, and creative touch.",
+      "category": "General",
+      "designData": {
+        "pages": [
+          {
+            "header": "Page 1",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 2",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 3",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+            "text": "",
+            "footer": ""
+          },
+          {
+            "header": "Page 4",
+            "image": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+            "text": "",
+            "footer": ""
+          }
+        ],
+        "editedPages": {
+          "0": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+          "1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+          "2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+          "3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+        },
+        "templateKey": "custom"
+      },
+      "thumbnail": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "imageUrls": [
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+        "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png"
+      ],
+      "author": "User",
+      "upload_time": "2025-09-21T02:36:11.491653+00:00",
+      "price": 0,
+      "language": "en",
+      "region": "US",
+      "popularity": 0,
+      "num_downloads": 0,
+      "searchKeywords": [],
+      "status": "draft",
+      "createdAt": "2025-09-21T02:36:11.491Z",
+      "updatedAt": "2025-09-21T03:23:24.912Z",
+      "slug": null,
+      "categoryId": "c5ec3712-eb85-43a5-adb4-48f7279659e8",
+      "authorId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "createdByUserId": "63200521-8044-4bb7-af9c-b09f4e3cc5aa",
+      "coverImage": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image1": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/88b627c1-01d7-4737-9ba0-38d6740e2326/1757791630263_page_1.png",
+      "image2": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/e353ccf1-d5ea-4980-8147-603f87d1f789/1758425000505_page_1.png",
+      "image3": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/e967f03d-0d87-4c1f-8f8b-da43ed591597/designs/copied_images/blank_page3_1757791484788_o4vp91s.jpg",
+      "image4": "https://kfitmirodgoduifcsyug.supabase.co/storage/v1/object/public/smartwish-assets/users/63200521-8044-4bb7-af9c-b09f4e3cc5aa/designs/copied_images/blank_logo_page4_1758422275440_cmfc7pq.png",
+      "isFeatured": false,
+      "isUserGenerated": true,
+      "tags": [],
+      "sourceTemplateId": null
+    }
+  }
+]
