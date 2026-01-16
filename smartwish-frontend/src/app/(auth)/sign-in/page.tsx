@@ -35,13 +35,22 @@ function SignInForm() {
       if (result?.error) {
         console.error("Sign in error:", result.error);
         
-        // Provide more helpful error messages
-        if (result.error === "Configuration") {
+        // Provide more helpful error messages based on error type
+        if (result.error === "RateLimited" || result.error.includes("RateLimited")) {
           setError(
-            "Authentication configuration error. Please contact support or try again later. " +
-            "If this persists, the server may need to be restarted."
+            "Too many login attempts. Please wait a few minutes and try again."
           );
-        } else if (result.error === "CredentialsSignin") {
+        } else if (result.error === "ServerError" || result.error.includes("ServerError")) {
+          setError(
+            "Server is temporarily unavailable. Please try again in a moment."
+          );
+        } else if (result.error === "Configuration") {
+          // This can happen when backend returns 429 or other errors
+          setError(
+            "Login service is temporarily unavailable. This may be due to rate limiting - " +
+            "please wait a minute and try again."
+          );
+        } else if (result.error === "CredentialsSignin" || result.error === "InvalidCredentials") {
           setError("Invalid email or password. Please try again.");
         } else {
           setError(`Sign in failed: ${result.error}. Please try again.`);

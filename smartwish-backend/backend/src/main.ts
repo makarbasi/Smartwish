@@ -48,23 +48,27 @@ async function bootstrap() {
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
   }));
 
-  // Rate limiting - CRITICAL FOR PRODUCTION
-  // Increased limits for development and payment polling
+  // Check if we're in development mode
+  const isDev = process.env.NODE_ENV !== 'production';
+  
+  // Rate limiting - DISABLED in development, strict in production
   const globalRateLimit = rateLimit.default({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000') || 60 * 1000, // 1 minute window
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '300') || 300, // 300 requests per minute (allows for payment status polling)
+    max: isDev ? 0 : (parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '300') || 300), // 0 = disabled in dev, 300 in prod
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: false,
+    skip: () => isDev, // Skip rate limiting entirely in development
     keyGenerator: (req: any) => {
       return req.ip || req.connection?.remoteAddress || 'unknown';
     }
   });
 
+  console.log(`Global rate limit: ${isDev ? 'DISABLED (dev mode)' : '300 requests per minute (production)'}`);
   const loginRateLimit = rateLimit.default({
-    windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000') || 15 * 60 * 1000, // 15 minutes
-    max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || '5') || 5, // limit each IP to 5 login attempts per windowMs
+    windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || (isDev ? '60000' : '900000')) || (isDev ? 60 * 1000 : 15 * 60 * 1000), // 1 min in dev, 15 min in prod
+    max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || (isDev ? '50' : '5')) || (isDev ? 50 : 5), // 50 attempts in dev, 5 in prod
     message: 'Too many login attempts from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -73,6 +77,8 @@ async function bootstrap() {
       return req.ip || req.connection?.remoteAddress || 'unknown';
     }
   });
+  
+  console.log(`Login rate limit: ${isDev ? '50 requests per minute (dev mode)' : '5 requests per 15 minutes (production)'}`);
 
   // Configure CORS FIRST (before rate limiting so 429 responses include CORS headers)
   const allowedOrigins = process.env.ALLOWED_ORIGINS

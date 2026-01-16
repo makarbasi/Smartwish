@@ -630,6 +630,47 @@ export default function KiosksAdminPage() {
                         )}
                       </span>
                     </div>
+                    {/* Printer Status from local print agent */}
+                    {(kiosk.printerStatus || kiosk.config?.printerStatus) && (
+                      <div className="mt-2 p-2 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500 mb-1">Printer Status</p>
+                        <div className="flex flex-wrap gap-2">
+                          {/* Paper tray status */}
+                          {Object.entries((kiosk.printerStatus || kiosk.config?.printerStatus)?.paper || {}).map(([tray, info]: [string, any]) => (
+                            <span
+                              key={tray}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                info.state === 'empty' ? 'bg-red-100 text-red-800' :
+                                info.state === 'low' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                              }`}
+                            >
+                              {tray}: {info.display || info.state || 'OK'}
+                            </span>
+                          ))}
+                          {/* Ink status summary */}
+                          {Object.keys((kiosk.printerStatus || kiosk.config?.printerStatus)?.ink || {}).length > 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              Ink: {Object.values((kiosk.printerStatus || kiosk.config?.printerStatus)?.ink || {}).every((i: any) => i.state === 'ok') ? '✓ OK' : '⚠️ Check'}
+                            </span>
+                          )}
+                        </div>
+                        {/* Errors/Warnings */}
+                        {((kiosk.printerStatus || kiosk.config?.printerStatus)?.errors?.length > 0 || (kiosk.printerStatus || kiosk.config?.printerStatus)?.warnings?.length > 0) && (
+                          <div className="mt-1 space-y-0.5">
+                            {(kiosk.printerStatus || kiosk.config?.printerStatus)?.errors?.map((err: any, i: number) => (
+                              <p key={`err-${i}`} className="text-xs text-red-600">❌ {err.message}</p>
+                            ))}
+                            {(kiosk.printerStatus || kiosk.config?.printerStatus)?.warnings?.map((warn: any, i: number) => (
+                              <p key={`warn-${i}`} className="text-xs text-yellow-600">⚠️ {warn.message}</p>
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-xs text-gray-400 mt-1">
+                          Updated: {new Date((kiosk.printerStatus || kiosk.config?.printerStatus)?.lastUpdated || (kiosk.printerStatus || kiosk.config?.printerStatus)?.timestamp).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-sm">
                       <DocumentIcon className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-600">

@@ -12,6 +12,7 @@ import { VirtualKeyboardProvider } from "@/contexts/VirtualKeyboardContext";
 import { DeviceModeProvider } from "@/contexts/DeviceModeContext";
 import { KioskProvider } from "@/contexts/KioskContext";
 import { KioskSessionProvider } from "@/contexts/KioskSessionContext";
+import { PrinterStatusProvider } from "@/contexts/PrinterStatusContext";
 import VirtualKeyboard from "@/components/VirtualKeyboard";
 import DeviceModeLogger from "@/components/DeviceModeLogger";
 
@@ -59,6 +60,7 @@ export default function RootLayout({
           <DeviceModeProvider>
             <DeviceModeLogger />
             <KioskProvider>
+              <PrinterStatusProvider>
               <KioskSessionProvider>
               <ToastProvider>
                 <AuthModalProvider>
@@ -73,6 +75,7 @@ export default function RootLayout({
                 </AuthModalProvider>
               </ToastProvider>
               </KioskSessionProvider>
+              </PrinterStatusProvider>
             </KioskProvider>
           </DeviceModeProvider>
         </AuthProvider>

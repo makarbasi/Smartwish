@@ -241,10 +241,41 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           filter: `id=eq.${id}`,
         },
         (payload) => {
-          console.log('Kiosk config updated via realtime:', payload);
           const newData = payload.new as KioskConfigRow;
+          const newConfig = newData.config as Record<string, unknown> || {};
+          
+          // Check if this is a meaningful update (not just heartbeat/printerStatus)
+          // These fields are updated frequently and don't require UI re-render
+          const ignoredFields = ['lastHeartbeat', 'printerStatus'];
+          
           setKioskInfo((prev) => {
             if (!prev) return prev;
+            
+            const prevConfig = prev.config as Record<string, unknown> || {};
+            
+            // Compare configs excluding ignored fields
+            const prevMeaningful = { ...prevConfig };
+            const newMeaningful = { ...newConfig };
+            ignoredFields.forEach(field => {
+              delete prevMeaningful[field];
+              delete newMeaningful[field];
+            });
+            
+            // Also check top-level fields
+            const topLevelChanged = 
+              prev.name !== newData.name ||
+              prev.storeId !== newData.store_id ||
+              prev.version !== newData.version;
+            
+            const configChanged = JSON.stringify(prevMeaningful) !== JSON.stringify(newMeaningful);
+            
+            if (!topLevelChanged && !configChanged) {
+              // Only heartbeat/printerStatus changed - skip update
+              console.log('[KioskContext] Realtime: ignoring heartbeat/status-only update');
+              return prev;
+            }
+            
+            console.log('[KioskContext] Realtime: meaningful config update detected');
             const updated: KioskInfo = {
               ...prev,
               name: newData.name,

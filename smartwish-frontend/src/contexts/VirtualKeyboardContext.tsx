@@ -36,9 +36,16 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
       value: string,
       type: 'text' | 'email' | 'tel' | 'number' | 'password' = 'text'
     ) => {
+      // Disable virtual keyboard for admin routes
+      if (pathname?.startsWith('/admin')) {
+        console.log('⌨️ [VirtualKeyboardContext] Keyboard disabled for admin routes')
+        return
+      }
+      
       console.log('⌨️ [VirtualKeyboardContext] showKeyboard called!', { 
         value, 
         type,
+        pathname,
         refType:
           ref instanceof HTMLInputElement
             ? 'input'
@@ -54,7 +61,7 @@ export function VirtualKeyboardProvider({ children }: { children: ReactNode }) {
       setIsKeyboardVisible(true)
       console.log('✅ [VirtualKeyboardContext] Keyboard visibility set to TRUE')
     },
-    []
+    [pathname]
   )
 
   const hideKeyboard = useCallback(() => {

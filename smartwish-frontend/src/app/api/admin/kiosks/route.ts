@@ -77,9 +77,29 @@ export async function GET() {
     const ninetySecondsAgo = new Date();
     ninetySecondsAgo.setSeconds(ninetySecondsAgo.getSeconds() - 90);
     
+    // Also fetch full kiosk configs from Supabase to get printerStatus
+    let fullKioskConfigs: Map<string, any> = new Map();
+    if (kioskIds.length > 0) {
+      try {
+        const { data: configs, error: configsError } = await supabase
+          .from('kiosk_configs')
+          .select('kiosk_id, config')
+          .in('kiosk_id', kioskIds);
+        
+        if (!configsError && configs) {
+          configs.forEach((c: any) => {
+            fullKioskConfigs.set(c.kiosk_id, c.config);
+          });
+        }
+      } catch (err) {
+        console.error('[Admin Kiosks] Error fetching full configs:', err);
+      }
+    }
+    
     const enrichedKiosks = kiosksArray.map((kiosk: any) => {
       const hasActiveSession = kiosksWithActiveSessions.has(kiosk.kioskId);
       const supabaseConfig = kioskConfigsMap.get(kiosk.kioskId);
+      const fullConfig = fullKioskConfigs.get(kiosk.kioskId);
       const lastHeartbeat = supabaseConfig?.lastHeartbeat || kiosk.config?.lastHeartbeat;
       
       let isDeviceOnline = false;
@@ -93,11 +113,21 @@ export async function GET() {
         }
       }
       
+      // Get printer status from Supabase config (most up-to-date)
+      const printerStatus = fullConfig?.printerStatus || kiosk.config?.printerStatus || null;
+      
       return {
         ...kiosk,
         isOnline: isDeviceOnline,
         hasActiveSession,
         lastHeartbeat: lastHeartbeat || null,
+        // Include printer status separately for easy access
+        printerStatus: printerStatus,
+        // Merge Supabase config with backend config (Supabase takes precedence)
+        config: {
+          ...kiosk.config,
+          ...fullConfig,
+        },
       };
     });
     

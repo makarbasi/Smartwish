@@ -309,6 +309,26 @@ export async function GET(request: NextRequest) {
         sessionStatusReason: hasActiveSession ? 'User actively using kiosk' : 'No active user session (idle or timed out)',
       });
       
+        // Extract printer status string from the printerStatus object (or use as-is if already a string)
+        let printerStatusStr: string | null = null;
+        const rawPrinterStatus = kiosk.config?.printerStatus;
+        if (rawPrinterStatus) {
+          if (typeof rawPrinterStatus === 'string') {
+            printerStatusStr = rawPrinterStatus;
+          } else if (typeof rawPrinterStatus === 'object') {
+            // Extract status from the printer status object
+            if (!rawPrinterStatus.online) {
+              printerStatusStr = 'offline';
+            } else if (rawPrinterStatus.errors?.length > 0) {
+              printerStatusStr = 'error';
+            } else if (rawPrinterStatus.warnings?.length > 0) {
+              printerStatusStr = 'warning';
+            } else {
+              printerStatusStr = 'ready';
+            }
+          }
+        }
+        
         return {
           id: kiosk.id,
           kioskId: kiosk.kioskId,
@@ -317,7 +337,7 @@ export async function GET(request: NextRequest) {
           status: kiosk.isActive !== undefined ? (kiosk.isActive ? 'active' : 'inactive') : 'active',
           isOnline: isDeviceOnline, // Device online status (based on heartbeat)
           hasActiveSession, // Active user session status
-          printerStatus: kiosk.config?.printerStatus || null,
+          printerStatus: printerStatusStr,
           lastPrintAt: kiosk.config?.lastPrintAt || null,
           printCount: kiosk.config?.printCount || 0,
           lastHeartbeat: lastHeartbeat || null,
