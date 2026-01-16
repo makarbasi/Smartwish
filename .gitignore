@@ -1,8 +1,0 @@
-
-# local logs and temp
-logs/
-.claude/
-.claude/settings.local.json
-
-# backend downloads
-smartwish-backend/downloads/
