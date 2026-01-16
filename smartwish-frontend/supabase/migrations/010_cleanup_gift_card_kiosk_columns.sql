@@ -1,7 +1,7 @@
 -- Migration: Cleanup - Remove unnecessary columns from gift_cards
 -- The kiosk info is stored on ORDERS (via purchase_order_id), not on gift_cards
 
--- Drop the old view first (depends on columns we're removing)
+-- Drop the old view first  depends on columns we're removing)
 DROP VIEW IF EXISTS kiosk_gift_card_stats;
 
 -- Remove the unnecessary columns added in 009
