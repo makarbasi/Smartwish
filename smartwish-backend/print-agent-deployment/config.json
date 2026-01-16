@@ -1,6 +1,6 @@
 {
-  "cloudServerUrl": "http://localhost:3001",
-  "frontendUrl": "http://localhost:3000",
+  "cloudServerUrl": "https://smartwish.onrender.com",
+  "frontendUrl": "https://app.smartwish.us",
   "defaultPrinter": "",
   "pollInterval": 10000,
   
@@ -17,6 +17,6 @@
 
   "_comments": {
     "note": "This file is used as fallback. After pairing, config is fetched from cloud.",
-    "localDev": "For local development, set frontendUrl to http://localhost:3000"
+    "localDev": "For local development, change cloudServerUrl to http://localhost:3001 and frontendUrl to http://localhost:3000"
   }
 }

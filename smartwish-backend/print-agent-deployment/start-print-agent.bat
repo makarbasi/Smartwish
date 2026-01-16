@@ -25,7 +25,7 @@ set POLL_INTERVAL=10000
 
 REM For local development, uncomment the line below:
 
-set FRONTEND_URL=http://localhost:3000
+REM set FRONTEND_URL=http://localhost:3000
 
 REM Start the print agent
 echo ============================================
