@@ -192,6 +192,8 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [error, setError] = useState<string | null>(null);
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Track if we've already fetched config for a specific kioskId to prevent duplicates
+  const fetchedKioskIdRef = useRef<string | null>(null);
 
   // Computed values
   const isActivated = !!kioskId && !!kioskInfo;
@@ -288,8 +290,15 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!kioskId) {
       setKioskInfo(null);
       unsubscribeFromUpdates();
+      fetchedKioskIdRef.current = null;
       return;
     }
+
+    // Prevent duplicate fetches for the same kioskId (React Strict Mode runs effects twice)
+    if (fetchedKioskIdRef.current === kioskId) {
+      return;
+    }
+    fetchedKioskIdRef.current = kioskId;
 
     let cancelled = false;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskConfig } from "@/hooks/useKioskConfig";
 import { useKioskSession } from "@/contexts/KioskSessionContext";
@@ -135,6 +135,7 @@ interface StickersResponse {
 
 export default function KioskHomePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isKiosk, isInitialized } = useDeviceMode();
   const { config: kioskConfig } = useKioskConfig();
   const { startSession, trackTileSelect } = useKioskSession();
@@ -145,6 +146,41 @@ export default function KioskHomePage() {
     isInitialized,
     timestamp: new Date().toISOString(),
   });
+
+  // Enter fullscreen when arriving from pairing
+  useEffect(() => {
+    const pairingComplete = searchParams.get('pairingComplete');
+    if (pairingComplete === 'true') {
+      // Remove the query parameter from URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('pairingComplete');
+      window.history.replaceState({}, '', url.toString());
+      
+      // Enter fullscreen mode
+      const enterFullscreen = () => {
+        try {
+          const doc = document.documentElement;
+          if (doc.requestFullscreen) {
+            doc.requestFullscreen();
+          } else if ((doc as any).webkitRequestFullscreen) {
+            // Safari
+            (doc as any).webkitRequestFullscreen();
+          } else if ((doc as any).msRequestFullscreen) {
+            // IE/Edge
+            (doc as any).msRequestFullscreen();
+          } else if ((doc as any).mozRequestFullScreen) {
+            // Firefox
+            (doc as any).mozRequestFullScreen();
+          }
+        } catch (error) {
+          console.error('Error entering fullscreen:', error);
+        }
+      };
+      
+      // Small delay to ensure page is fully loaded
+      setTimeout(enterFullscreen, 500);
+    }
+  }, [searchParams]);
 
   // Check if features are enabled (default to true if not set)
   const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;

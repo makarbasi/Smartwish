@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   CreditCardIcon,
@@ -53,6 +53,7 @@ const quickActions = [
 
 export default function ManagerDashboard() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const isPairingMode = searchParams.get('pair') === 'true';
   const pairingPort = searchParams.get('port') || '8766';
 
@@ -63,6 +64,11 @@ export default function ManagerDashboard() {
   const [pairingInProgress, setPairingInProgress] = useState<string | null>(null);
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [pairingSuccess, setPairingSuccess] = useState<string | null>(null);
+  
+  // Refs to prevent duplicate API calls (React Strict Mode runs effects twice)
+  const hasLoadedStats = useRef(false);
+  const hasLoadedKiosks = useRef(false);
+  const hasCheckedPairingStatus = useRef(false);
 
   // Check local agent pairing status
   const checkPairingStatus = useCallback(async () => {
@@ -96,6 +102,11 @@ export default function ManagerDashboard() {
     }
   }, []);
 
+  // Launch kiosk home page (for already paired devices)
+  const launchKiosk = (kiosk: KioskInfo) => {
+    router.push('/kiosk/home?pairingComplete=true');
+  };
+
   // Pair device with a kiosk
   const pairDevice = async (kiosk: KioskInfo) => {
     setPairingInProgress(kiosk.kioskId);
@@ -118,6 +129,12 @@ export default function ManagerDashboard() {
       if (response.ok) {
         setPairingSuccess(kiosk.name || kiosk.kioskId);
         await checkPairingStatus();
+        
+        // Navigate to kiosk home with pairing complete flag
+        // The kiosk/home page will handle entering fullscreen
+        setTimeout(() => {
+          router.push('/kiosk/home?pairingComplete=true');
+        }, 1000);
       } else {
         const error = await response.json();
         setPairingError(error.error || 'Failed to pair device');
@@ -130,26 +147,40 @@ export default function ManagerDashboard() {
   };
 
   useEffect(() => {
-    const loadStats = async () => {
-      try {
-        const response = await fetch('/api/manager/print-logs/stats?days=30');
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
+    // Load stats only once (prevent duplicate calls from React Strict Mode)
+    if (!hasLoadedStats.current) {
+      hasLoadedStats.current = true;
+      
+      const loadStats = async () => {
+        try {
+          const response = await fetch('/api/manager/print-logs/stats?days=30');
+          if (response.ok) {
+            const data = await response.json();
+            setStats(data);
+          }
+        } catch (error) {
+          console.error('Failed to load stats:', error);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('Failed to load stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+      };
 
-    loadStats();
+      loadStats();
+    }
+  }, []);
 
-    // If in pairing mode, check status and load kiosks
+  // Separate effect for pairing mode to avoid dependency issues
+  useEffect(() => {
+    // If in pairing mode, check status and load kiosks (only once)
     if (isPairingMode) {
-      checkPairingStatus();
-      loadKiosks();
+      if (!hasCheckedPairingStatus.current) {
+        hasCheckedPairingStatus.current = true;
+        checkPairingStatus();
+      }
+      if (!hasLoadedKiosks.current) {
+        hasLoadedKiosks.current = true;
+        loadKiosks();
+      }
     }
   }, [isPairingMode, checkPairingStatus, loadKiosks]);
 
@@ -229,21 +260,33 @@ export default function ManagerDashboard() {
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`w-2 h-2 rounded-full ${kiosk.isActive ? 'bg-green-400' : 'bg-gray-400'}`} />
                           <span className="text-xs opacity-80">{kiosk.isActive ? 'Active' : 'Inactive'}</span>
+                          {pairingStatus?.kioskId === kiosk.kioskId && (
+                            <>
+                              <span className="text-xs opacity-80">•</span>
+                              <span className="text-xs opacity-80 font-medium">✓ Paired</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <button
-                        onClick={() => pairDevice(kiosk)}
-                        disabled={pairingInProgress === kiosk.kioskId || pairingStatus?.kioskId === kiosk.kioskId}
+                        onClick={() => {
+                          if (pairingStatus?.kioskId === kiosk.kioskId) {
+                            launchKiosk(kiosk);
+                          } else {
+                            pairDevice(kiosk);
+                          }
+                        }}
+                        disabled={pairingInProgress === kiosk.kioskId}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                           pairingStatus?.kioskId === kiosk.kioskId
-                            ? 'bg-green-500 text-white cursor-default'
+                            ? 'bg-green-500 text-white hover:bg-green-600'
                             : pairingInProgress === kiosk.kioskId
                             ? 'bg-white/20 text-white cursor-wait'
                             : 'bg-white text-indigo-600 hover:bg-indigo-50'
                         }`}
                       >
                         {pairingStatus?.kioskId === kiosk.kioskId
-                          ? '✓ Paired'
+                          ? 'Launch'
                           : pairingInProgress === kiosk.kioskId
                           ? 'Pairing...'
                           : 'Pair Device'}
