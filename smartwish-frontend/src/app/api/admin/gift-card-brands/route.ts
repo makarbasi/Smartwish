@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { verifyAdmin } from '@/lib/adminAuth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
 
@@ -30,10 +30,8 @@ function transformBrandToSnakeCase(brand: any) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.access_token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { authorized, session, error } = await verifyAdmin();
+    if (!authorized) return error;
 
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get('includeInactive');
@@ -79,10 +77,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.access_token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { authorized, session, error } = await verifyAdmin();
+    if (!authorized) return error;
 
     const body = await request.json();
 

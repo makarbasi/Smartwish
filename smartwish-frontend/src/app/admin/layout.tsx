@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, Fragment, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+
+// Admin email - only this account can access /admin routes
+// Set NEXT_PUBLIC_ADMIN_EMAIL in your .env.local file
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL || "admin@smartwish.us";
 import {
   Bars3Icon,
   XMarkIcon,
@@ -46,13 +50,25 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const hasRedirected = useRef(false);
 
-  // Redirect if not authenticated
+  // Check if user is the admin
+  const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  // Redirect if not authenticated or not admin
   useEffect(() => {
+    if (hasRedirected.current) return;
+    
     if (status === "unauthenticated") {
+      hasRedirected.current = true;
       router.push(`/sign-in?callbackUrl=${encodeURIComponent(pathname)}`);
+    } else if (status === "authenticated" && !isAdmin) {
+      // User is logged in but not the admin - redirect to home
+      hasRedirected.current = true;
+      console.warn(`[Admin] Access denied for user: ${session?.user?.email}`);
+      router.push("/");
     }
-  }, [status, router, pathname]);
+  }, [status, router, pathname, isAdmin, session?.user?.email]);
 
   // Show loading state while checking authentication
   if (status === "loading") {
@@ -69,6 +85,18 @@ export default function AdminLayout({
   // Don't render anything if not authenticated (will redirect)
   if (status === "unauthenticated") {
     return null;
+  }
+
+  // Don't render anything if not admin (will redirect)
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Access denied. Redirecting...</p>
+        </div>
+      </div>
+    );
   }
 
   const handleSignOut = async () => {

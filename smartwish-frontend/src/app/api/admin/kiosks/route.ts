@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { verifyAdmin } from '@/lib/adminAuth';
 import { supabaseServer as supabase } from '@/lib/supabaseServer';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com';
 
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.access_token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { authorized, session, error } = await verifyAdmin();
+    if (!authorized) return error;
 
     const response = await fetch(`${API_BASE}/admin/kiosks`, {
       headers: {
@@ -112,10 +110,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.access_token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { authorized, session, error } = await verifyAdmin();
+    if (!authorized) return error;
 
     const body = await request.json();
 
