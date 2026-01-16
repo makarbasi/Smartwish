@@ -51,6 +51,8 @@ import { StickersModule } from './stickers/stickers.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
 import { SurveillanceModule } from './surveillance/surveillance.module';
 import { SessionRecordingsModule } from './session-recordings/session-recordings.module';
+import { SalesRepresentativesModule } from './sales-representatives/sales-representatives.module';
+import { EarningsModule } from './earnings/earnings.module';
 
 @Module({
   imports: [
@@ -110,6 +112,8 @@ import { SessionRecordingsModule } from './session-recordings/session-recordings
     GiftCardsModule,
     SurveillanceModule,
     SessionRecordingsModule,
+    SalesRepresentativesModule,
+    EarningsModule,
   ],
   controllers: [AppController, SharingController, TemplatesEnhancedController],
   providers: [AppService, SharingService, LoggerService, SupabaseTemplatesEnhancedService, GeminiEmbeddingService],

@@ -158,14 +158,76 @@ export default function KioskHomePage() {
 
   // Fetch gift card brand info when brandId is set
   const [giftCardBrand, setGiftCardBrand] = useState<GiftCardBrand | null>(null);
+  const [logoBackgroundColor, setLogoBackgroundColor] = useState<string>('#ffffff');
+  
+  // Extract dominant edge color from an image URL
+  const extractEdgeColor = (imageUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = document.createElement('img');
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve('#ffffff');
+            return;
+          }
+          
+          // Use small canvas for performance
+          canvas.width = 50;
+          canvas.height = 50;
+          ctx.drawImage(img, 0, 0, 50, 50);
+          
+          // Sample colors from edges (corners and midpoints)
+          const samplePoints = [
+            [0, 0], [49, 0], [0, 49], [49, 49], // corners
+            [25, 0], [25, 49], [0, 25], [49, 25], // edge midpoints
+          ];
+          
+          const colors: number[][] = [];
+          for (const [x, y] of samplePoints) {
+            const pixel = ctx.getImageData(x, y, 1, 1).data;
+            // Skip fully transparent pixels
+            if (pixel[3] > 50) {
+              colors.push([pixel[0], pixel[1], pixel[2]]);
+            }
+          }
+          
+          if (colors.length === 0) {
+            resolve('#ffffff');
+            return;
+          }
+          
+          // Average the sampled colors
+          const avg = colors.reduce(
+            (acc, c) => [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]],
+            [0, 0, 0]
+          ).map(v => Math.round(v / colors.length));
+          
+          const hex = `#${avg.map(v => v.toString(16).padStart(2, '0')).join('')}`;
+          resolve(hex);
+        } catch {
+          resolve('#ffffff');
+        }
+      };
+      img.onerror = () => resolve('#ffffff');
+      img.src = imageUrl;
+    });
+  };
   
   useEffect(() => {
     if (giftCardTileConfig?.brandId) {
       fetch(`/api/admin/gift-card-brands/${giftCardTileConfig.brandId}`)
         .then((res) => res.ok ? res.json() : null)
-        .then((data) => {
+        .then(async (data) => {
           if (data?.data) {
             setGiftCardBrand(data.data);
+            // Extract background color from logo
+            if (data.data.logo_url) {
+              const color = await extractEdgeColor(data.data.logo_url);
+              setLogoBackgroundColor(color);
+            }
           }
         })
         .catch((err) => console.error('Failed to fetch gift card brand:', err));
@@ -660,16 +722,17 @@ export default function KioskHomePage() {
                 <div className="relative w-64 h-40 flex items-center justify-center">
                   {/* Show brand logo if available - fills the entire space */}
                   {hasMounted && giftCardBrand?.logo_url ? (
-                    <div className="relative w-full h-full rounded-2xl bg-white/10 backdrop-blur-sm border-2 border-white/30 shadow-2xl overflow-hidden transition-all duration-500 group-hover:shadow-emerald-500/50 group-hover:scale-105 group-hover:border-emerald-400/50">
+                    <div 
+                      className="relative w-full h-full rounded-2xl shadow-2xl overflow-hidden transition-all duration-500 group-hover:shadow-emerald-500/50 group-hover:scale-105"
+                      style={{ backgroundColor: logoBackgroundColor }}
+                    >
                       <Image
                         src={giftCardBrand.logo_url}
                         alt={giftCardBrand.name}
                         fill
-                        className="object-contain p-6"
+                        className="object-contain"
                         sizes="256px"
                       />
-                      {/* Decorative overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-emerald-500/5 pointer-events-none" />
                     </div>
                   ) : hasMounted ? (
                     /* Gift card stack animation - fallback when no brand logo */
