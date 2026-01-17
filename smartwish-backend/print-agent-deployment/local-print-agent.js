@@ -291,6 +291,7 @@ async function printPdfWithPowerShell(pdfPath, printerName, printMode = 'simplex
   
   const psScript = `
 # PDF Printing Script
+$ErrorActionPreference = "Continue"
 $printerName = "${escapedPrinterName}"
 $pdfPath = "${escapedPath}"
 $printSettings = "${printSettings}"
@@ -320,7 +321,19 @@ if ($sumatraPath) {
     $printArgs = "-print-to \`"$printerName\`" \`"$pdfPath\`""
     Write-Host "Print mode: simplex (single-sided)"
   }
-  Start-Process -FilePath $sumatraPath -ArgumentList $printArgs -Wait -WindowStyle Hidden
+  
+  # Start SumatraPDF and wait for it to queue the job (not for full completion)
+  # SumatraPDF queues the job quickly and returns, but -Wait can timeout on some systems
+  $proc = Start-Process -FilePath $sumatraPath -ArgumentList $printArgs -WindowStyle Hidden -PassThru
+  
+  # Wait up to 30 seconds for SumatraPDF to start and queue the job
+  $waited = $proc.WaitForExit(30000)
+  
+  if (-not $waited) {
+    # Process is still running after 30s - it's likely printing, which is fine
+    Write-Host "SumatraPDF is processing (still running after 30s - this is normal for large files)"
+  }
+  
   Write-Host "Print job sent via SumatraPDF"
   exit 0
 }
@@ -337,7 +350,9 @@ foreach ($p in $adobePaths) {
   if (Test-Path $p) {
     Write-Host "Using Adobe Reader to print (duplex settings not supported, using printer defaults)..."
     $printArgs = "/t \`"$pdfPath\`" \`"$printerName\`""
-    Start-Process -FilePath $p -ArgumentList $printArgs -Wait -WindowStyle Hidden
+    # Don't wait for Adobe - just start and exit
+    Start-Process -FilePath $p -ArgumentList $printArgs -WindowStyle Hidden
+    Start-Sleep -Seconds 2
     Write-Host "Print job sent via Adobe Reader"
     exit 0
   }
@@ -353,6 +368,7 @@ try {
   $psi.CreateNoWindow = $true
   $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
   $process = [System.Diagnostics.Process]::Start($psi)
+  # Wait up to 10 seconds
   $process.WaitForExit(10000)
   Write-Host "Print job sent via default handler"
   exit 0
@@ -364,17 +380,48 @@ try {
 
   await fs.writeFile(tempScriptPath, psScript, 'utf-8');
   
+  const modeDisplay = printMode === 'duplex' ? 'duplex (long edge)' : 
+                      printMode === 'duplexshort' ? 'duplex (short edge)' : 
+                      'simplex (single-sided)';
+  console.log(`  🖨️  Printing to: ${printerName}`);
+  console.log(`  📄 Print mode: ${modeDisplay}`);
+  
   try {
-    const modeDisplay = printMode === 'duplex' ? 'duplex (long edge)' : 
-                        printMode === 'duplexshort' ? 'duplex (short edge)' : 
-                        'simplex (single-sided)';
-    console.log(`  🖨️  Printing to: ${printerName}`);
-    console.log(`  📄 Print mode: ${modeDisplay}`);
-    await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, {
+    const { stdout, stderr } = await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, {
       windowsHide: true,
-      timeout: 60000,
+      timeout: 120000,  // Increased to 120 seconds
     });
+    
+    // Log output from PowerShell script
+    if (stdout) {
+      stdout.trim().split('\n').forEach(line => {
+        if (line.trim()) console.log(`  📝 ${line.trim()}`);
+      });
+    }
+    
     console.log('  ✅ Print job sent successfully');
+  } catch (error) {
+    // Check if the error is just stderr output but command succeeded
+    // Some PowerShell commands write to stderr even on success
+    if (error.stdout && error.stdout.includes('Print job sent')) {
+      console.log('  ⚠️  PowerShell had warnings but print job was sent:');
+      if (error.stdout) {
+        error.stdout.trim().split('\n').forEach(line => {
+          if (line.trim()) console.log(`     ${line.trim()}`);
+        });
+      }
+      // Don't re-throw - treat as success
+    } else if (error.killed) {
+      // Timeout - but job might still have been sent
+      console.log('  ⚠️  PowerShell timed out, but print job may have been sent');
+      // Don't re-throw - the job might still be in the queue
+    } else {
+      // Real error
+      console.error('  ❌ PowerShell error:');
+      if (error.stdout) console.error(`     stdout: ${error.stdout.trim()}`);
+      if (error.stderr) console.error(`     stderr: ${error.stderr.trim()}`);
+      throw error;
+    }
   } finally {
     try { await fs.unlink(tempScriptPath); } catch {}
   }
