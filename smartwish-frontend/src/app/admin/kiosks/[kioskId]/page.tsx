@@ -17,12 +17,15 @@ import {
 import Link from "next/link";
 
 // Types
+type PrintMode = "simplex" | "duplex" | "duplexshort";
+
 type KioskPrinter = {
   id: string;
   name: string;
   printerName: string;
   ipAddress: string | null;
   printableType: "sticker" | "greeting-card";
+  printMode: PrintMode;  // simplex, duplex (long edge), duplexshort (short edge)
   isEnabled: boolean;
   status: "online" | "offline" | "error" | "unknown";
   lastSeenAt: string | null;
@@ -186,6 +189,14 @@ function PrinterCard({
             <span className="text-gray-400">IP:</span> {printer.ipAddress}
           </p>
         )}
+        <p>
+          <span className="text-gray-400">Print Mode:</span>{" "}
+          <span className={`font-medium ${printer.printMode === 'simplex' ? 'text-gray-700' : 'text-indigo-600'}`}>
+            {printer.printMode === 'duplex' ? '📄 Duplex (Long Edge)' : 
+             printer.printMode === 'duplexshort' ? '📄 Duplex (Short Edge)' : 
+             '📃 Single-Sided'}
+          </span>
+        </p>
         {printer.lastSeenAt && (
           <p>
             <span className="text-gray-400">Last Seen:</span>{" "}
@@ -288,6 +299,7 @@ function PrinterModal({
   const [printerName, setPrinterName] = useState("");
   const [ipAddress, setIpAddress] = useState("");
   const [printableType, setPrintableType] = useState<"sticker" | "greeting-card">("greeting-card");
+  const [printMode, setPrintMode] = useState<PrintMode>("duplexshort");
   const [isEnabled, setIsEnabled] = useState(true);
 
   useEffect(() => {
@@ -296,15 +308,25 @@ function PrinterModal({
       setPrinterName(printer.printerName);
       setIpAddress(printer.ipAddress || "");
       setPrintableType(printer.printableType);
+      setPrintMode(printer.printMode || (printer.printableType === 'greeting-card' ? 'duplexshort' : 'simplex'));
       setIsEnabled(printer.isEnabled);
     } else {
       setName("");
       setPrinterName("");
       setIpAddress("");
       setPrintableType("greeting-card");
+      setPrintMode("duplexshort");  // Default for greeting cards
       setIsEnabled(true);
     }
   }, [printer, isOpen]);
+
+  // Auto-update print mode when printable type changes (for new printers)
+  useEffect(() => {
+    if (!printer) {
+      // Only auto-change for new printers
+      setPrintMode(printableType === 'greeting-card' ? 'duplexshort' : 'simplex');
+    }
+  }, [printableType, printer]);
 
   if (!isOpen) return null;
 
@@ -382,6 +404,28 @@ function PrinterModal({
               </select>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Print Mode *
+              </label>
+              <select
+                value={printMode}
+                onChange={(e) => setPrintMode(e.target.value as PrintMode)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="simplex">📃 Single-Sided (Simplex)</option>
+                <option value="duplexshort">📄 Double-Sided - Short Edge (for folded cards)</option>
+                <option value="duplex">📄 Double-Sided - Long Edge</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                {printMode === 'simplex' 
+                  ? 'Prints on one side only - recommended for stickers'
+                  : printMode === 'duplexshort'
+                  ? 'Prints on both sides, flipping on short edge - recommended for greeting cards'
+                  : 'Prints on both sides, flipping on long edge'}
+              </p>
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -404,7 +448,7 @@ function PrinterModal({
               Cancel
             </button>
             <button
-              onClick={() => onSave({ name, printerName, ipAddress: ipAddress || undefined, printableType, isEnabled })}
+              onClick={() => onSave({ name, printerName, ipAddress: ipAddress || undefined, printableType, printMode, isEnabled })}
               disabled={saving || !name || !printerName}
               className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >

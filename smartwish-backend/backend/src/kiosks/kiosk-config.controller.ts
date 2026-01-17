@@ -672,7 +672,7 @@ export class KioskPrinterAdminController {
   @Post(':kioskId/printers')
   async addPrinter(
     @Param('kioskId') kioskId: string,
-    @Body() body: { name: string; printerName: string; ipAddress?: string; printableType: string; isEnabled?: boolean },
+    @Body() body: { name: string; printerName: string; ipAddress?: string; printableType: string; printMode?: string; isEnabled?: boolean },
   ) {
     if (!body.name || !body.printerName || !body.printableType) {
       throw new BadRequestException('name, printerName, and printableType are required');
@@ -687,7 +687,7 @@ export class KioskPrinterAdminController {
   async updatePrinter(
     @Param('kioskId') kioskId: string,
     @Param('printerId') printerId: string,
-    @Body() body: { name?: string; printerName?: string; ipAddress?: string; printableType?: string; isEnabled?: boolean },
+    @Body() body: { name?: string; printerName?: string; ipAddress?: string; printableType?: string; printMode?: string; isEnabled?: boolean },
   ) {
     return this.kioskService.updatePrinter(kioskId, printerId, body);
   }

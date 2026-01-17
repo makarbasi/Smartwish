@@ -9,7 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { KioskConfig } from './kiosk-config.entity';
 import { KioskManager } from './kiosk-manager.entity';
 import { KioskPrintLog, PrintStatus, RefundStatus } from './kiosk-print-log.entity';
-import { KioskPrinter, PrintableType, PrinterStatus, PaperStatus } from './kiosk-printer.entity';
+import { KioskPrinter, PrintableType, PrinterStatus, PaperStatus, PrintMode } from './kiosk-printer.entity';
 import { KioskAlert, AlertType, AlertSeverity } from './kiosk-alert.entity';
 import { User, UserRole, UserStatus, OAuthProvider } from '../user/user.entity';
 import { CreateKioskConfigDto } from './dto/create-kiosk-config.dto';
@@ -1346,6 +1346,7 @@ export class KioskConfigService {
         // Find the printer configured for this paper type
         let printerName = log.printerName;
         let printerIP = null;
+        let printMode: string = paperType === 'greeting-card' ? 'duplexshort' : 'simplex';  // Default based on type
         
         if (log.kioskId) {
           const printer = await this.printerRepo.findOne({
@@ -1359,6 +1360,7 @@ export class KioskConfigService {
           if (printer) {
             printerName = printer.printerName;
             printerIP = printer.ipAddress;
+            printMode = printer.printMode;  // Use configured print mode
           } else {
             // Fallback to legacy config if no printer found
             printerName = printerName || (log.kiosk?.config as any)?.printerName || null;
@@ -1370,6 +1372,7 @@ export class KioskConfigService {
           id: log.id,
           printerName,
           printerIP,
+          printMode,  // Include print mode for local agent
           paperType,
           paperSize: log.paperSize || 'letter',
           pdfUrl: log.pdfUrl || null,
@@ -1570,7 +1573,7 @@ export class KioskConfigService {
    */
   async addPrinter(
     kioskId: string,
-    data: { name: string; printerName: string; ipAddress?: string; printableType: string; isEnabled?: boolean },
+    data: { name: string; printerName: string; ipAddress?: string; printableType: string; isEnabled?: boolean; printMode?: string },
   ): Promise<KioskPrinter> {
     const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
     if (!kiosk) {
@@ -1585,6 +1588,11 @@ export class KioskConfigService {
       throw new ConflictException(`A printer for ${data.printableType} already exists on this kiosk`);
     }
 
+    // Default print mode based on printable type
+    // greeting-card: duplex short edge (for folded cards)
+    // sticker: simplex (single-sided on plain paper)
+    const defaultPrintMode = data.printableType === 'greeting-card' ? PrintMode.DUPLEX_SHORT : PrintMode.SIMPLEX;
+
     const printer = this.printerRepo.create({
       kioskId: kiosk.id,
       name: data.name,
@@ -1592,6 +1600,7 @@ export class KioskConfigService {
       ipAddress: data.ipAddress || null,
       printableType: data.printableType as PrintableType,
       isEnabled: data.isEnabled ?? true,
+      printMode: (data.printMode as PrintMode) || defaultPrintMode,
       status: PrinterStatus.UNKNOWN,
       paperStatus: PaperStatus.UNKNOWN,
     });
@@ -1605,7 +1614,7 @@ export class KioskConfigService {
   async updatePrinter(
     kioskId: string,
     printerId: string,
-    data: { name?: string; printerName?: string; ipAddress?: string; printableType?: string; isEnabled?: boolean },
+    data: { name?: string; printerName?: string; ipAddress?: string; printableType?: string; isEnabled?: boolean; printMode?: string },
   ): Promise<KioskPrinter> {
     const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
     if (!kiosk) {
@@ -1635,6 +1644,7 @@ export class KioskConfigService {
     if (data.ipAddress !== undefined) printer.ipAddress = data.ipAddress || null;
     if (data.printableType !== undefined) printer.printableType = data.printableType as PrintableType;
     if (data.isEnabled !== undefined) printer.isEnabled = data.isEnabled;
+    if (data.printMode !== undefined) printer.printMode = data.printMode as PrintMode;
 
     return this.printerRepo.save(printer);
   }
@@ -1968,6 +1978,7 @@ export class KioskConfigService {
       printerName: p.printerName,
       ipAddress: p.ipAddress,
       printableType: p.printableType,
+      printMode: p.printMode,  // Include print mode for local agent
       status: p.status,
     }));
   }

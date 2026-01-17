@@ -269,8 +269,12 @@ async function waitForPrintComplete(printerName, timeoutMs = 60000) {
  * Print PDF using PowerShell + SumatraPDF
  * This is the ONLY print method - no IPP, no tray selection
  * Printer defaults are configured in Windows printer settings
+ * 
+ * @param {string} pdfPath - Path to the PDF file
+ * @param {string} printerName - Name of the Windows printer
+ * @param {string} printMode - Print mode: 'simplex' (single-sided), 'duplex' (long edge), 'duplexshort' (short edge)
  */
-async function printPdfWithPowerShell(pdfPath, printerName) {
+async function printPdfWithPowerShell(pdfPath, printerName, printMode = 'simplex') {
   const absolutePath = path.resolve(pdfPath);
   
   // Create PowerShell script for reliable printing
@@ -280,10 +284,16 @@ async function printPdfWithPowerShell(pdfPath, printerName) {
   const escapedPrinterName = printerName.replace(/"/g, '`"');
   const escapedPath = absolutePath.replace(/\\/g, '\\\\');
   
+  // Build SumatraPDF print settings based on print mode
+  // SumatraPDF supports: simplex, duplex (long edge), duplexshort (short edge)
+  const printSettings = printMode && printMode !== 'simplex' ? printMode : '';
+  const printSettingsArg = printSettings ? `-print-settings "${printSettings}"` : '';
+  
   const psScript = `
 # PDF Printing Script
 $printerName = "${escapedPrinterName}"
 $pdfPath = "${escapedPath}"
+$printSettings = "${printSettings}"
 
 # SumatraPDF paths
 $sumatraPaths = @(
@@ -302,13 +312,20 @@ foreach ($p in $sumatraPaths) {
 
 if ($sumatraPath) {
   Write-Host "Using SumatraPDF to print..."
-  $printArgs = "-print-to \`"$printerName\`" \`"$pdfPath\`""
+  # Build print arguments with optional print settings (duplex mode)
+  if ($printSettings) {
+    $printArgs = "-print-to \`"$printerName\`" -print-settings \`"$printSettings\`" \`"$pdfPath\`""
+    Write-Host "Print mode: $printSettings"
+  } else {
+    $printArgs = "-print-to \`"$printerName\`" \`"$pdfPath\`""
+    Write-Host "Print mode: simplex (single-sided)"
+  }
   Start-Process -FilePath $sumatraPath -ArgumentList $printArgs -Wait -WindowStyle Hidden
   Write-Host "Print job sent via SumatraPDF"
   exit 0
 }
 
-# Fallback: Adobe Reader
+# Fallback: Adobe Reader (does not support duplex via command line)
 $adobePaths = @(
   "$env:ProgramFiles\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe",
   "\${env:ProgramFiles(x86)}\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe",
@@ -318,7 +335,7 @@ $adobePaths = @(
 
 foreach ($p in $adobePaths) {
   if (Test-Path $p) {
-    Write-Host "Using Adobe Reader to print..."
+    Write-Host "Using Adobe Reader to print (duplex settings not supported, using printer defaults)..."
     $printArgs = "/t \`"$pdfPath\`" \`"$printerName\`""
     Start-Process -FilePath $p -ArgumentList $printArgs -Wait -WindowStyle Hidden
     Write-Host "Print job sent via Adobe Reader"
@@ -326,8 +343,8 @@ foreach ($p in $adobePaths) {
   }
 }
 
-# Fallback: Windows default handler
-Write-Host "Using Windows default PDF handler..."
+# Fallback: Windows default handler (duplex settings not supported)
+Write-Host "Using Windows default PDF handler (duplex settings not supported)..."
 try {
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $pdfPath
@@ -348,7 +365,11 @@ try {
   await fs.writeFile(tempScriptPath, psScript, 'utf-8');
   
   try {
+    const modeDisplay = printMode === 'duplex' ? 'duplex (long edge)' : 
+                        printMode === 'duplexshort' ? 'duplex (short edge)' : 
+                        'simplex (single-sided)';
     console.log(`  🖨️  Printing to: ${printerName}`);
+    console.log(`  📄 Print mode: ${modeDisplay}`);
     await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, {
       windowsHide: true,
       timeout: 60000,
@@ -366,11 +387,20 @@ try {
 async function processJob(job) {
   const paperType = job.paperType || 'greeting-card';
   const printerName = job.printerName;
+  // Get print mode from job, with smart defaults based on paper type
+  // greeting-card: duplexshort (double-sided, short edge for folded cards)
+  // sticker: simplex (single-sided on plain paper)
+  const printMode = job.printMode || (paperType === 'greeting-card' ? 'duplexshort' : 'simplex');
+  
+  const modeDisplay = printMode === 'duplex' ? 'duplex (long edge)' : 
+                      printMode === 'duplexshort' ? 'duplex (short edge)' : 
+                      'simplex (single-sided)';
   
   console.log(`\n📋 Processing job: ${job.id}`);
   console.log(`   Type: ${paperType === 'sticker' ? '🏷️  STICKER' : '💌 GREETING CARD'}`);
   console.log(`   Kiosk: ${job.kioskName || 'Unknown'}`);
   console.log(`   Printer: ${printerName || '(not configured)'}`);
+  console.log(`   Print Mode: ${modeDisplay}`);
   if (paperType === 'sticker') {
     console.log(`   JPG URL: ${job.jpgUrl ? 'Yes ✓' : 'No'}`);
   } else {
@@ -483,7 +513,8 @@ async function processJob(job) {
     }
 
     // Print using PowerShell (works for BOTH stickers and greeting cards)
-    await printPdfWithPowerShell(pdfPath, printerName);
+    // Pass printMode to control duplex/simplex printing
+    await printPdfWithPowerShell(pdfPath, printerName, printMode);
     
     // Wait for print queue to clear
     await waitForPrintComplete(printerName, 120000);
@@ -755,10 +786,14 @@ async function fetchKioskPrinters(kioskId) {
     if (printers.length > 0) {
       printers.forEach((printer, i) => {
         const typeIcon = printer.printableType === 'sticker' ? '🏷️ ' : '💌';
+        const modeDisplay = printer.printMode === 'duplex' ? 'Duplex (long edge)' : 
+                            printer.printMode === 'duplexshort' ? 'Duplex (short edge)' : 
+                            'Simplex (single-sided)';
         console.log(`  ${i + 1}. ${printer.name} ${typeIcon}`);
         console.log(`     Windows Name: ${printer.printerName}`);
         console.log(`     IP: ${printer.ipAddress || '(not set)'}`);
         console.log(`     Type: ${printer.printableType}`);
+        console.log(`     Print Mode: ${modeDisplay}`);
         console.log(`     Status: ${printer.status}`);
       });
       return printers;
