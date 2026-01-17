@@ -61,7 +61,7 @@ CREATE POLICY "Admins can manage kiosk printers"
     EXISTS (
       SELECT 1 FROM users 
       WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'superadmin')
+      AND users.role = 'admin'
     )
   );
 
@@ -132,7 +132,7 @@ CREATE POLICY "Admins can manage alerts"
     EXISTS (
       SELECT 1 FROM users 
       WHERE users.id = auth.uid() 
-      AND users.role IN ('admin', 'superadmin')
+      AND users.role = 'admin'
     )
   );
 

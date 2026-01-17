@@ -464,7 +464,7 @@ export class AppController {
     let savedPaths: string[] = [];
     
     try {
-      const { images, printerName, paperSize, paperType, trayNumber, giftCardData } = req.body;
+      const { images, printerName: legacyPrinterName, paperSize, paperType, trayNumber, giftCardData, kioskId } = req.body;
       const flipbookDir = path.join(downloadsDir, 'flipbook');
       if (!fs.existsSync(flipbookDir)) {
         fs.mkdirSync(flipbookDir, { recursive: true });
@@ -472,9 +472,40 @@ export class AppController {
       if (!images || !Array.isArray(images) || images.length === 0) {
         return res.status(400).json({ message: 'Images array is required' });
       }
-      if (!printerName) {
-        return res.status(400).json({ message: 'Printer name is required' });
+
+      // Look up printer from kiosk_printers table if kioskId is provided
+      const effectivePaperType = paperType || 'greeting-card';
+      let printerName: string | null = legacyPrinterName || null;
+      let kioskName: string | null = null;
+
+      if (kioskId) {
+        try {
+          // Get kiosk config to get the kiosk name
+          const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
+          kioskName = kioskConfig.name || kioskConfig.kioskId || 'Unknown';
+
+          // Look up printer for this paper type from kiosk_printers table
+          const printer = await this.kioskConfigService.getPrinterForType(kioskId, effectivePaperType);
+          
+          if (printer) {
+            printerName = printer.printerName;
+            console.log(`🖨️ Found ${effectivePaperType} printer: ${printerName}`);
+          } else if (!printerName) {
+            // Fallback to legacy printerName from config
+            printerName = (kioskConfig.config as Record<string, any>)?.printerName;
+            console.log(`⚠️ No ${effectivePaperType} printer configured, using legacy: ${printerName}`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to fetch kiosk/printer config: ${error.message}`);
+        }
       }
+
+      if (!printerName) {
+        return res.status(400).json({ 
+          message: `No ${effectivePaperType} printer configured for this kiosk. Please add a printer in the admin portal.`,
+        });
+      }
+
       const selectedPaperSize = paperSize || 'letter'; // Default to 'letter' for standard size
 
       // Use timestamp in filenames to avoid file locking conflicts
@@ -482,7 +513,7 @@ export class AppController {
       const jobId = `job_${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
 
       console.log(
-        `PC Print request received for ${images.length} images to printer: ${printerName}, paper size: ${selectedPaperSize}, paper type: ${paperType || 'greeting-card'}, tray: ${trayNumber || 'auto'}`,
+        `PC Print request received for ${images.length} images to printer: ${printerName}, paper size: ${selectedPaperSize}, paper type: ${effectivePaperType}, tray: ${trayNumber || 'auto'}`,
       );
       
       // Log gift card data for debugging
@@ -749,8 +780,9 @@ export class AppController {
         const printJob = {
           id: jobId,
           printerName,
+          kioskName,
           paperSize: selectedPaperSize,
-          paperType: paperType || 'greeting-card',
+          paperType: effectivePaperType,
           trayNumber: trayNumber || null,
           imagePaths: imageUrls,
           ...(pdfUrl ? { pdfUrl } : {}),
@@ -1014,14 +1046,48 @@ export class AppController {
   @Post('print-sticker-jpg')
   async printStickerJPG(@Req() req: Request, @Res() res: Response) {
     try {
-      const { jpgBase64, printerName, kioskId } = req.body;
+      const { jpgBase64, printerName: legacyPrinterName, kioskId } = req.body;
 
       if (!jpgBase64) {
         return res.status(400).json({ message: 'JPG base64 data is required' });
       }
 
+      if (!kioskId) {
+        return res.status(400).json({ message: 'Kiosk ID is required to look up sticker printer' });
+      }
+
+      // Look up the sticker printer from kiosk_printers table
+      let printerName: string | null = null;
+      let printerIP: string | null = null;
+      let kioskName: string | null = null;
+
+      try {
+        // Get kiosk config to get the kiosk name
+        const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
+        kioskName = kioskConfig.name || kioskConfig.kioskId || 'Unknown';
+
+        // Look up sticker printer from kiosk_printers table
+        const stickerPrinter = await this.kioskConfigService.getPrinterForType(kioskId, 'sticker');
+        
+        if (stickerPrinter) {
+          printerName = stickerPrinter.printerName;
+          printerIP = stickerPrinter.ipAddress ?? null;
+          console.log(`🖨️ Found sticker printer: ${printerName} (IP: ${printerIP || 'not set'})`);
+        } else {
+          // Fallback to legacy printerName from request or config
+          printerName = legacyPrinterName || (kioskConfig.config as Record<string, any>)?.printerName;
+          printerIP = (kioskConfig.config as Record<string, any>)?.printerIP ?? null;
+          console.log(`⚠️ No sticker printer configured, using legacy: ${printerName}`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to fetch kiosk/printer config: ${error.message}`);
+        printerName = legacyPrinterName;
+      }
+
       if (!printerName) {
-        return res.status(400).json({ message: 'Printer name is required' });
+        return res.status(400).json({ 
+          message: 'No sticker printer configured for this kiosk. Please add a sticker printer in the admin portal.',
+        });
       }
 
       console.log(`🖨️ Processing sticker JPG print request for: ${printerName}`);
@@ -1054,26 +1120,12 @@ export class AppController {
           });
         }
 
-        // Get printer IP from kiosk configuration (for local agent)
-        let printerIP = process.env.PRINTER_IP || '192.168.1.239';
-        if (kioskId) {
-          try {
-            const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
-            const configPrinterIP = (kioskConfig.config as Record<string, any>)?.printerIP;
-            if (configPrinterIP) {
-              printerIP = configPrinterIP;
-              console.log(`📡 Using printer IP from kiosk config: ${printerIP}`);
-            }
-          } catch (error) {
-            console.warn(`⚠️ Failed to fetch kiosk config, using default IP`);
-          }
-        }
-
         // Create print job for local agent
         const printJob = {
           id: jobId,
           printerName,
           printerIP, // Include IP for local agent to use
+          kioskName,
           imagePaths: [], // Stickers use JPG directly, no separate image paths
           paperSize: 'letter',
           paperType: 'sticker',
@@ -1106,22 +1158,10 @@ export class AppController {
         // Local mode: Print directly using IPP
         console.log('🏠 Local environment - printing directly via IPP');
 
-        // Get printer IP from kiosk configuration
-        let printerIP = process.env.PRINTER_IP || '192.168.1.239';
-        if (kioskId) {
-          try {
-            const kioskConfig = await this.kioskConfigService.getConfigById(kioskId);
-            const configPrinterIP = (kioskConfig.config as Record<string, any>)?.printerIP;
-            if (configPrinterIP) {
-              printerIP = configPrinterIP;
-              console.log(`📡 Using printer IP from kiosk config: ${printerIP}`);
-            }
-          } catch (error) {
-            console.warn(`⚠️ Failed to fetch kiosk config, using default IP`);
-          }
-        }
-
-        const printerUrl = `http://${printerIP}:631/ipp/print`;
+        // Use printer IP already fetched from sticker printer config
+        const effectivePrinterIP = printerIP || process.env.PRINTER_IP || '192.168.1.239';
+        const printerUrl = `http://${effectivePrinterIP}:631/ipp/print`;
+        console.log(`📡 Using printer IP: ${effectivePrinterIP}`);
 
         // Convert base64 to buffer
         const base64Data = jpgBase64.replace(/^data:image\/\w+;base64,/, '');

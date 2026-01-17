@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Fragment } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   PlusIcon,
   PencilSquareIcon,
@@ -63,8 +63,8 @@ type KioskConfig = {
     playlist?: Array<{ url: string; duration?: number; weight?: number }>;
   };
   printerProfile?: string;
-  printerName?: string;
-  printerIP?: string; // Printer IP address for IPP printing
+  // NOTE: printerName and printerIP have been moved to kiosk_printers table
+  // Use the Printers section in admin portal to configure printers per kiosk
   printerTrays?: PrinterTray[];
   revenueSharePercent?: number; // Store owner's share of net profit (default 30%)
   virtualKeyboard?: {
@@ -135,8 +135,7 @@ const DEFAULT_CONFIG: KioskConfig = {
   stickersEnabled: true, // Enable stickers tile by default
   ads: { playlist: [] },
   printerProfile: "default",
-  printerName: "HP OfficeJet Pro 9130e Series [HPIE4B65B]",
-  printerIP: "192.168.1.239", // Default printer IP for IPP printing
+  // NOTE: Printers are now configured via kiosk_printers table (Printers section)
   printerTrays: [
     { trayNumber: 1, trayName: "Tray 1", paperType: "greeting-card", paperSize: "letter" },
     { trayNumber: 2, trayName: "Tray 2", paperType: "sticker", paperSize: "letter" },
@@ -167,6 +166,7 @@ const DEFAULT_CONFIG: KioskConfig = {
 export default function KiosksAdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +208,19 @@ export default function KiosksAdminPage() {
       fetchKiosks();
     }
   }, [status]);
+
+  // Handle ?edit=kioskId query parameter to open edit modal
+  useEffect(() => {
+    const editKioskId = searchParams.get("edit");
+    if (editKioskId && kiosks.length > 0 && !loading) {
+      const kioskToEdit = kiosks.find((k) => k.kioskId === editKioskId);
+      if (kioskToEdit) {
+        openEditModal(kioskToEdit);
+        // Clear the query param after opening modal
+        router.replace("/admin/kiosks", { scroll: false });
+      }
+    }
+  }, [searchParams, kiosks, loading]);
 
   const fetchKiosks = async () => {
     try {
@@ -530,317 +543,126 @@ export default function KiosksAdminPage() {
             </div>
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {kiosks.map((kiosk) => (
-              <div
-                key={kiosk.id}
-                className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200 overflow-hidden hover:shadow-md transition-shadow"
-              >
-                <div className="p-6">
-                  {/* Header */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-                        <ComputerDesktopIcon className="h-6 w-6 text-indigo-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {kiosk.name || kiosk.kioskId}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          {kiosk.storeId || "No store assigned"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                        v{kiosk.version}
-                      </span>
-                      {/* Device Online/Offline Status */}
-                      <span
-                        className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          kiosk.isOnline
-                            ? "bg-green-100 text-green-700 ring-1 ring-inset ring-green-600/20"
-                            : "bg-red-100 text-red-700 ring-1 ring-inset ring-red-600/20"
-                        }`}
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            kiosk.isOnline ? "bg-green-500" : "bg-red-500"
-                          }`}
-                        />
-                        {kiosk.isOnline ? "Device Online" : "Device Offline"}
-                      </span>
-                      {/* Active Session Indicator */}
-                      <span
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                          kiosk.hasActiveSession
-                            ? "bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-600/20"
-                            : "bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-600/20"
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            kiosk.hasActiveSession ? "bg-blue-500 animate-pulse" : "bg-gray-400"
-                          }`}
-                        />
-                        {kiosk.hasActiveSession ? "Active Session" : "No Session"}
-                      </span>
-                    </div>
-                  </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {kiosks.map((kiosk) => {
+              // Determine printer status summary
+              const printerStatus = kiosk.printerStatus || kiosk.config?.printerStatus;
+              const hasErrors = printerStatus?.errors?.length > 0;
+              const hasWarnings = printerStatus?.warnings?.length > 0;
+              const printerStatusSummary = !printerStatus
+                ? "No Status"
+                : hasErrors
+                ? "Error"
+                : hasWarnings
+                ? "Warning"
+                : printerStatus.online
+                ? "OK"
+                : "Offline";
+              const printerStatusColor = !printerStatus
+                ? "bg-gray-100 text-gray-600"
+                : hasErrors
+                ? "bg-red-100 text-red-700"
+                : hasWarnings
+                ? "bg-yellow-100 text-yellow-700"
+                : printerStatus.online
+                ? "bg-green-100 text-green-700"
+                : "bg-red-100 text-red-700";
 
-                  {/* Config summary */}
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <SwatchIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Theme: {kiosk.config?.theme || "default"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <MicrophoneIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Mic: {kiosk.config?.micEnabled !== false ? "On" : "Off"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <GiftIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Gift Cards: {kiosk.config?.giftCardRibbonEnabled !== false ? "On" : "Off"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <EnvelopeIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Cards: {kiosk.config?.greetingCardsEnabled !== false ? "On" : "Off"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <SparklesIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Stickers: {kiosk.config?.stickersEnabled !== false ? "On" : "Off"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <PrinterIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Printer: {kiosk.config?.printerName || "Not set"}
-                        {kiosk.config?.printerIP && (
-                          <span className="text-gray-500"> ({kiosk.config.printerIP})</span>
-                        )}
-                      </span>
-                    </div>
-                    {/* Printer Status from local print agent */}
-                    {(kiosk.printerStatus || kiosk.config?.printerStatus) && (
-                      <div className="mt-2 p-2 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">Printer Status</p>
-                        <div className="flex flex-wrap gap-2">
-                          {/* Paper tray status */}
-                          {Object.entries((kiosk.printerStatus || kiosk.config?.printerStatus)?.paper || {}).map(([tray, info]: [string, any]) => (
-                            <span
-                              key={tray}
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                info.state === 'empty' ? 'bg-red-100 text-red-800' :
-                                info.state === 'low' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'
-                              }`}
-                            >
-                              {tray}: {info.display || info.state || 'OK'}
-                            </span>
-                          ))}
-                          {/* Ink status summary */}
-                          {Object.keys((kiosk.printerStatus || kiosk.config?.printerStatus)?.ink || {}).length > 0 && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                              Ink: {Object.values((kiosk.printerStatus || kiosk.config?.printerStatus)?.ink || {}).every((i: any) => i.state === 'ok') ? '✓ OK' : '⚠️ Check'}
-                            </span>
-                          )}
+              return (
+                <div
+                  key={kiosk.id}
+                  className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200 overflow-hidden hover:shadow-lg hover:ring-indigo-300 transition-all cursor-pointer group"
+                  onClick={() => window.location.href = `/admin/kiosks/${kiosk.kioskId}`}
+                >
+                  <div className="p-5">
+                    {/* Header with icon and status */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+                          <ComputerDesktopIcon className="h-5 w-5 text-indigo-600" />
                         </div>
-                        {/* Errors/Warnings */}
-                        {((kiosk.printerStatus || kiosk.config?.printerStatus)?.errors?.length > 0 || (kiosk.printerStatus || kiosk.config?.printerStatus)?.warnings?.length > 0) && (
-                          <div className="mt-1 space-y-0.5">
-                            {(kiosk.printerStatus || kiosk.config?.printerStatus)?.errors?.map((err: any, i: number) => (
-                              <p key={`err-${i}`} className="text-xs text-red-600">❌ {err.message}</p>
-                            ))}
-                            {(kiosk.printerStatus || kiosk.config?.printerStatus)?.warnings?.map((warn: any, i: number) => (
-                              <p key={`warn-${i}`} className="text-xs text-yellow-600">⚠️ {warn.message}</p>
-                            ))}
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-400 mt-1">
-                          Updated: {new Date((kiosk.printerStatus || kiosk.config?.printerStatus)?.lastUpdated || (kiosk.printerStatus || kiosk.config?.printerStatus)?.timestamp).toLocaleTimeString()}
-                        </p>
+                        <div className="min-w-0">
+                          <h3 className="text-base font-semibold text-gray-900 truncate">
+                            {kiosk.name || kiosk.kioskId}
+                          </h3>
+                          <p className="text-xs text-gray-500 truncate">
+                            {kiosk.storeId || "No store"}
+                          </p>
+                        </div>
                       </div>
-                    )}
-                    <div className="flex items-center gap-2 text-sm">
-                      <DocumentIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Trays: {kiosk.config?.printerTrays?.length || 0} configured
-                      </span>
+                      {/* Online/Offline dot */}
+                      <span
+                        className={`flex-shrink-0 w-3 h-3 rounded-full ${
+                          kiosk.isOnline ? "bg-green-500" : "bg-red-500"
+                        }`}
+                        title={kiosk.isOnline ? "Online" : "Offline"}
+                      />
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <FilmIcon className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-600">
-                        Ads: {kiosk.config?.ads?.playlist?.length || 0}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Device Status */}
-                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Device Status</p>
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${kiosk.isOnline ? "bg-green-500" : "bg-red-500"}`} />
-                        <span className="text-sm font-medium text-gray-900">
-                          {kiosk.isOnline ? "Online" : "Offline"}
-                        </span>
-                      </div>
+                    {/* Kiosk ID */}
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-400">ID</p>
+                      <p className="text-sm font-mono text-gray-700 truncate">{kiosk.kioskId}</p>
                     </div>
-                    
-                    {kiosk.lastHeartbeat ? (
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Last Heartbeat</p>
-                        <p className="text-sm font-medium text-gray-900">
-                          {new Date(kiosk.lastHeartbeat).toLocaleString()}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {Math.floor((Date.now() - new Date(kiosk.lastHeartbeat).getTime()) / 1000 / 60)} minutes ago
-                        </p>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Last Heartbeat</p>
-                        <p className="text-sm font-medium text-gray-500">Never</p>
-                        <p className="text-xs text-gray-400 mt-1">Device has not sent heartbeat</p>
-                      </div>
-                    )}
-                    
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">User Session</p>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            kiosk.hasActiveSession ? "bg-blue-500 animate-pulse" : "bg-gray-400"
-                          }`}
-                        />
-                        <p className={`text-sm font-medium ${kiosk.hasActiveSession ? "text-blue-600" : "text-gray-500"}`}>
-                          {kiosk.hasActiveSession ? "Active" : "None"}
-                        </p>
-                      </div>
-                      {kiosk.hasActiveSession && (
-                        <p className="text-xs text-gray-400 mt-1">Browser is open and responsive</p>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* API Key */}
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        API Key
+                    {/* Printer Status Summary */}
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-400 mb-1">Printer</p>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${printerStatusColor}`}>
+                        <PrinterIcon className="h-3.5 w-3.5" />
+                        {printerStatusSummary}
                       </span>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 mb-3">
                       <button
-                        onClick={() => kiosk.apiKey && copyToClipboard(kiosk.apiKey, kiosk.kioskId)}
-                        disabled={!kiosk.apiKey}
-                        className="text-xs text-indigo-600 hover:text-indigo-500 font-medium inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(kiosk);
+                        }}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                        title="Edit Configuration"
                       >
-                        {copiedKey === kiosk.kioskId ? (
-                          <>
-                            <CheckIcon className="h-3.5 w-3.5" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                            Copy
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <p className="mt-1 font-mono text-sm text-gray-700 break-all">
-                      {kiosk.apiKey ? `${kiosk.apiKey.substring(0, 20)}...` : "No API key"}
-                    </p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="mt-4 space-y-2">
-                    {/* Session analytics button */}
-                    <Link
-                      href={`/admin/kiosks/${kiosk.kioskId}/sessions`}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 ring-1 ring-inset ring-purple-200 hover:bg-purple-100 transition-colors"
-                    >
-                      <ChartBarIcon className="h-4 w-4" />
-                      View Session Logs
-                    </Link>
-                    {/* Surveillance button */}
-                    <Link
-                      href={`/admin/kiosks/${kiosk.kioskId}/surveillance`}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-100 transition-colors"
-                    >
-                      <VideoCameraIcon className="h-4 w-4" />
-                      Surveillance
-                      {kiosk.config?.surveillance?.enabled && (
-                        <span className="ml-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                      )}
-                    </Link>
-                    {/* Print Jobs button */}
-                    <Link
-                      href={`/admin/kiosks/${kiosk.kioskId}/print-jobs`}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal-50 px-3 py-2 text-sm font-medium text-teal-700 ring-1 ring-inset ring-teal-200 hover:bg-teal-100 transition-colors"
-                    >
-                      <PrinterIcon className="h-4 w-4" />
-                      Print Jobs
-                    </Link>
-                    {/* View Details - Full kiosk management page with printers */}
-                    <Link
-                      href={`/admin/kiosks/${kiosk.kioskId}`}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
-                    >
-                      <ComputerDesktopIcon className="h-4 w-4" />
-                      View Details & Printers
-                    </Link>
-                    {/* Manager assignment button */}
-                    <button
-                      onClick={() => openManagersModal(kiosk)}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200 hover:bg-indigo-100 transition-colors"
-                    >
-                      <UserGroupIcon className="h-4 w-4" />
-                      Manage Managers
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => openEditModal(kiosk)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-white px-3 py-2 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
-                      >
-                        <PencilSquareIcon className="h-4 w-4" />
+                        <PencilSquareIcon className="h-3.5 w-3.5" />
                         Edit
                       </button>
                       <button
-                        onClick={() => handleRotateKey(kiosk)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-white px-3 py-2 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openManagersModal(kiosk);
+                        }}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                        title="Manage Managers"
                       >
-                        <KeyIcon className="h-4 w-4" />
-                        Rotate Key
+                        <UserGroupIcon className="h-3.5 w-3.5" />
+                        Managers
                       </button>
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setSelectedKiosk(kiosk);
                           setShowDeleteModal(true);
                         }}
-                        className="inline-flex items-center justify-center rounded-lg bg-white p-2 text-red-600 ring-1 ring-inset ring-gray-300 hover:bg-red-50 transition-colors"
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Kiosk"
                       >
-                        <TrashIcon className="h-4 w-4" />
+                        <TrashIcon className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  </div>
 
-                  {/* Timestamp */}
-                  <p className="mt-3 text-xs text-gray-400">
-                    Updated: {new Date(kiosk.updatedAt).toLocaleString()}
-                  </p>
+                    {/* Details Button */}
+                    <Link
+                      href={`/admin/kiosks/${kiosk.kioskId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                    >
+                      View Details
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1566,61 +1388,9 @@ function KioskFormModal({
                       )}
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Printer Name
-                      </label>
-                      <input
-                        type="text"
-                        list="printer-suggestions"
-                        value={formData.config.printerName || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            config: {
-                              ...formData.config,
-                              printerName: e.target.value,
-                            },
-                          })
-                        }
-                        placeholder="Enter printer name or select from list"
-                        className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                      />
-                      <datalist id="printer-suggestions">
-                        <option value="HP OfficeJet Pro 9130e Series [HPIE4B65B]" />
-                        <option value="EPSON ET-15000 Series" />
-                        <option value="HP Smart Tank 7600 series" />
-                        <option value="Brother MFC-J4335DW" />
-                        <option value="Canon PIXMA TR8620" />
-                      </datalist>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Type the exact printer name as it appears in your system, or select from suggestions
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Printer IP Address
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.config.printerIP || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            config: {
-                              ...formData.config,
-                              printerIP: e.target.value,
-                            },
-                          })
-                        }
-                        placeholder="192.168.1.239"
-                        className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">
-                        IP address of the printer for IPP (Internet Printing Protocol) printing. Used for sticker printing.
-                      </p>
-                    </div>
+                    {/* NOTE: Printer Name and IP fields have been removed.
+                        Printers are now configured via the Printers section in the admin portal.
+                        Each kiosk can have multiple printers with different printable types (greeting-card, sticker). */}
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">

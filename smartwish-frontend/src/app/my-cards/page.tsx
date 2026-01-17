@@ -15,7 +15,7 @@ import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentMo
 import jsPDF from 'jspdf';
 import useSWR from "swr";
 import { useToast } from "@/contexts/ToastContext";
-import { useKioskConfig } from "@/hooks/useKioskConfig";
+import { useKiosk } from "@/contexts/KioskContext";
 import {
   DynamicRouter,
   authGet,
@@ -214,7 +214,7 @@ function MyCardsContent() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
-  const { config: kioskConfig } = useKioskConfig();
+  const { config: kioskConfig, kioskInfo } = useKiosk();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -958,7 +958,8 @@ function MyCardsContent() {
     }
   };
 
-  // Auto-print using kiosk config for printer and tray selection
+  // Auto-print using kiosk config for tray selection
+  // Backend looks up printer from kiosk_printers table
   // Now also handles gift card data to overlay QR code on the printed card
   const autoPrintToEpson = async (
     card: MyCard, 
@@ -969,8 +970,13 @@ function MyCardsContent() {
     paperType: string = 'greeting-card',
     giftCardForPrint?: IssuedGiftCardData | null
   ) => {
-    // Get printer settings from kiosk config
-    const printerName = kioskConfig?.printerName || 'HP OfficeJet Pro 9135e Series';
+    // Kiosk ID is required so backend can look up the printer
+    if (!kioskInfo?.id) {
+      setPrintStatus('failed');
+      setPrintError('Kiosk not configured. Please contact staff.');
+      return;
+    }
+    
     const trays = kioskConfig?.printerTrays || [];
     
     // Find the tray for this paper type, with hardcoded defaults:
@@ -984,7 +990,7 @@ function MyCardsContent() {
     // Get kiosk ID from context for logging
     const kioskId = localStorage.getItem('smartwish_kiosk_id');
     
-    console.log(`🖨️ Auto-printing to: ${printerName} (Direct backend print - NO popup)`);
+    console.log(`🖨️ Auto-printing for kiosk: ${kioskInfo.name || kioskInfo.kioskId}`);
     console.log(`📥 Paper type: ${paperType}, Tray: ${trayNumber || 'Auto'}, Size: ${paperSize}`);
     if (giftCardForPrint) {
       console.log('🎁 Including gift card in print:', giftCardForPrint.storeName, '$' + giftCardForPrint.amount);
@@ -1014,7 +1020,7 @@ function MyCardsContent() {
           productId: card.id,
           productName: card.name || 'Greeting Card',
           price,
-          printerName, // Include printer name for local agent to use
+          // NOTE: printerName is now looked up from kiosk_printers table on backend
           paperType,
           paperSize,
           trayNumber,
@@ -1063,7 +1069,7 @@ function MyCardsContent() {
         console.log('🎁 No gift card payload - printing without gift card');
       }
 
-      // Send to backend /print-pc endpoint with tray info and gift card data
+      // Send to backend /print-pc endpoint - backend looks up printer from kiosk_printers table
       // Backend will overlay the gift card QR code on the card if provided
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
         method: 'POST',
@@ -1072,7 +1078,7 @@ function MyCardsContent() {
         },
         body: JSON.stringify({
           images: imageBase64Array,
-          printerName: printerName,
+          kioskId: kioskInfo.id, // Backend looks up printer from kiosk_printers table
           paperSize: paperSize,
           paperType: paperType,
           trayNumber: trayNumber,

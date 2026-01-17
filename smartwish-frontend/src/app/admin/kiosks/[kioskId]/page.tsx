@@ -444,18 +444,26 @@ export default function KioskDetailPage() {
       if (!found) throw new Error("Kiosk not found");
       setKiosk(found);
 
-      // Fetch printers
-      const printersRes = await fetch(`/api/admin/kiosks/${kioskId}/printers`);
-      if (printersRes.ok) {
-        const printersData = await printersRes.json();
-        setPrinters(printersData);
+      // Fetch printers (may fail if migration not run yet)
+      try {
+        const printersRes = await fetch(`/api/admin/kiosks/${kioskId}/printers`);
+        if (printersRes.ok) {
+          const printersData = await printersRes.json();
+          setPrinters(Array.isArray(printersData) ? printersData : []);
+        }
+      } catch (err) {
+        console.warn("Could not fetch printers - migration may not be run yet");
       }
 
-      // Fetch alerts
-      const alertsRes = await fetch(`/api/admin/kiosks/${kioskId}/alerts`);
-      if (alertsRes.ok) {
-        const alertsData = await alertsRes.json();
-        setAlerts(alertsData);
+      // Fetch alerts (may fail if migration not run yet)
+      try {
+        const alertsRes = await fetch(`/api/admin/kiosks/${kioskId}/alerts`);
+        if (alertsRes.ok) {
+          const alertsData = await alertsRes.json();
+          setAlerts(Array.isArray(alertsData) ? alertsData : []);
+        }
+      } catch (err) {
+        console.warn("Could not fetch alerts - migration may not be run yet");
       }
     } catch (error) {
       console.error("Error fetching kiosk:", error);
@@ -620,7 +628,16 @@ export default function KioskDetailPage() {
 
         {/* General Info */}
         <div className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">General Info</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">General Info</h2>
+            <Link
+              href={`/admin/kiosks?edit=${kiosk.kioskId}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+            >
+              <PencilSquareIcon className="h-4 w-4" />
+              Edit Settings
+            </Link>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500">Name</p>
@@ -668,6 +685,45 @@ export default function KioskDetailPage() {
                     <ClipboardDocumentIcon className="h-5 w-5 text-gray-600" />
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Configuration Summary */}
+          <div className="mt-6 pt-6 border-t">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Configuration</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${kiosk.config?.micEnabled !== false ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-600">Microphone</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${kiosk.config?.greetingCardsEnabled !== false ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-600">Greeting Cards</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${kiosk.config?.stickersEnabled !== false ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-600">Stickers</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${kiosk.config?.giftCardRibbonEnabled !== false ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-600">Gift Card Ribbon</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${kiosk.config?.virtualKeyboard?.enabled !== false ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-600">Virtual Keyboard</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${kiosk.config?.surveillance?.enabled ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-600">Surveillance</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${kiosk.config?.giftCardTile?.enabled ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <span className="text-sm text-gray-600">Gift Card Tile</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Theme:</span>
+                <span className="text-sm font-medium text-gray-900 capitalize">{kiosk.config?.theme || 'default'}</span>
               </div>
             </div>
           </div>

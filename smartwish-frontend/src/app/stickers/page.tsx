@@ -1099,15 +1099,15 @@ function StickersContent() {
 
   // Print sticker sheet function - generates JPG and sends to backend for IPP printing
   // Returns the result with jobId for polling
+  // NOTE: Printer is now looked up from kiosk_printers table on the backend
   const printStickerSheet = async (): Promise<{ jobId?: string; message?: string } | null> => {
-    // Get printer name from kiosk config (must be set in /admin/kiosks)
-    if (!kioskConfig?.printerName) {
-      console.error('❌ Printer not configured. Please set printer name in /admin/kiosks');
-      throw new Error('Printer not configured. Please contact staff.');
+    // Kiosk ID is required so backend can look up the sticker printer
+    if (!kioskInfo?.id) {
+      console.error('❌ Kiosk not configured. Please activate kiosk first.');
+      throw new Error('Kiosk not configured. Please contact staff.');
     }
-    const printerName = kioskConfig.printerName;
     
-    console.log(`🖨️ Generating JPG and sending to printer: ${printerName}`);
+    console.log(`🖨️ Generating sticker JPG for kiosk: ${kioskInfo.name || kioskInfo.kioskId}`);
 
     // Generate JPG blob
     const jpgBlob = await generateStickerJPGOnly();
@@ -1123,7 +1123,7 @@ function StickersContent() {
       reader.readAsDataURL(jpgBlob);
     });
 
-    // Send to backend print endpoint for IPP printing
+    // Send to backend print endpoint - backend will look up sticker printer from kiosk_printers table
     const response = await fetch(
       `${process.env.NEXT_PUBLIC_API_BASE || "https://smartwish.onrender.com"}/print-sticker-jpg`,
       {
@@ -1133,8 +1133,7 @@ function StickersContent() {
         },
         body: JSON.stringify({
           jpgBase64: base64Jpg,
-          printerName: printerName,
-          kioskId: kioskInfo?.id, // Send kiosk UUID to fetch printer IP from config
+          kioskId: kioskInfo.id, // Backend looks up sticker printer from kiosk_printers table
         }),
       }
     );

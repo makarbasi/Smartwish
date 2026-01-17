@@ -34,10 +34,14 @@ export function PrinterAlertBanner() {
         const response = await fetch("/api/admin/alerts");
         if (response.ok) {
           const data = await response.json();
-          setAlerts(data.filter((a: KioskAlert) => !a.resolvedAt));
+          if (Array.isArray(data)) {
+            setAlerts(data.filter((a: KioskAlert) => !a.resolvedAt));
+          }
         }
+        // Silently fail for 500 errors - tables may not exist yet
       } catch (error) {
-        console.error("Error fetching alerts:", error);
+        // Tables may not exist yet, don't show error
+        console.warn("Could not fetch alerts - migration may not be run yet");
       } finally {
         setLoading(false);
       }
