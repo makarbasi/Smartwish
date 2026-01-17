@@ -29,6 +29,12 @@ export enum PaperStatus {
   UNKNOWN = 'unknown',
 }
 
+export enum PrintMode {
+  SIMPLEX = 'simplex',           // Single-sided printing
+  DUPLEX = 'duplex',             // Double-sided, long edge binding
+  DUPLEX_SHORT = 'duplexshort',  // Double-sided, short edge binding
+}
+
 @Entity({ name: 'kiosk_printers' })
 export class KioskPrinter {
   @PrimaryGeneratedColumn('uuid')
@@ -59,6 +65,10 @@ export class KioskPrinter {
 
   @Column({ name: 'is_enabled', type: 'boolean', default: true })
   isEnabled!: boolean;
+
+  // Print mode: simplex (single-sided), duplex (long edge), duplexshort (short edge)
+  @Column({ name: 'print_mode', type: 'varchar', length: 32, default: PrintMode.SIMPLEX })
+  printMode!: PrintMode;
 
   // Health tracking (updated by local print agent)
   @Index()

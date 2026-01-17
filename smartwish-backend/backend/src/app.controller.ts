@@ -101,7 +101,8 @@ declare global {
     trayNumber?: number | null;
     borderless?: boolean;
     borderlessPaperSize?: string;
-    duplexSide?: 'duplex' | 'duplexshort' | 'duplexlong' | 'simplex';
+    // Print mode: simplex (single-sided), duplex (long edge), duplexshort (short edge)
+    printMode?: 'simplex' | 'duplex' | 'duplexshort';
     copies?: number;
     status: string;
     createdAt: string;
@@ -477,6 +478,8 @@ export class AppController {
       const effectivePaperType = paperType || 'greeting-card';
       let printerName: string | null = legacyPrinterName || null;
       let kioskName: string | null = null;
+      // Default print mode based on paper type (greeting-card = duplex short edge, sticker = simplex)
+      let printMode: 'simplex' | 'duplex' | 'duplexshort' = effectivePaperType === 'greeting-card' ? 'duplexshort' : 'simplex';
 
       if (kioskId) {
         try {
@@ -489,7 +492,8 @@ export class AppController {
           
           if (printer) {
             printerName = printer.printerName;
-            console.log(`🖨️ Found ${effectivePaperType} printer: ${printerName}`);
+            printMode = (printer.printMode as 'simplex' | 'duplex' | 'duplexshort') || printMode;
+            console.log(`🖨️ Found ${effectivePaperType} printer: ${printerName} (print mode: ${printMode})`);
           } else if (!printerName) {
             // Fallback to legacy printerName from config
             printerName = (kioskConfig.config as Record<string, any>)?.printerName;
@@ -783,6 +787,7 @@ export class AppController {
           kioskName,
           paperSize: selectedPaperSize,
           paperType: effectivePaperType,
+          printMode,  // Include print mode for duplex/simplex control
           trayNumber: trayNumber || null,
           imagePaths: imageUrls,
           ...(pdfUrl ? { pdfUrl } : {}),
@@ -965,12 +970,14 @@ export class AppController {
         }
 
         // Create print job for local agent
+        // Stickers are always printed single-sided (simplex)
         const printJob = {
           id: jobId,
           printerName,
           imagePaths: [], // Stickers use PDF directly, no separate image paths
           paperSize: selectedPaperSize,
           paperType: 'sticker',
+          printMode: 'simplex' as const,  // Stickers are single-sided
           trayNumber: trayNumber || null,
           pdfUrl,
           status: 'pending',
@@ -983,7 +990,7 @@ export class AppController {
         }
         global.printJobQueue.push(printJob as any);
 
-        console.log(`✅ Sticker print job ${jobId} queued for local print agent`);
+        console.log(`✅ Sticker print job ${jobId} queued for local print agent (simplex)`);
 
         // Cleanup temp files
         const validPaths = savedPaths.filter((p): p is string => p !== null);
@@ -1121,6 +1128,7 @@ export class AppController {
         }
 
         // Create print job for local agent
+        // Stickers are always printed single-sided (simplex)
         const printJob = {
           id: jobId,
           printerName,
@@ -1129,6 +1137,7 @@ export class AppController {
           imagePaths: [], // Stickers use JPG directly, no separate image paths
           paperSize: 'letter',
           paperType: 'sticker',
+          printMode: 'simplex' as const,  // Stickers are single-sided
           trayNumber: null,
           jpgUrl, // JPG URL for local agent to download and print
           status: 'pending',
@@ -1142,7 +1151,7 @@ export class AppController {
         }
         global.printJobQueue.push(printJob as any);
 
-        console.log(`✅ Sticker print job ${jobId} queued for local print agent`);
+        console.log(`✅ Sticker print job ${jobId} queued for local print agent (simplex)`);
         console.log(`   Queue size: ${global.printJobQueue.length} job(s)`);
         console.log(`   Printer IP: ${printerIP}`);
         console.log(`   JPG URL: ${jpgUrl?.substring(0, 50)}...`);
