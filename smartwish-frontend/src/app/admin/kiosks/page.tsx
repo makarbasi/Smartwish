@@ -791,6 +791,14 @@ export default function KiosksAdminPage() {
                       <PrinterIcon className="h-4 w-4" />
                       Print Jobs
                     </Link>
+                    {/* View Details - Full kiosk management page with printers */}
+                    <Link
+                      href={`/admin/kiosks/${kiosk.kioskId}`}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                    >
+                      <ComputerDesktopIcon className="h-4 w-4" />
+                      View Details & Printers
+                    </Link>
                     {/* Manager assignment button */}
                     <button
                       onClick={() => openManagersModal(kiosk)}

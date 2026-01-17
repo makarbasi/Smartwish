@@ -1052,4 +1052,148 @@ export class PrinterStatusMonitor {
   }
 }
 
+// =============================================================================
+// MULTI-PRINTER MONITOR
+// Monitors multiple printers for a kiosk and reports their statuses
+// =============================================================================
+
+export class MultiPrinterMonitor {
+  constructor(options = {}) {
+    this.kioskId = options.kioskId;
+    this.apiKey = options.apiKey;
+    this.serverUrl = options.serverUrl || 'https://smartwish.onrender.com';
+    this.printers = options.printers || [];
+    this.pollInterval = options.pollInterval || 30000;
+    this.reportInterval = options.reportInterval || 60000;
+    
+    this.monitors = new Map(); // PrinterStatusMonitor per printer
+    this.reportTimer = null;
+  }
+
+  /**
+   * Start monitoring all printers
+   */
+  async start() {
+    console.log(`  🖨️  [MultiPrinterMonitor] Starting monitoring for ${this.printers.length} printer(s)...`);
+    
+    for (const printer of this.printers) {
+      const monitor = new PrinterStatusMonitor({
+        printerIP: printer.ipAddress || null,
+        printerName: printer.printerName,
+        kioskId: this.kioskId,
+        apiKey: this.apiKey,
+        serverUrl: this.serverUrl,
+        pollInterval: this.pollInterval,
+        reportInterval: 0, // We'll handle reporting ourselves
+        onStatusChange: (status) => {
+          console.log(`  🖨️  [${printer.name}] Status changed: ${status.online ? 'online' : 'offline'}`);
+        },
+      });
+      
+      // Store printer ID with the monitor
+      monitor.printerId = printer.id;
+      monitor.printerDisplayName = printer.name;
+      
+      this.monitors.set(printer.id, monitor);
+      monitor.start();
+    }
+    
+    // Start periodic reporting to server
+    this.reportTimer = setInterval(() => this.reportAllStatuses(), this.reportInterval);
+    
+    // Initial report after a short delay
+    setTimeout(() => this.reportAllStatuses(), 5000);
+  }
+
+  /**
+   * Stop all monitors
+   */
+  stop() {
+    if (this.reportTimer) {
+      clearInterval(this.reportTimer);
+      this.reportTimer = null;
+    }
+    
+    for (const monitor of this.monitors.values()) {
+      monitor.stop();
+    }
+    this.monitors.clear();
+    
+    console.log('  🖨️  [MultiPrinterMonitor] Stopped');
+  }
+
+  /**
+   * Report status of all printers to the server
+   */
+  async reportAllStatuses() {
+    const statuses = [];
+    
+    for (const [printerId, monitor] of this.monitors) {
+      const status = monitor.getStatus();
+      if (!status) continue;
+      
+      statuses.push({
+        printerId,
+        online: status.online,
+        printerState: status.printerState,
+        lastError: status.errors?.[0]?.message || null,
+        ink: status.ink,
+        paper: status.paper,
+        errors: status.errors,
+        warnings: status.warnings,
+        fullStatus: status,
+      });
+    }
+    
+    if (statuses.length === 0) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${this.serverUrl}/local-agent/printer-status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-kiosk-api-key': this.apiKey || '',
+        },
+        body: JSON.stringify({
+          kioskId: this.kioskId,
+          printers: statuses,
+        }),
+      });
+      
+      if (response.ok) {
+        console.log(`  📡 [MultiPrinterMonitor] Reported ${statuses.length} printer status(es)`);
+      } else if (response.status === 404) {
+        // Endpoint not deployed yet
+      } else {
+        console.warn(`  ⚠️  [MultiPrinterMonitor] Report failed: ${response.status}`);
+      }
+    } catch (err) {
+      if (!err.message.includes('ECONNREFUSED')) {
+        console.warn(`  ⚠️  [MultiPrinterMonitor] Report error: ${err.message}`);
+      }
+    }
+  }
+
+  /**
+   * Get status of a specific printer
+   */
+  getPrinterStatus(printerId) {
+    const monitor = this.monitors.get(printerId);
+    return monitor ? monitor.getStatus() : null;
+  }
+
+  /**
+   * Get all printer statuses
+   */
+  getAllStatuses() {
+    const statuses = {};
+    for (const [printerId, monitor] of this.monitors) {
+      statuses[printerId] = monitor.getStatus();
+    }
+    return statuses;
+  }
+}
+
 export default PrinterStatusMonitor;

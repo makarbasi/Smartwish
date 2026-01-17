@@ -5,6 +5,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { KioskConfig } from './kiosk-config.entity';
 import { KioskManager } from './kiosk-manager.entity';
 import { KioskPrintLog } from './kiosk-print-log.entity';
+import { KioskPrinter } from './kiosk-printer.entity';
+import { KioskAlert } from './kiosk-alert.entity';
 import { KioskConfigService } from './kiosk-config.service';
 import {
   KioskConfigAdminController,
@@ -17,12 +19,13 @@ import {
   ManagerPrintLogController,
   AdminPrintLogController,
   LocalPrintAgentController,
+  KioskPrinterAdminController,
 } from './kiosk-config.controller';
 import { User } from '../user/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([KioskConfig, KioskManager, KioskPrintLog, User]),
+    TypeOrmModule.forFeature([KioskConfig, KioskManager, KioskPrintLog, KioskPrinter, KioskAlert, User]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => {
@@ -53,6 +56,7 @@ import { User } from '../user/user.entity';
     ManagerPrintLogController,
     AdminPrintLogController,
     LocalPrintAgentController,
+    KioskPrinterAdminController,
   ],
   providers: [KioskConfigService],
   exports: [KioskConfigService],

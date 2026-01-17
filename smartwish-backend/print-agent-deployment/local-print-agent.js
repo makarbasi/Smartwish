@@ -6,18 +6,17 @@
  * USAGE:
  *   1. Run this on the computer connected to your printer
  *   2. It polls the cloud server for pending print jobs
- *   3. When a job is found, it downloads the images, creates a PDF, and prints
+ *   3. When a job is found, it downloads the PDF and prints via PowerShell/SumatraPDF
  * 
  * SETUP:
  *   npm install pdf-to-printer pdf-lib sharp node-fetch
  *   node local-print-agent.js
  * 
  * CONFIGURATION:
- *   Set environment variables or modify the CONFIG object below
+ *   Set environment variables or modify config.json
  */
 
 import pdfPrinter from 'pdf-to-printer';
-const print = pdfPrinter.print;
 const getPrinters = pdfPrinter.getPrinters;
 
 import { PDFDocument } from 'pdf-lib';
@@ -25,12 +24,11 @@ import sharp from 'sharp';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import ipp from 'ipp';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { getSurveillanceManager } from './surveillance-manager.js';
 import { DevicePairingServer, fetchKioskConfig } from './device-pairing.js';
-import { PrinterStatusMonitor } from './printer-status-monitor.js';
+import { MultiPrinterMonitor } from './printer-status-monitor.js';
 
 const execAsync = promisify(exec);
 
@@ -41,7 +39,6 @@ const __dirname = path.dirname(__filename);
 // LOAD CONFIGURATION FROM FILE OR ENVIRONMENT
 // =============================================================================
 
-// Try to load config.json if it exists
 let fileConfig = {};
 const configPath = path.join(__dirname, 'config.json');
 try {
@@ -49,7 +46,6 @@ try {
   fileConfig = JSON.parse(configData);
   console.log('📁 Loaded configuration from config.json');
 } catch (err) {
-  // Config file doesn't exist or is invalid, use defaults
   console.log('📁 No config.json found, using environment variables');
 }
 
@@ -60,9 +56,6 @@ const CONFIG = {
   // Cloud connections (external)
   cloudServerUrl: fileConfig.cloudServerUrl || 'https://smartwish.onrender.com',
   frontendUrl: fileConfig.frontendUrl || 'https://app.smartwish.us',
-
-  // Printer settings
-  defaultPrinter: fileConfig.defaultPrinter || '',
 
   // Polling settings
   pollInterval: fileConfig.pollInterval || 10000,
@@ -148,22 +141,22 @@ async function ensureTempDir() {
   }
 }
 
-async function downloadImage(url, savePath) {
-  console.log(`  📥 Downloading: ${url}`);
+async function downloadPdf(url, savePath) {
+  console.log(`  📥 Downloading PDF: ${url}`);
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.status}`);
+    throw new Error(`Failed to download PDF: ${response.status}`);
   }
   const buffer = Buffer.from(await response.arrayBuffer());
   await fs.writeFile(savePath, buffer);
   return savePath;
 }
 
-async function downloadPdf(url, savePath) {
-  console.log(`  📥 Downloading PDF: ${url}`);
+async function downloadImage(url, savePath) {
+  console.log(`  📥 Downloading: ${url}`);
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to download PDF: ${response.status}`);
+    throw new Error(`Failed to download image: ${response.status}`);
   }
   const buffer = Buffer.from(await response.arrayBuffer());
   await fs.writeFile(savePath, buffer);
@@ -223,19 +216,16 @@ async function createPdf(pdfPath, side1Path, side2Path, config) {
  */
 async function getWindowsPrintQueue(printerName) {
   try {
-    // PowerShell command to get print jobs for the specific printer
     const cmd = `powershell -Command "Get-PrintJob -PrinterName '${printerName}' | Select-Object Id, JobStatus, DocumentName | ConvertTo-Json"`;
     const { stdout } = await execAsync(cmd);
     
     if (!stdout.trim()) {
-      return []; // Empty queue
+      return [];
     }
     
     const jobs = JSON.parse(stdout);
-    // Handle single job (PowerShell returns object, not array)
     return Array.isArray(jobs) ? jobs : [jobs];
   } catch (err) {
-    // No jobs or printer not found
     return [];
   }
 }
@@ -245,7 +235,7 @@ async function getWindowsPrintQueue(printerName) {
  */
 async function waitForPrintComplete(printerName, timeoutMs = 60000) {
   const startTime = Date.now();
-  const checkInterval = 1000; // Check every 1 second
+  const checkInterval = 1000;
   
   console.log(`  ⏳ Monitoring Windows print queue for completion...`);
   
@@ -257,10 +247,8 @@ async function waitForPrintComplete(printerName, timeoutMs = 60000) {
       return true;
     }
     
-    // Show current queue status
     const printing = jobs.filter(j => j.JobStatus === 'Printing').length;
     const spooling = jobs.filter(j => j.JobStatus === 'Spooling').length;
-    const waiting = jobs.length - printing - spooling;
     
     if (printing > 0 || spooling > 0) {
       console.log(`  🖨️  Windows queue: ${jobs.length} job(s) - ${printing} printing, ${spooling} spooling`);
@@ -270,123 +258,104 @@ async function waitForPrintComplete(printerName, timeoutMs = 60000) {
   }
   
   console.log(`  ⚠️ Timeout waiting for print queue - assuming completed`);
-  return true; // Assume completed after timeout
+  return true;
 }
 
+// =============================================================================
+// POWERSHELL PRINTING (Works for BOTH greeting cards and stickers)
+// =============================================================================
+
 /**
- * Print PDF using Windows PowerShell (handles printer names with special characters better)
+ * Print PDF using PowerShell + SumatraPDF
+ * This is the ONLY print method - no IPP, no tray selection
+ * Printer defaults are configured in Windows printer settings
  */
 async function printPdfWithPowerShell(pdfPath, printerName) {
   const absolutePath = path.resolve(pdfPath);
   
-  // Write a temporary PowerShell script to avoid escaping issues
-  const tempScriptPath = path.join(CONFIG.tempDir, 'print-job.ps1');
+  // Create PowerShell script for reliable printing
+  const tempScriptPath = path.join(CONFIG.tempDir, `print-${Date.now()}.ps1`);
+  
+  // Escape double quotes in printer name for PowerShell
+  const escapedPrinterName = printerName.replace(/"/g, '`"');
+  const escapedPath = absolutePath.replace(/\\/g, '\\\\');
+  
   const psScript = `
-$printer = "${printerName}"
-$pdfPath = "${absolutePath.replace(/\\/g, '\\\\')}"
+# PDF Printing Script
+$printerName = "${escapedPrinterName}"
+$pdfPath = "${escapedPath}"
 
-# Try Adobe Reader first (better quality)
-$acrobat = "C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe"
-$reader = "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+# SumatraPDF paths
+$sumatraPaths = @(
+  "$env:LOCALAPPDATA\\SumatraPDF\\SumatraPDF.exe",
+  "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe",
+  "C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe"
+)
 
-if (Test-Path $acrobat) {
-  Write-Host "Using Acrobat DC"
-  Start-Process -FilePath $acrobat -ArgumentList "/t", "\`"$pdfPath\`"", "\`"$printer\`"" -Wait -WindowStyle Hidden
-} elseif (Test-Path $reader) {
-  Write-Host "Using Acrobat Reader"
-  Start-Process -FilePath $reader -ArgumentList "/t", "\`"$pdfPath\`"", "\`"$printer\`"" -Wait -WindowStyle Hidden
-} else {
-  Write-Host "Using Windows default print handler"
-  # Use Windows Shell to print
-  $shell = New-Object -ComObject Shell.Application
-  $shell.NameSpace(0).ParseName($pdfPath).InvokeVerb("Print")
-  Start-Sleep -Seconds 5
+$sumatraPath = $null
+foreach ($p in $sumatraPaths) {
+  if (Test-Path $p) {
+    $sumatraPath = $p
+    break
+  }
+}
+
+if ($sumatraPath) {
+  Write-Host "Using SumatraPDF to print..."
+  $printArgs = "-print-to \`"$printerName\`" \`"$pdfPath\`""
+  Start-Process -FilePath $sumatraPath -ArgumentList $printArgs -Wait -WindowStyle Hidden
+  Write-Host "Print job sent via SumatraPDF"
+  exit 0
+}
+
+# Fallback: Adobe Reader
+$adobePaths = @(
+  "$env:ProgramFiles\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe",
+  "\${env:ProgramFiles(x86)}\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe",
+  "$env:ProgramFiles\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe",
+  "\${env:ProgramFiles(x86)}\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+)
+
+foreach ($p in $adobePaths) {
+  if (Test-Path $p) {
+    Write-Host "Using Adobe Reader to print..."
+    $printArgs = "/t \`"$pdfPath\`" \`"$printerName\`""
+    Start-Process -FilePath $p -ArgumentList $printArgs -Wait -WindowStyle Hidden
+    Write-Host "Print job sent via Adobe Reader"
+    exit 0
+  }
+}
+
+# Fallback: Windows default handler
+Write-Host "Using Windows default PDF handler..."
+try {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $pdfPath
+  $psi.Verb = "printto"
+  $psi.Arguments = "\`"$printerName\`""
+  $psi.CreateNoWindow = $true
+  $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+  $process = [System.Diagnostics.Process]::Start($psi)
+  $process.WaitForExit(10000)
+  Write-Host "Print job sent via default handler"
+  exit 0
+} catch {
+  Write-Host "Error: $_"
+  exit 1
 }
 `;
-  
+
   await fs.writeFile(tempScriptPath, psScript, 'utf-8');
   
   try {
+    console.log(`  🖨️  Printing to: ${printerName}`);
     await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, {
       windowsHide: true,
       timeout: 60000,
     });
+    console.log('  ✅ Print job sent successfully');
   } finally {
-    // Cleanup script file
     try { await fs.unlink(tempScriptPath); } catch {}
-  }
-}
-
-async function printPdf(pdfPath, printerName) {
-  console.log(`  🖨️ Printing to: ${printerName}`);
-  console.log(`  📄 Settings: Letter, Landscape, Duplex (flip short edge), Color`);
-
-  const absolutePath = path.resolve(pdfPath);
-  
-  // Some printer names have brackets [XXX] which cause command line issues
-  // Try with simplified name first (remove brackets portion)
-  const simplifiedName = printerName.replace(/\s*\[.*?\]\s*$/, '').trim();
-  const hasSpecialChars = printerName !== simplifiedName || /[[\](){}]/.test(printerName);
-  
-  if (hasSpecialChars) {
-    console.log(`  📝 Printer name has special characters, will try simplified: "${simplifiedName}"`);
-  }
-
-  // Method 1: Try pdf-to-printer with simplified name (if different)
-  if (hasSpecialChars && simplifiedName) {
-    try {
-      const printOptions = {
-        printer: simplifiedName,
-        side: 'duplexshort',
-        scale: 'noscale',
-        monochrome: false,
-      };
-      await print(absolutePath, printOptions);
-      console.log('  ✅ Print job sent via SumatraPDF (simplified name)');
-      await waitForPrintComplete(simplifiedName, 120000);
-      return;
-    } catch (err) {
-      console.warn('  ⚠️ SumatraPDF (simplified) failed:', err.message.split('\n')[0]);
-    }
-  }
-
-  // Method 2: Try pdf-to-printer with original name
-  try {
-    const printOptions = {
-      printer: printerName,
-      side: 'duplexshort',
-      scale: 'noscale',
-      monochrome: false,
-    };
-    await print(absolutePath, printOptions);
-    console.log('  ✅ Print job sent via SumatraPDF');
-    await waitForPrintComplete(printerName, 120000);
-    return;
-  } catch (err) {
-    console.warn('  ⚠️ SumatraPDF failed:', err.message.split('\n')[0]);
-  }
-    
-  // Method 3: Try basic SumatraPDF without options
-  try {
-    console.log('  📝 Trying basic SumatraPDF...');
-    await print(absolutePath, { printer: printerName });
-    console.log('  ✅ Print job sent via SumatraPDF (basic)');
-    await waitForPrintComplete(printerName, 120000);
-    return;
-  } catch (err2) {
-    console.warn('  ⚠️ Basic SumatraPDF also failed:', err2.message.split('\n')[0]);
-  }
-      
-  // Method 4: Use PowerShell (handles special characters in printer names)
-  try {
-    console.log('  📝 Trying PowerShell printing...');
-    await printPdfWithPowerShell(absolutePath, printerName);
-    console.log('  ✅ Print job sent via PowerShell');
-    await waitForPrintComplete(printerName, 120000);
-    return;
-  } catch (err3) {
-    console.error('  ❌ PowerShell printing failed:', err3.message);
-    throw new Error(`All print methods failed. Last error: ${err3.message}`);
   }
 }
 
@@ -396,130 +365,37 @@ async function printPdf(pdfPath, printerName) {
 
 async function processJob(job) {
   const paperType = job.paperType || 'greeting-card';
-  const isSticker = paperType === 'sticker';
+  const printerName = job.printerName;
   
   console.log(`\n📋 Processing job: ${job.id}`);
-  console.log(`   Type: ${isSticker ? '🏷️  STICKER (IPP with printer IP)' : '💌 GREETING CARD (Windows printer name)'}`);
+  console.log(`   Type: ${paperType === 'sticker' ? '🏷️  STICKER' : '💌 GREETING CARD'}`);
   console.log(`   Kiosk: ${job.kioskName || 'Unknown'}`);
-  
-  if (isSticker) {
-    console.log(`   Printer IP: ${job.printerIP || '(not set - will use fallback)'}`);
-  } else {
-    console.log(`   Printer Name: ${job.printerName || '(not set - will use fallback)'}`);
-  }
-  
+  console.log(`   Printer: ${printerName || '(not configured)'}`);
   console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No'}`);
-  console.log(`   JPG URL: ${job.jpgUrl ? 'Yes ✓' : 'No'}`);
+
+  if (!printerName) {
+    throw new Error(`No printer configured for ${paperType} on this kiosk. Please add a printer in admin portal.`);
+  }
 
   const jobDir = path.join(CONFIG.tempDir, job.id);
   await fs.mkdir(jobDir, { recursive: true });
 
   try {
-    // =========================================================================
-    // STICKER PRINTING: Use JPG URL and print via IPP (requires printer IP)
-    // =========================================================================
-    if (job.jpgUrl && paperType === 'sticker') {
-      console.log('  🖼️  Sticker printing via IPP protocol');
+    let pdfPath = path.join(jobDir, `${paperType}.pdf`);
 
-      const jpgPath = path.join(jobDir, 'stickers.jpg');
-      await downloadImage(job.jpgUrl, jpgPath);
-      console.log('  ✅ JPG downloaded successfully');
-
-      // Get printer IP from job (set in /admin/kiosks) or use fallback
-      const printerIP = job.printerIP || '192.168.1.239';
-      const printerUrl = `http://${printerIP}:631/ipp/print`;
-
-      console.log(`  📡 Printer IP: ${printerIP}${job.printerIP ? ' (from kiosk config)' : ' (fallback)'}`);
-      console.log(`  📡 Printer URL: ${printerUrl}`);
-
-      // Verify printer is reachable (optional check)
-      try {
-        const testUrl = `http://${printerIP}:631`;
-        const testResponse = await fetch(testUrl, {
-          method: 'GET',
-          signal: AbortSignal.timeout(3000) // 3 second timeout
-        });
-        console.log(`  ✅ Printer is reachable (HTTP ${testResponse.status})`);
-      } catch (testErr) {
-        console.warn(`  ⚠️  Could not verify printer reachability: ${testErr.message}`);
-        console.warn(`  ⚠️  Continuing anyway - printer might still work...`);
-      }
-
-      // Read JPG file
-      const jpgBuffer = await fs.readFile(jpgPath);
-      console.log(`  📄 JPG file size: ${(jpgBuffer.length / 1024).toFixed(2)} KB`);
-
-      // Print using IPP
-      console.log('  🔌 Connecting to printer via IPP...');
-      const printer = ipp.Printer(printerUrl);
-
-      const printJob = {
-        'operation-attributes-tag': {
-          'requesting-user-name': 'Admin',
-          'job-name': 'Sticker Sheet',
-          'document-format': 'image/jpeg',
-        },
-        'job-attributes-tag': {
-          copies: 1,
-          media: 'iso_a4_210x297mm',
-          'print-quality': 5, // High quality
-        },
-        data: jpgBuffer,
-      };
-
-      console.log(`  📤 Sending print job (${(jpgBuffer.length / 1024).toFixed(2)} KB)...`);
-      await new Promise((resolve, reject) => {
-        printer.execute('Print-Job', printJob, (err, result) => {
-          if (err) {
-            console.error('  ❌ IPP Error details:', err);
-            reject(new Error(`IPP Print failed: ${err.message || JSON.stringify(err)}`));
-          } else {
-            console.log('  ✅ Print job accepted by printer. Status:', result.statusCode);
-            if (result.statusCode !== 'successful-ok') {
-              console.warn('  ⚠️  Warning: Status code is not "successful-ok":', result.statusCode);
-            }
-            resolve(result);
-          }
-        });
-      });
-      
-      // Wait a few seconds for sticker to actually print
-      console.log('  ⏳ Waiting for sticker to print...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      console.log('  ✅ Sticker print completed!');
-
-      // Update job status on server
-      await updateJobStatus(job.id, 'completed');
-
-      // Cleanup
-      await fs.rm(jobDir, { recursive: true, force: true });
-
-      console.log(`  ✅ Job ${job.id} completed successfully!`);
-      return;
-    }
-
-    // =========================================================================
-    // GREETING CARDS: Use PDF and print via Windows printer name
-    // =========================================================================
-    console.log('  💌 Greeting card printing via Windows printer driver');
-    
-    let pdfPath = path.join(jobDir, 'card.pdf');
-
-    // PREFERRED: Use pre-generated PDF from server (faster, more reliable)
+    // PREFERRED: Download server-generated PDF
     if (job.pdfUrl) {
       console.log('  📄 Downloading server-generated PDF...');
       await downloadPdf(job.pdfUrl, pdfPath);
       console.log('  ✅ PDF downloaded successfully');
     }
-    // FALLBACK: Generate PDF from images (legacy support)
+    // FALLBACK: Generate PDF from images (legacy support for greeting cards)
     else if (job.imagePaths && job.imagePaths.length >= 4) {
       console.log('  ⚠️  No PDF URL provided - generating from images (slower)');
 
-      // Get paper configuration
       const config = getPaperConfig(job.paperSize || 'letter');
       console.log(`   Paper: ${config.name}`);
 
-      // Download or use local paths for images
       const imageFiles = {
         front: path.join(jobDir, 'page_1.png'),
         insideRight: path.join(jobDir, 'page_2.png'),
@@ -527,7 +403,6 @@ async function processJob(job) {
         back: path.join(jobDir, 'page_4.png'),
       };
 
-      // If imagePaths are URLs, download them
       for (let i = 0; i < 4; i++) {
         const imagePath = job.imagePaths[i];
         const localPath = path.join(jobDir, `page_${i + 1}.png`);
@@ -535,13 +410,11 @@ async function processJob(job) {
         if (imagePath.startsWith('http')) {
           await downloadImage(imagePath, localPath);
         } else {
-          // Copy local file
           const absolutePath = path.resolve(imagePath);
           await fs.copyFile(absolutePath, localPath);
         }
       }
 
-      // Create composite images
       console.log('  🔧 Creating composite images...');
       const side1Path = path.join(jobDir, 'side1.png');
       const side2Path = path.join(jobDir, 'side2.png');
@@ -549,17 +422,17 @@ async function processJob(job) {
       await createCompositeImage(side1Path, imageFiles.back, imageFiles.front, config);
       await createCompositeImage(side2Path, imageFiles.insideRight, imageFiles.insideLeft, config);
 
-      // Create PDF
       console.log('  📄 Creating PDF...');
       await createPdf(pdfPath, side1Path, side2Path, config);
     } else {
       throw new Error('Job has no PDF URL and no valid image paths');
     }
 
-    // Print using Windows printer name (set in /admin/kiosks)
-    const printerName = job.printerName || CONFIG.defaultPrinter;
-    console.log(`  🖨️  Printer: ${printerName}${job.printerName ? ' (from kiosk config)' : ' (fallback)'}`);
-    await printPdf(pdfPath, printerName);
+    // Print using PowerShell (works for BOTH stickers and greeting cards)
+    await printPdfWithPowerShell(pdfPath, printerName);
+    
+    // Wait for print queue to clear
+    await waitForPrintComplete(printerName, 120000);
 
     // Update job status on server
     await updateJobStatus(job.id, 'completed');
@@ -572,28 +445,23 @@ async function processJob(job) {
   } catch (error) {
     console.error(`  ❌ Job ${job.id} failed:`);
     console.error(`     Error: ${error.message}`);
-    console.error(`     Stack: ${error.stack}`);
-    if (error.cause) {
-      console.error(`     Cause: ${error.cause}`);
-    }
     await updateJobStatus(job.id, 'failed', error.message);
 
-    // Cleanup on error too
     try {
       await fs.rm(jobDir, { recursive: true, force: true });
     } catch { }
   }
 }
 
+// =============================================================================
+// JOB STATUS UPDATES
+// =============================================================================
+
 /**
  * Update job status using the database-backed endpoint
- */
-/**
- * Update job status using the database-backed endpoint
- * CRITICAL: This MUST succeed for frontend to show "Print Complete"
  */
 async function updateJobStatusDB(jobId, status, error = null) {
-  const maxRetries = 10; // More retries for critical status updates
+  const maxRetries = 10;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -607,15 +475,14 @@ async function updateJobStatusDB(jobId, status, error = null) {
       });
       
       if (response.status === 429) {
-        // Rate limited - wait and retry with shorter delays
-        const waitTime = Math.min(Math.pow(1.5, attempt) * 500, 5000); // 500ms to 5s max
+        const waitTime = Math.min(Math.pow(1.5, attempt) * 500, 5000);
         console.log(`  ⏳ DB status update rate limited, retry ${attempt + 1}/${maxRetries} in ${(waitTime/1000).toFixed(1)}s...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
       
       if (response.ok) {
-        return true; // Success
+        return true;
       }
     } catch (err) {
       const waitTime = Math.min(1000 * (attempt + 1), 3000);
@@ -631,10 +498,9 @@ async function updateJobStatusDB(jobId, status, error = null) {
 
 /**
  * Update job status using the legacy in-memory endpoint
- * CRITICAL: This MUST succeed for frontend to show "Print Complete"
  */
 async function updateJobStatusLegacy(jobId, status, error = null) {
-  const maxRetries = 10; // More retries for critical status updates
+  const maxRetries = 10;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -648,8 +514,7 @@ async function updateJobStatusLegacy(jobId, status, error = null) {
       });
       
       if (response.status === 429) {
-        // Rate limited - wait and retry with shorter delays for status updates
-        const waitTime = Math.min(Math.pow(1.5, attempt) * 500, 5000); // 500ms to 5s max
+        const waitTime = Math.min(Math.pow(1.5, attempt) * 500, 5000);
         console.log(`  ⏳ Status update rate limited, retry ${attempt + 1}/${maxRetries} in ${(waitTime/1000).toFixed(1)}s...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
@@ -659,7 +524,7 @@ async function updateJobStatusLegacy(jobId, status, error = null) {
         if (status === 'completed') {
           console.log(`  ✅ Status "${status}" sent to server successfully`);
         }
-        return true; // Success
+        return true;
       }
     } catch (err) {
       const waitTime = Math.min(1000 * (attempt + 1), 3000);
@@ -674,34 +539,6 @@ async function updateJobStatusLegacy(jobId, status, error = null) {
   return false;
 }
 
-/**
- * Retry a fetch request with exponential backoff for 429 errors
- */
-async function fetchWithRetry(url, options, maxRetries = 3) {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, options);
-      
-      if (response.status === 429) {
-        // Rate limited - wait and retry
-        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-        console.log(`  ⏳ Rate limited, waiting ${waitTime/1000}s before retry...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-      
-      return response;
-    } catch (err) {
-      if (attempt === maxRetries - 1) throw err;
-      // Wait before retry on network errors
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-  throw new Error('Max retries exceeded');
-}
-
-// Update job status on the server
-// CRITICAL: The in-memory queue update is what frontend polls to show "Print Complete"
 async function updateJobStatus(jobId, status, error = null) {
   console.log(`  📡 Updating job status to "${status}" on server...`);
   
@@ -717,7 +554,6 @@ async function updateJobStatus(jobId, status, error = null) {
   }
   
   // PRIORITY 2: Try DB update (non-blocking, less critical)
-  // Don't wait for this - it's for record keeping, not frontend display
   updateJobStatusDB(jobId, status, error).catch(() => {});
   
   // PRIORITY 3: Cleanup (non-blocking)
@@ -726,11 +562,6 @@ async function updateJobStatus(jobId, status, error = null) {
   }
 }
 
-/**
- * Remove the processed job from the in-memory queue
- * Uses clear-all to ensure no jobs remain that could be re-printed
- * Retries on rate limiting (429) errors
- */
 async function cleanupCompletedJobs() {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
@@ -739,8 +570,7 @@ async function cleanupCompletedJobs() {
       });
       
       if (response.status === 429) {
-        // Rate limited - wait and retry with increasing delay
-        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s, 16s
+        const waitTime = Math.pow(2, attempt) * 1000;
         console.log(`  ⏳ Cleanup rate limited, waiting ${waitTime/1000}s...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
@@ -751,10 +581,9 @@ async function cleanupCompletedJobs() {
         if (result.cleared > 0) {
           console.log(`  🧹 Cleared queue (${result.cleared} job(s) removed)`);
         }
-        return; // Success, exit
+        return;
       }
     } catch (err) {
-      // Wait before retry on network errors
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
@@ -765,54 +594,6 @@ async function cleanupCompletedJobs() {
 // MAIN POLLING LOOP
 // =============================================================================
 
-/**
- * Poll for pending jobs from the DATABASE-BACKED endpoint
- * Greeting cards are stored in the database with kiosk config (printerName, printerIP)
- */
-async function pollForJobsFromDB() {
-  try {
-    const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/pending-jobs`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        // Endpoint not deployed yet, skip silently
-        return;
-      }
-      throw new Error(`Server returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    const jobs = data.jobs || [];
-    
-    // Filter out jobs we've already processed locally
-    const newJobs = jobs.filter(j => !locallyProcessedJobs.has(j.id));
-
-    if (newJobs.length > 0) {
-      console.log(`\n📬 Found ${newJobs.length} pending greeting card job(s) from database`);
-
-      for (const job of newJobs) {
-        // Mark as locally processed IMMEDIATELY to prevent re-processing
-        locallyProcessedJobs.add(job.id);
-        
-        await updateJobStatusDB(job.id, 'processing');
-        await processJob(job);
-      }
-    }
-  } catch (error) {
-    if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
-      // Server might be down, just wait and retry
-    } else if (error.message.includes('429')) {
-      // Rate limited - log and wait
-      console.log('Poll error (DB): Rate limited, will retry...');
-    } else {
-      console.error('Poll error (DB):', error.message);
-    }
-  }
-}
-
-/**
- * Poll for pending jobs from the IN-MEMORY queue
- * Both greeting cards and stickers can be in the in-memory queue
- */
 async function pollForJobsFromMemory() {
   try {
     const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs`);
@@ -833,16 +614,14 @@ async function pollForJobsFromMemory() {
     }
 
     // ONLY process "pending" jobs that we haven't already processed locally
-    // This prevents re-printing if server status update fails due to rate limiting
     const pendingJobs = jobs.filter(j => 
       j.status === 'pending' && !locallyProcessedJobs.has(j.id)
     );
 
-    // Only show queue status when there are NEW jobs to process
     if (pendingJobs.length > 0) {
       console.log(`\n🔍 Found ${pendingJobs.length} new job(s) in queue`);
       pendingJobs.forEach((j, i) => {
-        console.log(`   ${i + 1}. ${j.id} (${j.paperType || 'greeting-card'}) - jpgUrl: ${j.jpgUrl ? 'YES' : 'no'}, pdfUrl: ${j.pdfUrl ? 'YES' : 'no'}`);
+        console.log(`   ${i + 1}. ${j.id} (${j.paperType || 'greeting-card'}) - Printer: ${j.printerName || 'not set'}`);
       });
     }
 
@@ -857,7 +636,6 @@ async function pollForJobsFromMemory() {
         await updateJobStatusLegacy(job.id, 'processing');
         // Process the job
         await processJob(job);
-        // Note: processJob calls updateJobStatus which cleans up completed jobs
         
         console.log(`  📋 Job ${job.id} added to local tracking (${locallyProcessedJobs.size} total tracked)`);
       }
@@ -866,35 +644,23 @@ async function pollForJobsFromMemory() {
     if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
       // Server might be down, just wait and retry
     } else if (error.message.includes('429')) {
-      // Rate limited - skip logging (retry logic handles this)
+      // Rate limited - skip logging
     } else {
       console.error('Poll error (memory):', error.message);
     }
   }
 }
 
-// Track last poll time for debugging
 let pollCount = 0;
-
-// LOCAL tracking of processed jobs to prevent re-processing
-// even if server status update fails due to rate limiting
 const locallyProcessedJobs = new Set();
 
-/**
- * Main polling function
- * Only polls in-memory queue to reduce rate limit pressure
- * All jobs (stickers + greeting cards) go through /print-jobs endpoint
- */
 async function pollForJobs() {
   pollCount++;
-  // Show poll activity every 6 polls (1 minute at 10s interval)
   if (pollCount % 6 === 0) {
     const now = new Date().toLocaleTimeString();
     console.log(`\n⏱️  [${now}] Still polling... (${pollCount} polls so far)`);
   }
   
-  // Only poll in-memory queue to reduce server requests
-  // This reduces rate limiting and leaves room for status updates
   await pollForJobsFromMemory();
 }
 
@@ -916,36 +682,40 @@ async function listPrinters() {
   }
 
   console.log('─'.repeat(50));
-  console.log(`  Fallback: ${CONFIG.defaultPrinter}`);
   console.log('');
 }
 
-async function fetchKioskPrinterConfigs() {
-  console.log('\n🔧 Kiosk Printer Configurations (from /admin/kiosks):');
+async function fetchKioskPrinters(kioskId) {
+  console.log('\n🔧 Kiosk Printer Configurations (from database):');
   console.log('─'.repeat(60));
 
   try {
-    const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/printer-config`);
+    const response = await fetch(`${CONFIG.cloudServerUrl}/local-agent/kiosk-printers/${kioskId}`);
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
 
-    const kiosks = await response.json();
+    const data = await response.json();
+    const printers = data.printers || [];
     
-    if (kiosks && kiosks.length > 0) {
-      kiosks.forEach((kiosk, i) => {
-        const printerName = kiosk.printerName || '(not set)';
-        const printerIP = kiosk.printerIP || '(not set)';
-        console.log(`  ${i + 1}. ${kiosk.name}`);
-        console.log(`     Printer: ${printerName}`);
-        console.log(`     IP: ${printerIP}`);
+    if (printers.length > 0) {
+      printers.forEach((printer, i) => {
+        const typeIcon = printer.printableType === 'sticker' ? '🏷️ ' : '💌';
+        console.log(`  ${i + 1}. ${printer.name} ${typeIcon}`);
+        console.log(`     Windows Name: ${printer.printerName}`);
+        console.log(`     IP: ${printer.ipAddress || '(not set)'}`);
+        console.log(`     Type: ${printer.printableType}`);
+        console.log(`     Status: ${printer.status}`);
       });
+      return printers;
     } else {
-      console.log('  No kiosks configured');
+      console.log('  No printers configured for this kiosk');
+      console.log('  Add printers in the admin portal: /admin/kiosks');
+      return [];
     }
   } catch (err) {
-    console.error(`  ⚠️ Could not fetch kiosk configs: ${err.message}`);
-    console.log('     (Server may not be running or endpoint not deployed yet)');
+    console.error(`  ⚠️ Could not fetch kiosk printers: ${err.message}`);
+    return [];
   }
 
   console.log('─'.repeat(60));
@@ -957,13 +727,11 @@ async function clearJobQueue() {
   
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      // Clear the in-memory queue on the server
       const response = await fetch(`${CONFIG.cloudServerUrl}/print-jobs/clear-all`, {
         method: 'DELETE',
       });
       
       if (response.status === 429) {
-        // Rate limited - wait and retry
         const waitTime = Math.pow(2, attempt) * 1000;
         console.log(`   ⏳ Rate limited, waiting ${waitTime/1000}s...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -974,7 +742,7 @@ async function clearJobQueue() {
         const result = await response.json();
         console.log(`   ✅ Cleared ${result.cleared || 0} old job(s) from queue`);
         console.log('');
-        return; // Success
+        return;
       } else {
         console.log(`   ⚠️ Could not clear queue: ${response.status}`);
       }
@@ -1030,62 +798,47 @@ async function startSurveillance(surveillanceConfig) {
 }
 
 /**
- * Start printer status monitoring
+ * Start multi-printer status monitoring
  */
-function startPrinterStatusMonitor(printerConfig) {
+async function startPrinterMonitoring(kioskId, apiKey, printers) {
   console.log('\n' + '─'.repeat(60));
   console.log('  🖨️  PRINTER STATUS MONITOR');
   console.log('─'.repeat(60));
 
-  const printerStatusMonitor = new PrinterStatusMonitor({
-    printerIP: printerConfig.printerIP || null,
-    printerName: printerConfig.printerName || CONFIG.defaultPrinter || null,
-    kioskId: printerConfig.kioskId,
-    apiKey: printerConfig.apiKey,
+  if (!printers || printers.length === 0) {
+    console.log('  ⚠️ No printers configured - monitoring disabled');
+    console.log('  💡 Add printers in admin portal to enable monitoring');
+    console.log('─'.repeat(60) + '\n');
+    return null;
+  }
+
+  const monitor = new MultiPrinterMonitor({
+    kioskId,
+    apiKey,
     serverUrl: CONFIG.cloudServerUrl,
-    snmpCommunity: printerConfig.snmpCommunity || 'public',
-    pollInterval: 30000, // Check every 30 seconds
-    reportInterval: 60000, // Report to server every minute
-    onStatusChange: (status) => {
-      // Log significant status changes
-      if (status.errors?.length > 0) {
-        console.log('\n  🚨 PRINTER ALERT:');
-        status.errors.forEach(err => console.log(`     ❌ ${err.message}`));
-      }
-    },
-    onError: (error) => {
-      console.error('  ❌ Printer monitor error:', error.message);
-    },
+    printers,
+    pollInterval: 30000,
+    reportInterval: 60000,
   });
 
-  printerStatusMonitor.start();
+  await monitor.start();
   
-  console.log(`  ✅ Printer monitoring started`);
-  if (printerConfig.printerIP) {
-    console.log(`  📡 Monitoring IP: ${printerConfig.printerIP} (SNMP)`);
-  }
-  if (printerConfig.printerName) {
-    console.log(`  🏷️  Monitoring queue: ${printerConfig.printerName} (Windows)`);
-  }
+  console.log(`  ✅ Monitoring ${printers.length} printer(s)`);
+  printers.forEach(p => {
+    console.log(`     - ${p.name} (${p.printableType})`);
+  });
   console.log('─'.repeat(60) + '\n');
 
-  return printerStatusMonitor;
+  return monitor;
 }
 
-/**
- * Wait for device pairing if not already paired
- */
 async function waitForPairing(pairingServer) {
   return new Promise((resolve) => {
-    // Set callback for when device is paired
     pairingServer.onPaired = (pairing) => {
       console.log(`\n  ✅ Device paired to kiosk: ${pairing.kioskName || pairing.kioskId}`);
       resolve(pairing);
     };
 
-    // Open browser to manager page
-    // Use frontendUrl from config (default: https://app.smartwish.us)
-    // For local dev, set frontendUrl in config.json to http://localhost:3000
     pairingServer.openManagerPage(CONFIG.frontendUrl);
 
     console.log('\n  ⏳ Waiting for manager to pair this device...');
@@ -1121,22 +874,17 @@ async function main() {
     port: CONFIG.localServices.pairingPort,
   });
   
-  // Start pairing server
   await pairingServer.start();
   
-  // Load existing pairing
   let pairing = await pairingServer.loadPairing();
   let surveillanceConfig = null;
   
-  // Always open browser to manager portal so manager can verify/change kiosk
   console.log('\n  🌐 Opening manager portal...');
   pairingServer.openManagerPage(CONFIG.frontendUrl);
   
-  // Check if we have a valid pairing
   if (!pairing || !pairing.kioskId || !pairing.apiKey) {
     console.log('  📱 Device not paired to any kiosk');
     
-    // Check if we have local config as fallback
     if (CONFIG.surveillance.kioskId && CONFIG.surveillance.apiKey && 
         CONFIG.surveillance.kioskId !== 'default-kiosk' && 
         CONFIG.surveillance.kioskId !== 'YOUR_KIOSK_ID') {
@@ -1147,7 +895,6 @@ async function main() {
         config: { surveillance: CONFIG.surveillance },
       };
     } else {
-      // Wait for manager to pair device
       pairing = await waitForPairing(pairingServer);
     }
   } else {
@@ -1171,11 +918,6 @@ async function main() {
       frameThreshold: cloudConfig.surveillance?.frameThreshold ?? 10,
       showPreview: cloudConfig.surveillance?.showPreview ?? false,
     };
-    
-    // Update default printer from cloud config
-    if (cloudConfig.printerName) {
-      CONFIG.defaultPrinter = cloudConfig.printerName;
-    }
   } else {
     console.log('  ⚠️  Could not fetch cloud config, using pairing config');
     surveillanceConfig = pairing.config?.surveillance || CONFIG.surveillance;
@@ -1185,22 +927,18 @@ async function main() {
   
   console.log('');
   await listPrinters();
-  await fetchKioskPrinterConfigs();
+  
+  // Fetch configured printers for this kiosk
+  const kioskPrinters = await fetchKioskPrinters(pairing.kioskId);
   
   // Clear old jobs from queue - start fresh every time
   await clearJobQueue();
 
-  // Start surveillance if enabled in cloud config
+  // Start surveillance if enabled
   const surveillanceManager = await startSurveillance(surveillanceConfig);
 
-  // Start printer status monitoring
-  const printerStatusMonitor = startPrinterStatusMonitor({
-    printerIP: cloudConfig?.printerIP || null,
-    printerName: cloudConfig?.printerName || CONFIG.defaultPrinter || null,
-    kioskId: pairing.kioskId,
-    apiKey: pairing.apiKey,
-    snmpCommunity: cloudConfig?.snmpCommunity || 'public',
-  });
+  // Start multi-printer monitoring
+  const printerMonitor = await startPrinterMonitoring(pairing.kioskId, pairing.apiKey, kioskPrinters);
 
   console.log('🔄 Waiting for print jobs...');
   console.log(`   Kiosk: ${pairing.kioskId}`);
@@ -1209,8 +947,8 @@ async function main() {
   // Handle graceful shutdown
   const shutdown = () => {
     console.log('\n\n⏹️  Shutting down...');
-    if (printerStatusMonitor) {
-      printerStatusMonitor.stop();
+    if (printerMonitor) {
+      printerMonitor.stop();
     }
     if (surveillanceManager) {
       surveillanceManager.stop();

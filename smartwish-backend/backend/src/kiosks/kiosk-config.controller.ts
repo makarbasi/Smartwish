@@ -492,6 +492,44 @@ export class LocalPrintAgentController {
     }
     return config;
   }
+
+  /**
+   * Get printers configured for a kiosk (for local agent)
+   */
+  @Public()
+  @Get('kiosk-printers/:kioskId')
+  async getKioskPrintersForAgent(@Param('kioskId') kioskId: string) {
+    const printers = await this.kioskService.getAllKioskPrintersWithConfig(kioskId);
+    return { printers };
+  }
+
+  /**
+   * Update status for multiple printers (called by local agent)
+   */
+  @Public()
+  @Put('printer-status')
+  async updatePrinterStatus(
+    @Body() body: {
+      kioskId: string;
+      apiKey?: string;
+      printers: Array<{
+        printerId: string;
+        online: boolean;
+        printerState?: string;
+        lastError?: string;
+        ink?: { black?: { level: number }; cyan?: { level: number }; magenta?: { level: number }; yellow?: { level: number } };
+        paper?: Record<string, { state: string }>;
+        errors?: Array<{ code: string; message: string }>;
+        warnings?: Array<{ code: string; message: string }>;
+        fullStatus?: Record<string, any>;
+      }>;
+    },
+  ) {
+    if (!body.kioskId || !body.printers) {
+      throw new BadRequestException('kioskId and printers are required');
+    }
+    return this.kioskService.updateMultiplePrinterStatuses(body.kioskId, body.printers);
+  }
 }
 
 /**
@@ -607,5 +645,84 @@ export class AdminPrintLogController {
       body.startDate ? new Date(body.startDate) : undefined,
       body.endDate ? new Date(body.endDate) : undefined,
     );
+  }
+}
+
+// ==================== Kiosk Printer Management ====================
+
+/**
+ * Admin endpoints for managing printers per kiosk
+ */
+@Controller('admin/kiosks')
+@UseGuards(JwtAuthGuard)
+export class KioskPrinterAdminController {
+  constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * Get all printers for a kiosk
+   */
+  @Get(':kioskId/printers')
+  async getPrinters(@Param('kioskId') kioskId: string) {
+    return this.kioskService.getKioskPrinters(kioskId);
+  }
+
+  /**
+   * Add a printer to a kiosk
+   */
+  @Post(':kioskId/printers')
+  async addPrinter(
+    @Param('kioskId') kioskId: string,
+    @Body() body: { name: string; printerName: string; ipAddress?: string; printableType: string; isEnabled?: boolean },
+  ) {
+    if (!body.name || !body.printerName || !body.printableType) {
+      throw new BadRequestException('name, printerName, and printableType are required');
+    }
+    return this.kioskService.addPrinter(kioskId, body);
+  }
+
+  /**
+   * Update a printer
+   */
+  @Put(':kioskId/printers/:printerId')
+  async updatePrinter(
+    @Param('kioskId') kioskId: string,
+    @Param('printerId') printerId: string,
+    @Body() body: { name?: string; printerName?: string; ipAddress?: string; printableType?: string; isEnabled?: boolean },
+  ) {
+    return this.kioskService.updatePrinter(kioskId, printerId, body);
+  }
+
+  /**
+   * Delete a printer
+   */
+  @Delete(':kioskId/printers/:printerId')
+  async deletePrinter(
+    @Param('kioskId') kioskId: string,
+    @Param('printerId') printerId: string,
+  ) {
+    return this.kioskService.deletePrinter(kioskId, printerId);
+  }
+
+  /**
+   * Get all active alerts for a kiosk
+   */
+  @Get(':kioskId/alerts')
+  async getAlerts(
+    @Param('kioskId') kioskId: string,
+    @Query('includeResolved') includeResolved?: string,
+  ) {
+    return this.kioskService.getKioskAlerts(kioskId, includeResolved === 'true');
+  }
+
+  /**
+   * Acknowledge an alert
+   */
+  @Post(':kioskId/alerts/:alertId/acknowledge')
+  async acknowledgeAlert(
+    @Param('kioskId') kioskId: string,
+    @Param('alertId') alertId: string,
+    @Request() req: any,
+  ) {
+    return this.kioskService.acknowledgeAlert(alertId, req.user.id);
   }
 }
