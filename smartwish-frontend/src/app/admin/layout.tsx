@@ -4,6 +4,7 @@ import { useState, useEffect, Fragment, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { PrinterAlertBanner } from "@/components/admin/PrinterAlertBanner";
 
 // Admin email - only this account can access /admin routes
 // Set NEXT_PUBLIC_ADMIN_EMAIL in your .env.local file
@@ -314,6 +315,9 @@ export default function AdminLayout({
             </div>
           </div>
         </div>
+
+        {/* Printer Alert Banner */}
+        <PrinterAlertBanner />
 
         {/* Page content */}
         <main className="min-h-[calc(100vh-4rem)] lg:min-h-screen">

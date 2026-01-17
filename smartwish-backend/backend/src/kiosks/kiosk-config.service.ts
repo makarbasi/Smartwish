@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, MoreThanOrEqual, LessThanOrEqual, In } from 'typeorm';
+import { Repository, Between, MoreThanOrEqual, LessThanOrEqual, In, IsNull } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'crypto';
 import * as crypto from 'crypto';
@@ -9,6 +9,8 @@ import * as bcrypt from 'bcrypt';
 import { KioskConfig } from './kiosk-config.entity';
 import { KioskManager } from './kiosk-manager.entity';
 import { KioskPrintLog, PrintStatus, RefundStatus } from './kiosk-print-log.entity';
+import { KioskPrinter, PrintableType, PrinterStatus, PaperStatus } from './kiosk-printer.entity';
+import { KioskAlert, AlertType, AlertSeverity } from './kiosk-alert.entity';
 import { User, UserRole, UserStatus, OAuthProvider } from '../user/user.entity';
 import { CreateKioskConfigDto } from './dto/create-kiosk-config.dto';
 import { UpdateKioskConfigDto } from './dto/update-kiosk-config.dto';
@@ -34,6 +36,10 @@ export class KioskConfigService {
     private readonly kioskManagerRepo: Repository<KioskManager>,
     @InjectRepository(KioskPrintLog)
     private readonly printLogRepo: Repository<KioskPrintLog>,
+    @InjectRepository(KioskPrinter)
+    private readonly printerRepo: Repository<KioskPrinter>,
+    @InjectRepository(KioskAlert)
+    private readonly alertRepo: Repository<KioskAlert>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly jwtService: JwtService,
@@ -1332,18 +1338,50 @@ export class KioskConfigService {
     });
 
     // Transform to the format expected by local-print-agent.js
-    return pendingLogs.map(log => ({
-      id: log.id,
-      printerName: log.printerName || (log.kiosk?.config as any)?.printerName || null,
-      printerIP: (log.kiosk?.config as any)?.printerIP || null,
-      paperType: log.paperType || 'greeting-card',
-      paperSize: log.paperSize || 'letter',
-      trayNumber: log.trayNumber || null,
-      pdfUrl: log.pdfUrl || null,
-      status: log.status,
-      createdAt: log.createdAt?.toISOString(),
-      kioskName: log.kiosk?.name || log.kiosk?.kioskId || 'Unknown',
-    }));
+    // Look up printer from kiosk_printers table based on paperType
+    const jobs = await Promise.all(
+      pendingLogs.map(async (log) => {
+        const paperType = log.paperType || 'greeting-card';
+        
+        // Find the printer configured for this paper type
+        let printerName = log.printerName;
+        let printerIP = null;
+        
+        if (log.kioskId) {
+          const printer = await this.printerRepo.findOne({
+            where: {
+              kioskId: log.kioskId,
+              printableType: paperType as PrintableType,
+              isEnabled: true,
+            },
+          });
+          
+          if (printer) {
+            printerName = printer.printerName;
+            printerIP = printer.ipAddress;
+          } else {
+            // Fallback to legacy config if no printer found
+            printerName = printerName || (log.kiosk?.config as any)?.printerName || null;
+            printerIP = (log.kiosk?.config as any)?.printerIP || null;
+          }
+        }
+
+        return {
+          id: log.id,
+          printerName,
+          printerIP,
+          paperType,
+          paperSize: log.paperSize || 'letter',
+          pdfUrl: log.pdfUrl || null,
+          status: log.status,
+          createdAt: log.createdAt?.toISOString(),
+          kioskName: log.kiosk?.name || log.kiosk?.kioskId || 'Unknown',
+          kioskId: log.kiosk?.kioskId || null,
+        };
+      }),
+    );
+
+    return jobs;
   }
 
   /**
@@ -1500,5 +1538,429 @@ export class KioskConfigService {
 
     const result = await this.printLogRepo.delete(where);
     return { success: true, deleted: result.affected || 0 };
+  }
+
+  // ==================== Printer Management ====================
+
+  /**
+   * Get all printers for a kiosk
+   */
+  async getKioskPrinters(kioskId: string): Promise<KioskPrinter[]> {
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    return this.printerRepo.find({
+      where: { kioskId: kiosk.id },
+      order: { printableType: 'ASC', name: 'ASC' },
+    });
+  }
+
+  /**
+   * Add a printer to a kiosk
+   */
+  async addPrinter(
+    kioskId: string,
+    data: { name: string; printerName: string; ipAddress?: string; printableType: string; isEnabled?: boolean },
+  ): Promise<KioskPrinter> {
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    // Check if a printer with the same printable type already exists
+    const existingPrinter = await this.printerRepo.findOne({
+      where: { kioskId: kiosk.id, printableType: data.printableType as PrintableType },
+    });
+    if (existingPrinter) {
+      throw new ConflictException(`A printer for ${data.printableType} already exists on this kiosk`);
+    }
+
+    const printer = this.printerRepo.create({
+      kioskId: kiosk.id,
+      name: data.name,
+      printerName: data.printerName,
+      ipAddress: data.ipAddress || null,
+      printableType: data.printableType as PrintableType,
+      isEnabled: data.isEnabled ?? true,
+      status: PrinterStatus.UNKNOWN,
+      paperStatus: PaperStatus.UNKNOWN,
+    });
+
+    return this.printerRepo.save(printer);
+  }
+
+  /**
+   * Update a printer
+   */
+  async updatePrinter(
+    kioskId: string,
+    printerId: string,
+    data: { name?: string; printerName?: string; ipAddress?: string; printableType?: string; isEnabled?: boolean },
+  ): Promise<KioskPrinter> {
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    const printer = await this.printerRepo.findOne({
+      where: { id: printerId, kioskId: kiosk.id },
+    });
+    if (!printer) {
+      throw new NotFoundException(`Printer with ID ${printerId} not found`);
+    }
+
+    // If changing printable type, check for conflicts
+    if (data.printableType && data.printableType !== printer.printableType) {
+      const existingPrinter = await this.printerRepo.findOne({
+        where: { kioskId: kiosk.id, printableType: data.printableType as PrintableType },
+      });
+      if (existingPrinter && existingPrinter.id !== printerId) {
+        throw new ConflictException(`A printer for ${data.printableType} already exists on this kiosk`);
+      }
+    }
+
+    // Update fields
+    if (data.name !== undefined) printer.name = data.name;
+    if (data.printerName !== undefined) printer.printerName = data.printerName;
+    if (data.ipAddress !== undefined) printer.ipAddress = data.ipAddress || null;
+    if (data.printableType !== undefined) printer.printableType = data.printableType as PrintableType;
+    if (data.isEnabled !== undefined) printer.isEnabled = data.isEnabled;
+
+    return this.printerRepo.save(printer);
+  }
+
+  /**
+   * Delete a printer
+   */
+  async deletePrinter(kioskId: string, printerId: string): Promise<{ success: boolean }> {
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    const printer = await this.printerRepo.findOne({
+      where: { id: printerId, kioskId: kiosk.id },
+    });
+    if (!printer) {
+      throw new NotFoundException(`Printer with ID ${printerId} not found`);
+    }
+
+    await this.printerRepo.remove(printer);
+    return { success: true };
+  }
+
+  /**
+   * Get printer by kiosk and printable type
+   * Used when creating print jobs to find the right printer
+   */
+  async getPrinterForType(kioskId: string, printableType: string): Promise<KioskPrinter | null> {
+    // kioskId here is the UUID (id field), not the kioskId string
+    const printer = await this.printerRepo.findOne({
+      where: {
+        kioskId,
+        printableType: printableType as PrintableType,
+        isEnabled: true,
+      },
+    });
+    return printer || null;
+  }
+
+  /**
+   * Update printer status (called by local print agent)
+   */
+  async updateMultiplePrinterStatuses(
+    kioskId: string,
+    printers: Array<{
+      printerId: string;
+      online: boolean;
+      printerState?: string;
+      lastError?: string;
+      ink?: { black?: { level: number }; cyan?: { level: number }; magenta?: { level: number }; yellow?: { level: number } };
+      paper?: Record<string, { state: string }>;
+      errors?: Array<{ code: string; message: string }>;
+      warnings?: Array<{ code: string; message: string }>;
+      fullStatus?: Record<string, any>;
+    }>,
+  ): Promise<{ success: boolean; updated: number }> {
+    let updated = 0;
+
+    for (const printerStatus of printers) {
+      const printer = await this.printerRepo.findOne({
+        where: { id: printerStatus.printerId },
+        relations: ['kiosk'],
+      });
+
+      if (!printer) continue;
+
+      // Update status
+      printer.status = printerStatus.online ? PrinterStatus.ONLINE : PrinterStatus.OFFLINE;
+      printer.lastSeenAt = new Date();
+      printer.lastError = printerStatus.lastError || null;
+
+      // Update ink levels
+      if (printerStatus.ink) {
+        printer.inkBlack = printerStatus.ink.black?.level ?? printer.inkBlack;
+        printer.inkCyan = printerStatus.ink.cyan?.level ?? printer.inkCyan;
+        printer.inkMagenta = printerStatus.ink.magenta?.level ?? printer.inkMagenta;
+        printer.inkYellow = printerStatus.ink.yellow?.level ?? printer.inkYellow;
+      }
+
+      // Update paper status (simplified - take worst state)
+      if (printerStatus.paper) {
+        const states = Object.values(printerStatus.paper).map(p => p.state);
+        if (states.includes('empty')) {
+          printer.paperStatus = PaperStatus.EMPTY;
+        } else if (states.includes('low')) {
+          printer.paperStatus = PaperStatus.LOW;
+        } else if (states.includes('ok')) {
+          printer.paperStatus = PaperStatus.OK;
+        } else {
+          printer.paperStatus = PaperStatus.UNKNOWN;
+        }
+
+        // Store individual tray states
+        const trayKeys = Object.keys(printerStatus.paper);
+        if (trayKeys.includes('tray1')) {
+          printer.paperTray1State = printerStatus.paper['tray1'].state;
+        }
+        if (trayKeys.includes('tray2')) {
+          printer.paperTray2State = printerStatus.paper['tray2'].state;
+        }
+      }
+
+      // Store full status for detailed view
+      if (printerStatus.fullStatus) {
+        printer.fullStatus = printerStatus.fullStatus;
+      }
+
+      await this.printerRepo.save(printer);
+      updated++;
+
+      // Create alerts for issues
+      await this.handlePrinterAlerts(printer, printerStatus);
+    }
+
+    return { success: true, updated };
+  }
+
+  /**
+   * Handle alert creation/resolution based on printer status
+   */
+  private async handlePrinterAlerts(
+    printer: KioskPrinter,
+    status: { online: boolean; errors?: Array<{ code: string; message: string }>; warnings?: Array<{ code: string; message: string }> },
+  ): Promise<void> {
+    // Check for offline alert
+    if (!status.online) {
+      await this.createOrUpdateAlert(
+        printer.kioskId,
+        printer.id,
+        AlertType.PRINTER_OFFLINE,
+        `${printer.name} is offline`,
+        AlertSeverity.ERROR,
+      );
+    } else {
+      // Auto-resolve offline alert if printer is back online
+      await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PRINTER_OFFLINE);
+    }
+
+    // Check for ink alerts
+    const inkLevels = { black: printer.inkBlack, cyan: printer.inkCyan, magenta: printer.inkMagenta, yellow: printer.inkYellow };
+    for (const [color, level] of Object.entries(inkLevels)) {
+      if (level !== null && level !== undefined) {
+        if (level === 0) {
+          await this.createOrUpdateAlert(
+            printer.kioskId,
+            printer.id,
+            AlertType.INK_EMPTY,
+            `${printer.name}: ${color} ink is empty`,
+            AlertSeverity.CRITICAL,
+            { color, level },
+          );
+        } else if (level < 20) {
+          await this.createOrUpdateAlert(
+            printer.kioskId,
+            printer.id,
+            AlertType.INK_LOW,
+            `${printer.name}: ${color} ink is low (${level}%)`,
+            AlertSeverity.WARNING,
+            { color, level },
+          );
+        } else {
+          // Auto-resolve if ink is OK now
+          await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.INK_LOW, { color });
+          await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.INK_EMPTY, { color });
+        }
+      }
+    }
+
+    // Check for paper alerts
+    if (printer.paperStatus === PaperStatus.EMPTY) {
+      await this.createOrUpdateAlert(
+        printer.kioskId,
+        printer.id,
+        AlertType.PAPER_EMPTY,
+        `${printer.name}: Paper tray is empty`,
+        AlertSeverity.CRITICAL,
+      );
+    } else if (printer.paperStatus === PaperStatus.LOW) {
+      await this.createOrUpdateAlert(
+        printer.kioskId,
+        printer.id,
+        AlertType.PAPER_LOW,
+        `${printer.name}: Paper is low`,
+        AlertSeverity.WARNING,
+      );
+    } else if (printer.paperStatus === PaperStatus.OK) {
+      await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_LOW);
+      await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_EMPTY);
+    }
+  }
+
+  /**
+   * Create or update an alert (avoid duplicates)
+   */
+  private async createOrUpdateAlert(
+    kioskId: string,
+    printerId: string | null,
+    alertType: AlertType,
+    message: string,
+    severity: AlertSeverity,
+    metadata: Record<string, any> = {},
+  ): Promise<KioskAlert> {
+    // Check if an unresolved alert of this type already exists
+    const existingWhere: any = {
+      kioskId,
+      alertType,
+      resolvedAt: IsNull(),
+    };
+    if (printerId) existingWhere.printerId = printerId;
+
+    const existing = await this.alertRepo.findOne({ where: existingWhere });
+
+    if (existing) {
+      // Update the existing alert
+      existing.message = message;
+      existing.severity = severity;
+      existing.metadata = { ...existing.metadata, ...metadata };
+      return this.alertRepo.save(existing);
+    }
+
+    // Create new alert
+    const alert = this.alertRepo.create({
+      kioskId,
+      printerId,
+      alertType,
+      message,
+      severity,
+      metadata,
+    });
+
+    return this.alertRepo.save(alert);
+  }
+
+  /**
+   * Auto-resolve alerts when issue is fixed
+   */
+  private async autoResolveAlerts(
+    kioskId: string,
+    printerId: string | null,
+    alertType: AlertType,
+    metadataMatch?: Record<string, any>,
+  ): Promise<void> {
+    const whereClause: any = {
+      kioskId,
+      alertType,
+      resolvedAt: IsNull(),
+    };
+    if (printerId) whereClause.printerId = printerId;
+
+    const alerts = await this.alertRepo.find({ where: whereClause });
+
+    for (const alert of alerts) {
+      // If metadataMatch is provided, only resolve if metadata matches
+      if (metadataMatch) {
+        const matches = Object.entries(metadataMatch).every(
+          ([key, value]) => alert.metadata[key] === value,
+        );
+        if (!matches) continue;
+      }
+
+      alert.resolvedAt = new Date();
+      alert.autoResolved = true;
+      await this.alertRepo.save(alert);
+    }
+  }
+
+  /**
+   * Get alerts for a kiosk
+   */
+  async getKioskAlerts(kioskId: string, includeResolved: boolean = false): Promise<KioskAlert[]> {
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!kiosk) {
+      throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
+    }
+
+    const where: any = { kioskId: kiosk.id };
+    if (!includeResolved) {
+      where.resolvedAt = IsNull();
+    }
+
+    return this.alertRepo.find({
+      where,
+      relations: ['printer'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Acknowledge an alert
+   */
+  async acknowledgeAlert(alertId: string, userId: string): Promise<KioskAlert> {
+    const alert = await this.alertRepo.findOne({ where: { id: alertId } });
+    if (!alert) {
+      throw new NotFoundException(`Alert with ID ${alertId} not found`);
+    }
+
+    alert.acknowledgedAt = new Date();
+    alert.acknowledgedBy = userId;
+
+    return this.alertRepo.save(alert);
+  }
+
+  /**
+   * Get all active alerts (for admin dashboard)
+   */
+  async getAllActiveAlerts(): Promise<KioskAlert[]> {
+    return this.alertRepo.find({
+      where: { resolvedAt: IsNull() },
+      relations: ['kiosk', 'printer'],
+      order: { severity: 'DESC', createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Get all printers with their status (for local agent startup)
+   */
+  async getAllKioskPrintersWithConfig(kioskIdString: string): Promise<any[]> {
+    const kiosk = await this.kioskRepo.findOne({ where: { kioskId: kioskIdString } });
+    if (!kiosk) {
+      return [];
+    }
+
+    const printers = await this.printerRepo.find({
+      where: { kioskId: kiosk.id, isEnabled: true },
+    });
+
+    return printers.map(p => ({
+      id: p.id,
+      name: p.name,
+      printerName: p.printerName,
+      ipAddress: p.ipAddress,
+      printableType: p.printableType,
+      status: p.status,
+    }));
   }
 }
