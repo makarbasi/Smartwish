@@ -1415,6 +1415,9 @@ export class KioskConfigService {
   /**
    * Get all print logs for a specific kiosk (admin access)
    */
+  /**
+   * Get print logs for admin view (uses kioskId, not kioskConfigId)
+   */
   async getAdminKioskPrintLogs(
     kioskId: string,
     options: {
@@ -1432,7 +1435,8 @@ export class KioskConfigService {
       throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
     }
 
-    const where: any = { kioskConfigId: kiosk.id };
+    // Use kioskId property to match KioskPrintLog entity
+    const where: any = { kioskId: kiosk.id };
     
     if (options.status) {
       where.status = options.status;
@@ -1513,6 +1517,9 @@ export class KioskConfigService {
   /**
    * Delete print logs for a kiosk within a date range (admin only)
    */
+  /**
+   * Delete print logs within a date range for a kiosk (uses kioskId, not kioskConfigId)
+   */
   async deleteKioskPrintLogsInRange(
     kioskId: string,
     startDate?: Date,
@@ -1524,7 +1531,8 @@ export class KioskConfigService {
       throw new NotFoundException(`Kiosk with ID ${kioskId} not found`);
     }
 
-    const where: any = { kioskConfigId: kiosk.id };
+    // Use kioskId property to match KioskPrintLog entity
+    const where: any = { kioskId: kiosk.id };
     
     if (startDate || endDate) {
       if (startDate && endDate) {

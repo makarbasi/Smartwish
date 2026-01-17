@@ -371,7 +371,11 @@ async function processJob(job) {
   console.log(`   Type: ${paperType === 'sticker' ? '🏷️  STICKER' : '💌 GREETING CARD'}`);
   console.log(`   Kiosk: ${job.kioskName || 'Unknown'}`);
   console.log(`   Printer: ${printerName || '(not configured)'}`);
-  console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No'}`);
+  if (paperType === 'sticker') {
+    console.log(`   JPG URL: ${job.jpgUrl ? 'Yes ✓' : 'No'}`);
+  } else {
+    console.log(`   PDF URL: ${job.pdfUrl ? 'Yes ✓' : 'No'}`);
+  }
 
   if (!printerName) {
     throw new Error(`No printer configured for ${paperType} on this kiosk. Please add a printer in admin portal.`);
@@ -388,6 +392,53 @@ async function processJob(job) {
       console.log('  📄 Downloading server-generated PDF...');
       await downloadPdf(job.pdfUrl, pdfPath);
       console.log('  ✅ PDF downloaded successfully');
+    }
+    // STICKER JOBS: Download JPG and convert to PDF
+    else if (paperType === 'sticker' && job.jpgUrl) {
+      console.log('  🏷️  Processing sticker job with JPG...');
+      const jpgPath = path.join(jobDir, 'sticker.jpg');
+      await downloadImage(job.jpgUrl, jpgPath);
+      console.log('  ✅ JPG downloaded successfully');
+
+      // Convert JPG to PDF for printing (Letter size, 8.5x11)
+      console.log('  📄 Converting JPG to PDF...');
+      const jpgBuffer = await fs.readFile(jpgPath);
+      const jpgImage = await sharp(jpgBuffer);
+      const metadata = await jpgImage.metadata();
+
+      // Create a PDF with the sticker image (Letter size = 612x792 points)
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([612, 792]); // Letter size in points
+
+      // Embed the JPG image
+      const jpgEmbed = await pdfDoc.embedJpg(jpgBuffer);
+      
+      // Calculate scaling to fit the page while maintaining aspect ratio
+      const pageWidth = 612;
+      const pageHeight = 792;
+      const imgWidth = jpgEmbed.width;
+      const imgHeight = jpgEmbed.height;
+      
+      // Scale to fit page
+      const scaleX = pageWidth / imgWidth;
+      const scaleY = pageHeight / imgHeight;
+      const scale = Math.min(scaleX, scaleY);
+      
+      const drawWidth = imgWidth * scale;
+      const drawHeight = imgHeight * scale;
+      const x = (pageWidth - drawWidth) / 2;
+      const y = (pageHeight - drawHeight) / 2;
+      
+      page.drawImage(jpgEmbed, {
+        x,
+        y,
+        width: drawWidth,
+        height: drawHeight,
+      });
+
+      const pdfBytes = await pdfDoc.save();
+      await fs.writeFile(pdfPath, pdfBytes);
+      console.log('  ✅ PDF created from sticker JPG');
     }
     // FALLBACK: Generate PDF from images (legacy support for greeting cards)
     else if (job.imagePaths && job.imagePaths.length >= 4) {
@@ -425,7 +476,10 @@ async function processJob(job) {
       console.log('  📄 Creating PDF...');
       await createPdf(pdfPath, side1Path, side2Path, config);
     } else {
-      throw new Error('Job has no PDF URL and no valid image paths');
+      // Provide a more helpful error message
+      const hasJpgUrl = job.jpgUrl ? 'Yes' : 'No';
+      const hasImagePaths = job.imagePaths?.length > 0 ? `Yes (${job.imagePaths.length})` : 'No';
+      throw new Error(`Job has no printable content. PDF URL: No, JPG URL: ${hasJpgUrl}, Image Paths: ${hasImagePaths}`);
     }
 
     // Print using PowerShell (works for BOTH stickers and greeting cards)

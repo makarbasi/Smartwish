@@ -36,7 +36,7 @@ import useSWR from "swr";
 import { saveSavedDesignWithImages } from "@/utils/savedDesignUtils";
 import { useSession } from "next-auth/react";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
-import { useKioskConfig } from "@/hooks/useKioskConfig";
+import { useKiosk } from "@/contexts/KioskContext";
 import { useKioskInactivity } from "@/hooks/useKioskInactivity";
 
 type SavedDesign = {
@@ -248,7 +248,7 @@ export default function CustomizeCardPage() {
 
   const { data: session, status } = useSession();
   const { isKiosk } = useDeviceMode();
-  const { config: kioskConfig } = useKioskConfig();
+  const { config: kioskConfig, kioskInfo } = useKiosk();
   
   // Kiosk inactivity management - pause during printing
   const { pauseForPrinting, resumeInactivity } = useKioskInactivity();
@@ -1453,7 +1453,7 @@ export default function CustomizeCardPage() {
     }
   };
 
-  // Auto-print - sends images to backend with printer name from kiosk config
+  // Auto-print - sends images to backend which looks up printer from kiosk_printers table
   // Print agent handles duplex, borderless, paper size settings locally
   // Now also handles gift card data to overlay QR code on the printed card
   const autoPrintToEpson = async (
@@ -1465,18 +1465,17 @@ export default function CustomizeCardPage() {
     trayNumber: string | null = null,
     giftCardForPrint?: IssuedGiftCardData | null
   ) => {
-    // Get printer name from kiosk config (must be set in /admin/kiosks)
-    if (!kioskConfig?.printerName) {
+    // Kiosk ID is required so backend can look up the printer
+    if (!kioskInfo?.id) {
       setPrintStatus('failed');
-      setPrintError('Printer not configured. Please contact staff.');
+      setPrintError('Kiosk not configured. Please contact staff.');
       return;
     }
-    const printerName = kioskConfig.printerName;
     
     // Get kiosk ID from context for logging
     const kioskId = localStorage.getItem('smartwish_kiosk_id');
     
-    console.log(`🖨️ Sending print job to: ${printerName} (from kiosk config)`);
+    console.log(`🖨️ Sending print job for kiosk: ${kioskInfo.name || kioskInfo.kioskId}`);
     if (giftCardForPrint) {
       console.log('🎁 Including gift card in print:', giftCardForPrint.storeName, '$' + giftCardForPrint.amount);
     }
@@ -1501,7 +1500,7 @@ export default function CustomizeCardPage() {
           productId: cardData?.id,
           productName: cardData?.name || 'Greeting Card',
           price,
-          printerName, // Include printer name for local agent to use
+          // NOTE: printerName is now looked up from kiosk_printers table on backend
           paperType,
           paperSize: 'letter',
           trayNumber: trayNumber ? parseInt(trayNumber.replace('tray-', '')) : null,
@@ -1550,7 +1549,7 @@ export default function CustomizeCardPage() {
         console.log('🎁 No gift card payload - printing without gift card');
       }
 
-      // Send to backend /print-pc endpoint with printer name, tray number, and gift card data
+      // Send to backend /print-pc endpoint - backend looks up printer from kiosk_printers table
       // Print agent handles duplex, borderless, paper size locally
       // Backend will overlay the gift card QR code on the card if provided
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-pc`, {
@@ -1560,7 +1559,8 @@ export default function CustomizeCardPage() {
         },
         body: JSON.stringify({
           images: imageBase64Array,
-          printerName: printerName,
+          kioskId: kioskInfo.id, // Backend looks up printer from kiosk_printers table
+          paperType,
           trayNumber: trayNumber ? parseInt(trayNumber.replace('tray-', '')) : null,
           giftCardData: giftCardPayload, // Pass gift card data for QR overlay
         }),

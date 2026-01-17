@@ -21,8 +21,10 @@ export interface KioskConfig {
     playlist: Array<{ url: string; duration?: number; weight?: number }>;
   };
   printerProfile: string;
-  printerName: string;
-  printerIP?: string; // Printer IP address for IPP printing
+  // NOTE: printerName and printerIP are DEPRECATED - use kiosk_printers table instead
+  // These fields are kept for backwards compatibility but should not be used
+  printerName?: string;
+  printerIP?: string;
   printerTrays: PrinterTray[];
   revenueSharePercent: number; // Store owner's share of net profit (default 30%)
   virtualKeyboard?: {
@@ -68,7 +70,7 @@ const DEFAULT_CONFIG: KioskConfig = {
   micEnabled: true,
   ads: { playlist: [] },
   printerProfile: 'default',
-  printerName: '', // Must be set in /admin/kiosks - no hardcoded fallback
+  // NOTE: Printers are now configured via kiosk_printers table (Printers section in admin)
   printerTrays: [
     { trayNumber: 1, trayName: 'Tray 1', paperType: 'greeting-card', paperSize: 'letter' },
     { trayNumber: 2, trayName: 'Tray 2', paperType: 'sticker', paperSize: 'letter' },
