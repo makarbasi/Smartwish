@@ -4,7 +4,6 @@ import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, EllipsisVerticalIcon } fro
 import { useMemo, useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
-import { VirtualInput } from '@/components/VirtualInput';
 
 // Force dynamic rendering to prevent prerendering errors
 export const dynamic = 'force-dynamic';
@@ -775,7 +774,7 @@ export default function EventsPage() {
             <div className="px-6 py-4 space-y-4">
               <div>
                 <label htmlFor="event-name" className="block text-sm font-medium text-gray-700 mb-2">Event Name</label>
-                <VirtualInput
+                <input
                   id="event-name"
                   type="text"
                   value={formName}
@@ -786,7 +785,7 @@ export default function EventsPage() {
               </div>
               <div>
                 <label htmlFor="event-date" className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                <VirtualInput
+                <input
                   id="event-date"
                   type="date"
                   value={formDate}

@@ -4,7 +4,6 @@ import { useMemo, useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import QRCode from 'qrcode'
-import { VirtualInput } from '@/components/VirtualInput'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useKioskConfig } from '@/hooks/useKioskConfig'
@@ -626,7 +625,7 @@ function MarketplaceContent() {
                       <circle cx="11" cy="11" r="8" />
                       <path d="m21 21-4.35-4.35" />
                     </svg>
-                    <VirtualInput
+                    <input
                       type="text"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -1130,7 +1129,7 @@ function CheckoutModal({
                 {/* Amount Input */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Gift Card Amount ($)</label>
-                  <VirtualInput
+                  <input
                     type="number"
                     value={giftCardAmount}
                     onChange={(e) => setGiftCardAmount(e.target.value)}
@@ -1712,7 +1711,7 @@ function PaymentModalContent({
                     {/* Cardholder Name */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Cardholder Name</label>
-                      <VirtualInput
+                      <input
                         type="text"
                         value={cardholderName}
                         onChange={(e) => setCardholderName(e.target.value.toUpperCase())}
@@ -1725,7 +1724,7 @@ function PaymentModalContent({
                     {paymentAction === 'send' && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Email</label>
-                        <VirtualInput
+                        <input
                           type="email"
                           value={recipientEmail}
                           onChange={(e) => setRecipientEmail(e.target.value)}

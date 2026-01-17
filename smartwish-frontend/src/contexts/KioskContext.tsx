@@ -27,10 +27,6 @@ export interface KioskConfig {
   printerIP?: string;
   printerTrays: PrinterTray[];
   revenueSharePercent: number; // Store owner's share of net profit (default 30%)
-  virtualKeyboard?: {
-    enabled: boolean; // Master toggle - if false, no page shrinking, no keyboard
-    showBuiltInKeyboard: boolean; // If enabled=true but this is false, shrink page but don't show our keyboard (use Windows touch keyboard)
-  };
   [key: string]: unknown;
 }
 
@@ -76,10 +72,6 @@ const DEFAULT_CONFIG: KioskConfig = {
     { trayNumber: 2, trayName: 'Tray 2', paperType: 'sticker', paperSize: 'letter' },
   ],
   revenueSharePercent: 30, // Default 30% of net profit goes to store owner
-  virtualKeyboard: {
-    enabled: true, // Enable virtual keyboard support by default
-    showBuiltInKeyboard: true, // Show our built-in virtual keyboard by default
-  },
 };
 
 /**

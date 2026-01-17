@@ -680,7 +680,7 @@ export default function KioskScreenSaver({
 
   return (
     <div
-      // Must sit above everything (Pintura modal + virtual keyboard use very high z-index values)
+      // Must sit above everything (Pintura modal uses very high z-index values)
       className="fixed inset-0 z-[2147483647] cursor-pointer select-none touch-none"
       onClick={handleInteraction}
       onTouchEnd={handleInteraction}

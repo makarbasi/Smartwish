@@ -6,7 +6,6 @@ import { useKiosk } from "@/contexts/KioskContext";
 import { useKioskConfig } from "@/hooks/useKioskConfig";
 import { useSessionTracking } from "@/hooks/useSessionTracking";
 import { useEffect, useState, Suspense } from "react";
-import { VirtualInput } from "@/components/VirtualInput";
 import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
 import { PrinterAlertBanner } from "@/components/PrinterAlertBanner";
 import QRCode from "qrcode";
@@ -471,7 +470,7 @@ function GiftCardPurchaseContent() {
                 Or enter custom amount ($
                 {brand.min_amount} - ${brand.max_amount})
               </label>
-              <VirtualInput
+              <input
                 type="number"
                 value={customAmount}
                 onChange={(e) => handleCustomAmountChange(e.target.value)}
@@ -607,7 +606,7 @@ function GiftCardPurchaseContent() {
                 </span>
               </div>
               <div className="space-y-4">
-                <VirtualInput
+                <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

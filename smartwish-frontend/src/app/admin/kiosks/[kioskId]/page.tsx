@@ -710,10 +710,6 @@ export default function KioskDetailPage() {
                 <span className="text-sm text-gray-600">Gift Card Ribbon</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${kiosk.config?.virtualKeyboard?.enabled !== false ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="text-sm text-gray-600">Virtual Keyboard</span>
-              </div>
-              <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${kiosk.config?.surveillance?.enabled ? 'bg-green-500' : 'bg-gray-300'}`} />
                 <span className="text-sm text-gray-600">Surveillance</span>
               </div>

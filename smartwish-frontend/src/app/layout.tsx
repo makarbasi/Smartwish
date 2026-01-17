@@ -8,12 +8,10 @@ import RequireAuthModal from "@/components/RequireAuthModal";
 import NavigationProgress from "@/components/NavigationProgress";
 import { AuthModalProvider } from "@/contexts/AuthModalContext";
 import { ToastProvider } from "@/contexts/ToastContext";
-import { VirtualKeyboardProvider } from "@/contexts/VirtualKeyboardContext";
 import { DeviceModeProvider } from "@/contexts/DeviceModeContext";
 import { KioskProvider } from "@/contexts/KioskContext";
 import { KioskSessionProvider } from "@/contexts/KioskSessionContext";
 import { PrinterStatusProvider } from "@/contexts/PrinterStatusContext";
-import VirtualKeyboard from "@/components/VirtualKeyboard";
 import DeviceModeLogger from "@/components/DeviceModeLogger";
 
 const geistSans = Geist({
@@ -64,14 +62,11 @@ export default function RootLayout({
               <KioskSessionProvider>
               <ToastProvider>
                 <AuthModalProvider>
-                  <VirtualKeyboardProvider>
-                    <RequireAuthModal
-                      protectedPaths={["/contacts", "/my-cards", "/event"]}
-                    >
-                      <AppChrome>{children}</AppChrome>
-                    </RequireAuthModal>
-                    <VirtualKeyboard />
-                  </VirtualKeyboardProvider>
+                  <RequireAuthModal
+                    protectedPaths={["/contacts", "/my-cards", "/event"]}
+                  >
+                    <AppChrome>{children}</AppChrome>
+                  </RequireAuthModal>
                 </AuthModalProvider>
               </ToastProvider>
               </KioskSessionProvider>
