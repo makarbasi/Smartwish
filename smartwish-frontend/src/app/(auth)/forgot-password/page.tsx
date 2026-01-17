@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { VirtualInput } from '@/components/VirtualInput'
 
 export default function Example() {
   const [email, setEmail] = useState('')
@@ -20,7 +19,7 @@ export default function Example() {
               <div>
                 <label htmlFor="email" className="block text-sm/6 font-medium text-gray-900">Email address</label>
                 <div className="mt-2">
-                  <VirtualInput 
+                  <input 
                     id="email" 
                     name="email" 
                     type="email" 

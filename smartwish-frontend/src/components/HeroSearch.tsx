@@ -3,7 +3,6 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, FormEvent } from 'react'
 import useSWR from 'swr'
-import { VirtualInput } from '@/components/VirtualInput'
 import { useDeviceMode } from '@/contexts/DeviceModeContext'
 import { useKioskConfig } from '@/hooks/useKioskConfig'
 
@@ -266,7 +265,7 @@ export default function HeroSearch(props: Props) {
             : '0 10px 40px rgba(99, 102, 241, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.1)'
         }}
       >
-        <VirtualInput
+        <input
           value={q}
           onFocus={() => setOpen(true)}
           onChange={(e) => setQ(e.target.value)}

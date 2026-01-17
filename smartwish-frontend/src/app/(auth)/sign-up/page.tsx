@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { DynamicRouter } from '@/utils/request_utils'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
-import { VirtualInput } from '@/components/VirtualInput'
 
 export default function SignUp() {
   const [name, setName] = useState('')
@@ -90,7 +89,7 @@ export default function SignUp() {
               <div>
                 <label htmlFor="name" className="block text-sm/6 font-medium text-gray-900">Full name</label>
                 <div className="mt-2">
-                  <VirtualInput 
+                  <input 
                     id="name" 
                     name="name" 
                     type="text" 
@@ -106,7 +105,7 @@ export default function SignUp() {
               <div>
                 <label htmlFor="email" className="block text-sm/6 font-medium text-gray-900">Email address</label>
                 <div className="mt-2">
-                  <VirtualInput 
+                  <input 
                     id="email" 
                     name="email" 
                     type="email" 
@@ -122,7 +121,7 @@ export default function SignUp() {
               <div>
                 <label htmlFor="password" className="block text-sm/6 font-medium text-gray-900">Password</label>
                 <div className="mt-2">
-                  <VirtualInput 
+                  <input 
                     id="password" 
                     name="password" 
                     type="password" 
@@ -138,7 +137,7 @@ export default function SignUp() {
               <div>
                 <label htmlFor="confirm" className="block text-sm/6 font-medium text-gray-900">Confirm password</label>
                 <div className="mt-2">
-                  <VirtualInput 
+                  <input 
                     id="confirm" 
                     name="confirm" 
                     type="password" 

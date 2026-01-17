@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
-import { VirtualInput, VirtualTextarea } from "@/components/VirtualInput";
 import {
   PlusIcon,
   ChevronDownIcon,
@@ -506,7 +505,7 @@ export default function ContactsPage() {
               <div className="mt-6">
                 <div className="relative mx-auto max-w-3xl">
                   <div className="flex items-center gap-1 sm:gap-2 rounded-2xl bg-white/95 p-1.5 sm:p-2 shadow-sm ring-1 ring-gray-300 backdrop-blur transition focus-within:ring-indigo-400">
-                    <VirtualInput
+                    <input
                       value={searchTerm}
                       onChange={(e) => handleSearchChange(e.target.value)}
                       type="text"
@@ -866,7 +865,7 @@ export default function ContactsPage() {
                                 First Name *
                               </label>
                               <div className="mt-3">
-                                <VirtualInput
+                                <input
                                   type="text"
                                   value={newContact.firstName || ""}
                                   onChange={(e) =>
@@ -885,7 +884,7 @@ export default function ContactsPage() {
                                 Last Name
                               </label>
                               <div className="mt-3">
-                                <VirtualInput
+                                <input
                                   type="text"
                                   value={newContact.lastName || ""}
                                   onChange={(e) =>
@@ -907,7 +906,7 @@ export default function ContactsPage() {
                               Email *
                             </label>
                             <div className="mt-3">
-                              <VirtualInput
+                              <input
                                 type="email"
                                 value={newContact.email || ""}
                                 onChange={(e) =>
@@ -928,7 +927,7 @@ export default function ContactsPage() {
                               Phone
                             </label>
                             <div className="mt-3">
-                              <VirtualInput
+                              <input
                                 type="tel"
                                 value={newContact.phoneNumber || ""}
                                 onChange={(e) =>
@@ -998,7 +997,7 @@ export default function ContactsPage() {
                                       Company
                                     </label>
                                     <div className="mt-3">
-                                      <VirtualInput
+                                      <input
                                         type="text"
                                         value={newContact.company || ""}
                                         onChange={(e) =>
@@ -1017,7 +1016,7 @@ export default function ContactsPage() {
                                       Occupation
                                     </label>
                                     <div className="mt-3">
-                                      <VirtualInput
+                                      <input
                                         type="text"
                                         value={newContact.occupation || ""}
                                         onChange={(e) =>
@@ -1036,7 +1035,7 @@ export default function ContactsPage() {
                                       Address
                                     </label>
                                     <div className="mt-3">
-                                      <VirtualTextarea
+                                      <textarea
                                         rows={2}
                                         value={newContact.address || ""}
                                         onChange={(e) =>
@@ -1081,7 +1080,7 @@ export default function ContactsPage() {
                                     )}
                                   </div>
                                   <div className="flex gap-2">
-                                    <VirtualInput
+                                    <input
                                       value={interestInput}
                                       onChange={(e) =>
                                         setInterestInput(e.target.value)
@@ -1110,7 +1109,7 @@ export default function ContactsPage() {
                                   Notes
                                 </label>
                                 <div className="mt-3">
-                                  <VirtualTextarea
+                                  <textarea
                                     rows={3}
                                     value={newContact.notes || ""}
                                     onChange={(e) =>

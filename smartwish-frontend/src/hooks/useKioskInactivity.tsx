@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
-import { useVirtualKeyboard } from "@/contexts/VirtualKeyboardContext";
 import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
 
 interface UseKioskInactivityOptions {
@@ -40,7 +39,6 @@ export function useKioskInactivity({
     const { isKiosk } = useDeviceMode();
     const pathname = usePathname();
     const router = useRouter();
-    const { hideKeyboard } = useVirtualKeyboard();
     const kioskSession = useKioskSessionSafe();
 
     // Disable screen saver on admin pages and setup pages
@@ -167,7 +165,6 @@ export function useKioskInactivity({
                 console.log("🖥️ [KioskInactivity] ⏰ Screen saver timer fired - showing screen saver");
                 isExitingRef.current = false;
                 setShowScreenSaver(true);
-                hideKeyboard();
             }, effectiveScreenSaverTimeout);
         } else {
             console.log("🖥️ [KioskInactivity] 🚫 Screen saver disabled - skipping visual display");
@@ -179,7 +176,7 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired");
             navigateToHome();
         }, effectiveResetTimeout);
-    }, [isKiosk, effectiveEnabled, clearTimers, screenSaverTimeout, resetTimeout, hideKeyboard, navigateToHome]);
+    }, [isKiosk, effectiveEnabled, clearTimers, screenSaverTimeout, resetTimeout, navigateToHome]);
 
     // Pause inactivity tracking (for QR upload, printing, etc.)
     const pauseInactivity = useCallback((reason: string, customTimeout?: number) => {
