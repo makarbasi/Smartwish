@@ -1384,16 +1384,29 @@ export class AppController {
       const job = jobs.find((j) => j.id === jobId);
 
       if (!job) {
-        // Job not in queue - check if it was ever completed
+        // Job not in queue - check if it was completed or failed
         const completedJobs = (global as any).completedPrintJobs || new Set();
+        const failedJobs = (global as any).failedPrintJobs || new Map();
         
         if (completedJobs.has(jobId)) {
-          // Job was actually completed by print agent
+          // Job was completed by print agent
           console.log(`📋 Job ${jobId} was completed and cleared`);
           return res.json({ 
             job: { 
               id: jobId, 
               status: 'completed',
+              clearedFromQueue: true 
+            } 
+          });
+        } else if (failedJobs.has(jobId)) {
+          // Job failed
+          const errorMessage = failedJobs.get(jobId);
+          console.log(`📋 Job ${jobId} failed: ${errorMessage}`);
+          return res.json({ 
+            job: { 
+              id: jobId, 
+              status: 'failed',
+              error: errorMessage,
               clearedFromQueue: true 
             } 
           });
@@ -1430,30 +1443,36 @@ export class AppController {
     try {
       const { status, error } = req.body;
 
-      if (!global.printJobQueue) {
-        return res.status(404).json({ message: 'No print jobs found' });
-      }
-
-      const jobIndex = global.printJobQueue.findIndex((j) => j.id === jobId);
-
-      if (jobIndex === -1) {
-        return res.status(404).json({ message: 'Print job not found' });
-      }
-
-      global.printJobQueue[jobIndex].status = status;
-      global.printJobQueue[jobIndex].updatedAt = new Date().toISOString();
-
-      if (error) {
-        global.printJobQueue[jobIndex].error = error;
-      }
-
-      // Track completed jobs so we can distinguish from lost jobs
+      // Track completed/failed jobs FIRST so frontend can poll for status
+      // even if the job was already cleared from queue
       if (status === 'completed') {
         if (!(global as any).completedPrintJobs) {
           (global as any).completedPrintJobs = new Set();
         }
         (global as any).completedPrintJobs.add(jobId);
         console.log(`✅ Print job ${jobId} marked as completed`);
+      } else if (status === 'failed') {
+        if (!(global as any).failedPrintJobs) {
+          (global as any).failedPrintJobs = new Map();
+        }
+        (global as any).failedPrintJobs.set(jobId, error || 'Unknown error');
+        console.log(`❌ Print job ${jobId} marked as failed: ${error || 'Unknown error'}`);
+      }
+
+      // Try to update job in queue if it exists
+      if (global.printJobQueue) {
+        const jobIndex = global.printJobQueue.findIndex((j) => j.id === jobId);
+
+        if (jobIndex !== -1) {
+          global.printJobQueue[jobIndex].status = status;
+          global.printJobQueue[jobIndex].updatedAt = new Date().toISOString();
+
+          if (error) {
+            global.printJobQueue[jobIndex].error = error;
+          }
+        } else {
+          console.log(`⚠️ Job ${jobId} not in queue, but status tracked for polling`);
+        }
       }
 
       console.log(`Print job ${jobId} status updated to: ${status}`);

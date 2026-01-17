@@ -1,7 +1,7 @@
 
 # PDF Printing Script
 $printerName = "HP OfficeJet Pro 9135 Plain"
-$pdfPath = "D:\\Projects\\Smartwish\\Code\\Smartwish\\smartwish-backend\\print-agent-deployment\\temp-print-jobs\\sticker_jpg_1768651991817_sp49ms6dr\\sticker.pdf"
+$pdfPath = "D:\\Projects\\Smartwish\\Code\\Smartwish\\smartwish-backend\\print-agent-deployment\\temp-print-jobs\\job_1768652968876_ls7ycngag\\greeting-card.pdf"
 
 # SumatraPDF paths
 $sumatraPaths = @(
