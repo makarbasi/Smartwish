@@ -341,17 +341,86 @@ function CardPaymentModalContent({
       // ======== STICKERS: Fixed pricing but still need order in database for QR payment ========
       if (isStickers) {
         console.log('🎨 Sticker payment - using fixed pricing')
-        const stickerProcessingFee = STICKER_PRICE * STICKER_PROCESSING_FEE_PERCENT
-        const stickerTotal = STICKER_PRICE + stickerProcessingFee
+        
+        // Check for bundle discount
+        const hasBundleDiscount = bundleDiscount?.enabled && bundleDiscount.giftCardAmount > 0
+        
+        let stickerPrice = STICKER_PRICE
+        let giftCardAmount = 0
+        let giftCardChargeAmount = 0
+        let printDiscountAmount = 0
+        let giftCardDiscountAmount = 0
+        
+        if (hasBundleDiscount) {
+          console.log('🎁 Sticker with bundle discount:', bundleDiscount)
+          
+          // Apply print discount
+          printDiscountAmount = STICKER_PRICE * (bundleDiscount!.printDiscountPercent / 100)
+          stickerPrice = STICKER_PRICE - printDiscountAmount
+          
+          // Gift card amount (full value for issuance)
+          giftCardAmount = bundleDiscount!.giftCardAmount
+          
+          // Gift card charge amount (discounted price customer pays)
+          giftCardDiscountAmount = giftCardAmount * (bundleDiscount!.giftCardDiscountPercent / 100)
+          giftCardChargeAmount = giftCardAmount - giftCardDiscountAmount
+        }
+        
+        // Processing fee: $0.30 + 2.9% of sticker price only (excluding gift card) for bundles
+        // Otherwise use 5% of sticker price
+        const stickerProcessingFee = hasBundleDiscount 
+          ? (0.30 + stickerPrice * 0.029)
+          : (STICKER_PRICE * STICKER_PROCESSING_FEE_PERCENT)
+        
+        const subtotal = stickerPrice + giftCardChargeAmount
+        const stickerTotal = subtotal + stickerProcessingFee
 
         // Set price data directly (no backend call needed for pricing)
-        const stickerPriceData = {
-          cardPrice: STICKER_PRICE,
-          giftCardAmount: 0,
+        const stickerPriceData: any = {
+          cardPrice: stickerPrice,
+          giftCardAmount: giftCardAmount,
+          giftCardChargeAmount: giftCardChargeAmount,
           processingFee: stickerProcessingFee,
           total: stickerTotal
         }
+        
+        // Add bundle discount info if present
+        if (hasBundleDiscount) {
+          stickerPriceData.originalCardPrice = STICKER_PRICE
+          stickerPriceData.printDiscountAmount = printDiscountAmount
+          stickerPriceData.printDiscountPercent = bundleDiscount!.printDiscountPercent
+          stickerPriceData.originalGiftCardAmount = giftCardAmount
+          stickerPriceData.giftCardDiscountAmount = giftCardDiscountAmount
+          stickerPriceData.giftCardDiscountPercent = bundleDiscount!.giftCardDiscountPercent
+          stickerPriceData.bundleDiscount = bundleDiscount
+          stickerPriceData.hasBundleProcessingFee = true
+        }
+        
         setPriceData(stickerPriceData)
+
+        // Build order metadata
+        const orderMetadata: any = {
+          source: 'kiosk',
+          productType: 'sticker-sheet',
+          stickerCount
+        }
+        
+        if (hasBundleDiscount) {
+          orderMetadata.bundleDiscount = {
+            enabled: true,
+            giftCardSource: bundleDiscount!.giftCardSource,
+            giftCardBrandId: bundleDiscount!.giftCardBrandId,
+            giftCardBrandSlug: bundleDiscount!.giftCardBrandSlug,
+            giftCardBrandName: bundleDiscount!.giftCardBrandName,
+            giftCardAmount: giftCardAmount,
+            giftCardChargeAmount: giftCardChargeAmount,
+            giftCardDiscountPercent: bundleDiscount!.giftCardDiscountPercent,
+            giftCardDiscountAmount: giftCardDiscountAmount,
+            printDiscountPercent: bundleDiscount!.printDiscountPercent,
+            printDiscountAmount: printDiscountAmount,
+            originalPrintPrice: STICKER_PRICE
+          }
+        }
 
         // Step 1: Create order in database (required for QR code mobile payment)
         console.log('📦 Creating sticker order in database...')
@@ -365,16 +434,12 @@ function CardPaymentModalContent({
             cardId,
             orderType: 'sticker',
             cardName: cardName || 'Sticker Sheet',
-            cardPrice: STICKER_PRICE,
-            giftCardAmount: 0,
+            cardPrice: stickerPrice,
+            giftCardAmount: giftCardAmount,
             processingFee: stickerProcessingFee,
             totalAmount: stickerTotal,
             currency: 'USD',
-            metadata: {
-              source: 'kiosk',
-              productType: 'sticker-sheet',
-              stickerCount
-            }
+            metadata: orderMetadata
           })
         })
 
@@ -394,6 +459,25 @@ function CardPaymentModalContent({
         setOrderId(createdOrderId)
         console.log('✅ Sticker order created:', createdOrderId)
 
+        // Build payment intent metadata
+        const paymentMetadata: any = {
+          orderId: createdOrderId,
+          userId,
+          productType: 'sticker-sheet',
+          stickerCount,
+          price: stickerPrice,
+          processingFee: stickerProcessingFee
+        }
+        
+        if (hasBundleDiscount) {
+          paymentMetadata.hasBundleDiscount = 'true'
+          paymentMetadata.bundleGiftCardSource = bundleDiscount!.giftCardSource
+          paymentMetadata.bundleGiftCardBrandId = bundleDiscount!.giftCardBrandId
+          paymentMetadata.bundleGiftCardBrandSlug = bundleDiscount!.giftCardBrandSlug
+          paymentMetadata.bundleGiftCardBrandName = bundleDiscount!.giftCardBrandName
+          paymentMetadata.bundleGiftCardAmount = bundleDiscount!.giftCardAmount
+        }
+
         // Step 2: Create Stripe payment intent for stickers
         console.log('💳 Creating Stripe payment intent for stickers...')
         const intentResponse = await fetch('/api/stripe/create-payment-intent', {
@@ -402,14 +486,7 @@ function CardPaymentModalContent({
           body: JSON.stringify({
             amount: stickerTotal,
             currency: 'usd',
-            metadata: {
-              orderId: createdOrderId,
-              userId,
-              productType: 'sticker-sheet',
-              stickerCount,
-              price: STICKER_PRICE,
-              processingFee: stickerProcessingFee
-            }
+            metadata: paymentMetadata
           })
         })
 
@@ -746,17 +823,23 @@ function CardPaymentModalContent({
       
       // Apply bundle discounts if present
       if (hasBundleDiscount) {
+        // For bundle discounts, use the bundle gift card amount directly
+        // (backend might return 0 if it doesn't know about the bundle gift card)
+        const bundleGiftCardAmount = bundleDiscount!.giftCardAmount
+        
         // Apply print discount
         const printDiscountAmount = priceResult.cardPrice * (bundleDiscount!.printDiscountPercent / 100)
         const discountedPrintPrice = priceResult.cardPrice - printDiscountAmount
         
         // Apply gift card discount (customer pays less, but gets full value)
-        const giftCardDiscountAmount = priceResult.giftCardAmount * (bundleDiscount!.giftCardDiscountPercent / 100)
-        const discountedGiftCardPrice = priceResult.giftCardAmount - giftCardDiscountAmount
+        const giftCardDiscountAmount = bundleGiftCardAmount * (bundleDiscount!.giftCardDiscountPercent / 100)
+        const discountedGiftCardPrice = bundleGiftCardAmount - giftCardDiscountAmount
+        
+        // Processing fee: $0.30 + 2.9% of print price only (excluding gift card)
+        const newProcessingFee = 0.30 + (discountedPrintPrice * 0.029)
         
         // Recalculate totals
         const subtotal = discountedPrintPrice + discountedGiftCardPrice
-        const newProcessingFee = subtotal * 0.05 // 5% processing fee
         const newTotal = subtotal + newProcessingFee
         
         console.log('🎁 Bundle discount calculation:', {
@@ -764,10 +847,11 @@ function CardPaymentModalContent({
           printDiscountPercent: bundleDiscount!.printDiscountPercent,
           printDiscountAmount,
           discountedPrintPrice,
-          originalGiftCardPrice: priceResult.giftCardAmount,
+          bundleGiftCardAmount,
           giftCardDiscountPercent: bundleDiscount!.giftCardDiscountPercent,
           giftCardDiscountAmount,
           discountedGiftCardPrice,
+          processingFee: newProcessingFee,
           newTotal
         })
         
@@ -776,13 +860,16 @@ function CardPaymentModalContent({
         priceResult.cardPrice = discountedPrintPrice
         priceResult.printDiscountAmount = printDiscountAmount
         priceResult.printDiscountPercent = bundleDiscount!.printDiscountPercent
-        priceResult.originalGiftCardAmount = priceResult.giftCardAmount
+        // Set the gift card amount to the bundle amount (backend might have returned 0)
+        priceResult.giftCardAmount = bundleGiftCardAmount
+        priceResult.originalGiftCardAmount = bundleGiftCardAmount
         priceResult.giftCardChargeAmount = discountedGiftCardPrice // What customer pays
         priceResult.giftCardDiscountAmount = giftCardDiscountAmount
         priceResult.giftCardDiscountPercent = bundleDiscount!.giftCardDiscountPercent
         priceResult.processingFee = newProcessingFee
         priceResult.total = newTotal
         priceResult.bundleDiscount = bundleDiscount
+        priceResult.hasBundleProcessingFee = true // Flag for UI
       }
 
       // ✅ FIX: Handle zero-dollar case properly
@@ -1060,9 +1147,101 @@ function CardPaymentModalContent({
     // 🎁 Issue gift card if one is pending (NOT for stickers - stickers don't have gift cards)
     let issuedGiftCardData: IssuedGiftCardData | undefined = undefined
 
-    // Skip gift card processing for stickers
+    // Handle stickers with optional bundle gift card
     if (isStickers) {
-      console.log('🎨 Sticker payment - skipping gift card processing')
+      // Check if there's a bundle gift card to issue
+      if (bundleDiscount?.enabled && bundleDiscount.giftCardAmount > 0) {
+        console.log('🎨 Sticker payment with bundle gift card - issuing gift card')
+        
+        const isTilloBrand = bundleDiscount.giftCardSource === 'tillo'
+        const brandIdentifier = isTilloBrand ? bundleDiscount.giftCardBrandSlug : bundleDiscount.giftCardBrandId
+        
+        try {
+          let response: Response
+          let data: any
+          
+          if (isTilloBrand) {
+            console.log('🎁 Calling Tillo API to issue sticker bundle gift card:', brandIdentifier)
+            response = await fetch('/api/tillo/issue', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                brandSlug: brandIdentifier,
+                amount: bundleDiscount.giftCardAmount,
+                orderId: orderId,
+              }),
+            })
+            data = await response.json()
+          } else {
+            console.log('🎁 Calling SmartWish API to issue sticker bundle gift card:', brandIdentifier)
+            response = await fetch('/api/gift-cards/purchase', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                brandId: brandIdentifier,
+                amount: bundleDiscount.giftCardAmount,
+                orderId: orderId,
+              }),
+            })
+            data = await response.json()
+          }
+
+          if (response.ok && (data.success || data.giftCard)) {
+            console.log('✅ Sticker bundle gift card issued:', data)
+            const giftCard = data.giftCard
+            
+            if (giftCard) {
+              const redemptionUrl = isTilloBrand 
+                ? (giftCard.url || giftCard.redemptionUrl || giftCard.claim_url || '')
+                : ''
+              
+              let qrCodeDataUrl = ''
+              try {
+                let qrContent = ''
+                if (isTilloBrand) {
+                  qrContent = redemptionUrl || giftCard.code || ''
+                } else {
+                  qrContent = giftCard.qrContent || giftCard.cardNumber || ''
+                }
+                
+                if (qrContent) {
+                  qrCodeDataUrl = await QRCode.toDataURL(qrContent, {
+                    width: 200,
+                    margin: 2,
+                    color: { dark: '#2d3748', light: '#ffffff' },
+                    errorCorrectionLevel: 'H'
+                  })
+                }
+              } catch (qrError) {
+                console.error('Failed to generate QR code for sticker bundle gift card:', qrError)
+              }
+
+              const issuedGiftCardData: IssuedGiftCardData = {
+                id: isTilloBrand ? (giftCard.orderId || giftCard.clientRequestId || '') : giftCard.id,
+                storeName: bundleDiscount.giftCardBrandName,
+                amount: bundleDiscount.giftCardAmount,
+                qrCode: qrCodeDataUrl,
+                storeLogo: bundleDiscount.giftCardBrandLogo || '',
+                redemptionLink: redemptionUrl,
+                code: isTilloBrand ? giftCard.code : giftCard.cardNumber,
+                pin: giftCard.pin || '',
+                isIssued: true
+              }
+              
+              setTimeout(() => {
+                onPaymentSuccess(issuedGiftCardData)
+              }, 1500)
+              return
+            }
+          } else {
+            console.error('❌ Failed to issue sticker bundle gift card:', data)
+          }
+        } catch (error) {
+          console.error('❌ Error issuing sticker bundle gift card:', error)
+        }
+      }
+      
+      console.log('🎨 Sticker payment - no bundle gift card or issuance complete')
       // Wait a moment to show success message, then call callback
       setTimeout(() => {
         onPaymentSuccess(undefined)
@@ -2268,8 +2447,8 @@ function CardPaymentModalContent({
                           </div>
                         )}
                         
-                        {/* Gift Card Amount with bundle discount */}
-                        {!isStickers && priceData?.giftCardAmount > 0 && (
+                        {/* Gift Card Amount with bundle discount - show for cards AND stickers with bundle */}
+                        {priceData?.giftCardAmount > 0 && (
                           <>
                             <div className="flex justify-between mt-1">
                               <span className="text-gray-600">
@@ -2300,7 +2479,12 @@ function CardPaymentModalContent({
                           </>
                         )}
                         <div className="flex justify-between mt-1">
-                          <span className="text-gray-600">Processing Fee (5%):</span>
+                          <span className="text-gray-600">
+                            {priceData?.hasBundleProcessingFee 
+                              ? 'Processing Fee ($0.30 + 2.9% print):' 
+                              : 'Processing Fee (5%):'
+                            }
+                          </span>
                           <span className="font-medium">${priceData?.processingFee?.toFixed(2) || '0.00'}</span>
                         </div>
                       </div>

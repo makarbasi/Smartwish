@@ -361,7 +361,8 @@ export default function CustomizeCardPage() {
   const [printError, setPrintError] = useState<string | null>(null);
 
   // Bundle discount state - gift cards that give discount when purchased with card
-  const [selectedBundleGiftCard, setSelectedBundleGiftCard] = useState<{
+  // "pending" = user is configuring, "confirmed" = user clicked submit
+  const [pendingBundleGiftCard, setPendingBundleGiftCard] = useState<{
     id: string;
     source: 'smartwish' | 'tillo';
     brandId?: string;
@@ -373,8 +374,21 @@ export default function CustomizeCardPage() {
     minAmount?: number;
     maxAmount?: number;
   } | null>(null);
-  const [bundleGiftCardAmount, setBundleGiftCardAmount] = useState<number>(0);
-  const [showBundleSelector, setShowBundleSelector] = useState(false);
+  const [pendingBundleAmount, setPendingBundleAmount] = useState<number>(0);
+  const [customBundleAmount, setCustomBundleAmount] = useState<string>('');
+  
+  // Confirmed bundle gift card (after user clicks Add)
+  const [confirmedBundleGiftCard, setConfirmedBundleGiftCard] = useState<{
+    id: string;
+    source: 'smartwish' | 'tillo';
+    brandId?: string;
+    brandSlug?: string;
+    brandName: string;
+    brandLogo?: string;
+    giftCardDiscountPercent: number;
+    printDiscountPercent: number;
+    amount: number;
+  } | null>(null);
 
 
   // Swipe functionality state
@@ -3011,115 +3025,240 @@ export default function CustomizeCardPage() {
             {/* Bundle Gift Card Section - Show if kiosk has bundle discounts configured */}
             {isKiosk && kioskConfig?.bundleDiscounts?.enabled && (kioskConfig.bundleDiscounts.eligibleGiftCards || []).length > 0 && (
               <div className="mb-6 bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-                    </svg>
-                    Add a Gift Card & Save!
-                  </h3>
-                  {selectedBundleGiftCard && (
+                {/* Show confirmed bundle or selection UI */}
+                {confirmedBundleGiftCard ? (
+                  // Confirmed gift card display
+                  <div className="flex items-center gap-4">
+                    {confirmedBundleGiftCard.brandLogo ? (
+                      <img src={confirmedBundleGiftCard.brandLogo} alt={confirmedBundleGiftCard.brandName} className="w-12 h-12 rounded-lg object-contain bg-white shadow-sm" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-900">{confirmedBundleGiftCard.brandName}</span>
+                        <span className="text-lg font-bold text-purple-600">${confirmedBundleGiftCard.amount}</span>
+                      </div>
+                      <div className="text-sm text-green-600">
+                        You pay ${(confirmedBundleGiftCard.amount * (1 - confirmedBundleGiftCard.giftCardDiscountPercent / 100)).toFixed(2)} + {confirmedBundleGiftCard.printDiscountPercent}% off print
+                      </div>
+                    </div>
                     <button
-                      onClick={() => {
-                        setSelectedBundleGiftCard(null);
-                        setBundleGiftCardAmount(0);
-                      }}
-                      className="text-sm text-gray-500 hover:text-red-500"
+                      onClick={() => setConfirmedBundleGiftCard(null)}
+                      className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       Remove
                     </button>
-                  )}
-                </div>
-                
-                {!selectedBundleGiftCard ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {kioskConfig.bundleDiscounts.eligibleGiftCards
-                      .filter(gc => gc.appliesTo?.includes('greeting-card') ?? true)
-                      .map((giftCard) => (
-                        <button
-                          key={giftCard.id}
-                          onClick={() => {
-                            setSelectedBundleGiftCard(giftCard);
-                            setBundleGiftCardAmount(giftCard.minAmount || 25);
-                          }}
-                          className="flex flex-col items-center p-3 bg-white rounded-xl border-2 border-transparent hover:border-purple-400 hover:shadow-lg transition-all duration-200"
-                        >
-                          {giftCard.brandLogo ? (
-                            <img src={giftCard.brandLogo} alt={giftCard.brandName} className="w-12 h-12 rounded-lg object-contain mb-2" />
-                          ) : (
-                            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center mb-2">
-                              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-                              </svg>
-                            </div>
-                          )}
-                          <span className="text-sm font-medium text-gray-900 text-center line-clamp-1">{giftCard.brandName}</span>
-                          <div className="flex gap-1 mt-1">
-                            <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
-                              {giftCard.giftCardDiscountPercent}% off card
-                            </span>
-                          </div>
-                          <span className="text-xs text-purple-600 mt-1">
-                            +{giftCard.printDiscountPercent}% off print
-                          </span>
-                        </button>
-                      ))}
                   </div>
-                ) : (
-                  <div className="bg-white rounded-xl p-4 border border-purple-200">
-                    <div className="flex items-center gap-4 mb-4">
-                      {selectedBundleGiftCard.brandLogo ? (
-                        <img src={selectedBundleGiftCard.brandLogo} alt={selectedBundleGiftCard.brandName} className="w-16 h-16 rounded-lg object-contain" />
-                      ) : (
-                        <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
-                          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-                          </svg>
+                ) : pendingBundleGiftCard ? (
+                  // Amount selection UI
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {pendingBundleGiftCard.brandLogo ? (
+                          <img src={pendingBundleGiftCard.brandLogo} alt={pendingBundleGiftCard.brandName} className="w-12 h-12 rounded-lg object-contain bg-white shadow-sm" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                            </svg>
+                          </div>
+                        )}
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{pendingBundleGiftCard.brandName}</h4>
+                          <p className="text-xs text-green-600">{pendingBundleGiftCard.giftCardDiscountPercent}% off card + {pendingBundleGiftCard.printDiscountPercent}% off print</p>
                         </div>
-                      )}
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900">{selectedBundleGiftCard.brandName}</h4>
-                        <p className="text-sm text-green-600">
-                          {selectedBundleGiftCard.giftCardDiscountPercent}% off gift card + {selectedBundleGiftCard.printDiscountPercent}% off print!
-                        </p>
                       </div>
+                      <button
+                        onClick={() => {
+                          setPendingBundleGiftCard(null);
+                          setPendingBundleAmount(0);
+                          setCustomBundleAmount('');
+                        }}
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                      >
+                        Cancel
+                      </button>
                     </div>
                     
-                    <div className="space-y-3">
-                      <label className="block text-sm font-medium text-gray-700">Select Gift Card Amount</label>
-                      <div className="flex flex-wrap gap-2">
+                    {/* Preset amounts */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Select or enter amount</label>
+                      <div className="flex flex-wrap gap-2 mb-3">
                         {[25, 50, 100, 200].filter(amt => 
-                          (!selectedBundleGiftCard.minAmount || amt >= selectedBundleGiftCard.minAmount) &&
-                          (!selectedBundleGiftCard.maxAmount || amt <= selectedBundleGiftCard.maxAmount)
+                          (!pendingBundleGiftCard.minAmount || amt >= pendingBundleGiftCard.minAmount) &&
+                          (!pendingBundleGiftCard.maxAmount || amt <= pendingBundleGiftCard.maxAmount)
                         ).map((amount) => (
                           <button
                             key={amount}
-                            onClick={() => setBundleGiftCardAmount(amount)}
+                            onClick={() => {
+                              setPendingBundleAmount(amount);
+                              setCustomBundleAmount('');
+                            }}
                             className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                              bundleGiftCardAmount === amount
+                              pendingBundleAmount === amount && !customBundleAmount
                                 ? 'bg-purple-600 text-white shadow-lg'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:border-purple-300'
                             }`}
                           >
                             ${amount}
                           </button>
                         ))}
                       </div>
-                      {bundleGiftCardAmount > 0 && (
-                        <div className="mt-3 p-3 bg-green-50 rounded-lg">
-                          <div className="text-sm text-gray-600">
-                            <span className="font-medium text-green-700">
-                              You pay: ${(bundleGiftCardAmount * (1 - selectedBundleGiftCard.giftCardDiscountPercent / 100)).toFixed(2)}
-                            </span>
-                            <span className="text-gray-400 line-through ml-2">${bundleGiftCardAmount}</span>
-                          </div>
-                          <div className="text-xs text-green-600 mt-1">
-                            You&apos;ll receive a ${bundleGiftCardAmount} {selectedBundleGiftCard.brandName} gift card!
-                          </div>
-                        </div>
-                      )}
+                      
+                      {/* Custom amount input */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">$</span>
+                        <input
+                          type="number"
+                          value={customBundleAmount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomBundleAmount(val);
+                            const numVal = parseFloat(val);
+                            if (!isNaN(numVal) && numVal > 0) {
+                              setPendingBundleAmount(numVal);
+                            }
+                          }}
+                          placeholder={`Custom (${pendingBundleGiftCard.minAmount || 5}-${pendingBundleGiftCard.maxAmount || 500})`}
+                          min={pendingBundleGiftCard.minAmount || 5}
+                          max={pendingBundleGiftCard.maxAmount || 500}
+                          className="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:border-purple-400 focus:ring-2 focus:ring-purple-100 outline-none"
+                        />
+                      </div>
                     </div>
+                    
+                    {/* Price preview */}
+                    {pendingBundleAmount > 0 && (
+                      <div className="p-3 bg-green-50 rounded-lg">
+                        <div className="text-sm">
+                          <span className="font-medium text-green-700">
+                            You pay: ${(pendingBundleAmount * (1 - pendingBundleGiftCard.giftCardDiscountPercent / 100)).toFixed(2)}
+                          </span>
+                          <span className="text-gray-400 line-through ml-2">${pendingBundleAmount}</span>
+                        </div>
+                        <div className="text-xs text-green-600 mt-1">
+                          You&apos;ll receive a ${pendingBundleAmount} {pendingBundleGiftCard.brandName} gift card!
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Add button */}
+                    <button
+                      onClick={() => {
+                        const min = pendingBundleGiftCard.minAmount || 5;
+                        const max = pendingBundleGiftCard.maxAmount || 500;
+                        if (pendingBundleAmount >= min && pendingBundleAmount <= max) {
+                          setConfirmedBundleGiftCard({
+                            ...pendingBundleGiftCard,
+                            amount: pendingBundleAmount,
+                          });
+                          setPendingBundleGiftCard(null);
+                          setPendingBundleAmount(0);
+                          setCustomBundleAmount('');
+                        }
+                      }}
+                      disabled={!pendingBundleAmount || pendingBundleAmount < (pendingBundleGiftCard.minAmount || 5) || pendingBundleAmount > (pendingBundleGiftCard.maxAmount || 500)}
+                      className={`w-full py-3 rounded-xl font-semibold transition-all ${
+                        pendingBundleAmount && pendingBundleAmount >= (pendingBundleGiftCard.minAmount || 5) && pendingBundleAmount <= (pendingBundleGiftCard.maxAmount || 500)
+                          ? 'bg-purple-600 text-white shadow-lg hover:bg-purple-700'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      Add ${pendingBundleAmount || 0} Gift Card
+                    </button>
                   </div>
+                ) : (
+                  // Initial card selection
+                  <>
+                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                      <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                      </svg>
+                      Add a Gift Card & Save!
+                    </h3>
+                    {(() => {
+                      const eligibleCards = kioskConfig.bundleDiscounts.eligibleGiftCards
+                        .filter(gc => gc.appliesTo?.includes('greeting-card') ?? true);
+                      const cardCount = eligibleCards.length;
+                      
+                      if (cardCount === 1) {
+                        const giftCard = eligibleCards[0];
+                        return (
+                          <button
+                            onClick={() => {
+                              setPendingBundleGiftCard(giftCard);
+                              setPendingBundleAmount(giftCard.minAmount || 25);
+                            }}
+                            className="w-full flex items-center gap-4 p-4 bg-white rounded-xl border-2 border-transparent hover:border-purple-400 hover:shadow-lg transition-all duration-200"
+                          >
+                            {giftCard.brandLogo ? (
+                              <img src={giftCard.brandLogo} alt={giftCard.brandName} className="w-14 h-14 rounded-lg object-contain" />
+                            ) : (
+                              <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                                </svg>
+                              </div>
+                            )}
+                            <div className="flex-1 text-left">
+                              <span className="text-base font-semibold text-gray-900">{giftCard.brandName}</span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
+                                  {giftCard.giftCardDiscountPercent}% off card
+                                </span>
+                                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-medium">
+                                  {giftCard.printDiscountPercent}% off print
+                                </span>
+                              </div>
+                            </div>
+                            <svg className="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                          </button>
+                        );
+                      }
+                      
+                      return (
+                        <div className={`grid gap-3 ${
+                          cardCount === 2 ? 'grid-cols-2' : 
+                          cardCount === 3 ? 'grid-cols-3' : 
+                          'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+                        }`}>
+                          {eligibleCards.map((giftCard) => (
+                            <button
+                              key={giftCard.id}
+                              onClick={() => {
+                                setPendingBundleGiftCard(giftCard);
+                                setPendingBundleAmount(giftCard.minAmount || 25);
+                              }}
+                              className="flex flex-col items-center p-3 bg-white rounded-xl border-2 border-transparent hover:border-purple-400 hover:shadow-lg transition-all duration-200"
+                            >
+                              {giftCard.brandLogo ? (
+                                <img src={giftCard.brandLogo} alt={giftCard.brandName} className="w-12 h-12 rounded-lg object-contain mb-2" />
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center mb-2">
+                                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                                  </svg>
+                                </div>
+                              )}
+                              <span className="text-sm font-medium text-gray-900 text-center line-clamp-1">{giftCard.brandName}</span>
+                              <div className="flex gap-1 mt-1">
+                                <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
+                                  {giftCard.giftCardDiscountPercent}% off
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
             )}
@@ -3208,26 +3347,26 @@ export default function CustomizeCardPage() {
               executeSendECard(issuedGiftCard);
             }
             // Clear bundle selection after payment
-            setSelectedBundleGiftCard(null);
-            setBundleGiftCardAmount(0);
+            setConfirmedBundleGiftCard(null);
+            setPendingBundleGiftCard(null);
+            setPendingBundleAmount(0);
+            setCustomBundleAmount('');
           }}
           cardId={pendingAction.card.id}
           cardName={pendingAction.card.name}
           action={pendingAction.action}
           printStatus={printStatus}
           printError={printError || undefined}
-          bundleDiscount={selectedBundleGiftCard && bundleGiftCardAmount > 0 ? {
+          bundleDiscount={confirmedBundleGiftCard ? {
             enabled: true,
-            giftCardSource: selectedBundleGiftCard.source,
-            giftCardBrandId: selectedBundleGiftCard.brandId,
-            giftCardBrandSlug: selectedBundleGiftCard.brandSlug,
-            giftCardBrandName: selectedBundleGiftCard.brandName,
-            giftCardBrandLogo: selectedBundleGiftCard.brandLogo,
-            giftCardAmount: bundleGiftCardAmount,
-            giftCardDiscountPercent: selectedBundleGiftCard.giftCardDiscountPercent,
-            printDiscountPercent: selectedBundleGiftCard.printDiscountPercent,
-            minAmount: selectedBundleGiftCard.minAmount,
-            maxAmount: selectedBundleGiftCard.maxAmount,
+            giftCardSource: confirmedBundleGiftCard.source,
+            giftCardBrandId: confirmedBundleGiftCard.brandId,
+            giftCardBrandSlug: confirmedBundleGiftCard.brandSlug,
+            giftCardBrandName: confirmedBundleGiftCard.brandName,
+            giftCardBrandLogo: confirmedBundleGiftCard.brandLogo,
+            giftCardAmount: confirmedBundleGiftCard.amount,
+            giftCardDiscountPercent: confirmedBundleGiftCard.giftCardDiscountPercent,
+            printDiscountPercent: confirmedBundleGiftCard.printDiscountPercent,
           } : undefined}
         />
       )}
