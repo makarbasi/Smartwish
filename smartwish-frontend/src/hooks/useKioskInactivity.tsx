@@ -43,7 +43,9 @@ export function useKioskInactivity({
 
     // Disable screen saver on admin pages and setup pages
     const isExcludedPath = EXCLUDED_PATHS.some(path => pathname.startsWith(path));
-    const effectiveEnabled = enabled && !isExcludedPath;
+    // Disable timeout on /kiosk/home - user is already at home
+    const isKioskHome = pathname === '/kiosk/home';
+    const effectiveEnabled = enabled && !isExcludedPath && !isKioskHome;
 
     const [showScreenSaver, setShowScreenSaver] = useState(false);
     const [showTimeoutModal, setShowTimeoutModal] = useState(false);
@@ -53,6 +55,16 @@ export function useKioskInactivity({
     const lastMouseMoveRef = useRef<number>(0); // Track last mousemove processing time
     const lastTouchMoveRef = useRef<number>(0); // Track last touchmove processing time
     const isExitingRef = useRef<boolean>(false); // Prevent multiple exit calls
+    
+    // Store timeout values in refs to avoid recreating resetActivity when they change
+    const screenSaverTimeoutRef = useRef(screenSaverTimeout);
+    const resetTimeoutRef = useRef(resetTimeout);
+    
+    // Update refs when values change
+    useEffect(() => {
+        screenSaverTimeoutRef.current = screenSaverTimeout;
+        resetTimeoutRef.current = resetTimeout;
+    }, [screenSaverTimeout, resetTimeout]);
     
     // Activity pause states
     const isPausedRef = useRef<boolean>(false);
@@ -156,8 +168,8 @@ export function useKioskInactivity({
         const multiplier = timeoutMultiplierRef.current;
         
         // Use custom timeout if set, otherwise use defaults with multiplier
-        const effectiveScreenSaverTimeout = customTimeoutRef.current || (screenSaverTimeout * multiplier);
-        const effectiveResetTimeout = customTimeoutRef.current || (resetTimeout * multiplier);
+        const effectiveScreenSaverTimeout = customTimeoutRef.current || (screenSaverTimeoutRef.current * multiplier);
+        const effectiveResetTimeout = customTimeoutRef.current || (resetTimeoutRef.current * multiplier);
 
         // Set screen saver timer (only if screen saver is enabled)
         if (!SCREEN_SAVER_DISABLED) {
@@ -177,7 +189,7 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired - showing timeout confirmation modal");
             setShowTimeoutModal(true);
         }, effectiveResetTimeout);
-    }, [isKiosk, effectiveEnabled, clearTimers, screenSaverTimeout, resetTimeout, navigateToHome]);
+    }, [isKiosk, effectiveEnabled, clearTimers]);
 
     // Pause inactivity tracking (for QR upload, printing, etc.)
     const pauseInactivity = useCallback((reason: string, customTimeout?: number) => {
@@ -276,6 +288,14 @@ export function useKioskInactivity({
             return;
         }
         
+        // If timeout modal is showing, any activity closes it and restarts timer
+        if (showTimeoutModal) {
+            console.log("🖥️ [KioskInactivity] 👆 Activity detected during timeout modal - closing modal and restarting timer");
+            setShowTimeoutModal(false);
+            resetActivity();
+            return;
+        }
+        
         // If screen saver is showing, only exit on explicit clicks/touches, not mouse movements
         if (showScreenSaver) {
             if (event && (event.type === 'mousemove' || event.type === 'wheel' || event.type === 'scroll')) {
@@ -301,7 +321,7 @@ export function useKioskInactivity({
         }
 
         resetActivity();
-    }, [showScreenSaver, exitScreenSaver, resetActivity]);
+    }, [showScreenSaver, showTimeoutModal, exitScreenSaver, resetActivity]);
 
 
     // Start timers on initial mount only
@@ -309,6 +329,7 @@ export function useKioskInactivity({
         if (!isKiosk || !effectiveEnabled) {
             clearTimers();
             setShowScreenSaver(false);
+            setShowTimeoutModal(false);
             return;
         }
 
@@ -358,8 +379,13 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] Page changed to:", pathname, "- resetting activity");
             setShowScreenSaver(false);
             resetActivity();
+        } else if (isKiosk && isKioskHome) {
+            console.log("🖥️ [KioskInactivity] ✅ On /kiosk/home - timeout disabled");
+            clearTimers();
+            setShowScreenSaver(false);
+            setShowTimeoutModal(false);
         }
-    }, [pathname, isKiosk, effectiveEnabled, resetActivity]);
+    }, [pathname, isKiosk, effectiveEnabled, isKioskHome, resetActivity, clearTimers]);
 
     return {
         showScreenSaver: SCREEN_SAVER_DISABLED ? false : showScreenSaver, // Always false if disabled
