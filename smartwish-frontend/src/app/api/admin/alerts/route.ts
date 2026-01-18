@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     const kiosksResponse = await fetch(`${API_BASE}/admin/kiosks`, {
       headers: {
         Authorization: `Bearer ${session.user.access_token}`,
+        'Cache-Control': 'no-cache',
       },
+      cache: 'no-store',
     });
 
     if (!kiosksResponse.ok) {
@@ -38,7 +40,9 @@ export async function GET(request: NextRequest) {
           {
             headers: {
               Authorization: `Bearer ${session.user.access_token}`,
+              'Cache-Control': 'no-cache',
             },
+            cache: 'no-store',
           }
         );
         
@@ -70,7 +74,14 @@ export async function GET(request: NextRequest) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-    return NextResponse.json(allAlerts);
+    // Prevent caching of the response
+    return NextResponse.json(allAlerts, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (error) {
     console.error('Error fetching alerts:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

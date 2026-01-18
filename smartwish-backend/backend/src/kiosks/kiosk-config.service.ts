@@ -1726,13 +1726,20 @@ export class KioskConfigService {
       }
 
       // Update paper status (simplified - take worst state)
+      // First check errors/warnings arrays for paper issues (most reliable)
+      const hasPaperEmptyError = printerStatus.errors?.some(e => e.code === 'paper_empty' || (e.message?.toLowerCase().includes('paper') && e.message?.toLowerCase().includes('empty')));
+      const hasPaperLowWarning = printerStatus.warnings?.some(w => w.code === 'paper_low' || (w.message?.toLowerCase().includes('paper') && w.message?.toLowerCase().includes('low')));
+
       if (printerStatus.paper) {
         const states = Object.values(printerStatus.paper).map(p => p.state);
-        if (states.includes('empty')) {
+        if (states.includes('empty') || hasPaperEmptyError) {
           printer.paperStatus = PaperStatus.EMPTY;
-        } else if (states.includes('low')) {
+        } else if (states.includes('low') || hasPaperLowWarning) {
           printer.paperStatus = PaperStatus.LOW;
-        } else if (states.includes('ok')) {
+        } else if (states.includes('ok') && !hasPaperEmptyError && !hasPaperLowWarning) {
+          printer.paperStatus = PaperStatus.OK;
+        } else if (!hasPaperEmptyError && !hasPaperLowWarning) {
+          // If no errors/warnings, assume OK even if states are unknown
           printer.paperStatus = PaperStatus.OK;
         } else {
           printer.paperStatus = PaperStatus.UNKNOWN;
@@ -1746,6 +1753,15 @@ export class KioskConfigService {
         if (trayKeys.includes('tray2')) {
           printer.paperTray2State = printerStatus.paper['tray2'].state;
         }
+      } else if (hasPaperEmptyError) {
+        // If no paper object but we have paper errors, set status to EMPTY
+        printer.paperStatus = PaperStatus.EMPTY;
+      } else if (hasPaperLowWarning) {
+        // If no paper object but we have paper warnings, set status to LOW
+        printer.paperStatus = PaperStatus.LOW;
+      } else if (!hasPaperEmptyError && !hasPaperLowWarning) {
+        // If no paper object and no errors/warnings, assume OK
+        printer.paperStatus = PaperStatus.OK;
       }
 
       // Store full status for detailed view
@@ -1814,26 +1830,47 @@ export class KioskConfigService {
       }
     }
 
-    // Check for paper alerts
-    if (printer.paperStatus === PaperStatus.EMPTY) {
+    // Check for paper alerts - first check errors/warnings arrays (most reliable)
+    const hasPaperEmptyError = status.errors?.some(e => e.code === 'paper_empty' || (e.message?.toLowerCase().includes('paper') && e.message?.toLowerCase().includes('empty')));
+    const hasPaperLowWarning = status.warnings?.some(w => w.code === 'paper_low' || (w.message?.toLowerCase().includes('paper') && w.message?.toLowerCase().includes('low')));
+
+    if (hasPaperEmptyError || printer.paperStatus === PaperStatus.EMPTY) {
+      // Use the error message if available, otherwise use default
+      const errorMsg = status.errors?.find(e => e.code === 'paper_empty' || (e.message?.toLowerCase().includes('paper') && e.message?.toLowerCase().includes('empty')))?.message;
+      const message = errorMsg ? `${printer.name}: ${errorMsg}` : `${printer.name}: Paper tray is empty`;
+      
       await this.createOrUpdateAlert(
         printer.kioskId,
         printer.id,
         AlertType.PAPER_EMPTY,
-        `${printer.name}: Paper tray is empty`,
+        message,
         AlertSeverity.CRITICAL,
       );
-    } else if (printer.paperStatus === PaperStatus.LOW) {
+    } else if (hasPaperLowWarning || printer.paperStatus === PaperStatus.LOW) {
+      // Use the warning message if available, otherwise use default
+      const warningMsg = status.warnings?.find(w => w.code === 'paper_low' || (w.message?.toLowerCase().includes('paper') && w.message?.toLowerCase().includes('low')))?.message;
+      const message = warningMsg ? `${printer.name}: ${warningMsg}` : `${printer.name}: Paper is low`;
+      
       await this.createOrUpdateAlert(
         printer.kioskId,
         printer.id,
         AlertType.PAPER_LOW,
-        `${printer.name}: Paper is low`,
+        message,
         AlertSeverity.WARNING,
       );
-    } else if (printer.paperStatus === PaperStatus.OK) {
-      await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_LOW);
-      await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_EMPTY);
+    } else {
+      // Auto-resolve paper alerts if:
+      // 1. There are no paper errors AND no paper warnings in the status (most reliable check)
+      // 2. OR paper status is OK
+      // This ensures alerts are resolved even if paperStatus field wasn't updated correctly
+      if (!hasPaperEmptyError && !hasPaperLowWarning) {
+        await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_LOW);
+        await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_EMPTY);
+      } else if (printer.paperStatus === PaperStatus.OK) {
+        // Also resolve if paper status is explicitly OK (backup check)
+        await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_LOW);
+        await this.autoResolveAlerts(printer.kioskId, printer.id, AlertType.PAPER_EMPTY);
+      }
     }
   }
 
@@ -1893,7 +1930,15 @@ export class KioskConfigService {
       alertType,
       resolvedAt: IsNull(),
     };
-    if (printerId) whereClause.printerId = printerId;
+    
+    // IMPORTANT: For paper alerts, we want to resolve ALL alerts for this kiosk of this type
+    // regardless of which printer they're associated with. This handles cases where:
+    // 1. Alerts were created before the multi-printer system existed
+    // 2. Printer configuration changed but old alerts remain
+    // For ink alerts, we still filter by printer since different printers have different ink
+    if (printerId && alertType !== AlertType.PAPER_EMPTY && alertType !== AlertType.PAPER_LOW) {
+      whereClause.printerId = printerId;
+    }
 
     const alerts = await this.alertRepo.find({ where: whereClause });
 

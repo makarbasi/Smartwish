@@ -31,7 +31,13 @@ export function PrinterAlertBanner() {
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const response = await fetch("/api/admin/alerts");
+        // Add cache-busting to ensure fresh data
+        const response = await fetch("/api/admin/alerts", {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        });
         if (response.ok) {
           const data = await response.json();
           if (Array.isArray(data)) {
@@ -48,8 +54,8 @@ export function PrinterAlertBanner() {
     };
 
     fetchAlerts();
-    // Refresh every 60 seconds
-    const interval = setInterval(fetchAlerts, 60000);
+    // Refresh every 30 seconds for more responsive updates
+    const interval = setInterval(fetchAlerts, 30000);
     return () => clearInterval(interval);
   }, []);
 
