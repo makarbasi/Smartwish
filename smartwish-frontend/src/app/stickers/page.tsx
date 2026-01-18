@@ -13,7 +13,7 @@ import StickerGallery, { Sticker } from "@/components/stickers/StickerGallery";
 import StickerSlotModeSelector, { SlotMode } from "@/components/stickers/StickerSlotModeSelector";
 import UploadQRCode from "@/components/stickers/UploadQRCode";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
-import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
+import CardPaymentModal, { IssuedGiftCardData, BundleDiscountInfo } from "@/components/CardPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskInactivity } from "@/hooks/useKioskInactivity";
@@ -222,6 +222,21 @@ function StickersContent() {
   const [isPrinting, setIsPrinting] = useState(false);
   // Generate a stable UUID for sticker orders (required for database - card_id is UUID type)
   const [stickerOrderId, setStickerOrderId] = useState<string>(() => crypto.randomUUID());
+
+  // Bundle discount state - gift cards that give discount when purchased with stickers
+  const [selectedBundleGiftCard, setSelectedBundleGiftCard] = useState<{
+    id: string;
+    source: 'smartwish' | 'tillo';
+    brandId?: string;
+    brandSlug?: string;
+    brandName: string;
+    brandLogo?: string;
+    giftCardDiscountPercent: number;
+    printDiscountPercent: number;
+    minAmount?: number;
+    maxAmount?: number;
+  } | null>(null);
+  const [bundleGiftCardAmount, setBundleGiftCardAmount] = useState<number>(0);
   
   // Print status for tracking (same as greeting cards)
   const [printStatus, setPrintStatus] = useState<'idle' | 'sending' | 'printing' | 'completed' | 'failed'>('idle');
@@ -1331,6 +1346,117 @@ function StickersContent() {
           ) : null}
         </div>
 
+        {/* ==================== BUNDLE GIFT CARD SECTION ==================== */}
+        {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && 
+         isKiosk && kioskConfig?.bundleDiscounts?.enabled && (kioskConfig.bundleDiscounts.eligibleGiftCards || []).length > 0 && (
+          <div className="max-w-lg mx-auto mt-6 mb-4 px-4">
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                  </svg>
+                  Add a Gift Card & Save!
+                </h3>
+                {selectedBundleGiftCard && (
+                  <button
+                    onClick={() => {
+                      setSelectedBundleGiftCard(null);
+                      setBundleGiftCardAmount(0);
+                    }}
+                    className="text-sm text-gray-500 hover:text-red-500"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              
+              {!selectedBundleGiftCard ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {kioskConfig.bundleDiscounts.eligibleGiftCards
+                    .filter(gc => gc.appliesTo?.includes('sticker') ?? true)
+                    .slice(0, 6)
+                    .map((giftCard) => (
+                      <button
+                        key={giftCard.id}
+                        onClick={() => {
+                          setSelectedBundleGiftCard(giftCard);
+                          setBundleGiftCardAmount(giftCard.minAmount || 25);
+                        }}
+                        className="flex flex-col items-center p-2 bg-white rounded-xl border-2 border-transparent hover:border-purple-400 hover:shadow-lg transition-all duration-200"
+                      >
+                        {giftCard.brandLogo ? (
+                          <img src={giftCard.brandLogo} alt={giftCard.brandName} className="w-10 h-10 rounded-lg object-contain mb-1" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center mb-1">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                            </svg>
+                          </div>
+                        )}
+                        <span className="text-xs font-medium text-gray-900 text-center line-clamp-1">{giftCard.brandName}</span>
+                        <span className="text-xs text-green-600">
+                          {giftCard.giftCardDiscountPercent}% off
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl p-3 border border-purple-200">
+                  <div className="flex items-center gap-3 mb-3">
+                    {selectedBundleGiftCard.brandLogo ? (
+                      <img src={selectedBundleGiftCard.brandLogo} alt={selectedBundleGiftCard.brandName} className="w-12 h-12 rounded-lg object-contain" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 text-sm">{selectedBundleGiftCard.brandName}</h4>
+                      <p className="text-xs text-green-600">
+                        {selectedBundleGiftCard.giftCardDiscountPercent}% off + {selectedBundleGiftCard.printDiscountPercent}% off print
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-700">Amount</label>
+                    <div className="flex flex-wrap gap-2">
+                      {[25, 50, 100].filter(amt => 
+                        (!selectedBundleGiftCard.minAmount || amt >= selectedBundleGiftCard.minAmount) &&
+                        (!selectedBundleGiftCard.maxAmount || amt <= selectedBundleGiftCard.maxAmount)
+                      ).map((amount) => (
+                        <button
+                          key={amount}
+                          onClick={() => setBundleGiftCardAmount(amount)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                            bundleGiftCardAmount === amount
+                              ? 'bg-purple-600 text-white shadow-lg'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          ${amount}
+                        </button>
+                      ))}
+                    </div>
+                    {bundleGiftCardAmount > 0 && (
+                      <div className="p-2 bg-green-50 rounded-lg text-xs">
+                        <span className="font-medium text-green-700">
+                          Pay ${(bundleGiftCardAmount * (1 - selectedBundleGiftCard.giftCardDiscountPercent / 100)).toFixed(2)}
+                        </span>
+                        <span className="text-gray-400 line-through ml-1">${bundleGiftCardAmount}</span>
+                        <span className="text-green-600 ml-1">for ${bundleGiftCardAmount} card</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ==================== PRINT BUTTON ==================== */}
         {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && (
           <div className="flex-shrink-0 mt-8 mb-6">
@@ -1492,17 +1618,38 @@ function StickersContent() {
           if (printStatus !== 'sending' && printStatus !== 'printing') {
             setShowPaymentModal(false);
             setPrintStatus('idle');
+            // Clear bundle selection on close
+            setSelectedBundleGiftCard(null);
+            setBundleGiftCardAmount(0);
           }
         }}
-        onPaymentSuccess={(issuedGiftCard) => handlePaymentSuccess(issuedGiftCard)}
+        onPaymentSuccess={(issuedGiftCard) => {
+          handlePaymentSuccess(issuedGiftCard);
+          // Clear bundle selection after payment
+          setSelectedBundleGiftCard(null);
+          setBundleGiftCardAmount(0);
+        }}
         cardId={stickerOrderId}
-        cardName={giftCardData ? `Sticker Sheet + ${giftCardData.storeName} Gift Card` : "Sticker Sheet"}
+        cardName={giftCardData ? `Sticker Sheet + ${giftCardData.storeName} Gift Card` : (selectedBundleGiftCard ? `Sticker Sheet + ${selectedBundleGiftCard.brandName} Gift Card` : "Sticker Sheet")}
         action="print"
         productType="stickers"
         stickerCount={filledSlotsCount}
         giftCardAmount={giftCardData?.amount}
         printStatus={printStatus}
         printError={printError || undefined}
+        bundleDiscount={selectedBundleGiftCard && bundleGiftCardAmount > 0 ? {
+          enabled: true,
+          giftCardSource: selectedBundleGiftCard.source,
+          giftCardBrandId: selectedBundleGiftCard.brandId,
+          giftCardBrandSlug: selectedBundleGiftCard.brandSlug,
+          giftCardBrandName: selectedBundleGiftCard.brandName,
+          giftCardBrandLogo: selectedBundleGiftCard.brandLogo,
+          giftCardAmount: bundleGiftCardAmount,
+          giftCardDiscountPercent: selectedBundleGiftCard.giftCardDiscountPercent,
+          printDiscountPercent: selectedBundleGiftCard.printDiscountPercent,
+          minAmount: selectedBundleGiftCard.minAmount,
+          maxAmount: selectedBundleGiftCard.maxAmount,
+        } : undefined}
       />
     </div>
   );

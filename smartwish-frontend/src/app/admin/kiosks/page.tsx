@@ -51,6 +51,24 @@ type PrinterTray = {
   paperSize: string; // 'letter' | 'a4' | '4x6' | '5x7' | etc.
 };
 
+// Bundle discount gift card configuration
+type BundleGiftCardConfig = {
+  id: string; // Unique ID for this config entry
+  source: 'smartwish' | 'tillo';
+  brandId?: string; // For SmartWish (UUID)
+  brandSlug?: string; // For Tillo (slug)
+  brandName: string; // Display name
+  brandLogo?: string; // Logo URL
+  // Discount when this gift card is added to a greeting card/sticker purchase
+  giftCardDiscountPercent: number; // 0-100, discount on gift card value (customer pays less, gets full value)
+  printDiscountPercent: number; // 0-100, discount on print cost (greeting card/sticker)
+  // Optional: min/max amounts
+  minAmount?: number;
+  maxAmount?: number;
+  // Optional: which products this applies to
+  appliesTo?: ('greeting-card' | 'sticker')[]; // Default: both
+};
+
 type KioskConfig = {
   theme?: string;
   featuredTemplateIds?: string[];
@@ -91,6 +109,12 @@ type KioskConfig = {
     minAmount?: number; // Minimum amount users can purchase (overrides brand default)
     maxAmount?: number; // Maximum amount users can purchase (overrides brand default)
     allowCustomAmount?: boolean; // Allow users to enter custom amounts (default true)
+  };
+  // Bundle discounts: gift cards that give discounts when purchased with greeting cards/stickers
+  // This is SEPARATE from giftCardTile (standalone gift card purchases)
+  bundleDiscounts?: {
+    enabled: boolean; // Master toggle for bundle discounts
+    eligibleGiftCards: BundleGiftCardConfig[]; // List of gift cards with bundle discounts
   };
 };
 
@@ -170,6 +194,10 @@ const DEFAULT_CONFIG: KioskConfig = {
     minAmount: undefined, // Use brand default if not set
     maxAmount: undefined, // Use brand default if not set
     allowCustomAmount: true, // Allow custom amounts by default
+  },
+  bundleDiscounts: {
+    enabled: false, // Disabled by default
+    eligibleGiftCards: [], // No bundle gift cards configured by default
   },
 };
 
@@ -1068,6 +1096,152 @@ function KioskFormModal({
         b.slug.toLowerCase().includes(tilloSearchQuery.toLowerCase())
       )
     : tilloBrands.slice(0, 50); // Show first 50 if no search
+
+  // Bundle Discounts state
+  const [showBundleAddModal, setShowBundleAddModal] = useState(false);
+  const [editingBundleGiftCard, setEditingBundleGiftCard] = useState<BundleGiftCardConfig | null>(null);
+  const [bundleSearchQuery, setBundleSearchQuery] = useState("");
+  const [bundleFormData, setBundleFormData] = useState<Partial<BundleGiftCardConfig>>({
+    source: 'smartwish',
+    giftCardDiscountPercent: 10,
+    printDiscountPercent: 10,
+    appliesTo: ['greeting-card', 'sticker'],
+  });
+
+  // Filter brands for bundle selection (same data sources as gift card tile)
+  // We keep them separate to maintain proper typing
+  const filteredBundleTilloBrands = bundleSearchQuery.trim()
+    ? tilloBrands.filter(b => 
+        b.name.toLowerCase().includes(bundleSearchQuery.toLowerCase()) ||
+        b.slug.toLowerCase().includes(bundleSearchQuery.toLowerCase())
+      )
+    : tilloBrands.slice(0, 50);
+  
+  const filteredBundleSmartWishBrands = giftCardBrands;
+
+  // Add a new bundle gift card
+  const handleAddBundleGiftCard = () => {
+    if (!bundleFormData.brandName) return;
+    
+    const newCard: BundleGiftCardConfig = {
+      id: crypto.randomUUID(),
+      source: bundleFormData.source || 'smartwish',
+      brandId: bundleFormData.source === 'smartwish' ? bundleFormData.brandId : undefined,
+      brandSlug: bundleFormData.source === 'tillo' ? bundleFormData.brandSlug : undefined,
+      brandName: bundleFormData.brandName,
+      brandLogo: bundleFormData.brandLogo,
+      giftCardDiscountPercent: bundleFormData.giftCardDiscountPercent || 10,
+      printDiscountPercent: bundleFormData.printDiscountPercent || 10,
+      minAmount: bundleFormData.minAmount,
+      maxAmount: bundleFormData.maxAmount,
+      appliesTo: bundleFormData.appliesTo || ['greeting-card', 'sticker'],
+    };
+
+    const currentCards = formData.config.bundleDiscounts?.eligibleGiftCards || [];
+    setFormData({
+      ...formData,
+      config: {
+        ...formData.config,
+        bundleDiscounts: {
+          ...formData.config.bundleDiscounts,
+          enabled: formData.config.bundleDiscounts?.enabled ?? true,
+          eligibleGiftCards: [...currentCards, newCard],
+        },
+      },
+    });
+
+    // Reset form and close modal
+    setBundleFormData({
+      source: 'smartwish',
+      giftCardDiscountPercent: 10,
+      printDiscountPercent: 10,
+      appliesTo: ['greeting-card', 'sticker'],
+    });
+    setBundleSearchQuery("");
+    setShowBundleAddModal(false);
+  };
+
+  // Update an existing bundle gift card
+  const handleUpdateBundleGiftCard = () => {
+    if (!editingBundleGiftCard || !bundleFormData.brandName) return;
+
+    const currentCards = formData.config.bundleDiscounts?.eligibleGiftCards || [];
+    const updatedCards = currentCards.map(card => {
+      if (card.id === editingBundleGiftCard.id) {
+        return {
+          ...card,
+          source: bundleFormData.source || card.source,
+          brandId: bundleFormData.source === 'smartwish' ? bundleFormData.brandId : undefined,
+          brandSlug: bundleFormData.source === 'tillo' ? bundleFormData.brandSlug : undefined,
+          brandName: bundleFormData.brandName || card.brandName,
+          brandLogo: bundleFormData.brandLogo,
+          giftCardDiscountPercent: bundleFormData.giftCardDiscountPercent ?? card.giftCardDiscountPercent,
+          printDiscountPercent: bundleFormData.printDiscountPercent ?? card.printDiscountPercent,
+          minAmount: bundleFormData.minAmount,
+          maxAmount: bundleFormData.maxAmount,
+          appliesTo: bundleFormData.appliesTo || card.appliesTo,
+        };
+      }
+      return card;
+    });
+
+    setFormData({
+      ...formData,
+      config: {
+        ...formData.config,
+        bundleDiscounts: {
+          ...formData.config.bundleDiscounts,
+          enabled: formData.config.bundleDiscounts?.enabled ?? true,
+          eligibleGiftCards: updatedCards,
+        },
+      },
+    });
+
+    // Reset form and close modal
+    setEditingBundleGiftCard(null);
+    setBundleFormData({
+      source: 'smartwish',
+      giftCardDiscountPercent: 10,
+      printDiscountPercent: 10,
+      appliesTo: ['greeting-card', 'sticker'],
+    });
+    setBundleSearchQuery("");
+    setShowBundleAddModal(false);
+  };
+
+  // Delete a bundle gift card
+  const handleDeleteBundleGiftCard = (cardId: string) => {
+    const currentCards = formData.config.bundleDiscounts?.eligibleGiftCards || [];
+    setFormData({
+      ...formData,
+      config: {
+        ...formData.config,
+        bundleDiscounts: {
+          ...formData.config.bundleDiscounts,
+          enabled: formData.config.bundleDiscounts?.enabled ?? false,
+          eligibleGiftCards: currentCards.filter(card => card.id !== cardId),
+        },
+      },
+    });
+  };
+
+  // Open edit modal for a bundle gift card
+  const openEditBundleModal = (card: BundleGiftCardConfig) => {
+    setEditingBundleGiftCard(card);
+    setBundleFormData({
+      source: card.source,
+      brandId: card.brandId,
+      brandSlug: card.brandSlug,
+      brandName: card.brandName,
+      brandLogo: card.brandLogo,
+      giftCardDiscountPercent: card.giftCardDiscountPercent,
+      printDiscountPercent: card.printDiscountPercent,
+      minAmount: card.minAmount,
+      maxAmount: card.maxAmount,
+      appliesTo: card.appliesTo,
+    });
+    setShowBundleAddModal(true);
+  };
 
   // Sync local state when modal opens with new data
   useEffect(() => {
@@ -2215,6 +2389,470 @@ function KioskFormModal({
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Bundle Discounts Configuration */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <SparklesIcon className="h-5 w-5 text-purple-500" />
+                        Bundle Discounts (Gift Card + Print)
+                      </h3>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-500">
+                          {formData.config.bundleDiscounts?.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData({
+                              ...formData,
+                              config: {
+                                ...formData.config,
+                                bundleDiscounts: {
+                                  ...formData.config.bundleDiscounts,
+                                  enabled: !(formData.config.bundleDiscounts?.enabled ?? false),
+                                  eligibleGiftCards: formData.config.bundleDiscounts?.eligibleGiftCards || [],
+                                },
+                              },
+                            })
+                          }
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2 ${
+                            formData.config.bundleDiscounts?.enabled
+                              ? "bg-purple-500"
+                              : "bg-gray-200"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              formData.config.bundleDiscounts?.enabled
+                                ? "translate-x-5"
+                                : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mb-4">
+                      Configure gift cards that give discounts when purchased with greeting cards or stickers. 
+                      This is separate from the Gift Card Tile (standalone purchases).
+                    </p>
+
+                    {formData.config.bundleDiscounts?.enabled && (
+                      <div className="space-y-4">
+                        {/* List of configured bundle gift cards */}
+                        {(formData.config.bundleDiscounts?.eligibleGiftCards || []).length > 0 ? (
+                          <div className="space-y-3">
+                            {formData.config.bundleDiscounts?.eligibleGiftCards.map((card) => (
+                              <div 
+                                key={card.id} 
+                                className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200"
+                              >
+                                {/* Logo */}
+                                {card.brandLogo ? (
+                                  <img 
+                                    src={card.brandLogo} 
+                                    alt={card.brandName} 
+                                    className="w-12 h-12 rounded-lg object-contain bg-white shadow-sm"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+                                    <GiftIcon className="h-6 w-6 text-white" />
+                                  </div>
+                                )}
+                                
+                                {/* Info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-gray-900 truncate">{card.brandName}</span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                      card.source === 'tillo' 
+                                        ? 'bg-blue-100 text-blue-700' 
+                                        : 'bg-emerald-100 text-emerald-700'
+                                    }`}>
+                                      {card.source === 'tillo' ? 'Tillo' : 'SmartWish'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
+                                    <span className="flex items-center gap-1">
+                                      <GiftIcon className="h-3.5 w-3.5" />
+                                      {card.giftCardDiscountPercent}% off gift card
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <PrinterIcon className="h-3.5 w-3.5" />
+                                      {card.printDiscountPercent}% off print
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                                    {card.appliesTo?.includes('greeting-card') && (
+                                      <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">Cards</span>
+                                    )}
+                                    {card.appliesTo?.includes('sticker') && (
+                                      <span className="px-1.5 py-0.5 bg-pink-50 text-pink-600 rounded">Stickers</span>
+                                    )}
+                                    {card.minAmount && <span>Min: ${card.minAmount}</span>}
+                                    {card.maxAmount && <span>Max: ${card.maxAmount}</span>}
+                                  </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditBundleModal(card)}
+                                    className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    title="Edit"
+                                  >
+                                    <PencilSquareIcon className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteBundleGiftCard(card.id)}
+                                    className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Delete"
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                            <GiftIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-gray-500 text-sm">No bundle gift cards configured</p>
+                            <p className="text-gray-400 text-xs mt-1">Add gift cards to offer bundle discounts</p>
+                          </div>
+                        )}
+
+                        {/* Add Gift Card Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingBundleGiftCard(null);
+                            setBundleFormData({
+                              source: 'smartwish',
+                              giftCardDiscountPercent: 10,
+                              printDiscountPercent: 10,
+                              appliesTo: ['greeting-card', 'sticker'],
+                            });
+                            setBundleSearchQuery("");
+                            setShowBundleAddModal(true);
+                          }}
+                          className="w-full py-3 px-4 border-2 border-dashed border-purple-300 rounded-xl text-purple-600 hover:border-purple-400 hover:bg-purple-50 transition-colors flex items-center justify-center gap-2"
+                        >
+                          <PlusIcon className="h-5 w-5" />
+                          Add Bundle Gift Card
+                        </button>
+
+                        {/* Add/Edit Bundle Gift Card Modal */}
+                        <Transition show={showBundleAddModal} as={Fragment}>
+                          <Dialog 
+                            as="div" 
+                            className="relative z-[60]" 
+                            onClose={() => {
+                              setShowBundleAddModal(false);
+                              setEditingBundleGiftCard(null);
+                            }}
+                          >
+                            <Transition.Child
+                              as={Fragment}
+                              enter="ease-out duration-300"
+                              enterFrom="opacity-0"
+                              enterTo="opacity-100"
+                              leave="ease-in duration-200"
+                              leaveFrom="opacity-100"
+                              leaveTo="opacity-0"
+                            >
+                              <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
+                            </Transition.Child>
+
+                            <div className="fixed inset-0 overflow-y-auto">
+                              <div className="flex min-h-full items-center justify-center p-4">
+                                <Transition.Child
+                                  as={Fragment}
+                                  enter="ease-out duration-300"
+                                  enterFrom="opacity-0 scale-95"
+                                  enterTo="opacity-100 scale-100"
+                                  leave="ease-in duration-200"
+                                  leaveFrom="opacity-100 scale-100"
+                                  leaveTo="opacity-0 scale-95"
+                                >
+                                  <Dialog.Panel className="w-full max-w-lg transform overflow-hidden rounded-2xl bg-white shadow-2xl transition-all">
+                                    <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
+                                      <Dialog.Title className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <SparklesIcon className="h-5 w-5 text-purple-500" />
+                                        {editingBundleGiftCard ? 'Edit Bundle Gift Card' : 'Add Bundle Gift Card'}
+                                      </Dialog.Title>
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        Configure discounts for this gift card when bundled with prints
+                                      </p>
+                                    </div>
+
+                                    <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                                      {/* Source Selection */}
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Gift Card Source</label>
+                                        <div className="flex gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setBundleFormData({ ...bundleFormData, source: 'smartwish', brandId: undefined, brandSlug: undefined, brandName: undefined, brandLogo: undefined })}
+                                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                                              bundleFormData.source === 'smartwish'
+                                                ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                                                : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                                            }`}
+                                          >
+                                            SmartWish Internal
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setBundleFormData({ ...bundleFormData, source: 'tillo', brandId: undefined, brandSlug: undefined, brandName: undefined, brandLogo: undefined })}
+                                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                                              bundleFormData.source === 'tillo'
+                                                ? 'bg-blue-100 text-blue-700 border-2 border-blue-400'
+                                                : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                                            }`}
+                                          >
+                                            Tillo Marketplace
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Brand Selection */}
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                          {bundleFormData.source === 'tillo' ? 'Search Tillo Brand' : 'Select SmartWish Brand'}
+                                        </label>
+                                        
+                                        {bundleFormData.source === 'tillo' ? (
+                                          <>
+                                            <input
+                                              type="text"
+                                              value={bundleSearchQuery}
+                                              onChange={(e) => setBundleSearchQuery(e.target.value)}
+                                              placeholder="Search brands (e.g., Amazon, Starbucks)..."
+                                              className="w-full text-sm rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 mb-2"
+                                            />
+                                            {loadingTilloBrands ? (
+                                              <div className="text-center py-4 text-gray-500 text-sm">Loading Tillo brands...</div>
+                                            ) : (
+                                              <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
+                                                {filteredBundleTilloBrands.map((brand) => (
+                                                  <button
+                                                    key={brand.slug}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setBundleFormData({
+                                                        ...bundleFormData,
+                                                        brandSlug: brand.slug,
+                                                        brandName: brand.name,
+                                                        brandLogo: brand.logo,
+                                                        minAmount: brand.minAmount,
+                                                        maxAmount: brand.maxAmount,
+                                                      });
+                                                    }}
+                                                    className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
+                                                      bundleFormData.brandSlug === brand.slug ? 'bg-purple-50' : ''
+                                                    }`}
+                                                  >
+                                                    {brand.logo ? (
+                                                      <img src={brand.logo} alt={brand.name} className="w-8 h-8 rounded object-contain" />
+                                                    ) : (
+                                                      <div className="w-8 h-8 rounded bg-gray-200 flex items-center justify-center">
+                                                        <GiftIcon className="h-4 w-4 text-gray-400" />
+                                                      </div>
+                                                    )}
+                                                    <div className="flex-1 text-left">
+                                                      <div className="font-medium text-gray-900 text-sm">{brand.name}</div>
+                                                      <div className="text-xs text-gray-500">{brand.slug}</div>
+                                                    </div>
+                                                    {bundleFormData.brandSlug === brand.slug && (
+                                                      <CheckIcon className="h-5 w-5 text-purple-600" />
+                                                    )}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <select
+                                            value={bundleFormData.brandId || ''}
+                                            onChange={(e) => {
+                                              const selectedBrand = giftCardBrands.find(b => b.id === e.target.value);
+                                              if (selectedBrand) {
+                                                setBundleFormData({
+                                                  ...bundleFormData,
+                                                  brandId: selectedBrand.id,
+                                                  brandName: selectedBrand.name,
+                                                  brandLogo: selectedBrand.logo_url,
+                                                });
+                                              }
+                                            }}
+                                            className="w-full text-sm rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                                          >
+                                            <option value="">Select a brand...</option>
+                                            {loadingBrands ? (
+                                              <option disabled>Loading...</option>
+                                            ) : (
+                                              giftCardBrands.map((brand) => (
+                                                <option key={brand.id} value={brand.id}>
+                                                  {brand.name}
+                                                </option>
+                                              ))
+                                            )}
+                                          </select>
+                                        )}
+
+                                        {/* Selected brand preview */}
+                                        {bundleFormData.brandName && (
+                                          <div className="mt-3 p-3 bg-purple-50 rounded-lg flex items-center gap-3">
+                                            {bundleFormData.brandLogo ? (
+                                              <img src={bundleFormData.brandLogo} alt={bundleFormData.brandName} className="w-10 h-10 rounded-lg object-contain bg-white shadow-sm" />
+                                            ) : (
+                                              <div className="w-10 h-10 rounded-lg bg-purple-200 flex items-center justify-center">
+                                                <GiftIcon className="h-5 w-5 text-purple-600" />
+                                              </div>
+                                            )}
+                                            <div>
+                                              <div className="font-medium text-gray-900">{bundleFormData.brandName}</div>
+                                              <div className="text-xs text-gray-500">
+                                                {bundleFormData.source === 'tillo' ? bundleFormData.brandSlug : bundleFormData.brandId}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Discount Settings */}
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Gift Card Discount %
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={bundleFormData.giftCardDiscountPercent || 0}
+                                            onChange={(e) => setBundleFormData({ ...bundleFormData, giftCardDiscountPercent: parseInt(e.target.value) || 0 })}
+                                            className="w-full text-sm rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                                          />
+                                          <p className="text-xs text-gray-500 mt-1">Discount on gift card price</p>
+                                        </div>
+                                        <div>
+                                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Print Discount %
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={bundleFormData.printDiscountPercent || 0}
+                                            onChange={(e) => setBundleFormData({ ...bundleFormData, printDiscountPercent: parseInt(e.target.value) || 0 })}
+                                            className="w-full text-sm rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                                          />
+                                          <p className="text-xs text-gray-500 mt-1">Discount on print cost</p>
+                                        </div>
+                                      </div>
+
+                                      {/* Amount Limits */}
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Min Amount ($)
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            value={bundleFormData.minAmount || ''}
+                                            onChange={(e) => setBundleFormData({ ...bundleFormData, minAmount: e.target.value ? parseInt(e.target.value) : undefined })}
+                                            placeholder="5"
+                                            className="w-full text-sm rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Max Amount ($)
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min="1"
+                                            value={bundleFormData.maxAmount || ''}
+                                            onChange={(e) => setBundleFormData({ ...bundleFormData, maxAmount: e.target.value ? parseInt(e.target.value) : undefined })}
+                                            placeholder="500"
+                                            className="w-full text-sm rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Applies To */}
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Applies To</label>
+                                        <div className="flex gap-4">
+                                          <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={bundleFormData.appliesTo?.includes('greeting-card') ?? true}
+                                              onChange={(e) => {
+                                                const current = bundleFormData.appliesTo || ['greeting-card', 'sticker'];
+                                                const updated = e.target.checked
+                                                  ? [...new Set([...current, 'greeting-card' as const])]
+                                                  : current.filter(t => t !== 'greeting-card');
+                                                setBundleFormData({ ...bundleFormData, appliesTo: updated });
+                                              }}
+                                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                            />
+                                            <span className="text-sm text-gray-700">Greeting Cards</span>
+                                          </label>
+                                          <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={bundleFormData.appliesTo?.includes('sticker') ?? true}
+                                              onChange={(e) => {
+                                                const current = bundleFormData.appliesTo || ['greeting-card', 'sticker'];
+                                                const updated = e.target.checked
+                                                  ? [...new Set([...current, 'sticker' as const])]
+                                                  : current.filter(t => t !== 'sticker');
+                                                setBundleFormData({ ...bundleFormData, appliesTo: updated });
+                                              }}
+                                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                            />
+                                            <span className="text-sm text-gray-700">Stickers</span>
+                                          </label>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex gap-3 justify-end px-6 py-4 border-t border-gray-200 bg-gray-50">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowBundleAddModal(false);
+                                          setEditingBundleGiftCard(null);
+                                        }}
+                                        className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={editingBundleGiftCard ? handleUpdateBundleGiftCard : handleAddBundleGiftCard}
+                                        disabled={!bundleFormData.brandName}
+                                        className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                      >
+                                        {editingBundleGiftCard ? 'Update' : 'Add Gift Card'}
+                                      </button>
+                                    </div>
+                                  </Dialog.Panel>
+                                </Transition.Child>
+                              </div>
+                            </div>
+                          </Dialog>
+                        </Transition>
+                      </div>
+                    )}
                   </div>
                 </div>
 

@@ -12,11 +12,29 @@ export interface PrinterTray {
   paperSize: string; // 'letter' | 'a4' | '4x6' | '5x7' | etc.
 }
 
+// Bundle discount gift card configuration
+export interface BundleGiftCardConfig {
+  id: string; // Unique ID for this config entry
+  source: 'smartwish' | 'tillo';
+  brandId?: string; // For SmartWish (UUID)
+  brandSlug?: string; // For Tillo (slug)
+  brandName: string; // Display name
+  brandLogo?: string; // Logo URL
+  giftCardDiscountPercent: number; // 0-100, discount on gift card value (customer pays less, gets full value)
+  printDiscountPercent: number; // 0-100, discount on print cost (greeting card/sticker)
+  minAmount?: number;
+  maxAmount?: number;
+  appliesTo?: ('greeting-card' | 'sticker')[]; // Default: both
+}
+
 export interface KioskConfig {
   theme: string;
   featuredTemplateIds: string[];
   promotedGiftCardIds?: string[]; // Gift card brand IDs/slugs to feature in Gift Hub
   micEnabled: boolean;
+  giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
+  greetingCardsEnabled?: boolean; // Enable greeting cards tile on kiosk home (default true)
+  stickersEnabled?: boolean; // Enable stickers tile on kiosk home (default true)
   ads: {
     playlist: Array<{ url: string; duration?: number; weight?: number }>;
   };
@@ -27,6 +45,36 @@ export interface KioskConfig {
   printerIP?: string;
   printerTrays: PrinterTray[];
   revenueSharePercent: number; // Store owner's share of net profit (default 30%)
+  surveillance?: {
+    enabled: boolean;
+    webcamIndex: number;
+    dwellThresholdSeconds: number;
+    frameThreshold: number;
+    httpPort: number;
+  };
+  giftCardTile?: {
+    enabled: boolean;
+    visibility: 'visible' | 'hidden' | 'disabled';
+    source: 'smartwish' | 'tillo';
+    brandId: string | null;
+    tilloBrandSlug: string | null;
+    tilloBrandName?: string;
+    tilloBrandLogo?: string;
+    tilloMinAmount?: number;
+    tilloMaxAmount?: number;
+    discountPercent: number;
+    displayName?: string;
+    description?: string;
+    presetAmounts?: number[];
+    minAmount?: number;
+    maxAmount?: number;
+    allowCustomAmount?: boolean;
+  };
+  // Bundle discounts: gift cards that give discounts when purchased with greeting cards/stickers
+  bundleDiscounts?: {
+    enabled: boolean;
+    eligibleGiftCards: BundleGiftCardConfig[];
+  };
   [key: string]: unknown;
 }
 

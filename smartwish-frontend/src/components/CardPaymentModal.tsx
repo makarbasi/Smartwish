@@ -48,6 +48,21 @@ export type ProductType = 'card' | 'stickers' | 'gift-card'
 // Print status for tracking print progress
 export type PrintStatus = 'idle' | 'sending' | 'printing' | 'completed' | 'failed'
 
+// Bundle discount configuration for greeting cards/stickers + gift card combos
+export interface BundleDiscountInfo {
+  enabled: boolean
+  giftCardSource: 'smartwish' | 'tillo'
+  giftCardBrandId?: string  // For SmartWish (UUID)
+  giftCardBrandSlug?: string  // For Tillo (slug)
+  giftCardBrandName: string
+  giftCardBrandLogo?: string
+  giftCardAmount: number  // User selected amount
+  giftCardDiscountPercent: number  // Discount on gift card value
+  printDiscountPercent: number  // Discount on print cost
+  minAmount?: number
+  maxAmount?: number
+}
+
 interface CardPaymentModalProps {
   isOpen: boolean
   onClose: () => void
@@ -71,6 +86,8 @@ interface CardPaymentModalProps {
   giftCardDiscountPercent?: number
   // Optional: for gift-card product type - kiosk ID
   kioskId?: string
+  // Optional: bundle discount when purchasing gift card with greeting card/sticker
+  bundleDiscount?: BundleDiscountInfo
 }
 
 export default function CardPaymentModal({
@@ -88,7 +105,8 @@ export default function CardPaymentModal({
   printError,
   giftCardBrandId,
   giftCardDiscountPercent,
-  kioskId
+  kioskId,
+  bundleDiscount
 }: CardPaymentModalProps) {
   if (!isOpen) return null
 
@@ -130,6 +148,7 @@ export default function CardPaymentModal({
         giftCardBrandId={giftCardBrandId}
         giftCardDiscountPercent={giftCardDiscountPercent}
         kioskId={kioskId}
+        bundleDiscount={bundleDiscount}
       />
     </Elements>
   )
@@ -154,7 +173,8 @@ function CardPaymentModalContent({
   printError,
   giftCardBrandId,
   giftCardDiscountPercent = 0,
-  kioskId
+  kioskId,
+  bundleDiscount
 }: CardPaymentModalProps) {
   const stripe = useStripe()
   const elements = useElements()
@@ -693,6 +713,14 @@ function CardPaymentModalContent({
 
       console.log('💰 Calculating price for card:', cardId, 'Gift card amount:', giftCardAmount)
       console.log('🎁 DEBUG: Gift card amount being sent to backend:', giftCardAmount, typeof giftCardAmount)
+      
+      // Check for bundle discount - gift card added with print purchase for discount
+      const hasBundleDiscount = bundleDiscount?.enabled && bundleDiscount.giftCardAmount > 0
+      if (hasBundleDiscount) {
+        console.log('🎁 Bundle discount detected:', bundleDiscount)
+        // Add bundle gift card amount to the transaction
+        giftCardAmount = bundleDiscount!.giftCardAmount
+      }
 
       // Step 2: ✅ Fetch price calculation from BACKEND (not Next.js API)
       const priceResponse = await fetch(`${backendUrl}/saved-designs/calculate-price`, {
@@ -715,6 +743,47 @@ function CardPaymentModalContent({
       const priceResult = await priceResponse.json()
       console.log('💰 Price calculation (from backend):', priceResult)
       console.log('🎁 DEBUG: Backend returned giftCardAmount:', priceResult.giftCardAmount)
+      
+      // Apply bundle discounts if present
+      if (hasBundleDiscount) {
+        // Apply print discount
+        const printDiscountAmount = priceResult.cardPrice * (bundleDiscount!.printDiscountPercent / 100)
+        const discountedPrintPrice = priceResult.cardPrice - printDiscountAmount
+        
+        // Apply gift card discount (customer pays less, but gets full value)
+        const giftCardDiscountAmount = priceResult.giftCardAmount * (bundleDiscount!.giftCardDiscountPercent / 100)
+        const discountedGiftCardPrice = priceResult.giftCardAmount - giftCardDiscountAmount
+        
+        // Recalculate totals
+        const subtotal = discountedPrintPrice + discountedGiftCardPrice
+        const newProcessingFee = subtotal * 0.05 // 5% processing fee
+        const newTotal = subtotal + newProcessingFee
+        
+        console.log('🎁 Bundle discount calculation:', {
+          originalPrintPrice: priceResult.cardPrice,
+          printDiscountPercent: bundleDiscount!.printDiscountPercent,
+          printDiscountAmount,
+          discountedPrintPrice,
+          originalGiftCardPrice: priceResult.giftCardAmount,
+          giftCardDiscountPercent: bundleDiscount!.giftCardDiscountPercent,
+          giftCardDiscountAmount,
+          discountedGiftCardPrice,
+          newTotal
+        })
+        
+        // Update priceResult with bundle discounts
+        priceResult.originalCardPrice = priceResult.cardPrice
+        priceResult.cardPrice = discountedPrintPrice
+        priceResult.printDiscountAmount = printDiscountAmount
+        priceResult.printDiscountPercent = bundleDiscount!.printDiscountPercent
+        priceResult.originalGiftCardAmount = priceResult.giftCardAmount
+        priceResult.giftCardChargeAmount = discountedGiftCardPrice // What customer pays
+        priceResult.giftCardDiscountAmount = giftCardDiscountAmount
+        priceResult.giftCardDiscountPercent = bundleDiscount!.giftCardDiscountPercent
+        priceResult.processingFee = newProcessingFee
+        priceResult.total = newTotal
+        priceResult.bundleDiscount = bundleDiscount
+      }
 
       // ✅ FIX: Handle zero-dollar case properly
       if (priceResult.total < 0.01) {
@@ -728,6 +797,30 @@ function CardPaymentModalContent({
 
       // Step 3: Create order in database
       console.log('📦 Creating order in database...')
+      
+      // Build metadata with optional bundle discount info
+      const orderMetadata: Record<string, any> = {
+        source: 'kiosk',
+        action
+      }
+      
+      if (hasBundleDiscount && bundleDiscount) {
+        orderMetadata.bundleDiscount = {
+          enabled: true,
+          giftCardSource: bundleDiscount.giftCardSource,
+          giftCardBrandId: bundleDiscount.giftCardBrandId,
+          giftCardBrandSlug: bundleDiscount.giftCardBrandSlug,
+          giftCardBrandName: bundleDiscount.giftCardBrandName,
+          giftCardAmount: bundleDiscount.giftCardAmount, // Full value
+          giftCardChargeAmount: priceResult.giftCardChargeAmount, // Discounted price
+          giftCardDiscountPercent: bundleDiscount.giftCardDiscountPercent,
+          giftCardDiscountAmount: priceResult.giftCardDiscountAmount,
+          printDiscountPercent: bundleDiscount.printDiscountPercent,
+          printDiscountAmount: priceResult.printDiscountAmount,
+          originalPrintPrice: priceResult.originalCardPrice
+        }
+      }
+      
       const orderResponse = await fetch(`${backendUrl}/orders`, {
         method: 'POST',
         headers: {
@@ -740,16 +833,13 @@ function CardPaymentModalContent({
           cardName: cardName || 'Greeting Card',
           recipientEmail: null, // TODO: Get from send e-card form
           cardPrice: priceResult.cardPrice,
-          giftCardAmount: priceResult.giftCardAmount,
+          giftCardAmount: priceResult.giftCardAmount, // Full gift card value for issuance
           processingFee: priceResult.processingFee,
           totalAmount: priceResult.total,
           currency: 'USD',
-          giftCardProductName,
+          giftCardProductName: hasBundleDiscount ? bundleDiscount!.giftCardBrandName : giftCardProductName,
           giftCardRedemptionLink,
-          metadata: {
-            source: 'kiosk',
-            action
-          }
+          metadata: orderMetadata
         })
       })
 
@@ -772,22 +862,36 @@ function CardPaymentModalContent({
 
       // Step 4: Create Stripe payment intent
       console.log('💳 Creating Stripe payment intent...')
+      
+      // Build payment intent metadata
+      const paymentIntentMetadata: Record<string, any> = {
+        orderId: createdOrderId,
+        userId,
+        cardId,
+        cardName,
+        action,
+        cardPrice: priceResult.cardPrice,
+        giftCardAmount: priceResult.giftCardAmount,
+        processingFee: priceResult.processingFee
+      }
+      
+      // Add bundle discount info to payment intent if present
+      if (hasBundleDiscount && bundleDiscount) {
+        paymentIntentMetadata.hasBundleDiscount = 'true'
+        paymentIntentMetadata.bundleGiftCardSource = bundleDiscount.giftCardSource
+        paymentIntentMetadata.bundleGiftCardBrandId = bundleDiscount.giftCardBrandId
+        paymentIntentMetadata.bundleGiftCardBrandSlug = bundleDiscount.giftCardBrandSlug
+        paymentIntentMetadata.bundleGiftCardBrandName = bundleDiscount.giftCardBrandName
+        paymentIntentMetadata.bundleGiftCardAmount = bundleDiscount.giftCardAmount
+      }
+      
       const intentResponse = await fetch('/api/stripe/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: priceResult.total,
           currency: 'usd',
-          metadata: {
-            orderId: createdOrderId,
-            userId,
-            cardId,
-            cardName,
-            action,
-            cardPrice: priceResult.cardPrice,
-            giftCardAmount: priceResult.giftCardAmount,
-            processingFee: priceResult.processingFee
-          }
+          metadata: paymentIntentMetadata
         })
       })
 
@@ -1094,6 +1198,120 @@ function CardPaymentModalContent({
 
       // Don't call onPaymentSuccess yet - wait for user to click Done
       // The modal will show the gift card QR and email option
+      return
+    }
+    
+    // Handle bundle discount gift card issuance (gift card added to greeting card/sticker purchase)
+    if (bundleDiscount?.enabled && bundleDiscount.giftCardAmount > 0) {
+      console.log('🎁 Bundle discount gift card payment - issuing gift card')
+      console.log('🎁 Bundle gift card source:', bundleDiscount.giftCardSource)
+      console.log('🎁 Bundle gift card amount:', bundleDiscount.giftCardAmount)
+      
+      const isTilloBrand = bundleDiscount.giftCardSource === 'tillo'
+      const brandIdentifier = isTilloBrand ? bundleDiscount.giftCardBrandSlug : bundleDiscount.giftCardBrandId
+      
+      try {
+        let response: Response
+        let data: any
+        
+        if (isTilloBrand) {
+          // Call Tillo API to issue the gift card
+          console.log('🎁 Calling Tillo API to issue bundle gift card:', brandIdentifier)
+          response = await fetch('/api/tillo/issue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              brandSlug: brandIdentifier,
+              amount: bundleDiscount.giftCardAmount, // Issue FULL value, even though customer paid less
+              orderId: orderId,
+              kioskId: kioskId,
+            }),
+          })
+          data = await response.json()
+        } else {
+          // Call SmartWish internal API to issue gift card
+          console.log('🎁 Calling SmartWish API to issue bundle gift card:', brandIdentifier)
+          response = await fetch('/api/gift-cards/purchase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              brandId: brandIdentifier,
+              amount: bundleDiscount.giftCardAmount, // Issue FULL value, even though customer paid less
+              orderId: orderId,
+            }),
+          })
+          data = await response.json()
+        }
+
+        if (response.ok && (data.success || data.giftCard)) {
+          console.log('✅ Bundle gift card issued via', isTilloBrand ? 'Tillo' : 'SmartWish', ':', data)
+
+          const giftCard = data.giftCard
+          if (giftCard) {
+            // Get redemption URL for Tillo cards
+            const redemptionUrl = isTilloBrand 
+              ? (giftCard.url || giftCard.redemptionUrl || giftCard.claim_url || '')
+              : ''
+            
+            // Generate QR code
+            let qrCodeDataUrl = ''
+            try {
+              let qrContent = ''
+              if (isTilloBrand) {
+                qrContent = redemptionUrl || giftCard.code || ''
+                if (!qrContent && giftCard.code) {
+                  qrContent = giftCard.code
+                  if (giftCard.pin) {
+                    qrContent += ` PIN: ${giftCard.pin}`
+                  }
+                }
+              } else {
+                qrContent = giftCard.qrContent || giftCard.cardNumber || ''
+              }
+              
+              if (qrContent) {
+                qrCodeDataUrl = await QRCode.toDataURL(qrContent, {
+                  width: 200,
+                  margin: 2,
+                  color: { dark: '#2d3748', light: '#ffffff' },
+                  errorCorrectionLevel: 'H'
+                })
+                console.log('✅ QR code generated for bundle gift card')
+              }
+            } catch (qrError) {
+              console.error('Failed to generate QR code for bundle gift card:', qrError)
+            }
+
+            issuedGiftCardData = {
+              id: isTilloBrand ? (giftCard.orderId || giftCard.clientRequestId || '') : giftCard.id,
+              storeName: bundleDiscount.giftCardBrandName,
+              amount: bundleDiscount.giftCardAmount,
+              qrCode: qrCodeDataUrl,
+              storeLogo: bundleDiscount.giftCardBrandLogo || '',
+              redemptionLink: redemptionUrl,
+              code: isTilloBrand ? giftCard.code : giftCard.cardNumber,
+              pin: giftCard.pin || '',
+              isIssued: true
+            }
+            console.log('🎁 Bundle gift card data prepared:', {
+              storeName: issuedGiftCardData.storeName,
+              amount: issuedGiftCardData.amount,
+              hasQrCode: !!issuedGiftCardData.qrCode
+            })
+          }
+        } else {
+          console.error('❌ Failed to issue bundle gift card:', data)
+        }
+      } catch (error) {
+        console.error('❌ Error issuing bundle gift card:', error)
+        // Continue with print/send - gift card issuance failure shouldn't block the main action
+      }
+      
+      // For bundle discounts, continue to onPaymentSuccess (don't show gift card modal here)
+      // The gift card data will be passed to parent for printing
+      setTimeout(() => {
+        onPaymentSuccess(issuedGiftCardData)
+      }, 1500)
       return
     }
 
@@ -2029,15 +2247,57 @@ function CardPaymentModalContent({
                         </div>
                       )}
                       <div className="border-t border-gray-200 my-2 pt-2">
+                        {/* Card/Print Price with bundle discount */}
                         <div className="flex justify-between">
                           <span className="text-gray-600">{isStickers ? 'Sticker Sheet:' : 'Card Price:'}</span>
-                          <span className="font-medium">${priceData?.cardPrice?.toFixed(2) || '0.00'}</span>
-                        </div>
-                        {!isStickers && priceData?.giftCardAmount > 0 && (
-                          <div className="flex justify-between mt-1">
-                            <span className="text-gray-600">Gift Card:</span>
-                            <span className="font-medium">${priceData.giftCardAmount.toFixed(2)}</span>
+                          <div className="text-right">
+                            {priceData?.printDiscountAmount > 0 ? (
+                              <>
+                                <span className="text-gray-400 line-through text-sm mr-1">${priceData.originalCardPrice?.toFixed(2)}</span>
+                                <span className="font-medium text-green-600">${priceData.cardPrice?.toFixed(2)}</span>
+                              </>
+                            ) : (
+                              <span className="font-medium">${priceData?.cardPrice?.toFixed(2) || '0.00'}</span>
+                            )}
                           </div>
+                        </div>
+                        {priceData?.printDiscountPercent > 0 && (
+                          <div className="flex justify-between mt-0.5">
+                            <span className="text-green-600 text-xs">Bundle discount ({priceData.printDiscountPercent}% off)</span>
+                            <span className="text-green-600 text-xs">-${priceData.printDiscountAmount?.toFixed(2)}</span>
+                          </div>
+                        )}
+                        
+                        {/* Gift Card Amount with bundle discount */}
+                        {!isStickers && priceData?.giftCardAmount > 0 && (
+                          <>
+                            <div className="flex justify-between mt-1">
+                              <span className="text-gray-600">
+                                {bundleDiscount?.enabled ? `${bundleDiscount.giftCardBrandName} Gift Card:` : 'Gift Card:'}
+                              </span>
+                              <div className="text-right">
+                                {priceData?.giftCardDiscountAmount > 0 ? (
+                                  <>
+                                    <span className="text-gray-400 line-through text-sm mr-1">${priceData.giftCardAmount?.toFixed(2)}</span>
+                                    <span className="font-medium text-green-600">${priceData.giftCardChargeAmount?.toFixed(2)}</span>
+                                  </>
+                                ) : (
+                                  <span className="font-medium">${priceData.giftCardAmount.toFixed(2)}</span>
+                                )}
+                              </div>
+                            </div>
+                            {priceData?.giftCardDiscountPercent > 0 && (
+                              <div className="flex justify-between mt-0.5">
+                                <span className="text-green-600 text-xs">Bundle discount ({priceData.giftCardDiscountPercent}% off)</span>
+                                <span className="text-green-600 text-xs">-${priceData.giftCardDiscountAmount?.toFixed(2)}</span>
+                              </div>
+                            )}
+                            {bundleDiscount?.enabled && (
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                You receive a ${priceData.giftCardAmount?.toFixed(2)} gift card
+                              </div>
+                            )}
+                          </>
                         )}
                         <div className="flex justify-between mt-1">
                           <span className="text-gray-600">Processing Fee (5%):</span>
