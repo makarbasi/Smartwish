@@ -21,6 +21,15 @@ interface GiftCardBrand {
   description?: string;
 }
 
+// Tillo brand API response type
+interface TilloBrandResponse {
+  slug: string;
+  name: string;
+  logo?: string;
+  minAmount?: number;
+  maxAmount?: number;
+}
+
 // Purchased gift card response
 interface PurchasedGiftCard {
   id: string;
@@ -40,7 +49,14 @@ type Step = "amount" | "success";
 function GiftCardPurchaseContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  
+  // Support both SmartWish (brandId) and Tillo (source=tillo&brandSlug=xxx) params
   const brandId = searchParams.get("brandId");
+  const source = searchParams.get("source") as 'smartwish' | 'tillo' | null;
+  const brandSlug = searchParams.get("brandSlug");
+  
+  // Determine if this is a Tillo brand purchase
+  const isTilloSource = source === 'tillo' && !!brandSlug;
 
   const { isKiosk, isInitialized } = useDeviceMode();
   const { kioskInfo } = useKiosk();
@@ -99,9 +115,10 @@ function GiftCardPurchaseContent() {
     trackGiftCardBrowse();
   }, [trackGiftCardBrowse]);
 
-  // Fetch brand info
+  // Fetch brand info - supports both SmartWish and Tillo brands
   useEffect(() => {
-    if (!brandId) {
+    // Check if we have either a SmartWish brandId or a Tillo brandSlug
+    if (!brandId && !isTilloSource) {
       setError("No gift card brand specified");
       setLoading(false);
       return;
@@ -109,14 +126,55 @@ function GiftCardPurchaseContent() {
 
     const fetchBrand = async () => {
       try {
-        const response = await fetch(
-          `/api/admin/gift-card-brands/${brandId}`
-        );
-        if (!response.ok) {
-          throw new Error("Failed to fetch gift card brand");
+        if (isTilloSource && brandSlug) {
+          // For Tillo brands, use cached config data or fetch from Tillo API
+          const tilloConfig = kioskConfig?.giftCardTile;
+          
+          // If we have cached Tillo brand info in config, use it
+          if (tilloConfig?.tilloBrandSlug === brandSlug && tilloConfig.tilloBrandName) {
+            setBrand({
+              id: brandSlug,
+              name: tilloConfig.tilloBrandName,
+              slug: brandSlug,
+              logo_url: tilloConfig.tilloBrandLogo || '',
+              min_amount: tilloConfig.tilloMinAmount || 5,
+              max_amount: tilloConfig.tilloMaxAmount || 500,
+            });
+            setLoading(false);
+            return;
+          }
+          
+          // Otherwise fetch from Tillo API
+          const response = await fetch('/api/tillo/brands');
+          if (!response.ok) {
+            throw new Error("Failed to fetch Tillo brands");
+          }
+          const data = await response.json();
+          const tilloBrand = data.brands?.find((b: TilloBrandResponse) => b.slug === brandSlug);
+          
+          if (tilloBrand) {
+            setBrand({
+              id: tilloBrand.slug,
+              name: tilloBrand.name,
+              slug: tilloBrand.slug,
+              logo_url: tilloBrand.logo || '',
+              min_amount: tilloBrand.minAmount || 5,
+              max_amount: tilloBrand.maxAmount || 500,
+            });
+          } else {
+            throw new Error(`Tillo brand '${brandSlug}' not found`);
+          }
+        } else if (brandId) {
+          // For SmartWish brands, fetch from admin API
+          const response = await fetch(
+            `/api/admin/gift-card-brands/${brandId}`
+          );
+          if (!response.ok) {
+            throw new Error("Failed to fetch gift card brand");
+          }
+          const data = await response.json();
+          setBrand(data.data);
         }
-        const data = await response.json();
-        setBrand(data.data);
       } catch (err) {
         console.error("Error fetching brand:", err);
         setError("Failed to load gift card details");
@@ -126,7 +184,7 @@ function GiftCardPurchaseContent() {
     };
 
     fetchBrand();
-  }, [brandId]);
+  }, [brandId, brandSlug, isTilloSource, kioskConfig?.giftCardTile]);
 
   // Generate QR code when card is purchased
   useEffect(() => {
@@ -146,7 +204,7 @@ function GiftCardPurchaseContent() {
     // Track gift card amount selection
     trackGiftCardSelect({
       amount,
-      itemId: brandId || undefined,
+      itemId: isTilloSource ? brandSlug || undefined : brandId || undefined,
       itemTitle: brand?.name,
     });
   };
@@ -180,21 +238,25 @@ function GiftCardPurchaseContent() {
     
     // Store gift card selection in localStorage for CardPaymentModal to pick up
     // This follows the same pattern as the marketplace gift card selection
+    // Determine the correct source based on how we arrived at this page
+    const giftCardSource = isTilloSource ? 'tillo' : 'smartwish';
+    const giftCardIdentifier = isTilloSource ? brandSlug : brandId;
+    
     const giftCardSelection = {
-      brandId: brandId,
-      brandSlug: brand?.slug || '',
+      brandId: isTilloSource ? null : brandId, // Only set for SmartWish brands
+      brandSlug: brand?.slug || brandSlug || '', // Use brand slug (works for both)
       storeName: brand?.name || 'Gift Card',
       storeLogo: brand?.logo_url || '',
       amount: selectedAmount,
       currency: 'USD',
       status: 'pending',
       isIssued: false,
-      source: 'smartwish', // SmartWish internal brand
+      source: giftCardSource, // 'smartwish' or 'tillo'
       selectedAt: new Date().toISOString(),
     };
     
     // Use a unique key for this gift card purchase session
-    const giftCardKey = `giftCard_kiosk_${brandId}_${Date.now()}`;
+    const giftCardKey = `giftCard_kiosk_${giftCardIdentifier}_${Date.now()}`;
     localStorage.setItem(giftCardKey, JSON.stringify(giftCardSelection));
     // Store the key so CardPaymentModal can find it
     localStorage.setItem('kiosk_gift_card_key', giftCardKey);
@@ -208,7 +270,7 @@ function GiftCardPurchaseContent() {
     // Track successful gift card purchase
     trackGiftCardPurchase({
       amount: selectedAmount || 0,
-      itemId: brandId || undefined,
+      itemId: isTilloSource ? brandSlug || undefined : brandId || undefined,
       itemTitle: brand?.name,
       paymentMethod: 'card',
     });
@@ -648,12 +710,12 @@ function GiftCardPurchaseContent() {
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         onPaymentSuccess={handlePaymentSuccess}
-        cardId={`gift-card-${brandId}`}
+        cardId={`gift-card-${isTilloSource ? brandSlug : brandId}`}
         cardName={brand?.name || 'Gift Card'}
         action="print"
         giftCardAmount={selectedAmount || 0}
         productType="gift-card"
-        giftCardBrandId={brandId || ''}
+        giftCardBrandId={isTilloSource ? (brandSlug || '') : (brandId || '')}
         giftCardDiscountPercent={discountPercent}
         kioskId={kioskInfo?.kioskId || ''}
       />

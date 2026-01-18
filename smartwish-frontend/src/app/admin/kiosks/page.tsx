@@ -77,7 +77,13 @@ type KioskConfig = {
   giftCardTile?: {
     enabled: boolean; // Master toggle - show/hide the tile
     visibility: 'visible' | 'hidden' | 'disabled'; // visible=show, hidden=don't show, disabled=show but grayed out
-    brandId: string | null; // UUID of the gift card brand to sell
+    source: 'smartwish' | 'tillo'; // Where to source the gift card from
+    brandId: string | null; // UUID of the SmartWish gift card brand (when source='smartwish')
+    tilloBrandSlug: string | null; // Tillo brand slug (when source='tillo')
+    tilloBrandName?: string; // Cached Tillo brand name for display
+    tilloBrandLogo?: string; // Cached Tillo brand logo URL
+    tilloMinAmount?: number; // Tillo brand minimum amount
+    tilloMaxAmount?: number; // Tillo brand maximum amount
     discountPercent: number; // Discount percentage (0-100) for this kiosk
     displayName?: string; // Optional custom display name
     description?: string; // Optional custom description
@@ -147,7 +153,13 @@ const DEFAULT_CONFIG: KioskConfig = {
   giftCardTile: {
     enabled: false, // Disabled by default
     visibility: 'hidden',
+    source: 'smartwish', // Default to SmartWish internal brands
     brandId: null,
+    tilloBrandSlug: null,
+    tilloBrandName: undefined,
+    tilloBrandLogo: undefined,
+    tilloMinAmount: undefined,
+    tilloMaxAmount: undefined,
     discountPercent: 0,
     displayName: 'Gift Card',
     description: 'Purchase a gift card',
@@ -942,6 +954,17 @@ type GiftCardBrandOption = {
   logo_url: string;
 };
 
+// Tillo brand type for dropdown
+type TilloBrandOption = {
+  id: string; // Same as slug for Tillo
+  name: string;
+  slug: string;
+  logo: string;
+  minAmount: number;
+  maxAmount: number;
+  currency: string;
+};
+
 // Kiosk Form Modal Component
 function KioskFormModal({
   open,
@@ -975,11 +998,19 @@ function KioskFormModal({
     formData.config.promotedGiftCardIds?.join(", ") || ""
   );
   
-  // Gift card brands for dropdown
+  // Gift card brands for dropdown (SmartWish internal)
   const [giftCardBrands, setGiftCardBrands] = useState<GiftCardBrandOption[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
   
-  // Fetch gift card brands when modal opens
+  // Tillo brands for dropdown
+  const [tilloBrands, setTilloBrands] = useState<TilloBrandOption[]>([]);
+  const [loadingTilloBrands, setLoadingTilloBrands] = useState(false);
+  const [tilloSearchQuery, setTilloSearchQuery] = useState("");
+  
+  // Get current source (default to 'smartwish' for backward compatibility)
+  const currentSource = formData.config.giftCardTile?.source || 'smartwish';
+  
+  // Fetch SmartWish gift card brands when modal opens
   useEffect(() => {
     if (open && giftCardBrands.length === 0 && !loadingBrands) {
       setLoadingBrands(true);
@@ -996,6 +1027,41 @@ function KioskFormModal({
         });
     }
   }, [open, giftCardBrands.length]);
+  
+  // Fetch Tillo brands when modal opens and source is tillo
+  useEffect(() => {
+    if (open && tilloBrands.length === 0 && !loadingTilloBrands) {
+      setLoadingTilloBrands(true);
+      fetch("/api/tillo/brands")
+        .then((res) => res.json())
+        .then((data) => {
+          const brands = data.brands || [];
+          setTilloBrands(brands.map((b: any) => ({
+            id: b.slug || b.id,
+            name: b.name,
+            slug: b.slug || b.id,
+            logo: b.logo || b.image || '',
+            minAmount: b.minAmount || 5,
+            maxAmount: b.maxAmount || 500,
+            currency: b.currency || 'USD',
+          })));
+        })
+        .catch((err) => {
+          console.error("Failed to fetch Tillo brands:", err);
+        })
+        .finally(() => {
+          setLoadingTilloBrands(false);
+        });
+    }
+  }, [open, tilloBrands.length]);
+  
+  // Filter Tillo brands by search query
+  const filteredTilloBrands = tilloSearchQuery.trim()
+    ? tilloBrands.filter(b => 
+        b.name.toLowerCase().includes(tilloSearchQuery.toLowerCase()) ||
+        b.slug.toLowerCase().includes(tilloSearchQuery.toLowerCase())
+      )
+    : tilloBrands.slice(0, 50); // Show first 50 if no search
 
   // Sync local state when modal opens with new data
   useEffect(() => {
@@ -1681,7 +1747,9 @@ function KioskFormModal({
                                   ...formData.config.giftCardTile,
                                   enabled: !(formData.config.giftCardTile?.enabled ?? false),
                                   visibility: formData.config.giftCardTile?.visibility ?? 'visible',
+                                  source: formData.config.giftCardTile?.source ?? 'smartwish',
                                   brandId: formData.config.giftCardTile?.brandId ?? null,
+                                  tilloBrandSlug: formData.config.giftCardTile?.tilloBrandSlug ?? null,
                                   discountPercent: formData.config.giftCardTile?.discountPercent ?? 0,
                                   displayName: formData.config.giftCardTile?.displayName ?? 'Gift Card',
                                   description: formData.config.giftCardTile?.description ?? 'Purchase a gift card',
@@ -1732,68 +1800,223 @@ function KioskFormModal({
                             </select>
                           </div>
 
+                          {/* Gift Card Source Selection */}
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Gift Card Brand</label>
-                            {loadingBrands ? (
-                              <div className="text-sm text-gray-400 py-2">Loading brands...</div>
-                            ) : giftCardBrands.length === 0 ? (
-                              <div className="text-sm text-amber-600 py-2">
-                                No gift card brands found. <a href="/admin/gift-card-brands" className="underline">Create one first</a>
-                              </div>
-                            ) : (
-                              <select
-                                value={formData.config.giftCardTile?.brandId ?? ''}
-                                onChange={(e) =>
+                            <label className="block text-xs text-gray-500 mb-1">Gift Card Source</label>
+                            <div className="flex gap-2 mb-3">
+                              <button
+                                type="button"
+                                onClick={() =>
                                   setFormData({
                                     ...formData,
                                     config: {
                                       ...formData.config,
                                       giftCardTile: {
                                         ...formData.config.giftCardTile!,
-                                        brandId: e.target.value || null,
+                                        source: 'smartwish',
+                                        // Clear Tillo fields when switching
+                                        tilloBrandSlug: null,
+                                        tilloBrandName: undefined,
+                                        tilloBrandLogo: undefined,
+                                        tilloMinAmount: undefined,
+                                        tilloMaxAmount: undefined,
                                       },
                                     },
                                   })
                                 }
-                                className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                                className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${
+                                  currentSource === 'smartwish'
+                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
+                                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                }`}
                               >
-                                <option value="">Select a gift card brand...</option>
-                                {giftCardBrands.map((brand) => (
-                                  <option key={brand.id} value={brand.id}>
-                                    {brand.name} ({brand.slug})
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                            {/* Show selected brand logo and info */}
-                            {formData.config.giftCardTile?.brandId && (() => {
-                              const selectedBrand = giftCardBrands.find(b => b.id === formData.config.giftCardTile?.brandId);
-                              if (!selectedBrand) return null;
-                              return (
-                                <div className="mt-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-center gap-3">
-                                  {selectedBrand.logo_url ? (
-                                    <img
-                                      src={selectedBrand.logo_url}
-                                      alt={selectedBrand.name}
-                                      className="w-12 h-12 rounded-lg object-contain bg-white border border-gray-200"
-                                      onError={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                      }}
-                                    />
-                                  ) : (
-                                    <div className="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center">
-                                      <GiftIcon className="w-6 h-6 text-emerald-600" />
-                                    </div>
-                                  )}
-                                  <div>
-                                    <p className="text-sm font-medium text-emerald-800">{selectedBrand.name}</p>
-                                    <p className="text-xs text-emerald-600 font-mono">{selectedBrand.slug}</p>
-                                  </div>
-                                </div>
-                              );
-                            })()}
+                                🏪 SmartWish Internal
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormData({
+                                    ...formData,
+                                    config: {
+                                      ...formData.config,
+                                      giftCardTile: {
+                                        ...formData.config.giftCardTile!,
+                                        source: 'tillo',
+                                        // Clear SmartWish fields when switching
+                                        brandId: null,
+                                      },
+                                    },
+                                  })
+                                }
+                                className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${
+                                  currentSource === 'tillo'
+                                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                }`}
+                              >
+                                🌐 Tillo Marketplace
+                              </button>
+                            </div>
+                            <p className="text-xs text-gray-400 mb-3">
+                              {currentSource === 'smartwish' 
+                                ? 'Select from your internally managed gift card brands'
+                                : 'Select from Tillo\'s global gift card marketplace (Amazon, Starbucks, etc.)'}
+                            </p>
                           </div>
+
+                          {/* SmartWish Brand Selection */}
+                          {currentSource === 'smartwish' && (
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">SmartWish Gift Card Brand</label>
+                              {loadingBrands ? (
+                                <div className="text-sm text-gray-400 py-2">Loading brands...</div>
+                              ) : giftCardBrands.length === 0 ? (
+                                <div className="text-sm text-amber-600 py-2">
+                                  No gift card brands found. <a href="/admin/gift-card-brands" className="underline">Create one first</a>
+                                </div>
+                              ) : (
+                                <select
+                                  value={formData.config.giftCardTile?.brandId ?? ''}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      config: {
+                                        ...formData.config,
+                                        giftCardTile: {
+                                          ...formData.config.giftCardTile!,
+                                          brandId: e.target.value || null,
+                                        },
+                                      },
+                                    })
+                                  }
+                                  className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                                >
+                                  <option value="">Select a gift card brand...</option>
+                                  {giftCardBrands.map((brand) => (
+                                    <option key={brand.id} value={brand.id}>
+                                      {brand.name} ({brand.slug})
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {/* Show selected SmartWish brand logo and info */}
+                              {formData.config.giftCardTile?.brandId && (() => {
+                                const selectedBrand = giftCardBrands.find(b => b.id === formData.config.giftCardTile?.brandId);
+                                if (!selectedBrand) return null;
+                                return (
+                                  <div className="mt-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200 flex items-center gap-3">
+                                    {selectedBrand.logo_url ? (
+                                      <img
+                                        src={selectedBrand.logo_url}
+                                        alt={selectedBrand.name}
+                                        className="w-12 h-12 rounded-lg object-contain bg-white border border-gray-200"
+                                        onError={(e) => {
+                                          const target = e.target as HTMLImageElement;
+                                          target.style.display = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="w-12 h-12 rounded-lg bg-emerald-100 flex items-center justify-center">
+                                        <GiftIcon className="w-6 h-6 text-emerald-600" />
+                                      </div>
+                                    )}
+                                    <div>
+                                      <p className="text-sm font-medium text-emerald-800">{selectedBrand.name}</p>
+                                      <p className="text-xs text-emerald-600 font-mono">{selectedBrand.slug}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+
+                          {/* Tillo Brand Selection */}
+                          {currentSource === 'tillo' && (
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Tillo Gift Card Brand</label>
+                              {loadingTilloBrands ? (
+                                <div className="text-sm text-gray-400 py-2">Loading Tillo brands...</div>
+                              ) : tilloBrands.length === 0 ? (
+                                <div className="text-sm text-amber-600 py-2">
+                                  No Tillo brands available. Check your Tillo API configuration.
+                                </div>
+                              ) : (
+                                <>
+                                  {/* Search input for Tillo brands */}
+                                  <input
+                                    type="text"
+                                    placeholder="Search Tillo brands (e.g., Amazon, Starbucks)..."
+                                    value={tilloSearchQuery}
+                                    onChange={(e) => setTilloSearchQuery(e.target.value)}
+                                    className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 mb-2"
+                                  />
+                                  <select
+                                    value={formData.config.giftCardTile?.tilloBrandSlug ?? ''}
+                                    onChange={(e) => {
+                                      const selectedSlug = e.target.value;
+                                      const selectedBrand = tilloBrands.find(b => b.slug === selectedSlug);
+                                      setFormData({
+                                        ...formData,
+                                        config: {
+                                          ...formData.config,
+                                          giftCardTile: {
+                                            ...formData.config.giftCardTile!,
+                                            tilloBrandSlug: selectedSlug || null,
+                                            tilloBrandName: selectedBrand?.name,
+                                            tilloBrandLogo: selectedBrand?.logo,
+                                            tilloMinAmount: selectedBrand?.minAmount,
+                                            tilloMaxAmount: selectedBrand?.maxAmount,
+                                          },
+                                        },
+                                      });
+                                    }}
+                                    className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    size={8}
+                                  >
+                                    <option value="">Select a Tillo brand...</option>
+                                    {filteredTilloBrands.map((brand) => (
+                                      <option key={brand.slug} value={brand.slug}>
+                                        {brand.name} (${brand.minAmount}-${brand.maxAmount})
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    {tilloBrands.length} brands available • Showing {filteredTilloBrands.length}
+                                  </p>
+                                </>
+                              )}
+                              {/* Show selected Tillo brand logo and info */}
+                              {formData.config.giftCardTile?.tilloBrandSlug && (() => {
+                                const tilloConfig = formData.config.giftCardTile;
+                                return (
+                                  <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-center gap-3">
+                                    {tilloConfig.tilloBrandLogo ? (
+                                      <img
+                                        src={tilloConfig.tilloBrandLogo}
+                                        alt={tilloConfig.tilloBrandName || 'Tillo Brand'}
+                                        className="w-12 h-12 rounded-lg object-contain bg-white border border-gray-200"
+                                        onError={(e) => {
+                                          const target = e.target as HTMLImageElement;
+                                          target.style.display = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                                        <GiftIcon className="w-6 h-6 text-blue-600" />
+                                      </div>
+                                    )}
+                                    <div>
+                                      <p className="text-sm font-medium text-blue-800">{tilloConfig.tilloBrandName || tilloConfig.tilloBrandSlug}</p>
+                                      <p className="text-xs text-blue-600 font-mono">{tilloConfig.tilloBrandSlug}</p>
+                                      <p className="text-xs text-blue-500">
+                                        ${tilloConfig.tilloMinAmount} - ${tilloConfig.tilloMaxAmount}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
 
                           <div className="grid grid-cols-2 gap-4">
                             <div>

@@ -16,6 +16,8 @@ interface GiftCardBrand {
   slug: string;
   logo_url: string;
   description?: string;
+  min_amount?: number;
+  max_amount?: number;
 }
 
 // Cache keys
@@ -62,7 +64,7 @@ for (let i = 0; i < 30; i++) {
 }
 
 // Synchronous cache getter for initial data
-const getCachedData = <T>(cacheKey: string): T | undefined => {
+const getCachedData = <T,>(cacheKey: string): T | undefined => {
   if (typeof window === 'undefined') return undefined;
   try {
     const cached = localStorage.getItem(cacheKey);
@@ -192,8 +194,18 @@ function KioskHomePageContent() {
   const giftCardTileEnabled = giftCardTileConfig?.enabled && giftCardTileConfig?.visibility === 'visible';
   const giftCardTileDisabled = giftCardTileConfig?.enabled && giftCardTileConfig?.visibility === 'disabled';
   const showGiftCardTile = giftCardTileEnabled || giftCardTileDisabled;
+  
+  // Determine gift card source (default to 'smartwish' for backward compatibility)
+  const giftCardSource = giftCardTileConfig?.source || 'smartwish';
+  const isTilloSource = giftCardSource === 'tillo';
+  
+  // For Tillo, check if tilloBrandSlug is set; for SmartWish, check brandId
+  const hasGiftCardBrandConfigured = isTilloSource 
+    ? !!giftCardTileConfig?.tilloBrandSlug 
+    : !!giftCardTileConfig?.brandId;
 
-  // Fetch gift card brand info when brandId is set
+  // Fetch gift card brand info when brandId is set (for SmartWish brands)
+  // For Tillo brands, we use the cached values in the config
   const [giftCardBrand, setGiftCardBrand] = useState<GiftCardBrand | null>(null);
   const [logoBackgroundColor, setLogoBackgroundColor] = useState<string>('#ffffff');
   
@@ -254,7 +266,8 @@ function KioskHomePageContent() {
   };
   
   useEffect(() => {
-    if (giftCardTileConfig?.brandId) {
+    // For SmartWish brands, fetch from API
+    if (!isTilloSource && giftCardTileConfig?.brandId) {
       fetch(`/api/admin/gift-card-brands/${giftCardTileConfig.brandId}`)
         .then((res) => res.ok ? res.json() : null)
         .then(async (data) => {
@@ -269,7 +282,26 @@ function KioskHomePageContent() {
         })
         .catch((err) => console.error('Failed to fetch gift card brand:', err));
     }
-  }, [giftCardTileConfig?.brandId]);
+    
+    // For Tillo brands, use cached values from config
+    if (isTilloSource && giftCardTileConfig?.tilloBrandSlug) {
+      // Create a synthetic brand object from cached Tillo config
+      const tilloBrand: GiftCardBrand = {
+        id: giftCardTileConfig.tilloBrandSlug,
+        name: giftCardTileConfig.tilloBrandName || giftCardTileConfig.tilloBrandSlug,
+        slug: giftCardTileConfig.tilloBrandSlug,
+        logo_url: giftCardTileConfig.tilloBrandLogo || '',
+        min_amount: giftCardTileConfig.tilloMinAmount || 5,
+        max_amount: giftCardTileConfig.tilloMaxAmount || 500,
+      };
+      setGiftCardBrand(tilloBrand);
+      
+      // Extract background color from Tillo logo
+      if (tilloBrand.logo_url) {
+        extractEdgeColor(tilloBrand.logo_url).then(setLogoBackgroundColor);
+      }
+    }
+  }, [giftCardTileConfig?.brandId, giftCardTileConfig?.tilloBrandSlug, isTilloSource]);
 
   // Track if component has mounted (for hydration-safe rendering)
   const [hasMounted, setHasMounted] = useState(false);
@@ -485,11 +517,22 @@ function KioskHomePageContent() {
   };
 
   const handleSelectGiftCard = async () => {
-    if (!giftCardTileEnabled || !giftCardTileConfig?.brandId) return;
+    if (!giftCardTileEnabled || !hasGiftCardBrandConfigured) return;
     // Start session and track tile selection
     await startSession();
-    trackTileSelect('gift_card', { brandId: giftCardTileConfig.brandId });
-    router.push(`/kiosk/gift-card?brandId=${giftCardTileConfig.brandId}`);
+    
+    if (isTilloSource && giftCardTileConfig?.tilloBrandSlug) {
+      // For Tillo brands, pass the slug and source
+      trackTileSelect('gift_card', { 
+        brandSlug: giftCardTileConfig.tilloBrandSlug, 
+        source: 'tillo' 
+      });
+      router.push(`/kiosk/gift-card?source=tillo&brandSlug=${giftCardTileConfig.tilloBrandSlug}`);
+    } else if (giftCardTileConfig?.brandId) {
+      // For SmartWish brands, pass the brandId
+      trackTileSelect('gift_card', { brandId: giftCardTileConfig.brandId });
+      router.push(`/kiosk/gift-card?brandId=${giftCardTileConfig.brandId}`);
+    }
   };
 
   return (
@@ -736,9 +779,9 @@ function KioskHomePageContent() {
         <div className="relative flex justify-center w-full max-w-7xl mt-8 lg:mt-12">
           <button
             onClick={handleSelectGiftCard}
-            disabled={giftCardTileDisabled || !giftCardTileConfig?.brandId}
+            disabled={giftCardTileDisabled || !hasGiftCardBrandConfigured}
             className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none w-full max-w-xl min-h-[320px] lg:min-h-[360px] ${
-              giftCardTileEnabled && giftCardTileConfig?.brandId
+              giftCardTileEnabled && hasGiftCardBrandConfigured
                 ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-emerald-400/50 cursor-pointer'
                 : 'opacity-50 cursor-not-allowed border-white/10'
             }`}
