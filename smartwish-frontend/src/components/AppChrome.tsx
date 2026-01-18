@@ -11,6 +11,7 @@ import { useKioskInactivity } from '@/hooks/useKioskInactivity'
 import KioskScreenSaver from '@/components/KioskScreenSaver'
 import KioskProductSwitcher from '@/components/KioskProductSwitcher'
 import KioskChat from '@/components/KioskChat'
+import { KioskTimeoutModal } from '@/components/KioskTimeoutModal'
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const p = usePathname()
@@ -18,7 +19,14 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const { isKiosk, isInitialized } = useDeviceMode()
   
   // Initialize kiosk inactivity tracking and screen saver
-  const { showScreenSaver, exitScreenSaver } = useKioskInactivity()
+  const { 
+    showScreenSaver, 
+    exitScreenSaver,
+    showTimeoutModal,
+    handleStillHere,
+    handleStartFresh,
+    handleModalTimeout,
+  } = useKioskInactivity()
 
   const isAuth = p.includes('/sign-in') || p.includes('/sign-up') || p.includes('/forgot-password')
   const showSidebar = !isAuth && (p.startsWith('/templates') || p.startsWith('/my-cards') || p.startsWith('/event') || p.startsWith('/marketplace') || p.startsWith('/contacts') || p.startsWith('/partners') || p.startsWith('/settings') || p.startsWith('/stickers'))
@@ -62,6 +70,15 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       
       {/* Kiosk Screen Saver */}
       <KioskScreenSaver isVisible={showScreenSaver} onExit={exitScreenSaver} />
+      
+      {/* Kiosk Timeout Confirmation Modal */}
+      <KioskTimeoutModal
+        isOpen={showTimeoutModal}
+        onStillHere={handleStillHere}
+        onStartFresh={handleStartFresh}
+        onTimeout={handleModalTimeout}
+        countdownSeconds={60}
+      />
       
       {/* Kiosk Chat */}
       <KioskChat />

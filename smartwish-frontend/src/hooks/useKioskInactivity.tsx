@@ -46,6 +46,7 @@ export function useKioskInactivity({
     const effectiveEnabled = enabled && !isExcludedPath;
 
     const [showScreenSaver, setShowScreenSaver] = useState(false);
+    const [showTimeoutModal, setShowTimeoutModal] = useState(false);
     const screenSaverTimerRef = useRef<NodeJS.Timeout | null>(null);
     const resetTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastActivityRef = useRef<number>(Date.now());
@@ -170,11 +171,11 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] 🚫 Screen saver disabled - skipping visual display");
         }
 
-        // Set reset timer - navigate to home
+        // Set reset timer - show confirmation modal
         console.log("🖥️ [KioskInactivity] ⏱️ Setting reset timer:", effectiveResetTimeout / 1000, "s", multiplier > 1 ? `(${multiplier}x multiplier)` : '');
         resetTimerRef.current = setTimeout(() => {
-            console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired");
-            navigateToHome();
+            console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired - showing timeout confirmation modal");
+            setShowTimeoutModal(true);
         }, effectiveResetTimeout);
     }, [isKiosk, effectiveEnabled, clearTimers, screenSaverTimeout, resetTimeout, navigateToHome]);
 
@@ -248,6 +249,25 @@ export function useKioskInactivity({
         isExitingRef.current = false;
         resetActivity();
     }, [resetActivity]);
+
+    // Timeout modal handlers
+    const handleStillHere = useCallback(() => {
+        console.log("🖥️ [KioskInactivity] ✅ User confirmed they are still present");
+        setShowTimeoutModal(false);
+        resetActivity();
+    }, [resetActivity]);
+
+    const handleStartFresh = useCallback(() => {
+        console.log("🖥️ [KioskInactivity] 🔄 User chose to start fresh");
+        setShowTimeoutModal(false);
+        navigateToHome();
+    }, [navigateToHome]);
+
+    const handleModalTimeout = useCallback(() => {
+        console.log("🖥️ [KioskInactivity] ⏰ Timeout modal countdown reached zero");
+        setShowTimeoutModal(false);
+        navigateToHome();
+    }, [navigateToHome]);
 
     // Activity event handler
     const handleActivity = useCallback((event?: Event) => {
@@ -343,6 +363,7 @@ export function useKioskInactivity({
 
     return {
         showScreenSaver: SCREEN_SAVER_DISABLED ? false : showScreenSaver, // Always false if disabled
+        showTimeoutModal,
         exitScreenSaver,
         resetActivity,
         pauseInactivity,
@@ -351,5 +372,8 @@ export function useKioskInactivity({
         pauseForPrinting,
         pauseForPayment,
         resumeFromPayment,
+        handleStillHere,
+        handleStartFresh,
+        handleModalTimeout,
     };
 }
