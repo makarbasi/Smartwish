@@ -127,8 +127,33 @@ function PaymentForm() {
   const sessionId = searchParams.get('session')
   const urlOrderId = searchParams.get('orderId') // ✅ Get orderId from QR code
   
-  // ✅ Backend configuration - use production URL as default
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'
+  // ✅ Backend configuration - detect local development vs production
+  // In development on local network, use the same host but with backend port
+  const getBackendUrl = () => {
+    // If explicitly set, use that
+    if (process.env.NEXT_PUBLIC_BACKEND_URL) {
+      return process.env.NEXT_PUBLIC_BACKEND_URL;
+    }
+    if (process.env.NEXT_PUBLIC_API_BASE) {
+      return process.env.NEXT_PUBLIC_API_BASE;
+    }
+    
+    // Auto-detect: if accessing from local network IP, use same IP for backend
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      // Check if accessing from local network IP (192.168.x.x, 10.x.x.x, localhost)
+      const isLocalNetwork = /^(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|localhost)$/.test(hostname);
+      if (isLocalNetwork) {
+        // Use the same IP but with backend port 3001
+        return `http://${hostname}:3001`;
+      }
+    }
+    
+    // Default to production
+    return 'https://smartwish.onrender.com';
+  };
+  
+  const backendUrl = getBackendUrl()
   const accessToken = (session?.user as any)?.access_token
 
   // ✅ FIX: Allow guest checkout - don't require authentication
@@ -160,10 +185,17 @@ function PaymentForm() {
       console.log('📦 Using existing order from kiosk:', urlOrderId)
       
       // Get card details from URL
+      // For gift cards, brandId is used instead of cardId
       const cardId = searchParams.get('cardId')
+      const brandId = searchParams.get('brandId')
+      const productType = searchParams.get('productType')
       const action = searchParams.get('action')
       
-      if (!cardId) {
+      // Allow either cardId (regular cards) or brandId (gift cards)
+      const effectiveCardId = cardId || brandId
+      const isGiftCard = productType === 'gift-card' || !!brandId
+      
+      if (!effectiveCardId) {
         throw new Error('Invalid payment link - missing card ID')
       }
 
@@ -223,10 +255,11 @@ function PaymentForm() {
       if (order.status === 'paid' || order.status === 'completed') {
         setPaymentComplete(true)
         setSessionData({
-          cardId,
+          cardId: effectiveCardId,
           action,
           amount: totalAmount,
-          orderId: order.id
+          orderId: order.id,
+          isGiftCard
         })
         setLoadingSession(false)
         return
@@ -234,10 +267,11 @@ function PaymentForm() {
 
       // Set session data from existing order
       setSessionData({
-        cardId,
+        cardId: effectiveCardId,
         action,
         amount: totalAmount,
         orderId: order.id,
+        isGiftCard,
         priceBreakdown: {
           cardPrice: cardPrice,
           giftCardAmount: giftCardAmount,
@@ -258,12 +292,14 @@ function PaymentForm() {
             orderId: order.id,
             userId: order.userId, // Use the kiosk user's ID
             sessionId: sessionId,
-            cardId,
+            cardId: effectiveCardId,
             action,
             source: 'mobile_qr_payment',
             cardPrice: cardPrice,
             giftCardAmount: giftCardAmount,
-            processingFee: processingFee
+            processingFee: processingFee,
+            isGiftCard: isGiftCard ? 'true' : 'false',
+            productType: productType || 'card'
           }
         })
       })

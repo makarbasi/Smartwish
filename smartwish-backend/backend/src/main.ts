@@ -91,8 +91,35 @@ async function bootstrap() {
     : ['https://frontend-smartwish.onrender.com', 'https://smartwish.onrender.com', 'https://app.smartwish.us', 'https://hotels.smartwish.us'];
   allowedOrigins.push(...productionOrigins);
 
+  // Dynamic CORS origin validator (allows local network IPs in development)
+  const corsOriginValidator = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    
+    // Check static allowed origins
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    
+    // In development, also allow local network IPs (192.168.x.x, 10.x.x.x, etc.)
+    if (isDev) {
+      const localNetworkPattern = /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|localhost)(:\d+)?$/;
+      if (localNetworkPattern.test(origin)) {
+        callback(null, true);
+        return;
+      }
+    }
+    
+    // Reject other origins
+    callback(new Error('Not allowed by CORS'));
+  };
+
   const corsConfig = {
-    origin: allowedOrigins,
+    origin: corsOriginValidator,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,

@@ -13,6 +13,21 @@ import { useKioskInactivity } from '@/hooks/useKioskInactivity'
 const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null
 
+// Generate UUID v4 for Tillo gift card orders (Tillo uses slugs, not UUIDs)
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
+// Check if a string is a valid UUID
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidRegex.test(str)
+}
+
 // Gift card data returned after payment success
 // Exported so consuming components can use the same type
 export interface IssuedGiftCardData {
@@ -177,6 +192,13 @@ function CardPaymentModalContent({
   const [priceData, setPriceData] = useState<any>(null)
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [paymentQRCode, setPaymentQRCode] = useState('')
+  
+  // Gift card success display state
+  const [issuedGiftCardDisplay, setIssuedGiftCardDisplay] = useState<IssuedGiftCardData | null>(null)
+  const [giftCardEmail, setGiftCardEmail] = useState('')
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
+  const [showPin, setShowPin] = useState(false)
 
   const checkPaymentIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -449,10 +471,16 @@ function CardPaymentModalContent({
         setPriceData(giftCardPriceData)
 
         // Step 1: Create order in database
-        // Note: For kiosk gift card purchases, we use the brandId as the cardId (it's a valid UUID)
-        // and orderType 'print' (backend only allows: print, send_ecard, sticker)
-        // The metadata.productType='kiosk-gift-card' identifies this as a gift card purchase.
+        // Note: For kiosk gift card purchases, we need a valid UUID for cardId.
+        // SmartWish brands have UUID brandIds, but Tillo brands use slugs.
+        // For Tillo brands (non-UUID slugs), generate a placeholder UUID.
+        const isTilloBrand = !isValidUUID(giftCardBrandId)
+        const orderCardId = isTilloBrand ? generateUUID() : giftCardBrandId
+        
         console.log('📦 Creating kiosk gift card order in database...')
+        console.log('🎁 Brand source:', isTilloBrand ? 'Tillo (slug)' : 'SmartWish (UUID)')
+        console.log('🎁 Using cardId:', orderCardId, '(original brandId:', giftCardBrandId, ')')
+        
         const orderResponse = await fetch(`${backendUrl}/orders`, {
           method: 'POST',
           headers: {
@@ -460,8 +488,8 @@ function CardPaymentModalContent({
             'Authorization': `Bearer ${accessToken}`
           },
           body: JSON.stringify({
-            // Use giftCardBrandId as cardId - it's a valid UUID that the backend can accept
-            cardId: giftCardBrandId,
+            // Use generated UUID for Tillo brands, or actual UUID for SmartWish brands
+            cardId: orderCardId,
             orderType: 'print', // Backend only allows: print, send_ecard, sticker
             cardName: cardName || 'Gift Card',
             cardPrice: chargeAmount,
@@ -472,7 +500,9 @@ function CardPaymentModalContent({
             metadata: {
               source: 'kiosk',
               productType: 'kiosk-gift-card', // This identifies it as a gift card
-              brandId: giftCardBrandId,
+              brandId: giftCardBrandId, // Store original brandId (UUID or slug)
+              brandSlug: isTilloBrand ? giftCardBrandId : undefined, // For Tillo, also store as slug
+              giftCardSource: isTilloBrand ? 'tillo' : 'smartwish', // Track the source
               kioskId: kioskId,
               discountPercent: giftCardDiscountPercent,
               originalValue: giftCardPrice,
@@ -510,6 +540,8 @@ function CardPaymentModalContent({
               userId,
               productType: 'kiosk-gift-card',
               brandId: giftCardBrandId,
+              brandSlug: isTilloBrand ? giftCardBrandId : undefined,
+              giftCardSource: isTilloBrand ? 'tillo' : 'smartwish',
               kioskId: kioskId,
               originalValue: giftCardPrice,
               chargeAmount: chargeAmount,
@@ -551,6 +583,8 @@ function CardPaymentModalContent({
               cardName: cardName || 'Gift Card',
               productType: 'kiosk-gift-card',
               brandId: giftCardBrandId,
+              brandSlug: isTilloBrand ? giftCardBrandId : undefined,
+              giftCardSource: isTilloBrand ? 'tillo' : 'smartwish',
               kioskId: kioskId
             }
           })
@@ -936,28 +970,72 @@ function CardPaymentModalContent({
     if (isKioskGiftCard && giftCardBrandId && propGiftCardAmount) {
       console.log('🎁 Kiosk gift card payment - issuing gift card')
       
+      // Determine if this is a Tillo brand (slug) or SmartWish brand (UUID)
+      const isTilloBrand = !isValidUUID(giftCardBrandId)
+      console.log('🎁 Gift card source:', isTilloBrand ? 'TILLO' : 'SMARTWISH', 'brandId:', giftCardBrandId)
+      
       try {
-        // Issue the gift card via API
-        // Note: kioskId, discountPercent are already stored on the ORDER (via orderId)
-        const response = await fetch('/api/gift-cards/purchase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            brandId: giftCardBrandId,
-            amount: propGiftCardAmount,
-            orderId: orderId, // Links gift card to order which has all the kiosk/discount info
-          }),
-        })
+        let response: Response
+        let data: any
+        
+        if (isTilloBrand) {
+          // Call Tillo API to issue the gift card
+          console.log('🎁 Calling Tillo API to issue gift card:', giftCardBrandId)
+          response = await fetch('/api/tillo/issue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              brandSlug: giftCardBrandId, // For Tillo, giftCardBrandId is the slug
+              amount: propGiftCardAmount,
+              orderId: orderId,
+              kioskId: kioskId,
+            }),
+          })
+          data = await response.json()
+        } else {
+          // Call SmartWish internal API to issue gift card
+          console.log('🎁 Calling SmartWish API to issue gift card:', giftCardBrandId)
+          response = await fetch('/api/gift-cards/purchase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              brandId: giftCardBrandId,
+              amount: propGiftCardAmount,
+              orderId: orderId,
+            }),
+          })
+          data = await response.json()
+        }
 
-        if (response.ok) {
-          const data = await response.json()
-          console.log('✅ Kiosk gift card issued:', data)
+        if (response.ok && (data.success || data.giftCard)) {
+          console.log('✅ Kiosk gift card issued via', isTilloBrand ? 'Tillo' : 'SmartWish', ':', data)
 
-          if (data.giftCard) {
-            // Generate QR code for the gift card
+          // Extract gift card data - different fields for SmartWish vs Tillo
+          const giftCard = data.giftCard
+          if (giftCard) {
+            // Get redemption URL for Tillo cards
+            const redemptionUrl = isTilloBrand 
+              ? (giftCard.url || giftCard.redemptionUrl || giftCard.claim_url || '')
+              : ''
+            
+            // Generate QR code
             let qrCodeDataUrl = ''
             try {
-              const qrContent = data.giftCard.qrContent || data.giftCard.cardNumber || ''
+              // For SmartWish: use qrContent or cardNumber
+              // For Tillo: use redemption URL or code
+              let qrContent = ''
+              if (isTilloBrand) {
+                qrContent = redemptionUrl || giftCard.code || ''
+                if (!qrContent && giftCard.code) {
+                  qrContent = giftCard.code
+                  if (giftCard.pin) {
+                    qrContent += ` PIN: ${giftCard.pin}`
+                  }
+                }
+              } else {
+                qrContent = giftCard.qrContent || giftCard.cardNumber || ''
+              }
+              
               if (qrContent) {
                 qrCodeDataUrl = await QRCode.toDataURL(qrContent, {
                   width: 200,
@@ -965,35 +1043,57 @@ function CardPaymentModalContent({
                   color: { dark: '#2d3748', light: '#ffffff' },
                   errorCorrectionLevel: 'H'
                 })
+                console.log('✅ QR code generated for', isTilloBrand ? 'Tillo' : 'SmartWish', 'gift card')
               }
             } catch (qrError) {
               console.error('Failed to generate QR code:', qrError)
             }
 
             issuedGiftCardData = {
-              id: data.giftCard.id,  // The actual database ID
+              id: isTilloBrand ? (giftCard.orderId || giftCard.clientRequestId || '') : giftCard.id,
               storeName: cardName || 'Gift Card',
               amount: propGiftCardAmount,
               qrCode: qrCodeDataUrl,
               storeLogo: '', // Can be fetched from brand if needed
-              redemptionLink: '',
-              code: data.giftCard.cardNumber,
-              pin: data.giftCard.pin,
+              redemptionLink: redemptionUrl,
+              code: isTilloBrand ? giftCard.code : giftCard.cardNumber,
+              pin: giftCard.pin || '',
               isIssued: true
             }
+            console.log('🎁 Prepared issued gift card data:', {
+              id: issuedGiftCardData.id,
+              storeName: issuedGiftCardData.storeName,
+              hasQrCode: !!issuedGiftCardData.qrCode,
+              hasRedemptionLink: !!issuedGiftCardData.redemptionLink,
+              hasCode: !!issuedGiftCardData.code
+            })
+            
+            // Show the gift card in the modal instead of closing
+            setIssuedGiftCardDisplay(issuedGiftCardData)
           }
         } else {
-          const errorData = await response.json()
-          console.error('❌ Failed to issue kiosk gift card:', errorData)
+          console.error('❌ Failed to issue kiosk gift card:', data)
+          // Still show success but without gift card details
+          setIssuedGiftCardDisplay({
+            storeName: cardName || 'Gift Card',
+            amount: propGiftCardAmount,
+            qrCode: '',
+            isIssued: false
+          })
         }
       } catch (error) {
         console.error('❌ Error issuing kiosk gift card:', error)
+        // Still mark payment as complete
+        setIssuedGiftCardDisplay({
+          storeName: cardName || 'Gift Card',
+          amount: propGiftCardAmount,
+          qrCode: '',
+          isIssued: false
+        })
       }
 
-      // Return the issued gift card data
-      setTimeout(() => {
-        onPaymentSuccess(issuedGiftCardData)
-      }, 1500)
+      // Don't call onPaymentSuccess yet - wait for user to click Done
+      // The modal will show the gift card QR and email option
       return
     }
 
@@ -1395,6 +1495,79 @@ function CardPaymentModalContent({
       setPromoApplied(false)
     }
   }
+  
+  /**
+   * Email the gift card to the user
+   */
+  const handleEmailGiftCard = async () => {
+    if (!giftCardEmail || !giftCardEmail.includes('@') || !issuedGiftCardDisplay) {
+      return
+    }
+    
+    setEmailSending(true)
+    try {
+      // Determine if this is a Tillo card based on whether it has a redemption link or no valid UUID
+      const isTilloBrand = !isValidUUID(giftCardBrandId || '') || !!issuedGiftCardDisplay.redemptionLink
+      
+      const response = await fetch('/api/gift-cards/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: giftCardEmail,
+          cardNumber: issuedGiftCardDisplay.code || '',
+          pin: issuedGiftCardDisplay.pin || '',
+          balance: issuedGiftCardDisplay.amount,
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          brandName: issuedGiftCardDisplay.storeName || 'Gift Card',
+          brandLogo: issuedGiftCardDisplay.storeLogo || '',
+          redemptionLink: issuedGiftCardDisplay.redemptionLink || '',
+          qrCode: issuedGiftCardDisplay.qrCode || '',
+          source: isTilloBrand ? 'tillo' : 'smartwish',
+        }),
+      })
+      
+      if (response.ok) {
+        setEmailSent(true)
+        console.log('✅ Gift card emailed successfully')
+      } else {
+        console.error('Failed to email gift card')
+      }
+    } catch (error) {
+      console.error('Error emailing gift card:', error)
+    } finally {
+      setEmailSending(false)
+    }
+  }
+  
+  /**
+   * Handle Done button - close modal and return gift card data
+   */
+  const handleGiftCardDone = () => {
+    onPaymentSuccess(issuedGiftCardDisplay || undefined)
+  }
+  
+  /**
+   * Format card number for display (add spaces)
+   */
+  const formatCardNumber = (num: string) => {
+    if (!num) return ''
+    const clean = num.replace(/\s/g, '')
+    if (clean.length === 16) {
+      return `${clean.slice(0, 4)} ${clean.slice(4, 8)} ${clean.slice(8, 12)} ${clean.slice(12, 16)}`
+    }
+    return num
+  }
+  
+  /**
+   * Copy text to clipboard
+   */
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
 
   /**
    * Handle free checkout with promo code
@@ -1617,8 +1790,134 @@ function CardPaymentModalContent({
           <div className="p-6">
             {paymentComplete ? (
               <div className="text-center py-8">
-                {/* Payment Success + Print Status */}
-                {printStatus === 'completed' ? (
+                {/* Gift Card Success View with QR Code and Email */}
+                {isKioskGiftCard && issuedGiftCardDisplay ? (
+                  <div className="text-left">
+                    {/* Success Header */}
+                    <div className="text-center mb-6">
+                      <div className="text-5xl mb-3">🎉</div>
+                      <h3 className="text-2xl font-bold text-gray-900 mb-1">Your Gift Card is Ready!</h3>
+                      <p className="text-gray-600">Save these details to use your gift card</p>
+                    </div>
+                    
+                    {/* QR Code */}
+                    {issuedGiftCardDisplay.qrCode && (
+                      <div className="flex justify-center mb-6">
+                        <div className="bg-white p-3 rounded-xl shadow-lg border">
+                          <img
+                            src={issuedGiftCardDisplay.qrCode}
+                            alt="Gift Card QR Code"
+                            className="w-48 h-48"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Card Details */}
+                    <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-3">
+                      {/* Card Code */}
+                      {issuedGiftCardDisplay.code && (
+                        <div>
+                          <p className="text-gray-500 text-sm mb-1">Card Number / Code</p>
+                          <button
+                            onClick={() => copyToClipboard(issuedGiftCardDisplay.code || '')}
+                            className="w-full text-left group"
+                          >
+                            <p className="font-mono text-xl text-gray-900 group-hover:text-blue-600 transition-colors">
+                              {formatCardNumber(issuedGiftCardDisplay.code)}
+                            </p>
+                            <p className="text-blue-500 text-xs">Tap to copy</p>
+                          </button>
+                        </div>
+                      )}
+                      
+                      {/* PIN */}
+                      {issuedGiftCardDisplay.pin && (
+                        <div className="pt-2 border-t">
+                          <p className="text-gray-500 text-sm mb-1">PIN</p>
+                          <div className="flex items-center gap-3">
+                            <p className="font-mono text-xl text-gray-900 tracking-wider">
+                              {showPin ? issuedGiftCardDisplay.pin : '●●●●'}
+                            </p>
+                            <button
+                              onClick={() => setShowPin(!showPin)}
+                              className="px-3 py-1 bg-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-300 transition-colors"
+                            >
+                              {showPin ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Balance */}
+                      <div className="pt-2 border-t flex justify-between items-center">
+                        <span className="text-gray-500">Balance:</span>
+                        <span className="text-2xl font-bold text-green-600">
+                          ${issuedGiftCardDisplay.amount?.toFixed(2) || '0.00'}
+                        </span>
+                      </div>
+                      
+                      {/* Redemption Link for Tillo */}
+                      {issuedGiftCardDisplay.redemptionLink && (
+                        <div className="pt-2 border-t">
+                          <p className="text-gray-500 text-sm mb-1">Redemption Link</p>
+                          <a
+                            href={issuedGiftCardDisplay.redemptionLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 text-sm break-all underline"
+                          >
+                            {issuedGiftCardDisplay.redemptionLink}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Photo Reminder */}
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-center">
+                      <div className="text-2xl mb-1">📱</div>
+                      <p className="text-green-800 font-medium">Take a photo of this screen</p>
+                      <p className="text-green-600 text-sm">to save your gift card details</p>
+                    </div>
+                    
+                    {/* Email Option */}
+                    <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xl">📧</span>
+                        <span className="font-medium text-gray-900">Email my gift card</span>
+                      </div>
+                      <div className="space-y-3">
+                        <input
+                          type="email"
+                          value={giftCardEmail}
+                          onChange={(e) => setGiftCardEmail(e.target.value)}
+                          placeholder="your@email.com"
+                          disabled={emailSent}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                        />
+                        <button
+                          onClick={handleEmailGiftCard}
+                          disabled={emailSending || emailSent || !giftCardEmail}
+                          className={`w-full py-3 rounded-xl font-medium transition-all ${
+                            emailSent
+                              ? 'bg-green-100 text-green-700 border border-green-300'
+                              : 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
+                          }`}
+                        >
+                          {emailSending ? 'Sending...' : emailSent ? '✓ Email Sent!' : 'Send to Email'}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Done Button */}
+                    <button
+                      onClick={handleGiftCardDone}
+                      className="w-full py-4 rounded-xl text-lg font-bold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all"
+                    >
+                      Done - Return Home
+                    </button>
+                  </div>
+                ) : printStatus === 'completed' ? (
                   // Print completed successfully
                   <>
                     <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">

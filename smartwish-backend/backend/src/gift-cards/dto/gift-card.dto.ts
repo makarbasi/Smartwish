@@ -150,19 +150,40 @@ export class EmailGiftCardDto {
   @IsString()
   email!: string;
 
+  @IsOptional()
   @IsString()
-  cardNumber!: string;
+  cardNumber?: string; // Optional for Tillo cards that only have redemption URLs
 
+  @IsOptional()
   @IsString()
-  pin!: string;
+  pin?: string; // Optional for some gift cards
 
+  @IsOptional()
   @IsNumber()
-  balance!: number;
+  balance?: number;
 
+  @IsOptional()
   @IsString()
-  expiresAt!: string;
+  expiresAt?: string;
 
   @IsOptional()
   @IsString()
   brandName?: string;
+  
+  // New fields for Tillo cards
+  @IsOptional()
+  @IsString()
+  brandLogo?: string;
+  
+  @IsOptional()
+  @IsString()
+  redemptionLink?: string;
+  
+  @IsOptional()
+  @IsString()
+  source?: string; // 'smartwish' or 'tillo'
+  
+  @IsOptional()
+  @IsString()
+  qrCode?: string; // Base64 encoded QR code image
 }

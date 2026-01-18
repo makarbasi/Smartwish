@@ -80,11 +80,16 @@ export class GiftCardsPublicController {
   async emailGiftCard(@Body() dto: EmailGiftCardDto) {
     const result = await this.giftCardsService.sendGiftCardEmail({
       email: dto.email,
-      cardNumber: dto.cardNumber,
-      pin: dto.pin,
-      balance: dto.balance,
+      cardNumber: dto.cardNumber || '',
+      pin: dto.pin || '',
+      balance: dto.balance || 0,
       expiresAt: dto.expiresAt,
       brandName: dto.brandName,
+      // New fields for Tillo cards
+      brandLogo: dto.brandLogo,
+      redemptionLink: dto.redemptionLink,
+      source: dto.source,
+      qrCode: dto.qrCode,
     });
 
     if (!result.success) {

@@ -678,14 +678,20 @@ export class GiftCardsService {
 
   /**
    * Send gift card details via email
+   * Supports both SmartWish (internal) and Tillo gift cards
    */
   async sendGiftCardEmail(data: {
     email: string;
     cardNumber: string;
     pin: string;
     balance: number;
-    expiresAt: string;
+    expiresAt?: string;
     brandName?: string;
+    // New fields for Tillo cards
+    brandLogo?: string;
+    redemptionLink?: string;
+    source?: string;
+    qrCode?: string;
   }): Promise<{ success: boolean; error?: string }> {
     const nodemailer = await import('nodemailer');
     const QRCode = await import('qrcode');
@@ -695,6 +701,9 @@ export class GiftCardsService {
       console.error('❌ Email configuration missing');
       return { success: false, error: 'Email service not configured' };
     }
+    
+    const isTillo = data.source === 'tillo';
+    console.log(`📧 Sending ${isTillo ? 'Tillo' : 'SmartWish'} gift card email to ${data.email}`);
 
     try {
       // Create transporter
@@ -715,17 +724,45 @@ export class GiftCardsService {
       // Verify connection
       await transporter.verify();
 
-      // Generate QR code as Buffer for attachment
-      const frontendUrl = process.env.FRONTEND_URL || 'https://smartwish.us';
-      const qrContent = `${frontendUrl}/redeem?card=${data.cardNumber}`;
-      const qrCodeBuffer = await QRCode.toBuffer(qrContent, {
-        width: 200,
-        margin: 2,
-        color: { dark: '#000000', light: '#ffffff' },
-      });
+      // Generate or use provided QR code
+      let qrCodeBuffer: Buffer;
+      
+      if (data.qrCode && data.qrCode.startsWith('data:image')) {
+        // Use provided QR code (base64) - extract the base64 data
+        const base64Data = data.qrCode.replace(/^data:image\/\w+;base64,/, '');
+        qrCodeBuffer = Buffer.from(base64Data, 'base64');
+        console.log('📧 Using provided QR code');
+      } else if (isTillo && data.redemptionLink) {
+        // For Tillo with redemption link, generate QR from that
+        qrCodeBuffer = await QRCode.toBuffer(data.redemptionLink, {
+          width: 200,
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+        console.log('📧 Generated QR code from redemption link');
+      } else if (data.cardNumber) {
+        // For SmartWish cards, generate QR from card number
+        const frontendUrl = process.env.FRONTEND_URL || 'https://smartwish.us';
+        const qrContent = `${frontendUrl}/redeem?card=${data.cardNumber}`;
+        qrCodeBuffer = await QRCode.toBuffer(qrContent, {
+          width: 200,
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+        console.log('📧 Generated QR code from card number');
+      } else {
+        // Fallback - generate a placeholder QR
+        qrCodeBuffer = await QRCode.toBuffer('Gift Card', {
+          width: 200,
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+        console.log('📧 Using fallback QR code');
+      }
 
       // Format card number
       const formatCardNumber = (num: string) => {
+        if (!num) return '';
         const clean = num.replace(/\s/g, '');
         if (clean.length === 16) {
           return `${clean.slice(0, 4)} ${clean.slice(4, 8)} ${clean.slice(8, 12)} ${clean.slice(12, 16)}`;
@@ -734,13 +771,51 @@ export class GiftCardsService {
       };
 
       // Format expiry date
-      const expiresDate = new Date(data.expiresAt).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
+      const expiresDate = data.expiresAt 
+        ? new Date(data.expiresAt).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })
+        : 'No Expiry';
 
       const brandName = data.brandName || 'Gift Card';
+      const balance = data.balance || 0;
+      
+      // Build dynamic content sections based on what data we have
+      const cardNumberSection = data.cardNumber ? `
+        <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">Card Number / Code</p>
+          <p style="font-family: 'Courier New', monospace; font-size: 24px; letter-spacing: 4px; color: #1f2937; margin: 0; font-weight: bold;">
+            ${formatCardNumber(data.cardNumber)}
+          </p>
+        </div>
+      ` : '';
+      
+      const pinSection = data.pin ? `
+        <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">PIN</p>
+          <p style="font-family: 'Courier New', monospace; font-size: 20px; color: #1f2937; margin: 0; font-weight: bold;">
+            ${data.pin}
+          </p>
+        </div>
+      ` : '';
+      
+      const redemptionSection = isTillo && data.redemptionLink ? `
+        <div style="background: #dbeafe; border-radius: 12px; padding: 20px; margin-bottom: 20px; text-align: center;">
+          <p style="color: #1e40af; font-size: 12px; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px;">Redeem Your Gift Card</p>
+          <a href="${data.redemptionLink}" style="display: inline-block; background: #3b82f6; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 16px;">
+            Click to Redeem →
+          </a>
+          <p style="color: #6b7280; font-size: 11px; margin-top: 12px; word-break: break-all;">
+            ${data.redemptionLink}
+          </p>
+        </div>
+      ` : '';
+      
+      const footerText = isTillo 
+        ? 'Keep this email safe. Click the redemption link or scan the QR code to use your gift card.'
+        : 'Keep this email safe. You\'ll need the card number and PIN to use your gift card.';
 
       const mailOptions = {
         from: process.env.EMAIL_USER,
@@ -759,7 +834,7 @@ export class GiftCardsService {
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Your SmartWish Gift Card</title>
+              <title>Your ${brandName} Gift Card</title>
             </head>
             <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
               <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -775,24 +850,14 @@ export class GiftCardsService {
                     <p style="color: #6b7280; font-size: 12px; margin-top: 8px;">Scan to redeem</p>
                   </div>
                   
-                  <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                    <p style="color: #6b7280; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">Card Number</p>
-                    <p style="font-family: 'Courier New', monospace; font-size: 24px; letter-spacing: 4px; color: #1f2937; margin: 0; font-weight: bold;">
-                      ${formatCardNumber(data.cardNumber)}
-                    </p>
-                  </div>
-                  
-                  <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                    <p style="color: #6b7280; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px;">PIN</p>
-                    <p style="font-family: 'Courier New', monospace; font-size: 20px; color: #1f2937; margin: 0; font-weight: bold;">
-                      ${data.pin}
-                    </p>
-                  </div>
+                  ${redemptionSection}
+                  ${cardNumberSection}
+                  ${pinSection}
                   
                   <div style="display: flex; gap: 20px; margin-top: 20px;">
                     <div style="flex: 1; text-align: center; padding: 16px; background: #ecfdf5; border-radius: 12px;">
                       <p style="color: #059669; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase;">Balance</p>
-                      <p style="color: #059669; font-size: 28px; font-weight: bold; margin: 0;">$${data.balance.toFixed(2)}</p>
+                      <p style="color: #059669; font-size: 28px; font-weight: bold; margin: 0;">$${balance.toFixed(2)}</p>
                     </div>
                     <div style="flex: 1; text-align: center; padding: 16px; background: #fef3c7; border-radius: 12px;">
                       <p style="color: #d97706; font-size: 12px; margin: 0 0 4px 0; text-transform: uppercase;">Expires</p>
@@ -803,7 +868,7 @@ export class GiftCardsService {
                 
                 <div style="text-align: center; margin-top: 20px; padding: 16px;">
                   <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                    Keep this email safe. You'll need the card number and PIN to use your gift card.
+                    ${footerText}
                   </p>
                   <p style="color: #9ca3af; font-size: 11px; margin-top: 12px;">
                     © ${new Date().getFullYear()} SmartWish. All rights reserved.

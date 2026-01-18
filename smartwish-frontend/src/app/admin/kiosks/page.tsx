@@ -88,6 +88,9 @@ type KioskConfig = {
     displayName?: string; // Optional custom display name
     description?: string; // Optional custom description
     presetAmounts?: number[]; // Quick-select amounts
+    minAmount?: number; // Minimum amount users can purchase (overrides brand default)
+    maxAmount?: number; // Maximum amount users can purchase (overrides brand default)
+    allowCustomAmount?: boolean; // Allow users to enter custom amounts (default true)
   };
 };
 
@@ -164,6 +167,9 @@ const DEFAULT_CONFIG: KioskConfig = {
     displayName: 'Gift Card',
     description: 'Purchase a gift card',
     presetAmounts: [25, 50, 100, 200],
+    minAmount: undefined, // Use brand default if not set
+    maxAmount: undefined, // Use brand default if not set
+    allowCustomAmount: true, // Allow custom amounts by default
   },
 };
 
@@ -2115,6 +2121,96 @@ function KioskFormModal({
                               className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
                             />
                             <p className="text-xs text-gray-400 mt-1">Comma-separated dollar amounts</p>
+                          </div>
+
+                          {/* Amount Limits */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Min Amount ($)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={formData.config.giftCardTile?.minAmount ?? ''}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    config: {
+                                      ...formData.config,
+                                      giftCardTile: {
+                                        ...formData.config.giftCardTile!,
+                                        minAmount: e.target.value ? parseInt(e.target.value) : undefined,
+                                      },
+                                    },
+                                  })
+                                }
+                                placeholder="5"
+                                className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                              />
+                              <p className="text-xs text-gray-400 mt-1">Leave empty for brand default</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Max Amount ($)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={formData.config.giftCardTile?.maxAmount ?? ''}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    config: {
+                                      ...formData.config,
+                                      giftCardTile: {
+                                        ...formData.config.giftCardTile!,
+                                        maxAmount: e.target.value ? parseInt(e.target.value) : undefined,
+                                      },
+                                    },
+                                  })
+                                }
+                                placeholder="500"
+                                className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                              />
+                              <p className="text-xs text-gray-400 mt-1">Leave empty for brand default</p>
+                            </div>
+                          </div>
+
+                          {/* Allow Custom Amount Toggle */}
+                          <div className="flex items-center justify-between py-2">
+                            <div>
+                              <label className="text-sm font-medium text-gray-700">
+                                Allow Custom Amount
+                              </label>
+                              <p className="text-xs text-gray-500">
+                                Let users enter any amount (within min/max)
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    giftCardTile: {
+                                      ...formData.config.giftCardTile!,
+                                      allowCustomAmount: !(formData.config.giftCardTile?.allowCustomAmount ?? true),
+                                    },
+                                  },
+                                })
+                              }
+                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${
+                                (formData.config.giftCardTile?.allowCustomAmount ?? true)
+                                  ? "bg-emerald-500"
+                                  : "bg-gray-200"
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  (formData.config.giftCardTile?.allowCustomAmount ?? true)
+                                    ? "translate-x-5"
+                                    : "translate-x-0"
+                                }`}
+                              />
+                            </button>
                           </div>
                         </div>
                       )}
