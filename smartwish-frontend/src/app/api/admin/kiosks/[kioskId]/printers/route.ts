@@ -6,7 +6,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender
 // GET /api/admin/kiosks/[kioskId]/printers - Get all printers for a kiosk
 export async function GET(
   request: NextRequest,
-  { params }: { params: { kioskId: string } }
+  { params }: { params: Promise<{ kioskId: string }> }
 ) {
   try {
     const session = await auth();
@@ -14,7 +14,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { kioskId } = params;
+    const { kioskId } = await params;
 
     const response = await fetch(`${API_BASE}/admin/kiosks/${encodeURIComponent(kioskId)}/printers`, {
       headers: {
@@ -41,7 +41,7 @@ export async function GET(
 // POST /api/admin/kiosks/[kioskId]/printers - Add a new printer
 export async function POST(
   request: NextRequest,
-  { params }: { params: { kioskId: string } }
+  { params }: { params: Promise<{ kioskId: string }> }
 ) {
   try {
     const session = await auth();
@@ -49,7 +49,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { kioskId } = params;
+    const { kioskId } = await params;
     const body = await request.json();
 
     const response = await fetch(`${API_BASE}/admin/kiosks/${encodeURIComponent(kioskId)}/printers`, {

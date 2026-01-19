@@ -9,7 +9,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "https://smartwish.onrender
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -21,8 +21,10 @@ export async function GET(
       );
     }
 
+    const { id } = await params;
+
     const response = await fetch(
-      `${API_BASE}/admin/sales-representatives/${params.id}`,
+      `${API_BASE}/admin/sales-representatives/${id}`,
       {
         method: "GET",
         headers: {
@@ -57,7 +59,7 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -69,10 +71,11 @@ export async function PUT(
       );
     }
 
+    const { id } = await params;
     const body = await request.json();
 
     const response = await fetch(
-      `${API_BASE}/admin/sales-representatives/${params.id}`,
+      `${API_BASE}/admin/sales-representatives/${id}`,
       {
         method: "PUT",
         headers: {
@@ -108,7 +111,7 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -120,8 +123,10 @@ export async function DELETE(
       );
     }
 
+    const { id } = await params;
+
     const response = await fetch(
-      `${API_BASE}/admin/sales-representatives/${params.id}`,
+      `${API_BASE}/admin/sales-representatives/${id}`,
       {
         method: "DELETE",
         headers: {

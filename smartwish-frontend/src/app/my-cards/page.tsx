@@ -11,7 +11,8 @@ import { useSession } from "next-auth/react";
 import DeleteConfirmModal from "@/components/DeleteConfirmModal";
 import SendECardModal from "@/components/SendECardModal";
 import PrinterSelectionModal from "@/components/PrinterSelectionModal";
-import CardPaymentModal, { IssuedGiftCardData } from "@/components/CardPaymentModal";
+import CardPaymentModal, { IssuedGiftCardData, PaymentInfo } from "@/components/CardPaymentModal";
+import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
 import jsPDF from 'jspdf';
 import useSWR from "swr";
 import { useToast } from "@/contexts/ToastContext";
@@ -215,6 +216,7 @@ function MyCardsContent() {
   const { data: session } = useSession();
   const { showToast } = useToast();
   const { config: kioskConfig, kioskInfo } = useKiosk();
+  const kioskSession = useKioskSessionSafe();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -910,6 +912,9 @@ function MyCardsContent() {
   // Helper function to log print job to the database (for manager tracking and reprints)
   const logPrintJob = async (data: {
     kioskId: string;
+    kioskSessionId?: string;
+    paymentMethod?: string;
+    promoCodeUsed?: string;
     productType: string;
     productId?: string;
     productName?: string;
@@ -935,7 +940,7 @@ function MyCardsContent() {
         body: JSON.stringify(data),
       });
       const result = await response.json();
-      console.log('📊 Print job logged for tracking:', result.id);
+      console.log('📊 Print job logged for tracking:', result.id, result.printCode ? `(${result.printCode})` : '');
       return result;
     } catch (err) {
       console.warn('Failed to log print job:', err);
@@ -961,6 +966,7 @@ function MyCardsContent() {
   // Auto-print using kiosk config for tray selection
   // Backend looks up printer from kiosk_printers table
   // Now also handles gift card data to overlay QR code on the printed card
+  // Payment info is used for tracking commission distribution
   const autoPrintToEpson = async (
     card: MyCard, 
     image1: string, 
@@ -968,7 +974,8 @@ function MyCardsContent() {
     image3: string, 
     image4: string, 
     paperType: string = 'greeting-card',
-    giftCardForPrint?: IssuedGiftCardData | null
+    giftCardForPrint?: IssuedGiftCardData | null,
+    paymentInfo?: PaymentInfo
   ) => {
     // Kiosk ID is required so backend can look up the printer
     if (!kioskInfo?.id) {
@@ -987,10 +994,13 @@ function MyCardsContent() {
     const trayNumber = tray?.trayNumber ?? defaultTrayNumber;
     const paperSize = tray?.paperSize || 'letter';
     
-    // Get kiosk ID from context for logging
-    const kioskId = localStorage.getItem('smartwish_kiosk_id');
+    // Get kiosk ID from context for logging (use UUID from kioskInfo, not localStorage)
+    // This ensures we use the correct UUID format that matches the database
+    const kioskId = kioskInfo?.id || null;
     
-    console.log(`🖨️ Auto-printing for kiosk: ${kioskInfo.name || kioskInfo.kioskId}`);
+    console.log(`🖨️ Auto-printing for kiosk: ${kioskInfo?.name || kioskInfo?.kioskId || 'NO KIOSK'}`);
+    console.log(`🔑 Kiosk ID for print log: ${kioskId || 'NOT SET - print log will be skipped!'}`);
+    console.log(`📋 kioskInfo:`, kioskInfo);
     console.log(`📥 Paper type: ${paperType}, Tray: ${trayNumber || 'Auto'}, Size: ${paperSize}`);
     if (giftCardForPrint) {
       console.log('🎁 Including gift card in print:', giftCardForPrint.storeName, '$' + giftCardForPrint.amount);
@@ -1005,6 +1015,7 @@ function MyCardsContent() {
     try {
       // Log the print job for manager tracking (if kiosk is activated)
       if (kioskId) {
+        console.log(`📝 Creating print log for kiosk: ${kioskId}`);
         // Default prices per product type (can be customized in future)
         const defaultPrices: Record<string, number> = {
           'greeting-card': 5.00,
@@ -1012,21 +1023,40 @@ function MyCardsContent() {
           'photo': 3.00,
           'label': 1.00,
         };
-        const price = defaultPrices[paperType] || 5.00;
+        const price = paymentInfo?.paymentMethod === 'promo_code' ? 0 : (defaultPrices[paperType] || 5.00);
+        
+        console.log(`📝 Print log data:`, {
+          kioskId,
+          productType: paperType,
+          price,
+          paymentMethod: paymentInfo?.paymentMethod,
+        });
         
         const logResult = await logPrintJob({
           kioskId,
+          kioskSessionId: kioskSession?.sessionId || undefined,
+          paymentMethod: paymentInfo?.paymentMethod,
+          promoCodeUsed: paymentInfo?.promoCodeUsed,
           productType: paperType,
           productId: card.id,
           productName: card.name || 'Greeting Card',
           price,
+          stripePaymentIntentId: paymentInfo?.stripePaymentIntentId,
+          stripeChargeId: paymentInfo?.stripeChargeId,
           // NOTE: printerName is now looked up from kiosk_printers table on backend
           paperType,
           paperSize,
           trayNumber,
           copies: 1,
         });
+        
+        console.log(`📝 Print log result:`, logResult);
         printLogId = logResult?.id || null;
+        if (logResult?.printCode) {
+          console.log(`🎟️ Print code: ${logResult.printCode}`);
+        }
+      } else {
+        console.warn(`⚠️ No kiosk ID - skipping print log creation. Kiosk must be activated.`);
       }
 
       // Update status to processing
@@ -1227,10 +1257,19 @@ function MyCardsContent() {
 
       console.log('Printing directly to EPSON printer via backend...');
 
+      // Extract payment info from the gift card data (it's attached by CardPaymentModal)
+      const paymentInfo = issuedGiftCard?.paymentInfo;
+      if (paymentInfo) {
+        console.log('💳 Payment info:', {
+          method: paymentInfo.paymentMethod,
+          promoCode: paymentInfo.promoCodeUsed || 'none',
+        });
+      }
+
       // Send images directly to backend printer with gift card data
       // The backend will handle compositing, adding QR overlay, and printing automatically
       // Note: Modal stays open - autoPrintToEpson will update printStatus which the modal displays
-      await autoPrintToEpson(card, image1, image2, image3, image4, 'greeting-card', issuedGiftCard);
+      await autoPrintToEpson(card, image1, image2, image3, image4, 'greeting-card', issuedGiftCard, paymentInfo);
       setIsPrinting(false);
       // Don't close modal here - let user see print status and close manually when done
     } catch (error) {

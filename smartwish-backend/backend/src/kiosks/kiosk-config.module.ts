@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -23,10 +23,12 @@ import {
   PrinterStatusSSEController,
 } from './kiosk-config.controller';
 import { User } from '../user/user.entity';
+import { EarningsModule } from '../earnings/earnings.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([KioskConfig, KioskManager, KioskPrintLog, KioskPrinter, KioskAlert, User]),
+    forwardRef(() => EarningsModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => {

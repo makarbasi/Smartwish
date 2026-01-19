@@ -28,6 +28,18 @@ function isValidUUID(str: string): boolean {
   return uuidRegex.test(str)
 }
 
+// Payment method types
+export type PaymentMethodType = 'card' | 'promo_code' | 'gift_card_redemption' | 'free'
+
+// Payment info returned with successful payment
+export interface PaymentInfo {
+  paymentMethod: PaymentMethodType
+  promoCodeUsed?: string
+  stripePaymentIntentId?: string
+  stripeChargeId?: string
+  amount: number
+}
+
 // Gift card data returned after payment success
 // Exported so consuming components can use the same type
 export interface IssuedGiftCardData {
@@ -40,6 +52,8 @@ export interface IssuedGiftCardData {
   code?: string
   pin?: string
   isIssued: boolean
+  // Payment info is now attached to the gift card data for convenience
+  paymentInfo?: PaymentInfo
 }
 
 // Product types supported by the payment modal
@@ -1229,7 +1243,7 @@ function CardPaymentModalContent({
               }
               
               setTimeout(() => {
-                onPaymentSuccess(issuedGiftCardData)
+                callOnPaymentSuccess(issuedGiftCardData)
               }, 1500)
               return
             }
@@ -1242,9 +1256,9 @@ function CardPaymentModalContent({
       }
       
       console.log('🎨 Sticker payment - no bundle gift card or issuance complete')
-      // Wait a moment to show success message, then call callback
+      // Wait a moment to show success message, then call callback with payment info
       setTimeout(() => {
-        onPaymentSuccess(undefined)
+        callOnPaymentSuccess(undefined)
       }, 1500)
       return
     }
@@ -1487,9 +1501,9 @@ function CardPaymentModalContent({
       }
       
       // For bundle discounts, continue to onPaymentSuccess (don't show gift card modal here)
-      // The gift card data will be passed to parent for printing
+      // The gift card data will be passed to parent for printing with payment info
       setTimeout(() => {
-        onPaymentSuccess(issuedGiftCardData)
+        callOnPaymentSuccess(issuedGiftCardData)
       }, 1500)
       return
     }
@@ -1873,9 +1887,10 @@ function CardPaymentModalContent({
     console.log('═══════════════════════════════════════════════════════════')
 
     // Wait a moment to show success message, then pass issued gift card data to parent
+    // Include payment info for print log tracking
     setTimeout(() => {
       console.log('🎁 onPaymentSuccess callback triggered with:', issuedGiftCardData ? 'GIFT CARD DATA' : 'undefined')
-      onPaymentSuccess(issuedGiftCardData)
+      callOnPaymentSuccess(issuedGiftCardData)
     }, 1500)
   }
 
@@ -1890,6 +1905,49 @@ function CardPaymentModalContent({
     } else {
       setPromoError('Invalid promo code')
       setPromoApplied(false)
+    }
+  }
+
+  /**
+   * Create payment info object based on current state
+   */
+  const getPaymentInfo = (stripePaymentIntentId?: string, stripeChargeId?: string): PaymentInfo => {
+    return {
+      paymentMethod: promoApplied ? 'promo_code' : 'card',
+      promoCodeUsed: promoApplied ? promoCode : undefined,
+      stripePaymentIntentId,
+      stripeChargeId,
+      amount: promoApplied ? 0 : (priceData?.total || 0),
+    }
+  }
+
+  /**
+   * Wrapper to call onPaymentSuccess with payment info attached
+   */
+  const callOnPaymentSuccess = (
+    issuedGiftCard?: IssuedGiftCardData, 
+    stripePaymentIntentId?: string,
+    stripeChargeId?: string
+  ) => {
+    const paymentInfo = getPaymentInfo(stripePaymentIntentId, stripeChargeId)
+    
+    // Attach payment info to gift card data if present, or create minimal object
+    if (issuedGiftCard) {
+      onPaymentSuccess({
+        ...issuedGiftCard,
+        paymentInfo,
+      })
+    } else {
+      // Pass undefined to maintain backward compatibility, but log payment info
+      console.log('📊 Payment info (no gift card):', paymentInfo)
+      // For non-gift-card purchases, we pass the payment info through a special minimal object
+      onPaymentSuccess({
+        storeName: '',
+        amount: 0,
+        qrCode: '',
+        isIssued: false,
+        paymentInfo,
+      } as IssuedGiftCardData)
     }
   }
   
@@ -1937,10 +1995,10 @@ function CardPaymentModalContent({
   }
   
   /**
-   * Handle Done button - close modal and return gift card data
+   * Handle Done button - close modal and return gift card data with payment info
    */
   const handleGiftCardDone = () => {
-    onPaymentSuccess(issuedGiftCardDisplay || undefined)
+    callOnPaymentSuccess(issuedGiftCardDisplay || undefined)
   }
   
   /**

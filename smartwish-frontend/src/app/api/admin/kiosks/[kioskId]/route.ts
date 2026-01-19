@@ -5,7 +5,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { kioskId: string } }
+  { params }: { params: Promise<{ kioskId: string }> }
 ) {
   try {
     const session = await auth();
@@ -13,7 +13,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { kioskId } = params;
+    const { kioskId } = await params;
     const body = await request.json();
 
     const response = await fetch(`${API_BASE}/admin/kiosks/${encodeURIComponent(kioskId)}`, {
@@ -43,7 +43,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { kioskId: string } }
+  { params }: { params: Promise<{ kioskId: string }> }
 ) {
   try {
     const session = await auth();
@@ -51,7 +51,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { kioskId } = params;
+    const { kioskId } = await params;
 
     const response = await fetch(`${API_BASE}/admin/kiosks/${encodeURIComponent(kioskId)}`, {
       method: 'DELETE',

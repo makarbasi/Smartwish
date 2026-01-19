@@ -15,6 +15,7 @@ const STRIPE_FEE_FIXED = 0.30;
 interface PrintProductSaleData {
   kioskId: string;
   orderId?: string;
+  printLogId?: string;
   type: 'greeting_card' | 'sticker';
   grossAmount: number;
   processingFees: number;
@@ -23,6 +24,15 @@ interface PrintProductSaleData {
   productName?: string;
   customerName?: string;
   quantity?: number;
+  paymentMethod?: string;
+}
+
+interface PromoCodePrintData {
+  kioskId: string;
+  printLogId: string;
+  productType: string;
+  productName?: string;
+  promoCode?: string;
 }
 
 interface EcardSaleData {
@@ -160,6 +170,8 @@ export class EarningsService {
       kioskId: kiosk.id,
       transactionType: data.type,
       transactionId: data.orderId,
+      printLogId: data.printLogId,
+      paymentMethod: data.paymentMethod || 'card',
       grossAmount: data.grossAmount,
       processingFees: data.processingFees,
       stateTax: data.stateTax,
@@ -175,6 +187,50 @@ export class EarningsService {
       productName: data.productName,
       quantity: data.quantity || 1,
       customerName: data.customerName,
+    });
+
+    return this.earningsRepo.save(earning);
+  }
+
+  /**
+   * Record earnings for promo code print
+   * Commission: NO (promo code = free, no revenue to distribute)
+   * Still creates a ledger entry for audit/tracking purposes
+   */
+  async recordPromoCodePrint(data: PromoCodePrintData): Promise<EarningsLedger> {
+    const { kiosk, managerId, salesRepId } = await this.getKioskWithCommissions(data.kioskId);
+
+    const transactionType = data.productType === 'sticker' 
+      ? TransactionType.STICKER 
+      : TransactionType.GREETING_CARD;
+
+    const earning = this.earningsRepo.create({
+      kioskId: kiosk.id,
+      transactionType,
+      transactionId: data.printLogId,
+      printLogId: data.printLogId,
+      paymentMethod: 'promo_code',
+      promoCodeUsed: data.promoCode,
+      
+      // All amounts = 0 for promo code (no revenue)
+      grossAmount: 0,
+      processingFees: 0,
+      stateTax: 0,
+      costBasis: 0,
+      netDistributable: 0,
+      
+      // NO commission for promo code prints
+      smartwishEarnings: 0,
+      managerEarnings: 0,
+      managerId, // Still track who would have earned
+      managerCommissionRate: 0,
+      salesRepEarnings: 0,
+      salesRepId, // Still track who would have earned
+      salesRepCommissionRate: 0,
+      
+      productName: data.productName || 'Promo Print',
+      quantity: 1,
+      notes: `Promo code: ${data.promoCode || 'unknown'}`,
     });
 
     return this.earningsRepo.save(earning);

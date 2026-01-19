@@ -244,11 +244,16 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Fetch config from backend API
   const fetchConfig = useCallback(async (id: string): Promise<KioskInfo | null> => {
     try {
-      const response = await fetch(`${getApiBase()}/kiosk/config/${id}`);
+      const url = `${getApiBase()}/kiosk/config/${id}`;
+      console.log(`[KioskContext] Fetching config from: ${url}`);
+      const response = await fetch(url);
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[KioskContext] ❌ Config fetch failed (${response.status}):`, errorText);
         throw new Error('Failed to fetch kiosk configuration');
       }
       const data = await response.json();
+      console.log('[KioskContext] ✅ Config fetched successfully:', data.kioskId, data.name);
       return {
         id: data.id,
         kioskId: data.kioskId,
@@ -259,7 +264,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedAt: data.updatedAt,
       };
     } catch (err) {
-      console.error('Error fetching kiosk config:', err);
+      console.error('[KioskContext] ❌ Error fetching kiosk config:', err);
       return null;
     }
   }, []);
@@ -344,18 +349,63 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // Initialize from localStorage
+  // Initialize: First check local print agent pairing, then fall back to localStorage
   useEffect(() => {
-    const storedId = getStoredKioskId();
-    if (storedId) {
-      setKioskId(storedId);
-      // Try to use cached config immediately
-      const cached = getCachedConfig();
-      if (cached && cached.id === storedId) {
-        setKioskInfo(cached);
+    const initializeKiosk = async () => {
+      console.log('[KioskContext] 🚀 Initializing...');
+      
+      // Try to get kiosk from local print agent pairing server
+      // This ensures the browser syncs with whatever kiosk the print agent is configured for
+      try {
+        const localPairingPort = 8766; // Default pairing port from config
+        console.log('[KioskContext] Checking local print agent at port', localPairingPort);
+        const response = await fetch(`http://localhost:${localPairingPort}/pairing`, {
+          signal: AbortSignal.timeout(2000), // 2 second timeout
+        });
+        
+        if (response.ok) {
+          const pairing = await response.json();
+          console.log('[KioskContext] Pairing response:', pairing);
+          if (pairing && pairing.kioskId) {
+            console.log(`[KioskContext] 🔗 Found local print agent pairing: ${pairing.kioskId} (${pairing.kioskName || 'unnamed'})`);
+            
+            // Check if this is different from what we have stored
+            const storedId = getStoredKioskId();
+            if (storedId !== pairing.kioskId) {
+              console.log(`[KioskContext] 📝 Syncing localStorage with local print agent (was: ${storedId || 'none'})`);
+              setStoredKioskId(pairing.kioskId);
+            }
+            
+            setKioskId(pairing.kioskId);
+            setLoading(false);
+            return; // Successfully got kiosk from local pairing
+          } else {
+            console.log('[KioskContext] ⚠️ Pairing response has no kioskId');
+          }
+        } else {
+          console.log('[KioskContext] ⚠️ Pairing fetch returned status:', response.status);
+        }
+      } catch (err) {
+        // Local pairing server not available - this is normal if print agent isn't running
+        console.log('[KioskContext] ℹ️ Local print agent not detected, using localStorage. Error:', err);
       }
-    }
-    setLoading(false);
+      
+      // Fall back to localStorage
+      const storedId = getStoredKioskId();
+      console.log('[KioskContext] Falling back to localStorage, stored ID:', storedId);
+      if (storedId) {
+        setKioskId(storedId);
+        // Try to use cached config immediately
+        const cached = getCachedConfig();
+        if (cached && cached.id === storedId) {
+          console.log('[KioskContext] Using cached config');
+          setKioskInfo(cached);
+        }
+      }
+      setLoading(false);
+    };
+    
+    initializeKiosk();
   }, []);
 
   // Fetch config when kioskId changes

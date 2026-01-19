@@ -330,6 +330,7 @@ export class KioskPrintLogController {
 
   /**
    * Create a print log entry (called by kiosk when printing)
+   * Now supports session linking and payment method tracking
    */
   @Public()
   @Post()
@@ -337,6 +338,9 @@ export class KioskPrintLogController {
     @Body()
     body: {
       kioskId: string;
+      kioskSessionId?: string;
+      paymentMethod?: string;
+      promoCodeUsed?: string;
       productType?: string;
       productId?: string;
       productName?: string;
@@ -380,7 +384,21 @@ export class KioskPrintLogController {
       body.pdfUrl,
     );
   }
+
+  /**
+   * Get print log by print code (public for receipt lookup)
+   */
+  @Public()
+  @Get('by-code/:printCode')
+  async getPrintLogByCode(@Param('printCode') printCode: string) {
+    const log = await this.kioskService.getPrintLogByCode(printCode);
+    if (!log) {
+      throw new BadRequestException('Print log not found');
+    }
+    return log;
+  }
 }
+
 
 /**
  * Manager endpoints for viewing print logs
@@ -555,12 +573,58 @@ export class LocalPrintAgentController {
 }
 
 /**
- * Admin endpoints for managing print logs (refunds, etc.)
+ * Admin endpoints for managing print logs (refunds, search, etc.)
  */
 @Controller('admin/print-logs')
 @UseGuards(JwtAuthGuard)
 export class AdminPrintLogController {
   constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * Search print logs by various criteria (print code, session, kiosk, payment method)
+   */
+  @Get('search')
+  async searchPrintLogs(
+    @Query('printCode') printCode?: string,
+    @Query('sessionId') sessionId?: string,
+    @Query('kioskId') kioskId?: string,
+    @Query('paymentMethod') paymentMethod?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.kioskService.searchPrintLogs({
+      printCode,
+      sessionId,
+      kioskId,
+      paymentMethod,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      limit: limit ? parseInt(limit) : 50,
+      offset: offset ? parseInt(offset) : 0,
+    });
+  }
+
+  /**
+   * Get print log by unique print code (e.g., PRT-A1B2C3)
+   */
+  @Get('by-code/:printCode')
+  async getPrintLogByCode(@Param('printCode') printCode: string) {
+    const log = await this.kioskService.getPrintLogByCode(printCode);
+    if (!log) {
+      throw new BadRequestException('Print log not found');
+    }
+    return log;
+  }
+
+  /**
+   * Get all print logs for a session
+   */
+  @Get('by-session/:sessionId')
+  async getSessionPrintLogs(@Param('sessionId') sessionId: string) {
+    return this.kioskService.getSessionPrintLogs(sessionId);
+  }
 
   /**
    * Get all print logs for a specific kiosk (admin access)

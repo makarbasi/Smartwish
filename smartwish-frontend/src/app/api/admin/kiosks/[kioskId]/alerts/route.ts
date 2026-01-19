@@ -6,7 +6,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender
 // GET /api/admin/kiosks/[kioskId]/alerts - Get all alerts for a kiosk
 export async function GET(
   request: NextRequest,
-  { params }: { params: { kioskId: string } }
+  { params }: { params: Promise<{ kioskId: string }> }
 ) {
   try {
     const session = await auth();
@@ -14,7 +14,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { kioskId } = params;
+    const { kioskId } = await params;
     const { searchParams } = new URL(request.url);
     const includeResolved = searchParams.get('includeResolved') === 'true';
 

@@ -8,7 +8,8 @@ import * as nodemailer from 'nodemailer';
 import * as bcrypt from 'bcrypt';
 import { KioskConfig } from './kiosk-config.entity';
 import { KioskManager } from './kiosk-manager.entity';
-import { KioskPrintLog, PrintStatus, RefundStatus } from './kiosk-print-log.entity';
+import { KioskPrintLog, PrintStatus, RefundStatus, PaymentMethod } from './kiosk-print-log.entity';
+import { EarningsService } from '../earnings/earnings.service';
 import { KioskPrinter, PrintableType, PrinterStatus, PaperStatus, PrintMode } from './kiosk-printer.entity';
 import { KioskAlert, AlertType, AlertSeverity } from './kiosk-alert.entity';
 import { User, UserRole, UserStatus, OAuthProvider } from '../user/user.entity';
@@ -27,6 +28,10 @@ const DEFAULT_KIOSK_CONFIG = {
   printerIP: '' as string, // Printer IP address for IPP printing
 };
 
+// Stripe fee constants for earnings calculation
+const STRIPE_FEE_PERCENT = 0.029;
+const STRIPE_FEE_FIXED = 0.30;
+
 @Injectable()
 export class KioskConfigService {
   constructor(
@@ -43,7 +48,28 @@ export class KioskConfigService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly jwtService: JwtService,
+    private readonly earningsService: EarningsService,
   ) { }
+
+  /**
+   * Generate a unique human-readable print code (e.g., "PRT-A1B2C3")
+   */
+  private generatePrintCode(): string {
+    // Use alphanumeric chars excluding confusing ones (0/O, 1/I/l)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'PRT-';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  /**
+   * Calculate Stripe processing fees
+   */
+  private calculateStripeFees(amount: number): number {
+    return Math.round((amount * STRIPE_FEE_PERCENT + STRIPE_FEE_FIXED) * 100) / 100;
+  }
 
   private generateApiKey() {
     return randomBytes(24).toString('hex');
@@ -132,7 +158,21 @@ export class KioskConfigService {
    * No API key required - kiosk was already authenticated during activation
    */
   async getConfigById(id: string) {
-    const record = await this.kioskRepo.findOne({ where: { id } });
+    // Check if input looks like a UUID (simple regex check)
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    
+    let record: KioskConfig | null = null;
+    
+    if (isUuid) {
+      // Search by UUID
+      record = await this.kioskRepo.findOne({ where: { id } });
+    }
+    
+    if (!record) {
+      // Fallback: try finding by kioskId (human-readable ID like "PC_KIOSK_2")
+      record = await this.kioskRepo.findOne({ where: { kioskId: id } });
+    }
+    
     if (!record) throw new NotFoundException('Kiosk not found');
     if (!record.isActive) throw new BadRequestException('Kiosk is not active');
     const merged = this.mergeConfig(record.config);
@@ -658,9 +698,13 @@ export class KioskConfigService {
 
   /**
    * Create a new print log entry
+   * Now includes session linking, payment method tracking, and earnings integration
    */
   async createPrintLog(data: {
     kioskId: string;
+    kioskSessionId?: string;
+    paymentMethod?: PaymentMethod | string;
+    promoCodeUsed?: string;
     productType?: string;
     productId?: string;
     productName?: string;
@@ -686,10 +730,34 @@ export class KioskConfigService {
       throw new NotFoundException(`Kiosk with ID ${data.kioskId} not found`);
     }
 
+    // Generate unique print code
+    let printCode: string | undefined;
+    try {
+      printCode = this.generatePrintCode();
+      
+      // Ensure uniqueness (retry if collision)
+      let retries = 0;
+      while (retries < 5) {
+        const existing = await this.printLogRepo.findOne({ where: { printCode } });
+        if (!existing) break;
+        printCode = this.generatePrintCode();
+        retries++;
+      }
+    } catch (err) {
+      // If printCode column doesn't exist yet, skip it
+      console.warn('[PrintLog] Could not generate print code (column may not exist yet):', err);
+      printCode = undefined;
+    }
+
     // Use printerName from request, or fall back to kiosk config
     const printerName = data.printerName || (kiosk.config as any)?.printerName || null;
 
-    const printLog = this.printLogRepo.create({
+    // Determine payment method
+    const paymentMethod = data.paymentMethod as PaymentMethod || null;
+
+    // Build the print log object - only include new fields if they're provided
+    // This allows backward compatibility if the new columns don't exist yet
+    const printLogData: Partial<KioskPrintLog> = {
       kioskId: data.kioskId,
       productType: data.productType || 'greeting-card',
       productId: data.productId,
@@ -710,9 +778,221 @@ export class KioskConfigService {
       copies: data.copies || 1,
       status: PrintStatus.PENDING,
       initiatedBy: data.initiatedBy,
-    });
+    };
 
-    return this.printLogRepo.save(printLog);
+    // Add new fields only if printCode was generated (indicates columns exist)
+    if (printCode) {
+      printLogData.printCode = printCode;
+      printLogData.kioskSessionId = data.kioskSessionId || null;
+      printLogData.paymentMethod = paymentMethod;
+      printLogData.promoCodeUsed = data.promoCodeUsed || null;
+      printLogData.commissionProcessed = false;
+    }
+
+    const printLog = this.printLogRepo.create(printLogData);
+
+    console.log('[PrintLog] Creating print log for kiosk:', data.kioskId);
+    console.log('[PrintLog] Print log data:', JSON.stringify({
+      kioskId: data.kioskId,
+      productType: data.productType,
+      productName: data.productName,
+      price: data.price,
+      paymentMethod: data.paymentMethod,
+      printCode: printCode,
+    }));
+
+    let savedLog: KioskPrintLog;
+    try {
+      const result = await this.printLogRepo.save(printLog);
+      savedLog = Array.isArray(result) ? result[0] : result;
+      console.log('[PrintLog] ✅ Print log saved successfully:', savedLog.id, savedLog.printCode || '(no print code)');
+    } catch (saveError) {
+      // If save fails due to new columns, try again without them
+      console.error('[PrintLog] ❌ Save failed:', saveError);
+      console.warn('[PrintLog] Retrying without new fields...');
+      const fallbackData: Partial<KioskPrintLog> = {
+        kioskId: data.kioskId,
+        productType: data.productType || 'greeting-card',
+        productId: data.productId,
+        productName: data.productName,
+        pdfUrl: data.pdfUrl,
+        price: data.price || 0,
+        stripePaymentIntentId: data.stripePaymentIntentId,
+        stripeChargeId: data.stripeChargeId,
+        tilloOrderId: data.tilloOrderId,
+        tilloTransactionRef: data.tilloTransactionRef,
+        giftCardBrand: data.giftCardBrand,
+        giftCardAmount: data.giftCardAmount,
+        giftCardCode: data.giftCardCode,
+        printerName,
+        paperType: data.paperType,
+        paperSize: data.paperSize,
+        trayNumber: data.trayNumber,
+        copies: data.copies || 1,
+        status: PrintStatus.PENDING,
+        initiatedBy: data.initiatedBy,
+      };
+      const fallbackLog = this.printLogRepo.create(fallbackData);
+      const fallbackResult = await this.printLogRepo.save(fallbackLog);
+      savedLog = Array.isArray(fallbackResult) ? fallbackResult[0] : fallbackResult;
+      console.log('[PrintLog] ✅ Fallback print log saved:', savedLog.id);
+    }
+
+    // Process earnings after print log is created (only if new fields exist)
+    if (printCode) {
+      try {
+        await this.processEarningsForPrint(savedLog);
+      } catch (earningsError) {
+        console.warn('[Earnings] Failed to process earnings (new columns may not exist):', earningsError);
+      }
+    }
+
+    return savedLog;
+  }
+
+  /**
+   * Process earnings for a print job
+   * Handles different payment methods and product types
+   */
+  private async processEarningsForPrint(printLog: KioskPrintLog): Promise<void> {
+    try {
+      const isPromo = printLog.paymentMethod === PaymentMethod.PROMO_CODE;
+      const isGiftCardProduct = printLog.productType === 'gift-card' || 
+                                printLog.productType === 'generic-gift-card' ||
+                                !!printLog.giftCardBrand;
+      const price = parseFloat(printLog.price?.toString() || '0');
+
+      // RULE: Gift card purchases = NO commission (pass-through)
+      if (isGiftCardProduct) {
+        console.log(`[Earnings] Skipping commission for gift card purchase: ${printLog.printCode}`);
+        printLog.commissionProcessed = true;
+        printLog.earningsLedgerId = null;
+        await this.printLogRepo.save(printLog);
+        return;
+      }
+
+      // RULE: Promo code payments = NO commission but record for tracking
+      if (isPromo) {
+        console.log(`[Earnings] Recording promo code print (no commission): ${printLog.printCode}`);
+        const earning = await this.earningsService.recordPromoCodePrint({
+          kioskId: printLog.kioskId,
+          printLogId: printLog.id,
+          productType: printLog.productType,
+          productName: printLog.productName,
+          promoCode: printLog.promoCodeUsed || undefined,
+        });
+        printLog.commissionProcessed = true;
+        printLog.earningsLedgerId = earning.id;
+        await this.printLogRepo.save(printLog);
+        return;
+      }
+
+      // RULE: Card payments = Calculate and distribute commissions
+      if (printLog.paymentMethod === PaymentMethod.CARD && price > 0) {
+        console.log(`[Earnings] Recording card payment with commission: ${printLog.printCode}, $${price}`);
+        const processingFees = this.calculateStripeFees(price);
+        
+        const transactionType = printLog.productType === 'sticker' ? 'sticker' : 'greeting_card';
+        
+        const earning = await this.earningsService.recordPrintProductSale({
+          kioskId: printLog.kioskId,
+          orderId: printLog.id,
+          printLogId: printLog.id,
+          type: transactionType as 'greeting_card' | 'sticker',
+          grossAmount: price,
+          processingFees,
+          stateTax: 0,
+          productName: printLog.productName,
+          paymentMethod: 'card',
+        });
+        printLog.commissionProcessed = true;
+        printLog.earningsLedgerId = earning.id;
+        await this.printLogRepo.save(printLog);
+        return;
+      }
+
+      // No payment info - mark as processed but no earnings entry
+      console.log(`[Earnings] No payment info for print: ${printLog.printCode}`);
+      printLog.commissionProcessed = true;
+      await this.printLogRepo.save(printLog);
+    } catch (error) {
+      console.error(`[Earnings] Failed to process earnings for print ${printLog.printCode}:`, error);
+      // Don't fail the print log creation, just log the error
+    }
+  }
+
+  /**
+   * Search print logs by various criteria
+   */
+  async searchPrintLogs(filters: {
+    printCode?: string;
+    sessionId?: string;
+    kioskId?: string;
+    paymentMethod?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ logs: KioskPrintLog[]; total: number }> {
+    const query = this.printLogRepo
+      .createQueryBuilder('log')
+      .leftJoinAndSelect('log.kiosk', 'kiosk')
+      .orderBy('log.created_at', 'DESC');
+
+    if (filters.printCode) {
+      query.andWhere('log.print_code ILIKE :printCode', { 
+        printCode: `%${filters.printCode.toUpperCase()}%` 
+      });
+    }
+    if (filters.sessionId) {
+      query.andWhere('log.kiosk_session_id = :sessionId', { sessionId: filters.sessionId });
+    }
+    if (filters.kioskId) {
+      query.andWhere('kiosk.kiosk_id = :kioskId', { kioskId: filters.kioskId });
+    }
+    if (filters.paymentMethod) {
+      query.andWhere('log.payment_method = :paymentMethod', { paymentMethod: filters.paymentMethod });
+    }
+    if (filters.startDate) {
+      query.andWhere('log.created_at >= :startDate', { startDate: filters.startDate });
+    }
+    if (filters.endDate) {
+      query.andWhere('log.created_at <= :endDate', { endDate: filters.endDate });
+    }
+
+    const total = await query.getCount();
+
+    if (filters.limit) {
+      query.limit(filters.limit);
+    }
+    if (filters.offset) {
+      query.offset(filters.offset);
+    }
+
+    const logs = await query.getMany();
+
+    return { logs, total };
+  }
+
+  /**
+   * Get print log by print code (for admin lookup)
+   */
+  async getPrintLogByCode(printCode: string): Promise<KioskPrintLog | null> {
+    return this.printLogRepo.findOne({
+      where: { printCode: printCode.toUpperCase() },
+      relations: ['kiosk'],
+    });
+  }
+
+  /**
+   * Get all print logs for a session
+   */
+  async getSessionPrintLogs(sessionId: string): Promise<KioskPrintLog[]> {
+    return this.printLogRepo.find({
+      where: { kioskSessionId: sessionId },
+      relations: ['kiosk'],
+      order: { createdAt: 'ASC' },
+    });
   }
 
   /**
@@ -829,7 +1109,18 @@ export class KioskConfigService {
       return { logs: [], total: 0, kiosks: [] };
     }
 
-    const kioskIds = assignments.map(a => a.kioskId);
+    // Filter out assignments with missing kiosk relations (data integrity check)
+    const validAssignments = assignments.filter(a => a.kiosk && a.kioskId);
+    
+    if (validAssignments.length === 0) {
+      return { logs: [], total: 0, kiosks: [] };
+    }
+
+    const kioskIds = validAssignments.map(a => a.kioskId).filter(id => id != null);
+
+    if (kioskIds.length === 0) {
+      return { logs: [], total: 0, kiosks: [] };
+    }
 
     const query = this.printLogRepo
       .createQueryBuilder('log')
@@ -864,13 +1155,15 @@ export class KioskConfigService {
 
     const logs = await query.getMany();
 
-    // Get kiosk info for context
-    const kiosks = assignments.map(a => ({
-      id: a.kiosk.id,
-      kioskId: a.kiosk.kioskId,
-      name: a.kiosk.name,
-      storeId: a.kiosk.storeId,
-    }));
+    // Get kiosk info for context (with null safety)
+    const kiosks = validAssignments
+      .filter(a => a.kiosk != null)
+      .map(a => ({
+        id: a.kiosk!.id,
+        kioskId: a.kiosk!.kioskId,
+        name: a.kiosk!.name,
+        storeId: a.kiosk!.storeId,
+      }));
 
     return { logs, total, kiosks };
   }
@@ -907,15 +1200,55 @@ export class KioskConfigService {
       };
     }
 
-    const kioskIds = assignments.map(a => a.kioskId);
+    // Filter out assignments with missing kiosk relations (data integrity check)
+    const validAssignments = assignments.filter(a => a.kiosk && a.kioskId);
+    
+    if (validAssignments.length === 0) {
+      return {
+        totalPrints: 0,
+        completedPrints: 0,
+        failedPrints: 0,
+        printsByKiosk: [],
+        printsByProductType: [],
+        recentActivity: [],
+        // Revenue data
+        totalSales: 0,
+        transactionFees: 0,
+        netProfit: 0,
+        storeOwnerShare: 0,
+        revenueByKiosk: [],
+      };
+    }
+
+    const kioskIds = validAssignments.map(a => a.kioskId).filter(id => id != null);
+    
+    if (kioskIds.length === 0) {
+      return {
+        totalPrints: 0,
+        completedPrints: 0,
+        failedPrints: 0,
+        printsByKiosk: [],
+        printsByProductType: [],
+        recentActivity: [],
+        // Revenue data
+        totalSales: 0,
+        transactionFees: 0,
+        netProfit: 0,
+        storeOwnerShare: 0,
+        revenueByKiosk: [],
+      };
+    }
+
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
     // Create a map of kiosk ID to revenue share percent
     const kioskShareMap = new Map<string, number>();
-    for (const a of assignments) {
-      const config = a.kiosk?.config as Record<string, any> || {};
-      kioskShareMap.set(a.kioskId, config.revenueSharePercent ?? 30);
+    for (const a of validAssignments) {
+      if (a.kiosk && a.kioskId) {
+        const config = a.kiosk.config as Record<string, any> || {};
+        kioskShareMap.set(a.kioskId, config.revenueSharePercent ?? 30);
+      }
     }
 
     // OPTIMIZED: Single query to get all counts by status

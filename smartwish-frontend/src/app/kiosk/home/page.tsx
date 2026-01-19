@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskConfig } from "@/hooks/useKioskConfig";
 import { useKioskSession } from "@/contexts/KioskSessionContext";
+import { useKiosk } from "@/contexts/KioskContext";
+import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
 import { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import Image from "next/image";
 import useSWR from "swr";
@@ -142,15 +144,103 @@ function KioskHomePageContent() {
   const { isKiosk, isInitialized } = useDeviceMode();
   const { config: kioskConfig } = useKioskConfig();
   const { startSession, trackTileSelect } = useKioskSession();
+  const { activateKiosk, kioskInfo } = useKiosk();
+  const kioskSessionContext = useKioskSessionSafe();
+  
+  // Test print log state
+  const [testingPrintLog, setTestingPrintLog] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  
+  // Test form values
+  const [testPrice, setTestPrice] = useState('5.00');
+  const [testProductName, setTestProductName] = useState('Test Greeting Card');
+  const [testPaymentMethod, setTestPaymentMethod] = useState<'card' | 'promo_code'>('card');
+  const [testPromoCode, setTestPromoCode] = useState('');
+  const [testGiftCardBrand, setTestGiftCardBrand] = useState('');
+  const [testGiftCardAmount, setTestGiftCardAmount] = useState('');
+
+  // TEST FUNCTION: Simulate a print job to test Supabase integration
+  const testPrintLogCreation = async () => {
+    if (!kioskInfo?.id) {
+      setTestResult('❌ ERROR: No kiosk activated!\n\nPlease activate a kiosk first via pairing.');
+      return;
+    }
+    
+    setTestingPrintLog(true);
+    setTestResult(null);
+    
+    const price = testPaymentMethod === 'promo_code' ? 0 : parseFloat(testPrice) || 5.00;
+    
+    const testData: Record<string, unknown> = {
+      kioskId: kioskInfo.id,
+      kioskSessionId: kioskSessionContext?.sessionId || undefined,
+      paymentMethod: testPaymentMethod,
+      promoCodeUsed: testPaymentMethod === 'promo_code' ? (testPromoCode || 'TEST_PROMO') : undefined,
+      productType: 'greeting-card',
+      productId: 'test-product-' + Date.now(),
+      productName: testProductName + ' - ' + new Date().toLocaleTimeString(),
+      price,
+      stripePaymentIntentId: testPaymentMethod === 'card' ? 'pi_test_' + Date.now() : undefined,
+      stripeChargeId: testPaymentMethod === 'card' ? 'ch_test_' + Date.now() : undefined,
+      paperType: 'greeting-card',
+      paperSize: 'letter',
+      trayNumber: 2,
+      copies: 1,
+    };
+    
+    // Add gift card info if provided
+    if (testGiftCardBrand) {
+      testData.giftCardBrand = testGiftCardBrand;
+      testData.giftCardAmount = parseFloat(testGiftCardAmount) || 25;
+      testData.giftCardCode = 'GC-TEST-' + Date.now();
+    }
+
+    console.log('🧪 TEST: Creating test print log with data:', testData);
+    console.log('🔑 Using Kiosk ID:', kioskInfo.id, '(', kioskInfo.name || kioskInfo.kioskId, ')');
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testData),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        console.log('🧪 TEST SUCCESS:', result);
+        setTestResult(
+          `✅ SUCCESS!\n` +
+          `ID: ${result.id}\n` +
+          `Print Code: ${result.printCode || 'N/A'}\n` +
+          `Kiosk: ${kioskInfo.name || kioskInfo.kioskId}\n` +
+          `Price: $${price.toFixed(2)}\n` +
+          `Payment: ${testPaymentMethod}\n\n` +
+          `Check Supabase & Admin/Manager portals!`
+        );
+      } else {
+        console.error('🧪 TEST FAILED:', result);
+        setTestResult(`❌ FAILED!\nStatus: ${response.status}\nError: ${JSON.stringify(result, null, 2)}`);
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('🧪 TEST ERROR:', error);
+      setTestResult(`❌ ERROR!\n${errorMessage}\n\nIs the backend running on port 3001?`);
+    } finally {
+      setTestingPrintLog(false);
+    }
+  };
   
   // Debug logging for page lifecycle
   console.log("🏠 [KioskHome] Render:", {
     isKiosk,
     isInitialized,
+    kioskInfo: kioskInfo?.kioskId,
     timestamp: new Date().toISOString(),
   });
 
-  // Enter fullscreen when arriving from pairing
+  // Sync with local print agent and enter fullscreen when arriving from pairing
   useEffect(() => {
     const pairingComplete = searchParams.get('pairingComplete');
     if (pairingComplete === 'true') {
@@ -158,6 +248,40 @@ function KioskHomePageContent() {
       const url = new URL(window.location.href);
       url.searchParams.delete('pairingComplete');
       window.history.replaceState({}, '', url.toString());
+      
+      // Sync kiosk from local print agent pairing
+      const syncKioskFromPairing = async () => {
+        try {
+          const localPairingPort = 8766;
+          console.log('🏠 [KioskHome] Fetching pairing from localhost:' + localPairingPort);
+          const response = await fetch(`http://localhost:${localPairingPort}/pairing`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          
+          if (response.ok) {
+            const pairing = await response.json();
+            console.log('🏠 [KioskHome] Pairing data received:', pairing);
+            if (pairing && pairing.kioskId) {
+              console.log(`🏠 [KioskHome] 🔗 Syncing with local print agent: ${pairing.kioskId}`);
+              // Activate the kiosk from the pairing server
+              try {
+                await activateKiosk(pairing.kioskId);
+                console.log(`🏠 [KioskHome] ✅ Kiosk activated: ${pairing.kioskId}`);
+              } catch (activateError) {
+                console.error('🏠 [KioskHome] ❌ Failed to activate kiosk:', activateError);
+              }
+            } else {
+              console.log('🏠 [KioskHome] ⚠️ No kioskId in pairing data');
+            }
+          } else {
+            console.log('🏠 [KioskHome] ⚠️ Pairing fetch failed:', response.status);
+          }
+        } catch (err) {
+          console.error('🏠 [KioskHome] ❌ Could not sync with local print agent:', err);
+        }
+      };
+      
+      syncKioskFromPairing();
       
       // Enter fullscreen mode
       const enterFullscreen = () => {
@@ -183,7 +307,7 @@ function KioskHomePageContent() {
       // Small delay to ensure page is fully loaded
       setTimeout(enterFullscreen, 500);
     }
-  }, [searchParams]);
+  }, [searchParams, activateKiosk]);
 
   // Check if features are enabled (default to true if not set)
   const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;
@@ -918,6 +1042,127 @@ function KioskHomePageContent() {
         <div className="mt-4 flex justify-center">
           <PrinterStatusIndicator size="sm" showLabel={true} />
         </div>
+      </div>
+
+      {/* TEST PANEL - Remove after testing */}
+      <div className="fixed bottom-4 right-4 z-50">
+        {!showTestPanel ? (
+          <button
+            onClick={() => setShowTestPanel(true)}
+            className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full shadow-lg"
+          >
+            🧪 Test
+          </button>
+        ) : (
+          <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 shadow-lg w-80 max-h-[80vh] overflow-auto">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-bold text-yellow-800">🧪 Test Print Log</h3>
+              <button onClick={() => setShowTestPanel(false)} className="text-yellow-800 hover:text-yellow-900">✕</button>
+            </div>
+            
+            {/* Kiosk Info */}
+            <div className={`text-xs p-2 rounded mb-2 ${kioskInfo?.id ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              <strong>Active Kiosk:</strong> {kioskInfo?.name || kioskInfo?.kioskId || 'NOT ACTIVATED!'}<br/>
+              <span className="font-mono text-[10px]">{kioskInfo?.id || 'Pair a kiosk first!'}</span>
+              <p className="text-[10px] mt-1">Auto-synced from local print agent (localhost:8766)</p>
+            </div>
+
+            {/* Product Name */}
+            <label className="block text-xs font-medium text-yellow-800 mb-1">Product Name</label>
+            <input
+              type="text"
+              value={testProductName}
+              onChange={(e) => setTestProductName(e.target.value)}
+              className="w-full text-sm border rounded px-2 py-1 mb-2"
+              placeholder="Test Greeting Card"
+            />
+
+            {/* Payment Method */}
+            <label className="block text-xs font-medium text-yellow-800 mb-1">Payment Method</label>
+            <select
+              value={testPaymentMethod}
+              onChange={(e) => setTestPaymentMethod(e.target.value as 'card' | 'promo_code')}
+              className="w-full text-sm border rounded px-2 py-1 mb-2"
+            >
+              <option value="card">Card Payment</option>
+              <option value="promo_code">Promo Code (Free)</option>
+            </select>
+
+            {/* Price (only for card) */}
+            {testPaymentMethod === 'card' && (
+              <>
+                <label className="block text-xs font-medium text-yellow-800 mb-1">Price ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={testPrice}
+                  onChange={(e) => setTestPrice(e.target.value)}
+                  className="w-full text-sm border rounded px-2 py-1 mb-2"
+                  placeholder="5.00"
+                />
+              </>
+            )}
+
+            {/* Promo Code (only for promo) */}
+            {testPaymentMethod === 'promo_code' && (
+              <>
+                <label className="block text-xs font-medium text-yellow-800 mb-1">Promo Code Used</label>
+                <input
+                  type="text"
+                  value={testPromoCode}
+                  onChange={(e) => setTestPromoCode(e.target.value)}
+                  className="w-full text-sm border rounded px-2 py-1 mb-2"
+                  placeholder="MYPROMO"
+                />
+              </>
+            )}
+
+            {/* Gift Card (Optional) */}
+            <label className="block text-xs font-medium text-yellow-800 mb-1">Gift Card Brand (optional)</label>
+            <input
+              type="text"
+              value={testGiftCardBrand}
+              onChange={(e) => setTestGiftCardBrand(e.target.value)}
+              className="w-full text-sm border rounded px-2 py-1 mb-2"
+              placeholder="Amazon, Starbucks, etc."
+            />
+
+            {testGiftCardBrand && (
+              <>
+                <label className="block text-xs font-medium text-yellow-800 mb-1">Gift Card Amount ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={testGiftCardAmount}
+                  onChange={(e) => setTestGiftCardAmount(e.target.value)}
+                  className="w-full text-sm border rounded px-2 py-1 mb-2"
+                  placeholder="25.00"
+                />
+              </>
+            )}
+
+            {/* Test Button */}
+            <button
+              onClick={testPrintLogCreation}
+              disabled={testingPrintLog || !kioskInfo?.id}
+              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {testingPrintLog ? 'Creating...' : !kioskInfo?.id ? 'Pair Kiosk First!' : 'Create Test Print Log'}
+            </button>
+
+            {/* Result */}
+            {testResult && (
+              <pre className="mt-2 text-xs bg-white p-2 rounded border overflow-auto max-h-32 whitespace-pre-wrap">
+                {testResult}
+              </pre>
+            )}
+
+            {/* Info */}
+            <p className="mt-2 text-[10px] text-yellow-700">
+              Manager/Sales commissions are calculated based on kiosk config. Check Admin → Kiosk settings to adjust percentages.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Sticker rain animation styles - smooth, continuous fall with linear timing */}

@@ -122,4 +122,22 @@ export class EarningsLedger {
   @ManyToOne(() => EarningsLedger, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'related_ledger_id' })
   relatedLedger?: EarningsLedger;
+
+  // Link to print log (for print-related transactions)
+  @Index()
+  @Column({ name: 'print_log_id', type: 'uuid', nullable: true })
+  printLogId?: string | null;
+
+  // Payment method used (card, promo_code, gift_card_redemption, free)
+  @Index()
+  @Column({ name: 'payment_method', type: 'varchar', length: 30, nullable: true })
+  paymentMethod?: string | null;
+
+  // Promo code used (if payment_method is promo_code)
+  @Column({ name: 'promo_code_used', type: 'varchar', length: 50, nullable: true })
+  promoCodeUsed?: string | null;
+
+  // Notes for additional context
+  @Column({ type: 'text', nullable: true })
+  notes?: string | null;
 }

@@ -5,7 +5,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { kioskId: string } }
+  { params }: { params: Promise<{ kioskId: string }> }
 ) {
   try {
     const session = await auth();
@@ -13,7 +13,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { kioskId } = params;
+    const { kioskId } = await params;
 
     const response = await fetch(
       `${API_BASE}/admin/kiosks/${encodeURIComponent(kioskId)}/rotate-key`,

@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { KioskConfig } from './kiosk-config.entity';
 import { User } from '../user/user.entity';
@@ -21,10 +22,22 @@ export enum RefundStatus {
   FULL = 'full',
 }
 
+export enum PaymentMethod {
+  CARD = 'card',
+  PROMO_CODE = 'promo_code',
+  GIFT_CARD_REDEMPTION = 'gift_card_redemption',
+  FREE = 'free',
+}
+
 @Entity('kiosk_print_logs')
 export class KioskPrintLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  // Human-readable unique print code for admin search (e.g., "PRT-A1B2C3")
+  @Index({ unique: true })
+  @Column({ name: 'print_code', type: 'varchar', length: 20, nullable: true, unique: true })
+  printCode: string;
 
   @Column({ name: 'kiosk_id' })
   kioskId: string;
@@ -32,6 +45,28 @@ export class KioskPrintLog {
   @ManyToOne(() => KioskConfig, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'kiosk_id' })
   kiosk: KioskConfig;
+
+  // Link to kiosk session (Supabase session ID)
+  @Index()
+  @Column({ name: 'kiosk_session_id', type: 'uuid', nullable: true })
+  kioskSessionId: string | null;
+
+  // Payment method used
+  @Index()
+  @Column({ name: 'payment_method', type: 'varchar', length: 30, nullable: true })
+  paymentMethod: PaymentMethod | null;
+
+  // Promo code used (if any)
+  @Column({ name: 'promo_code_used', type: 'varchar', length: 50, nullable: true })
+  promoCodeUsed: string | null;
+
+  // Whether commission was calculated (to track processing)
+  @Column({ name: 'commission_processed', type: 'boolean', default: false })
+  commissionProcessed: boolean;
+
+  // Link to earnings ledger entry
+  @Column({ name: 'earnings_ledger_id', type: 'uuid', nullable: true })
+  earningsLedgerId: string | null;
 
   // What was printed
   @Column({ name: 'product_type', default: 'greeting-card' })
