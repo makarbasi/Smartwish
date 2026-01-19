@@ -1130,6 +1130,7 @@ function KioskHomePageContent() {
       </div>
 
       {/* TEST PANEL - Remove after testing */}
+      {false && (
       <div className="fixed bottom-4 right-4 z-50">
         {!showTestPanel ? (
           <button
@@ -1274,6 +1275,7 @@ function KioskHomePageContent() {
           </div>
         )}
       </div>
+      )}
 
       {/* Sticker rain animation styles - smooth, continuous fall with linear timing */}
       <style jsx global>{`
