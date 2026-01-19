@@ -333,14 +333,83 @@ class DetectionReporter:
         self.config = config
         self.pending_queue = queue.Queue()
         self.running = True
+        self.cloud_upload_enabled = True  # Upload images to cloud storage
+        self.cloud_upload_failures = 0
+        self.max_cloud_failures = 5
         
         # Start background upload thread
         self.upload_thread = threading.Thread(target=self._upload_worker, daemon=True)
         self.upload_thread.start()
+        print(f"  ☁️  Detection reporter started (cloud image upload: {'enabled' if self.cloud_upload_enabled else 'disabled'})")
+    
+    def report_detection_with_image(self, person_track_id: int, detected_at: datetime, 
+                                    dwell_seconds: float | None, was_counted: bool, 
+                                    frame) -> str | None:
+        """
+        Upload a detection with its image to the cloud.
+        Returns the cloud URL of the image, or None if upload failed.
+        """
+        if not self.cloud_upload_enabled:
+            return None
+        
+        url = f"{self.config.server_url}/surveillance/detection-image"
+        headers = {
+            'Content-Type': 'image/jpeg',
+            'x-kiosk-api-key': self.config.api_key,
+            'x-kiosk-id': self.config.kiosk_id,
+            'x-person-track-id': str(person_track_id),
+            'x-detected-at': detected_at.isoformat(),
+            'x-dwell-seconds': str(dwell_seconds) if dwell_seconds else '',
+            'x-was-counted': 'true' if was_counted else 'false',
+        }
+        
+        try:
+            # Encode frame as JPEG
+            _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            
+            response = requests.post(
+                url, 
+                data=jpeg.tobytes(), 
+                headers=headers, 
+                timeout=15  # Longer timeout for image upload
+            )
+            
+            if response.status_code == 201:
+                result = response.json()
+                self.cloud_upload_failures = 0  # Reset failure counter
+                if result.get('imageUrl'):
+                    print(f"  ☁️  Uploaded detection image to cloud: ID {person_track_id}")
+                    return result.get('imageUrl')
+                return None
+            elif response.status_code == 404:
+                # Endpoint not available - disable cloud upload
+                if self.cloud_upload_failures == 0:
+                    print("  ⚠️ Cloud image upload endpoint not available (404)")
+                self.cloud_upload_failures += 1
+                if self.cloud_upload_failures >= self.max_cloud_failures:
+                    print("  🔇 Cloud image upload disabled (endpoint not available)")
+                    self.cloud_upload_enabled = False
+                return None
+            else:
+                print(f"  ⚠️ Cloud image upload failed: {response.status_code}")
+                self.cloud_upload_failures += 1
+                if self.cloud_upload_failures >= self.max_cloud_failures:
+                    print(f"  🔇 Cloud image upload disabled after {self.max_cloud_failures} failures")
+                    self.cloud_upload_enabled = False
+                return None
+                
+        except requests.RequestException as e:
+            self.cloud_upload_failures += 1
+            if self.cloud_upload_failures == 1:
+                print(f"  ⚠️ Cloud image upload error: {e}")
+            if self.cloud_upload_failures >= self.max_cloud_failures:
+                print(f"  🔇 Cloud image upload disabled after {self.max_cloud_failures} failures")
+                self.cloud_upload_enabled = False
+            return None
     
     def report_detection(self, person_track_id: int, detected_at: datetime, 
                         dwell_seconds: float | None, was_counted: bool, image_path: str | None):
-        """Queue a detection for upload"""
+        """Queue a detection for upload (without image - for counted events)"""
         detection = {
             'personTrackId': person_track_id,
             'detectedAt': detected_at.isoformat(),
@@ -426,10 +495,11 @@ class PersonTracker:
         self.id_frame_counts = {}       # Track ID -> frame count
         self.id_first_seen = {}         # Track ID -> first seen timestamp
         self.counted_ids = set()        # IDs that have been counted (>8s)
-        self.saved_ids = set()          # IDs whose images have been saved
+        self.saved_ids = set()          # IDs whose images have been saved/uploaded
+        self.id_cloud_urls = {}         # Track ID -> cloud image URL
         self.daily_count = 0            # Total counted today
         
-        # Create output directory
+        # Create local output directory (as backup)
         today = datetime.now().strftime('%Y-%m-%d')
         self.today_dir = self.config.output_dir / today / self.config.kiosk_id
         self.today_dir.mkdir(parents=True, exist_ok=True)
@@ -448,21 +518,36 @@ class PersonTracker:
             self.id_frame_counts[obj_id] += 1
             frame_count = self.id_frame_counts[obj_id]
             
-            # A. Save image after threshold frames (default 10 = 2 seconds)
+            # A. Upload image after threshold frames (default 10 = 2 seconds)
             if frame_count == self.config.frame_threshold and obj_id not in self.saved_ids:
                 self.saved_ids.add(obj_id)
-                image_path = self._save_image(obj_id, now, frame)
                 
-                # Report detection (not yet counted)
-                relative_path = str(image_path.relative_to(self.config.output_dir))
-                self.reporter.report_detection(
+                # Try cloud upload first
+                cloud_url = self.reporter.report_detection_with_image(
                     person_track_id=obj_id,
                     detected_at=now,
                     dwell_seconds=None,
                     was_counted=False,
-                    image_path=relative_path,
+                    frame=frame,
                 )
-                print(f"  📸 Saved image for ID {obj_id}")
+                
+                if cloud_url:
+                    # Successfully uploaded to cloud
+                    self.id_cloud_urls[obj_id] = cloud_url
+                    print(f"  📸 Uploaded image for ID {obj_id} to cloud")
+                else:
+                    # Cloud upload failed, save locally as backup
+                    local_path = self._save_image_locally(obj_id, now, frame)
+                    # Report detection with local path (won't be accessible remotely)
+                    relative_path = str(local_path.relative_to(self.config.output_dir))
+                    self.reporter.report_detection(
+                        person_track_id=obj_id,
+                        detected_at=now,
+                        dwell_seconds=None,
+                        was_counted=False,
+                        image_path=relative_path,
+                    )
+                    print(f"  📸 Saved image for ID {obj_id} locally (cloud upload failed)")
             
             # B. Count person if seen for threshold frames (default 40 = 8 seconds)
             if frame_count >= self.config.frames_to_count and obj_id not in self.counted_ids:
@@ -472,14 +557,15 @@ class PersonTracker:
                 # Calculate dwell time
                 dwell_seconds = (now - self.id_first_seen[obj_id]).total_seconds()
                 
-                # Report as counted
-                image_path = None
-                if obj_id in self.saved_ids:
-                    # Find the saved image path
+                # Get image path (cloud URL if available, otherwise local path)
+                image_path = self.id_cloud_urls.get(obj_id)
+                if not image_path and obj_id in self.saved_ids:
+                    # Find the local saved image path
                     for f in self.today_dir.glob(f"id_{obj_id}_*.jpg"):
                         image_path = str(f.relative_to(self.config.output_dir))
                         break
                 
+                # Report as counted (update the detection)
                 self.reporter.report_detection(
                     person_track_id=obj_id,
                     detected_at=now,
@@ -491,8 +577,8 @@ class PersonTracker:
                 timestamp = now.strftime('%H:%M:%S')
                 print(f"  ✅ [{timestamp}] ID {obj_id} stayed {dwell_seconds:.1f}s - Total counted: {self.daily_count}")
     
-    def _save_image(self, obj_id: int, timestamp: datetime, frame) -> Path:
-        """Save detection image to disk"""
+    def _save_image_locally(self, obj_id: int, timestamp: datetime, frame) -> Path:
+        """Save detection image to local disk (backup when cloud upload fails)"""
         filename = f"id_{obj_id}_{timestamp.strftime('%H-%M-%S')}.jpg"
         filepath = self.today_dir / filename
         cv2.imwrite(str(filepath), frame)
@@ -504,6 +590,7 @@ class PersonTracker:
             'daily_count': self.daily_count,
             'active_tracks': len(self.id_frame_counts),
             'saved_images': len(self.saved_ids),
+            'cloud_uploads': len(self.id_cloud_urls),
         }
 
 

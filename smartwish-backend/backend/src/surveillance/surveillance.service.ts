@@ -6,6 +6,7 @@ import { SurveillanceDailyStats } from './surveillance-daily-stats.entity';
 import { KioskConfig } from '../kiosks/kiosk-config.entity';
 import { CreateDetectionDto } from './dto/create-detection.dto';
 import { QueryDetectionsDto, DeleteDetectionsDto } from './dto/query-detections.dto';
+import { SupabaseStorageService } from '../saved-designs/supabase-storage.service';
 
 // In-memory storage for live frames (per kiosk)
 interface LiveFrame {
@@ -36,6 +37,7 @@ export class SurveillanceService {
     private readonly statsRepo: Repository<SurveillanceDailyStats>,
     @InjectRepository(KioskConfig)
     private readonly kioskRepo: Repository<KioskConfig>,
+    private readonly storageService: SupabaseStorageService,
   ) {}
 
   /**
@@ -431,5 +433,90 @@ export class SurveillanceService {
     
     // Active if frame is less than 10 seconds old
     return (Date.now() - frame.timestamp.getTime()) < 10000;
+  }
+
+  // ==================== Detection Image Upload ====================
+
+  /**
+   * Upload a detection image to Supabase storage
+   * Returns the public URL of the uploaded image
+   */
+  async uploadDetectionImage(
+    kioskId: string,
+    personTrackId: number,
+    imageData: Buffer,
+    timestamp: Date = new Date(),
+  ): Promise<string> {
+    if (!this.storageService.isConfigured()) {
+      throw new BadRequestException('Cloud storage not configured');
+    }
+
+    // Create a unique filename: surveillance/kiosk-id/date/person_trackid_timestamp.jpg
+    const dateStr = timestamp.toISOString().split('T')[0];
+    const timeStr = timestamp.toISOString().split('T')[1].replace(/:/g, '-').split('.')[0];
+    const filename = `surveillance/${kioskId}/${dateStr}/person_${personTrackId}_${timeStr}.jpg`;
+
+    try {
+      const publicUrl = await this.storageService.uploadBuffer(
+        imageData,
+        filename,
+        'image/jpeg',
+      );
+      
+      console.log(`[Surveillance] 📸 Uploaded detection image: ${publicUrl}`);
+      return publicUrl;
+    } catch (error) {
+      console.error('[Surveillance] Failed to upload detection image:', error);
+      throw new BadRequestException('Failed to upload detection image');
+    }
+  }
+
+  /**
+   * Update an existing detection record with the cloud image URL
+   */
+  async updateDetectionImageUrl(detectionId: string, imageUrl: string): Promise<void> {
+    await this.detectionRepo.update(detectionId, { imagePath: imageUrl });
+  }
+
+  /**
+   * Create detection with image upload in a single operation
+   * Used when the kiosk uploads detection + image together
+   */
+  async createDetectionWithImage(
+    dto: CreateDetectionDto,
+    imageData: Buffer | null,
+  ): Promise<SurveillanceDetection> {
+    let imageUrl: string | null = null;
+
+    // Upload image if provided
+    if (imageData && imageData.length > 0) {
+      try {
+        imageUrl = await this.uploadDetectionImage(
+          dto.kioskId,
+          dto.personTrackId,
+          imageData,
+          dto.detectedAt ? new Date(dto.detectedAt) : new Date(),
+        );
+      } catch (error) {
+        console.warn('[Surveillance] Image upload failed, saving detection without image:', error.message);
+      }
+    }
+
+    // Create detection record with cloud URL
+    const detection = this.detectionRepo.create({
+      kioskId: dto.kioskId,
+      personTrackId: dto.personTrackId,
+      detectedAt: dto.detectedAt ? new Date(dto.detectedAt) : new Date(),
+      dwellSeconds: dto.dwellSeconds,
+      wasCounted: dto.wasCounted ?? false,
+      imagePath: imageUrl, // Now stores the cloud URL
+    });
+
+    const saved = await this.detectionRepo.save(detection);
+    
+    // Update daily stats
+    await this.updateDailyStats(dto.kioskId, detection.detectedAt, dto.wasCounted ?? false);
+    
+    return saved;
   }
 }

@@ -123,6 +123,67 @@ export class SurveillancePublicController {
     await this.surveillanceService.storeLiveFrame(kioskId, frameData, contentType || 'image/jpeg');
     return { success: true, size: frameData.length };
   }
+
+  /**
+   * Upload a detection image to cloud storage
+   * The image is stored in Supabase and the URL is returned
+   * This endpoint receives the image as raw body and detection info in headers
+   */
+  @Public()
+  @Post('detection-image')
+  @HttpCode(HttpStatus.CREATED)
+  async uploadDetectionImage(
+    @Headers('x-kiosk-api-key') apiKey: string,
+    @Headers('x-kiosk-id') kioskId: string,
+    @Headers('x-person-track-id') personTrackIdStr: string,
+    @Headers('x-detected-at') detectedAtStr: string,
+    @Headers('x-dwell-seconds') dwellSecondsStr: string,
+    @Headers('x-was-counted') wasCountedStr: string,
+    @Req() req: RawBodyRequest<Request>,
+  ) {
+    if (!apiKey || !kioskId) {
+      throw new UnauthorizedException('Missing API key or kiosk ID');
+    }
+
+    const isValid = await this.surveillanceService.validateKioskApiKey(kioskId, apiKey);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid API key for kiosk');
+    }
+
+    const personTrackId = parseInt(personTrackIdStr || '0', 10);
+    const detectedAt = detectedAtStr ? new Date(detectedAtStr) : new Date();
+    const dwellSeconds = dwellSecondsStr ? parseFloat(dwellSecondsStr) : null;
+    const wasCounted = wasCountedStr === 'true';
+
+    // Get the raw body (image data)
+    const imageData = req.rawBody;
+    if (!imageData || imageData.length === 0) {
+      return { success: false, error: 'No image data received' };
+    }
+
+    try {
+      // Create detection with image upload
+      const detection = await this.surveillanceService.createDetectionWithImage(
+        {
+          kioskId,
+          personTrackId,
+          detectedAt: detectedAt.toISOString(),
+          dwellSeconds,
+          wasCounted,
+        },
+        imageData,
+      );
+
+      return { 
+        success: true, 
+        id: detection.id,
+        imageUrl: detection.imagePath,
+      };
+    } catch (error) {
+      console.error('[Surveillance] Failed to create detection with image:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 /**

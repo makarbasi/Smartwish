@@ -5,6 +5,7 @@ import { SurveillanceDailyStats } from './surveillance-daily-stats.entity';
 import { SurveillanceService } from './surveillance.service';
 import { SurveillancePublicController, SurveillanceAdminController } from './surveillance.controller';
 import { KioskConfig } from '../kiosks/kiosk-config.entity';
+import { SupabaseStorageService } from '../saved-designs/supabase-storage.service';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { KioskConfig } from '../kiosks/kiosk-config.entity';
     SurveillancePublicController,
     SurveillanceAdminController,
   ],
-  providers: [SurveillanceService],
+  providers: [SurveillanceService, SupabaseStorageService],
   exports: [SurveillanceService],
 })
 export class SurveillanceModule {}

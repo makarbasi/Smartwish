@@ -456,12 +456,37 @@ export default function KioskSurveillancePage({
     return `${h}:00 ${ampm}`;
   };
 
+  // Placeholder SVG as data URI (person silhouette)
+  const placeholderPersonSvg = `data:image/svg+xml,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="%239ca3af">
+      <circle cx="50" cy="30" r="20"/>
+      <path d="M20 95 C20 65 35 55 50 55 C65 55 80 65 80 95 Z"/>
+    </svg>
+  `)}`;
+
   const getImageUrl = (imagePath: string | null): string | null => {
     if (!imagePath) return null;
-    // Detection images are served from the local print agent server
-    // Note: These won't be accessible remotely unless you're on the same network as the kiosk
+    
+    // Check if it's a cloud URL (Supabase or other HTTPS URL)
+    if (imagePath.startsWith('https://') || imagePath.startsWith('http://')) {
+      return imagePath; // Already a full URL, use directly
+    }
+    
+    // Otherwise, it's a local path - serve from local print agent
+    // Note: Local paths won't be accessible remotely
     return `${localImageServerUrl}/${imagePath}`;
   };
+
+  // Check if an image path is a cloud URL (accessible remotely)
+  const isCloudUrl = (imagePath: string | null): boolean => {
+    if (!imagePath) return false;
+    return imagePath.startsWith('https://') || imagePath.startsWith('http://');
+  };
+
+  // Check if we're likely viewing remotely (not on localhost)
+  const isRemoteViewing = typeof window !== 'undefined' && 
+    !window.location.hostname.includes('localhost') && 
+    !window.location.hostname.includes('127.0.0.1');
 
   // Calculate change percentage
   const getChangePercent = (current: number, previous: number): { value: number; positive: boolean } => {
@@ -864,6 +889,16 @@ export default function KioskSurveillancePage({
               )}
             </div>
 
+            {/* Remote viewing notice - only show if there are local (non-cloud) images */}
+            {isRemoteViewing && detections.length > 0 && detections.some(d => d.imagePath && !isCloudUrl(d.imagePath)) && (
+              <div className="mb-4 rounded-lg bg-blue-50 border border-blue-200 p-3">
+                <p className="text-sm text-blue-800">
+                  <span className="font-medium">Note:</span> Some older detection images are stored locally on the kiosk and may not be visible remotely.
+                  Newer detections are uploaded to cloud storage and will be visible.
+                </p>
+              </div>
+            )}
+
             {/* Detection Gallery */}
             <div className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200 overflow-hidden">
               {/* Select All Header */}
@@ -925,13 +960,13 @@ export default function KioskSurveillancePage({
                         className="aspect-square bg-gray-100 cursor-pointer"
                         onClick={() => setPreviewImage(detection)}
                       >
-                        {detection.imagePath ? (
+                        {detection.imagePath && (isCloudUrl(detection.imagePath) || !isRemoteViewing) ? (
                           <img
                             src={getImageUrl(detection.imagePath) || ""}
                             alt={`Person ${detection.personTrackId}`}
                             className="w-full h-full object-cover"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = "/placeholder-person.png";
+                              (e.target as HTMLImageElement).src = placeholderPersonSvg;
                             }}
                           />
                         ) : (
@@ -1230,12 +1265,25 @@ export default function KioskSurveillancePage({
                     <XMarkIcon className="h-8 w-8" />
                   </button>
                   
-                  {previewImage?.imagePath && (
+                  {previewImage?.imagePath && (isCloudUrl(previewImage.imagePath) || !isRemoteViewing) ? (
                     <img
                       src={getImageUrl(previewImage.imagePath) || ""}
                       alt={`Person ${previewImage.personTrackId}`}
                       className="w-full rounded-lg"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
                     />
+                  ) : (
+                    <div className="bg-gray-800 rounded-lg p-8 text-center">
+                      <UserGroupIcon className="h-24 w-24 mx-auto text-gray-500 mb-4" />
+                      <p className="text-gray-400">
+                        {isRemoteViewing && previewImage?.imagePath && !isCloudUrl(previewImage.imagePath)
+                          ? "This detection image is stored locally on the kiosk and cannot be viewed remotely."
+                          : "No image available for this detection."
+                        }
+                      </p>
+                    </div>
                   )}
                   
                   <div className="mt-4 text-white text-center">
