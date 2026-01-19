@@ -207,6 +207,15 @@ export class KioskConfigAdminController {
     return this.kioskService.getCriticalAlerts();
   }
 
+  /**
+   * Get a single kiosk by kioskId
+   * NOTE: This must come AFTER specific routes like all-printer-statuses
+   */
+  @Get(':kioskId')
+  async getKiosk(@Param('kioskId') kioskId: string) {
+    return this.kioskService.getByKioskId(kioskId);
+  }
+
   @Post()
   async create(@Body() dto: CreateKioskConfigDto) {
     return this.kioskService.create(dto);

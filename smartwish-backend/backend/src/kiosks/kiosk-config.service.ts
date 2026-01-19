@@ -92,6 +92,15 @@ export class KioskConfigService {
     }));
   }
 
+  async getByKioskId(kioskId: string) {
+    const record = await this.kioskRepo.findOne({ where: { kioskId } });
+    if (!record) throw new NotFoundException('Kiosk not found');
+    return {
+      ...record,
+      config: this.mergeConfig(record.config),
+    };
+  }
+
   async delete(kioskId: string) {
     const record = await this.kioskRepo.findOne({ where: { kioskId } });
     if (!record) throw new NotFoundException('Kiosk not found');
