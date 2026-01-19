@@ -152,7 +152,7 @@ export class SurveillancePublicController {
 
     const personTrackId = parseInt(personTrackIdStr || '0', 10);
     const detectedAt = detectedAtStr ? new Date(detectedAtStr) : new Date();
-    const dwellSeconds = dwellSecondsStr ? parseFloat(dwellSecondsStr) : null;
+    const dwellSeconds = dwellSecondsStr ? parseFloat(dwellSecondsStr) : undefined;
     const wasCounted = wasCountedStr === 'true';
 
     // Get the raw body (image data)
