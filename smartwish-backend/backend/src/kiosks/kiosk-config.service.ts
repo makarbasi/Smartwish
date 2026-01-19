@@ -2027,4 +2027,91 @@ export class KioskConfigService {
       status: p.status,
     }));
   }
+
+  // ==================== Real-Time Status Endpoints ====================
+
+  /**
+   * Get all printer statuses across all kiosks (for admin dashboard)
+   * Optimized for frequent polling - returns only essential data
+   */
+  async getAllPrinterStatuses(): Promise<any[]> {
+    const kiosks = await this.kioskRepo.find({
+      where: { isActive: true },
+      order: { name: 'ASC' },
+    });
+
+    const results = await Promise.all(
+      kiosks.map(async (kiosk) => {
+        // Get printers for this kiosk
+        const printers = await this.printerRepo.find({
+          where: { kioskId: kiosk.id },
+          order: { printableType: 'ASC' },
+        });
+
+        // Get active alerts for this kiosk
+        const alerts = await this.alertRepo.find({
+          where: { kioskId: kiosk.id, resolvedAt: IsNull() },
+          order: { severity: 'DESC' },
+        });
+
+        return {
+          kioskId: kiosk.kioskId,
+          kioskName: kiosk.name || kiosk.kioskId,
+          storeId: kiosk.storeId,
+          printers: printers.map(p => ({
+            id: p.id,
+            name: p.name,
+            printableType: p.printableType,
+            status: p.status,
+            paperStatus: p.paperStatus,
+            inkBlack: p.inkBlack,
+            inkCyan: p.inkCyan,
+            inkMagenta: p.inkMagenta,
+            inkYellow: p.inkYellow,
+            lastSeenAt: p.lastSeenAt,
+            lastError: p.lastError,
+          })),
+          alerts: alerts.map(a => ({
+            id: a.id,
+            alertType: a.alertType,
+            message: a.message,
+            severity: a.severity,
+            createdAt: a.createdAt,
+          })),
+          alertCount: alerts.length,
+          hasErrors: alerts.some(a => a.severity === 'critical' || a.severity === 'error'),
+        };
+      }),
+    );
+
+    return results;
+  }
+
+  /**
+   * Get critical alerts that need immediate attention
+   * Used for SSE broadcasting
+   */
+  async getCriticalAlerts(): Promise<any[]> {
+    const alerts = await this.alertRepo.find({
+      where: [
+        { severity: 'critical' as AlertSeverity, resolvedAt: IsNull() },
+        { severity: 'error' as AlertSeverity, resolvedAt: IsNull() },
+      ],
+      relations: ['kiosk', 'printer'],
+      order: { createdAt: 'DESC' },
+      take: 50, // Limit to recent alerts
+    });
+
+    return alerts.map(a => ({
+      id: a.id,
+      kioskId: a.kiosk?.kioskId,
+      kioskName: a.kiosk?.name || a.kiosk?.kioskId,
+      printerId: a.printerId,
+      printerName: a.printer?.name,
+      alertType: a.alertType,
+      message: a.message,
+      severity: a.severity,
+      createdAt: a.createdAt,
+    }));
+  }
 }

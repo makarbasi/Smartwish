@@ -51,17 +51,32 @@ export interface PrintQueueInfo {
   hasErrors?: boolean;
 }
 
+export interface PrinterFlags {
+  lowPaper: boolean;
+  noPaper: boolean;
+  doorOpen: boolean;
+  jam: boolean;
+  offline: boolean;
+  service: boolean;
+}
+
 export interface PrinterStatus {
   timestamp: string;
   lastUpdated?: string;
   online: boolean;
   printerState: 'unknown' | 'idle' | 'printing' | 'warmup' | 'other';
+  /** Human-readable display status like "IDLE", "PAUSED (Load Paper)", etc. */
+  displayStatus?: string;
+  /** Error flags parsed from SNMP with "fake door open" fix applied */
+  flags?: PrinterFlags;
   printerIP?: string;
   printerName?: string;
   ink: Record<string, InkLevel>;
   paper: Record<string, PaperTray>;
   errors: PrinterError[];
   warnings: PrinterWarning[];
+  /** Raw SNMP alerts (filtered to remove genuineHP messages) */
+  alerts?: string[];
   printQueue: PrintQueueInfo;
 }
 
@@ -146,7 +161,7 @@ export const usePrinterStatusSafe = () => {
 // Provider
 // =============================================================================
 
-const POLL_INTERVAL = 30000; // Poll every 30 seconds
+const POLL_INTERVAL = 10000; // Poll every 10 seconds for faster updates
 const STORAGE_KEY = 'smartwish_dismissed_printer_alerts';
 
 function getApiBase(): string {

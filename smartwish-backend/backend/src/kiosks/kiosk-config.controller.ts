@@ -10,8 +10,13 @@ import {
   Put,
   Query,
   Request,
+  Res,
+  Sse,
   UseGuards,
+  MessageEvent,
 } from '@nestjs/common';
+import { Response } from 'express';
+import { Observable, interval, map, startWith } from 'rxjs';
 import { KioskConfigService } from './kiosk-config.service';
 import { CreateKioskConfigDto } from './dto/create-kiosk-config.dto';
 import { UpdateKioskConfigDto } from './dto/update-kiosk-config.dto';
@@ -183,6 +188,23 @@ export class KioskConfigAdminController {
   @Get()
   async list() {
     return this.kioskService.list();
+  }
+
+  /**
+   * Get all printer statuses across all kiosks
+   * Optimized endpoint for admin dashboard polling
+   */
+  @Get('all-printer-statuses')
+  async getAllPrinterStatuses() {
+    return this.kioskService.getAllPrinterStatuses();
+  }
+
+  /**
+   * Get all critical alerts that need attention
+   */
+  @Get('critical-alerts')
+  async getCriticalAlerts() {
+    return this.kioskService.getCriticalAlerts();
   }
 
   @Post()
@@ -724,5 +746,86 @@ export class KioskPrinterAdminController {
     @Request() req: any,
   ) {
     return this.kioskService.acknowledgeAlert(alertId, req.user.id);
+  }
+}
+
+// ==================== SSE Endpoints for Real-Time Updates ====================
+
+/**
+ * Server-Sent Events endpoint for real-time printer status updates
+ * Used by Admin and Manager dashboards for instant notifications
+ */
+@Controller('admin/printer-status')
+export class PrinterStatusSSEController {
+  constructor(private readonly kioskService: KioskConfigService) {}
+
+  /**
+   * SSE endpoint that streams critical alerts every 5 seconds
+   * Clients connect to this to receive real-time notifications of printer issues
+   */
+  @Public()
+  @Get('stream')
+  @Sse()
+  streamAlerts(): Observable<MessageEvent> {
+    // Poll for critical alerts every 5 seconds and stream to connected clients
+    return interval(5000).pipe(
+      startWith(0), // Emit immediately on connection
+      map(async () => {
+        try {
+          const alerts = await this.kioskService.getCriticalAlerts();
+          return {
+            data: JSON.stringify({
+              type: 'critical-alerts',
+              alerts,
+              timestamp: new Date().toISOString(),
+            }),
+          };
+        } catch (error) {
+          return {
+            data: JSON.stringify({
+              type: 'error',
+              message: 'Failed to fetch alerts',
+              timestamp: new Date().toISOString(),
+            }),
+          };
+        }
+      }),
+      // Handle the async map
+      map(async (promise) => await promise),
+    ) as any;
+  }
+
+  /**
+   * SSE endpoint that streams all printer statuses every 10 seconds
+   * More comprehensive than critical alerts, includes all status data
+   */
+  @Public()
+  @Get('stream-all')
+  @Sse()
+  streamAllStatuses(): Observable<MessageEvent> {
+    return interval(10000).pipe(
+      startWith(0),
+      map(async () => {
+        try {
+          const statuses = await this.kioskService.getAllPrinterStatuses();
+          return {
+            data: JSON.stringify({
+              type: 'all-statuses',
+              kiosks: statuses,
+              timestamp: new Date().toISOString(),
+            }),
+          };
+        } catch (error) {
+          return {
+            data: JSON.stringify({
+              type: 'error',
+              message: 'Failed to fetch statuses',
+              timestamp: new Date().toISOString(),
+            }),
+          };
+        }
+      }),
+      map(async (promise) => await promise),
+    ) as any;
   }
 }

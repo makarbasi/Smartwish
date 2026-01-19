@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { ExclamationTriangleIcon, XMarkIcon, BellAlertIcon } from "@heroicons/react/24/outline";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com';
 
 type KioskAlert = {
   id: string;
@@ -13,6 +15,8 @@ type KioskAlert = {
   createdAt: string;
   kiosk?: { kioskId: string; name?: string };
   printer?: { name: string } | null;
+  kioskName?: string;
+  printerName?: string;
 };
 
 type AlertCounts = {
@@ -27,37 +31,111 @@ export function PrinterAlertBanner() {
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [newAlertFlash, setNewAlertFlash] = useState(false);
+  const lastAlertIdsRef = useRef<Set<string>>(new Set());
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  useEffect(() => {
-    const fetchAlerts = async () => {
-      try {
-        // Add cache-busting to ensure fresh data
-        const response = await fetch("/api/admin/alerts", {
-          cache: "no-store",
-          headers: {
-            "Cache-Control": "no-cache",
-          },
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data)) {
-            setAlerts(data.filter((a: KioskAlert) => !a.resolvedAt));
+  // Fetch alerts via REST API (primary method)
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/admin/alerts", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          const activeAlerts = data.filter((a: KioskAlert) => !a.resolvedAt);
+          
+          // Check for new alerts
+          const currentIds = new Set(activeAlerts.map((a: KioskAlert) => a.id));
+          const hasNewAlerts = activeAlerts.some(
+            (a: KioskAlert) => !lastAlertIdsRef.current.has(a.id)
+          );
+          
+          if (hasNewAlerts && lastAlertIdsRef.current.size > 0) {
+            // Flash the banner for new alerts
+            setNewAlertFlash(true);
+            setTimeout(() => setNewAlertFlash(false), 2000);
+            // Auto-expand if we were dismissed
+            if (dismissed) {
+              setDismissed(false);
+            }
           }
+          
+          lastAlertIdsRef.current = currentIds;
+          setAlerts(activeAlerts);
         }
-        // Silently fail for 500 errors - tables may not exist yet
-      } catch (error) {
-        // Tables may not exist yet, don't show error
-        console.warn("Could not fetch alerts - migration may not be run yet");
-      } finally {
-        setLoading(false);
+      }
+    } catch (error) {
+      console.warn("Could not fetch alerts");
+    } finally {
+      setLoading(false);
+    }
+  }, [dismissed]);
+
+  // Primary polling effect - faster polling (10 seconds)
+  useEffect(() => {
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 10000); // 10 seconds instead of 30
+    return () => clearInterval(interval);
+  }, [fetchAlerts]);
+
+  // SSE for real-time critical alerts (backup/supplement to polling)
+  useEffect(() => {
+    // Only connect SSE if we have a valid API_BASE
+    if (!API_BASE || API_BASE.includes('localhost')) {
+      return; // Skip SSE for local development
+    }
+
+    const connectSSE = () => {
+      try {
+        // Connect to the SSE endpoint
+        const eventSource = new EventSource(`${API_BASE}/admin/printer-status/stream`);
+        eventSourceRef.current = eventSource;
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'critical-alerts' && Array.isArray(data.alerts)) {
+              // Check if there are new critical alerts
+              const criticalAlerts = data.alerts;
+              const hasNewCritical = criticalAlerts.some(
+                (a: KioskAlert) => !lastAlertIdsRef.current.has(a.id)
+              );
+              
+              if (hasNewCritical && criticalAlerts.length > 0) {
+                // Trigger a fetch to get full alert data
+                fetchAlerts();
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        };
+
+        eventSource.onerror = () => {
+          // Reconnect after 30 seconds on error
+          eventSource.close();
+          setTimeout(connectSSE, 30000);
+        };
+      } catch (e) {
+        // SSE not supported or connection failed
+        console.warn("SSE connection failed, using polling only");
       }
     };
 
-    fetchAlerts();
-    // Refresh every 30 seconds for more responsive updates
-    const interval = setInterval(fetchAlerts, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    connectSSE();
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, [fetchAlerts]);
 
   if (loading || dismissed || alerts.length === 0) {
     return null;
@@ -79,18 +157,32 @@ export function PrinterAlertBanner() {
 
   const displayAlerts = expanded ? alerts : alerts.slice(0, 3);
 
+  // Flash animation classes
+  const flashClass = newAlertFlash 
+    ? "animate-pulse ring-2 ring-red-500 ring-offset-2" 
+    : "";
+
   return (
-    <div className={`${bgColor} border-b px-4 py-3`}>
+    <div className={`${bgColor} border-b px-4 py-3 transition-all duration-300 ${flashClass}`}>
       <div className="max-w-7xl mx-auto">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <ExclamationTriangleIcon className={`h-5 w-5 ${iconColor} mt-0.5`} />
+            {newAlertFlash ? (
+              <BellAlertIcon className={`h-5 w-5 ${iconColor} mt-0.5 animate-bounce`} />
+            ) : (
+              <ExclamationTriangleIcon className={`h-5 w-5 ${iconColor} mt-0.5`} />
+            )}
             <div>
               <h3 className={`font-semibold ${textColor}`}>
                 {counts.total} Printer Alert{counts.total !== 1 ? "s" : ""}
                 {counts.critical > 0 && (
-                  <span className="ml-2 text-xs font-normal bg-red-600 text-white px-1.5 py-0.5 rounded">
+                  <span className="ml-2 text-xs font-normal bg-red-600 text-white px-1.5 py-0.5 rounded animate-pulse">
                     {counts.critical} Critical
+                  </span>
+                )}
+                {newAlertFlash && (
+                  <span className="ml-2 text-xs font-normal bg-orange-500 text-white px-1.5 py-0.5 rounded">
+                    NEW
                   </span>
                 )}
               </h3>
@@ -102,9 +194,9 @@ export function PrinterAlertBanner() {
                       className="hover:underline"
                     >
                       <span className="font-medium">
-                        {alert.kiosk?.name || alert.kiosk?.kioskId || "Kiosk"}
+                        {alert.kioskName || alert.kiosk?.name || alert.kiosk?.kioskId || "Kiosk"}
                       </span>
-                      {alert.printer && ` - ${alert.printer.name}`}: {alert.message}
+                      {(alert.printerName || alert.printer?.name) && ` - ${alert.printerName || alert.printer?.name}`}: {alert.message}
                     </Link>
                   </li>
                 ))}

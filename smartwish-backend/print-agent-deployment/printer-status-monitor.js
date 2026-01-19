@@ -10,6 +10,10 @@
  * - Error conditions (paper jam, door open, etc.)
  * - Connectivity status
  * - Print job status
+ * 
+ * UPDATED: Uses cleaner SNMP logic with "fake door open" fix
+ * When printer reports "door open" but alerts show paper-related issues,
+ * it's actually just a paper problem (HP printer quirk).
  */
 
 import snmp from 'net-snmp';
@@ -19,77 +23,27 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 // =============================================================================
-// SNMP OIDs for Printer Monitoring (Standard Printer MIB)
+// SNMP OIDs for Printer Monitoring (Simplified & Reliable)
 // =============================================================================
 
-// SNMP OIDs for printer monitoring (without leading dots for net-snmp compatibility)
 const SNMP_OIDS = {
-  // Printer device status (1.3.6.1.2.1.25.3.2.1.5)
-  hrDeviceStatus: '1.3.6.1.2.1.25.3.2.1.5.1',
+  // Basic status
+  hrPrinterStatus: '1.3.6.1.2.1.25.3.5.1.1.1', 
+  hrPrinterErrorState: '1.3.6.1.2.1.25.3.5.1.2.1', 
   
-  // Printer status (1.3.6.1.2.1.25.3.5.1.1)
-  hrPrinterStatus: '1.3.6.1.2.1.25.3.5.1.1.1',
+  // Ink/Toner levels
+  inkLevel: '1.3.6.1.2.1.43.11.1.1.9',
+  inkMax: '1.3.6.1.2.1.43.11.1.1.8',
+  inkDesc: '1.3.6.1.2.1.43.11.1.1.6',
   
-  // Detected error state - bitmap for paper jam, low paper, etc.
-  prtPrinterDetectedErrorState: '1.3.6.1.2.1.25.3.5.1.2.1',
+  // Paper trays
+  paperLevel: '1.3.6.1.2.1.43.8.2.1.10',
+  paperMax: '1.3.6.1.2.1.43.8.2.1.9',
+  paperDesc: '1.3.6.1.2.1.43.8.2.1.18',
   
-  // Marker supplies (ink/toner) table base - we'll walk this
-  prtMarkerSuppliesTable: '1.3.6.1.2.1.43.11.1.1',
-  
-  // Marker supplies level (1.3.6.1.2.1.43.11.1.1.9)
-  prtMarkerSuppliesLevel: '1.3.6.1.2.1.43.11.1.1.9',
-  
-  // Marker supplies max capacity (1.3.6.1.2.1.43.11.1.1.8)
-  prtMarkerSuppliesMaxCapacity: '1.3.6.1.2.1.43.11.1.1.8',
-  
-  // Marker supplies description (1.3.6.1.2.1.43.11.1.1.6)
-  prtMarkerSuppliesDescription: '1.3.6.1.2.1.43.11.1.1.6',
-  
-  // Marker color (1.3.6.1.2.1.43.12.1.1.4)
-  prtMarkerColorantValue: '1.3.6.1.2.1.43.12.1.1.4',
-  
-  // Input tray table base - we'll walk this
-  prtInputTable: '1.3.6.1.2.1.43.8.2.1',
-  
-  // Input tray current level (1.3.6.1.2.1.43.8.2.1.10)
-  prtInputCurrentLevel: '1.3.6.1.2.1.43.8.2.1.10',
-  
-  // Input tray max capacity (1.3.6.1.2.1.43.8.2.1.9)
-  prtInputMaxCapacity: '1.3.6.1.2.1.43.8.2.1.9',
-  
-  // Input tray name/description (1.3.6.1.2.1.43.8.2.1.18)
-  prtInputDescription: '1.3.6.1.2.1.43.8.2.1.18',
-  
-  // Input tray status (1.3.6.1.2.1.43.8.2.1.11)
-  prtInputStatus: '1.3.6.1.2.1.43.8.2.1.11',
-  
-  // Alert table - contains active alerts like "paper low", "ink low"
-  // prtAlertIndex (1.3.6.1.2.1.43.18.1.1.1)
-  prtAlertGroup: '1.3.6.1.2.1.43.18.1.1.2',         // What group (input, output, marker, etc.)
-  prtAlertGroupIndex: '1.3.6.1.2.1.43.18.1.1.3',    // Which tray/supply has the alert
-  prtAlertSeverityLevel: '1.3.6.1.2.1.43.18.1.1.4', // 1=other, 2=critical, 3=warning
-  prtAlertCode: '1.3.6.1.2.1.43.18.1.1.7',          // What kind of alert
-  prtAlertDescription: '1.3.6.1.2.1.43.18.1.1.8',   // Human-readable description
-};
-
-// Error state bitmap meanings (from prtPrinterDetectedErrorState)
-const ERROR_STATE_FLAGS = {
-  lowPaper: 0x80,         // Bit 0 (MSB)
-  noPaper: 0x40,          // Bit 1
-  lowToner: 0x20,         // Bit 2
-  noToner: 0x10,          // Bit 3
-  doorOpen: 0x08,         // Bit 4
-  jammed: 0x04,           // Bit 5
-  offline: 0x02,          // Bit 6
-  serviceRequested: 0x01, // Bit 7 (LSB)
-  // Second byte if present
-  inputTrayMissing: 0x8000,
-  outputTrayMissing: 0x4000,
-  markerSupplyMissing: 0x2000,
-  outputNearFull: 0x1000,
-  outputFull: 0x0800,
-  inputTrayEmpty: 0x0400,
-  overduePreventMaint: 0x0200,
+  // Alerts
+  alertCode: '1.3.6.1.2.1.43.18.1.1.7',
+  alertDesc: '1.3.6.1.2.1.43.18.1.1.8',
 };
 
 // Printer status codes (hrPrinterStatus)
@@ -101,81 +55,25 @@ const PRINTER_STATUS = {
   5: 'warmup',
 };
 
+// =============================================================================
+// HELPER FUNCTIONS (Simplified)
+// =============================================================================
+
 /**
- * Helper to convert SNMP values to strings
- * SNMP can return Buffers, strings, or numbers
+ * Clean SNMP string value
  */
-function snmpValueToString(value) {
-  if (value === null || value === undefined) return '';
+function cleanString(value) {
   if (Buffer.isBuffer(value)) return value.toString('utf8').replace(/\0/g, '').trim();
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number') return String(value);
-  return String(value);
+  return String(value).trim();
 }
 
 /**
- * Helper to convert SNMP values to numbers
+ * Parse SNMP number value
  */
-function snmpValueToNumber(value) {
-  if (value === null || value === undefined) return 0;
-  if (Buffer.isBuffer(value)) {
-    // Try to parse as integer from the buffer
-    if (value.length === 4) return value.readInt32BE(0);
-    if (value.length === 2) return value.readInt16BE(0);
-    if (value.length === 1) return value.readInt8(0);
-    return parseInt(value.toString(), 10) || 0;
-  }
-  if (typeof value === 'number') return value;
-  return parseInt(value, 10) || 0;
+function parseNumber(value) {
+  if (Buffer.isBuffer(value)) return parseInt(value.toString('hex'), 16);
+  return Number(value);
 }
-
-/**
- * Interpret SNMP level values
- * Special SNMP values: -1 = other, -2 = unknown, -3 = "some remaining but unknown amount"
- * Returns: { level: number (0-100 or -1 for unknown), state: string }
- */
-function interpretSNMPLevel(level, max) {
-  // Handle special SNMP values
-  if (level === -1 || level === -2) {
-    return { level: -1, state: 'unknown', display: '?', description: 'Unknown - printer does not report level' };
-  }
-  if (level === -3) {
-    // "At least one unit remaining" - we don't know the actual level
-    // This means "has paper" but no precise level
-    return { level: -1, state: 'present', display: '✓ Has paper', description: 'Paper detected (no precise level)' };
-  }
-  if (level === 0) {
-    return { level: 0, state: 'empty', display: '⚠️ EMPTY', description: 'Tray is empty' };
-  }
-  
-  // If max is also special value, we can't calculate percentage
-  if (max <= 0) {
-    if (level > 0) {
-      return { level: -1, state: 'present', display: '✓ Has paper', description: `Paper detected (raw: ${level})` };
-    }
-    return { level: -1, state: 'unknown', display: '?', description: 'Unknown level' };
-  }
-  
-  // Calculate percentage
-  const percent = Math.round((level / max) * 100);
-  const clampedPercent = Math.max(0, Math.min(100, percent));
-  
-  let state = 'ok';
-  if (clampedPercent <= 0) state = 'empty';
-  else if (clampedPercent < 10) state = 'critical';
-  else if (clampedPercent < 25) state = 'low';
-  
-  return { level: clampedPercent, state, display: `${clampedPercent}%`, description: `${clampedPercent}% full` };
-}
-
-// Device status codes (hrDeviceStatus)
-const DEVICE_STATUS = {
-  1: 'unknown',
-  2: 'running',
-  3: 'warning',
-  4: 'testing',
-  5: 'down',
-};
 
 // =============================================================================
 // PRINTER STATUS MONITOR CLASS
@@ -320,406 +218,243 @@ export class PrinterStatusMonitor {
 
   /**
    * Check printer status via SNMP
+   * 
+   * UPDATED: Uses cleaner logic with "fake door open" fix
+   * When printer reports "door open" but alerts show paper-related issues,
+   * it's actually just a paper problem (HP printer quirk).
    */
   async checkSNMPStatus() {
-    return new Promise((resolve) => {
-      if (!this.printerIP) {
-        resolve(null);
-        return;
-      }
+    if (!this.printerIP) {
+      return null;
+    }
 
-      const status = {
-        printerState: 'unknown',
-        ink: {},
-        paper: {},
-        errors: [],
-        warnings: [],
-      };
+    const session = snmp.createSession(this.printerIP, this.snmpCommunity, {
+      timeout: 5000,
+      retries: 1,
+    });
 
-      const session = snmp.createSession(this.printerIP, this.snmpCommunity, {
-        timeout: 5000,
-        retries: 1,
+    const status = {
+      printerState: 'unknown',
+      displayStatus: 'UNKNOWN',
+      flags: {
+        lowPaper: false,
+        noPaper: false,
+        doorOpen: false,
+        jam: false,
+        offline: false,
+        service: false,
+      },
+      ink: {},
+      paper: {},
+      errors: [],
+      warnings: [],
+      alerts: [],
+    };
+
+    try {
+      // 1. GET ALERTS FIRST (Needed for "fake door open" fix)
+      const alertCodes = await this.walkSNMPTable(session, SNMP_OIDS.alertCode);
+      const alertDescs = await this.walkSNMPTable(session, SNMP_OIDS.alertDesc);
+      
+      const rawAlerts = [];
+      Object.keys(alertCodes).forEach(key => {
+        const index = key.split('.').pop();
+        const descKey = Object.keys(alertDescs).find(k => k.endsWith(`.${index}`));
+        if (descKey) {
+          const msg = cleanString(alertDescs[descKey]);
+          // Filter out "genuineHP" info messages
+          if (!msg.includes("genuineHP")) {
+            rawAlerts.push(msg);
+            status.alerts.push(msg);
+          }
+        }
       });
 
-      // OIDs to get
-      const oids = [
-        SNMP_OIDS.hrPrinterStatus,
-        SNMP_OIDS.hrDeviceStatus,
-        SNMP_OIDS.prtPrinterDetectedErrorState,
-      ];
+      // 2. GET BASIC STATUS
+      const basicStatus = await new Promise((resolve) => {
+        const basicOids = [SNMP_OIDS.hrPrinterStatus, SNMP_OIDS.hrPrinterErrorState];
+        session.get(basicOids, (err, varbinds) => {
+          if (err) {
+            console.log(`  ⚠️  SNMP basic query failed: ${err.message}`);
+            resolve({ stateVal: 2, errorVal: 0 }); // unknown state
+            return;
+          }
+          
+          const stateVal = parseNumber(varbinds[0]?.value || 2);
+          const errorVal = parseNumber(varbinds[1]?.value || 0);
+          resolve({ stateVal, errorVal });
+        });
+      });
 
-      session.get(oids, (error, varbinds) => {
-        if (error) {
-          console.log(`  ⚠️  SNMP query failed: ${error.message}`);
-          session.close();
-          resolve(null);
+      const { stateVal, errorVal } = basicStatus;
+      status.printerState = PRINTER_STATUS[stateVal] || 'unknown';
+
+      // Check for paper-related alerts (for "fake door open" fix)
+      const hasPaperAlert = rawAlerts.some(a => 
+        a.toLowerCase().includes('empty') || a.toLowerCase().includes('load')
+      );
+
+      // Analyze error flags from hrPrinterErrorState
+      status.flags = {
+        lowPaper: (errorVal & 1) !== 0,
+        noPaper: (errorVal & 2) !== 0,
+        doorOpen: (errorVal & 4) !== 0,
+        jam: (errorVal & 8) !== 0,
+        offline: (errorVal & 16) !== 0,
+        service: (errorVal & 32) !== 0,
+      };
+
+      // --- CRITICAL FIX: FAKE DOOR OPEN ---
+      // HP printers often report "door open" when it's actually just "no paper"
+      // If door appears open BUT we have paper-related alerts, it's really just paper
+      if (status.flags.doorOpen && hasPaperAlert) {
+        console.log('  🔧 [SNMP] Applying "fake door open" fix - actually no paper');
+        status.flags.doorOpen = false;
+        status.flags.noPaper = true;
+      }
+
+      // Determine human-readable display status
+      let displayStatus = "UNKNOWN";
+      if (stateVal === 3) displayStatus = "IDLE";
+      if (stateVal === 4) displayStatus = "PRINTING";
+      if (stateVal === 5) displayStatus = "WARMUP";
+
+      // Override with error states (priority order: jam > door > paper > service)
+      if (status.flags.jam) {
+        displayStatus = "PAUSED (Paper Jam)";
+        status.errors.push({ code: 'paper_jam', message: 'Paper jam detected' });
+      } else if (status.flags.doorOpen) {
+        displayStatus = "PAUSED (Door Open)";
+        status.errors.push({ code: 'door_open', message: 'Printer door is open' });
+      } else if (status.flags.noPaper) {
+        displayStatus = "PAUSED (Load Paper)";
+        status.errors.push({ code: 'no_paper', message: 'Printer is out of paper' });
+      } else if (status.flags.service) {
+        displayStatus = "SERVICE REQUIRED";
+        status.errors.push({ code: 'service_needed', message: 'Service required' });
+      } else if (status.flags.offline) {
+        displayStatus = "OFFLINE";
+        status.errors.push({ code: 'offline', message: 'Printer is offline' });
+      } else if (status.flags.lowPaper) {
+        status.warnings.push({ code: 'paper_low', message: 'Paper is low' });
+      }
+
+      status.displayStatus = displayStatus;
+
+      // 3. GET INK LEVELS
+      const inkLevels = await this.walkSNMPTable(session, SNMP_OIDS.inkLevel);
+      const inkMax = await this.walkSNMPTable(session, SNMP_OIDS.inkMax);
+      const inkDesc = await this.walkSNMPTable(session, SNMP_OIDS.inkDesc);
+
+      Object.keys(inkLevels).forEach((key) => {
+        const index = key.split('.').pop();
+        const descKey = Object.keys(inkDesc).find(k => k.endsWith(`.${index}`));
+        const maxKey = Object.keys(inkMax).find(k => k.endsWith(`.${index}`));
+
+        const val = parseNumber(inkLevels[key]);
+        const max = maxKey ? parseNumber(inkMax[maxKey]) : 100;
+        const name = descKey ? cleanString(inkDesc[descKey]) : "Supply";
+        
+        let percent = 0;
+        let state = 'unknown';
+        if (max > 0 && val >= 0) {
+          percent = Math.round((val / max) * 100);
+          if (percent === 0) state = 'empty';
+          else if (percent < 10) state = 'critical';
+          else if (percent < 25) state = 'low';
+          else state = 'ok';
+        }
+
+        // Determine color from description
+        const nameLower = name.toLowerCase();
+        let color = 'supply';
+        if (nameLower.includes('black')) color = 'black';
+        else if (nameLower.includes('cyan')) color = 'cyan';
+        else if (nameLower.includes('magenta')) color = 'magenta';
+        else if (nameLower.includes('yellow')) color = 'yellow';
+
+        status.ink[color] = { 
+          level: percent, 
+          state, 
+          rawValue: val,
+          description: name,
+        };
+
+        // Add warnings/errors for low ink
+        if (state === 'empty' || state === 'critical') {
+          status.errors.push({
+            code: state === 'empty' ? 'no_ink' : 'ink_critical',
+            message: `${name} is ${state === 'empty' ? 'empty' : 'critically low'} (${percent}%)`,
+            color,
+            level: percent,
+          });
+        } else if (state === 'low') {
+          status.warnings.push({
+            code: 'ink_low',
+            message: `${name} is low (${percent}%)`,
+            color,
+            level: percent,
+          });
+        }
+      });
+
+      // 4. GET PAPER TRAYS (De-duplicated)
+      const paperLevels = await this.walkSNMPTable(session, SNMP_OIDS.paperLevel);
+      const paperDesc = await this.walkSNMPTable(session, SNMP_OIDS.paperDesc);
+      const seenTrays = new Set();
+
+      Object.keys(paperLevels).forEach((key) => {
+        const suffix = key.substring(SNMP_OIDS.paperLevel.length); 
+        const descOid = SNMP_OIDS.paperDesc + suffix;
+        const val = parseNumber(paperLevels[key]);
+        const name = paperDesc[descOid] ? cleanString(paperDesc[descOid]) : `Input ${suffix}`;
+        
+        // Filter out manual feed slots
+        const nameLower = name.toLowerCase();
+        if (nameLower.includes('manual') || nameLower.includes('bypass')) {
           return;
         }
 
-        // Parse responses - only get printer state, ignore unreliable error bitmaps
-        for (const varbind of varbinds) {
-          if (snmp.isVarbindError(varbind)) {
-            continue;
-          }
-
-          const oid = varbind.oid.toString();
+        let paperState = "unknown";
+        if (val === -3 || val > 0) paperState = "ok";
+        else if (val === 0) paperState = "empty";
+        
+        // De-duplicate trays
+        const uniqueId = `${name}-${paperState}`;
+        if (!seenTrays.has(uniqueId)) {
+          seenTrays.add(uniqueId);
           
-          if (oid.includes(SNMP_OIDS.hrPrinterStatus) || oid.includes('25.3.5.1.1')) {
-            status.printerState = PRINTER_STATUS[varbind.value] || 'unknown';
-          } else if (oid.includes(SNMP_OIDS.hrDeviceStatus) || oid.includes('25.3.2.1.5')) {
-            const deviceStatus = DEVICE_STATUS[varbind.value] || 'unknown';
-            // Only report if device is actually down, not just "warning"
-            if (deviceStatus === 'down') {
-              status.errors.push({ code: 'device_down', message: 'Printer is down' });
-            }
-            // Note: Ignoring 'warning' status as it gives false positives on HP printers
+          // Extract tray number from name or use index
+          const trayMatch = name.match(/tray\s*(\d+)/i);
+          const trayNum = trayMatch ? parseInt(trayMatch[1], 10) : seenTrays.size;
+          const trayName = `tray${trayNum}`;
+
+          status.paper[trayName] = { 
+            description: name, 
+            state: paperState, 
+            rawValue: val,
+            level: val === -3 ? -1 : (val > 0 ? 100 : 0), // -3 means "present but unknown level"
+          };
+
+          // Add errors for empty trays
+          if (paperState === 'empty') {
+            status.errors.push({
+              code: 'paper_empty',
+              message: `${name} is empty`,
+              tray: trayName,
+            });
           }
-          // Note: Ignoring prtPrinterDetectedErrorState as it gives false positives on HP printers
-          // We rely on the alert table (prtAlertDescription) for accurate error reporting
         }
-
-        // Now get ink levels by walking the marker supplies table
-        this.walkSNMPTable(session, SNMP_OIDS.prtMarkerSuppliesLevel)
-          .then((supplies) => {
-            // Walk max capacity
-            return this.walkSNMPTable(session, SNMP_OIDS.prtMarkerSuppliesMaxCapacity)
-              .then((maxCapacities) => {
-                return this.walkSNMPTable(session, SNMP_OIDS.prtMarkerSuppliesDescription)
-                  .then((descriptions) => {
-                    // Combine into ink levels
-                    const colors = ['black', 'cyan', 'magenta', 'yellow'];
-                    const colorIndex = {};
-                    
-                    // Match by index
-                    Object.keys(supplies).forEach((key, i) => {
-                      const index = key.split('.').pop();
-                      const rawLevel = snmpValueToNumber(supplies[key]);
-                      const max = snmpValueToNumber(maxCapacities[Object.keys(maxCapacities)[i]]) || 100;
-                      const desc = snmpValueToString(descriptions[Object.keys(descriptions)[i]]);
-                      
-                      // Interpret the SNMP level (handles special values like -3)
-                      const levelInfo = interpretSNMPLevel(rawLevel, max);
-                      
-                      // Try to determine color from description
-                      let color = colors[i] || `supply_${index}`;
-                      const descLower = desc.toLowerCase();
-                      if (descLower.includes('black')) color = 'black';
-                      else if (descLower.includes('cyan')) color = 'cyan';
-                      else if (descLower.includes('magenta')) color = 'magenta';
-                      else if (descLower.includes('yellow')) color = 'yellow';
-                      
-                      status.ink[color] = {
-                        level: levelInfo.level,
-                        state: levelInfo.state,
-                        display: levelInfo.display,
-                        rawValue: rawLevel, // Keep raw value for debugging
-                      };
-                      
-                      // Add warnings/errors for low ink (only if we know the actual level)
-                      if (levelInfo.level >= 0) {
-                        if (levelInfo.state === 'critical' || levelInfo.state === 'empty') {
-                          status.errors.push({
-                            code: levelInfo.level === 0 ? 'no_ink' : 'ink_critical',
-                            message: `${color.charAt(0).toUpperCase() + color.slice(1)} ink ${levelInfo.level === 0 ? 'empty' : 'critically low'} (${levelInfo.display})`,
-                            color,
-                            level: levelInfo.level,
-                          });
-                        } else if (levelInfo.state === 'low') {
-                          status.warnings.push({
-                            code: 'ink_low',
-                            message: `${color.charAt(0).toUpperCase() + color.slice(1)} ink low (${levelInfo.display})`,
-                            color,
-                            level: levelInfo.level,
-                          });
-                        }
-                      }
-                    });
-
-                    // Get paper tray status
-                    return this.walkSNMPTable(session, SNMP_OIDS.prtInputCurrentLevel);
-                  });
-              });
-          })
-          .then((trayLevels) => {
-            return this.walkSNMPTable(session, SNMP_OIDS.prtInputMaxCapacity)
-              .then((trayMax) => {
-                return this.walkSNMPTable(session, SNMP_OIDS.prtInputDescription)
-                  .then((trayDesc) => {
-                    // Also get tray status for better detection
-                    return this.walkSNMPTable(session, SNMP_OIDS.prtInputStatus)
-                      .then((trayStatus) => {
-                    
-                    // Parse OID to get the actual tray index
-                    // OID format: 1.3.6.1.2.1.43.8.2.1.10.1.X where X is the tray index
-                    // Index 1 is often "Manual Feed" or similar, actual trays start at higher indices
-                    const parseTrayIndex = (oid) => {
-                      const parts = oid.split('.');
-                      return parseInt(parts[parts.length - 1], 10);
-                    };
-                    
-                    // Build a map of tray data keyed by actual tray index
-                    const trayData = new Map();
-                    
-                    Object.keys(trayLevels).forEach((oid) => {
-                      const trayIndex = parseTrayIndex(oid);
-                      const rawLevel = snmpValueToNumber(trayLevels[oid]);
-                      
-                      // Find corresponding data from other tables using matching OID suffix
-                      const maxOid = Object.keys(trayMax).find(o => parseTrayIndex(o) === trayIndex);
-                      const descOid = Object.keys(trayDesc).find(o => parseTrayIndex(o) === trayIndex);
-                      const statusOid = Object.keys(trayStatus).find(o => parseTrayIndex(o) === trayIndex);
-                      
-                      const max = maxOid ? snmpValueToNumber(trayMax[maxOid]) : -2;
-                      const desc = descOid ? snmpValueToString(trayDesc[descOid]) : '';
-                      const statusCode = statusOid ? snmpValueToNumber(trayStatus[statusOid]) : 0;
-                      
-                      trayData.set(trayIndex, { rawLevel, max, desc, statusCode });
-                    });
-                    
-                    // Sort by tray index and filter out non-tray entries
-                    const sortedTrays = Array.from(trayData.entries())
-                      .sort((a, b) => a[0] - b[0])
-                      .filter(([idx, data]) => {
-                        // Filter out manual feed slots (usually have specific descriptions)
-                        const descLower = data.desc.toLowerCase();
-                        const isManualFeed = descLower.includes('manual') || 
-                                             descLower.includes('bypass') ||
-                                             descLower.includes('mp tray');
-                        // Also filter if description doesn't mention "tray" at all and index is suspicious
-                        const isTray = descLower.includes('tray') || descLower === '';
-                        return !isManualFeed && (isTray || idx > 0);
-                      });
-                    
-                    console.log(`  📊 [SNMP] Found ${trayData.size} input sources, ${sortedTrays.length} are actual trays`);
-                    
-                    // Process only actual trays, renumber them 1, 2, 3...
-                    sortedTrays.forEach(([trayIndex, data], displayIndex) => {
-                      const { rawLevel, max, desc, statusCode } = data;
-                      
-                      // prtInputStatus is a BITMASK (PrtSubUnitStatusTC from RFC 3805):
-                      // Bit 0 (1):  Available and Standby
-                      // Bit 1 (2):  Available and Active  
-                      // Bit 2 (4):  Available and Busy
-                      // Bit 3 (8):  Unavailable because OnRequest
-                      // Bit 4 (16): Unavailable because Broken
-                      // Bit 5 (32): Unknown
-                      // Bit 6 (64): Non-Critical Alert (e.g., low paper)
-                      // Bit 7 (128): Critical Alert (e.g., empty, jam)
-                      
-                      const isAvailable = (statusCode & 0x07) !== 0; // bits 0-2 = available states
-                      const isUnavailable = (statusCode & 0x18) !== 0; // bits 3-4 = unavailable
-                      const isUnknown = (statusCode & 0x20) !== 0; // bit 5 = unknown
-                      const hasNonCriticalAlert = (statusCode & 0x40) !== 0; // bit 6 = low paper etc.
-                      const hasCriticalAlert = (statusCode & 0x80) !== 0; // bit 7 = empty/jam
-                      
-                      let statusMeaning = 'ok';
-                      if (hasCriticalAlert) statusMeaning = 'critical';
-                      else if (hasNonCriticalAlert) statusMeaning = 'low';
-                      else if (isUnavailable) statusMeaning = 'unavailable';
-                      else if (isUnknown) statusMeaning = 'unknown';
-                      else if (isAvailable) statusMeaning = 'ok';
-                      
-                      // Use display index (1-based) for tray naming
-                      const trayNum = displayIndex + 1;
-                      const trayLabel = desc || `Tray ${trayNum}`;
-                      
-                      // Debug: log raw SNMP values with OID index
-                      console.log(`  📊 [SNMP] Tray ${trayNum} (OID idx=${trayIndex}): raw=${rawLevel}, max=${max}, status=${statusCode}, desc="${desc}"`);
-                      
-                      // Interpret the SNMP level (handles special values like -3)
-                      let levelInfo = interpretSNMPLevel(rawLevel, max);
-                      
-                      // For HP printers, the status bitmask is unreliable
-                      // We only use the alert table for accurate status
-                      // Just show basic OK/present status here, alerts will update if needed
-                      if (levelInfo.state === 'present') {
-                        levelInfo = { ...levelInfo, display: '✓ OK' };
-                      }
-                      
-                      const trayName = `tray${trayNum}`;
-                      
-                      status.paper[trayName] = {
-                        level: levelInfo.level,
-                        description: trayLabel,
-                        state: levelInfo.state,
-                        display: levelInfo.display,
-                        rawValue: rawLevel,
-                        oidIndex: trayIndex, // Store OID index for alert matching
-                      };
-                      
-                      // Generate errors ONLY for confirmed empty trays (rawLevel = 0)
-                      // This is reliable - other status bitmask interpretations are not
-                      if (rawLevel === 0 || levelInfo.state === 'empty') {
-                        status.errors.push({
-                          code: 'paper_empty',
-                          message: `${trayLabel} is empty`,
-                          tray: trayName,
-                        });
-                      }
-                    });
-                    
-                    // Now check alert table for active alerts (like "Paper Low")
-                    // Get multiple alert fields to understand which component has the alert
-                    return Promise.all([
-                      this.walkSNMPTable(session, SNMP_OIDS.prtAlertDescription),
-                      this.walkSNMPTable(session, SNMP_OIDS.prtAlertGroup),
-                      this.walkSNMPTable(session, SNMP_OIDS.prtAlertGroupIndex),
-                      this.walkSNMPTable(session, SNMP_OIDS.prtAlertCode),
-                    ]);
-                      });
-                  });
-              });
-          })
-          .then(([alertDescs, alertGroups, alertGroupIndexes, alertCodes]) => {
-            // Process alerts
-            const alertDescKeys = Object.keys(alertDescs || {});
-            if (alertDescKeys.length > 0) {
-              console.log(`  📊 [SNMP] Found ${alertDescKeys.length} active alert(s)`);
-              
-              alertDescKeys.forEach((oid, i) => {
-                const alertDesc = snmpValueToString(alertDescs[oid]);
-                const alertGroup = snmpValueToNumber(alertGroups[Object.keys(alertGroups || {})[i]]);
-                const alertGroupIdx = snmpValueToNumber(alertGroupIndexes[Object.keys(alertGroupIndexes || {})[i]]);
-                const alertCode = snmpValueToNumber(alertCodes[Object.keys(alertCodes || {})[i]]);
-                
-                // Alert groups: 1=other, 3=hostResourcesMIBStorageTable, 5=generalPrinter,
-                // 6=cover, 7=localization, 8=input, 9=output, 10=marker, 11=markerSupplies,
-                // 12=markerColorant, 13=mediaPath, 14=channel, 15=interpreter, 16=consoleDisplayBuffer,
-                // 17=consoleLights, 18=alert, 19=finDevice, 30=finSupply, 31=finSupplyMediaInput, 32=finAttribute
-                const groupNames = {
-                  8: 'input',      // Paper trays
-                  9: 'output',     // Output trays
-                  10: 'marker',    // Print head
-                  11: 'supplies',  // Ink/toner
-                };
-                const groupName = groupNames[alertGroup] || `group${alertGroup}`;
-                
-                console.log(`  📊 [SNMP] Alert: "${alertDesc}" (group=${alertGroup}/${groupName}, idx=${alertGroupIdx}, code=${alertCode})`);
-                
-                const alertLower = alertDesc.toLowerCase();
-                
-                // HP-specific alert codes - decode common ones
-                // "singleXTrayLop" = Single Tray Low Paper
-                // "genuineHPSupplyFlow" = HP genuine supplies message (ignore)
-                const isLowPaper = alertLower.includes('lop') || // HP code: "Lop" = Low Paper
-                                   alertLower.includes('low') ||
-                                   alertLower.includes('nearly');
-                const isEmptyPaper = alertLower.includes('empty') || 
-                                     alertLower.includes('out') ||
-                                     alertLower.includes('nopaper');
-                const isPaperAlert = alertGroup === 8 || // Input group
-                                     alertLower.includes('paper') || 
-                                     alertLower.includes('tray') ||
-                                     isLowPaper || isEmptyPaper;
-                
-                // Find which tray this alert refers to
-                // alertGroupIndex is the OID index that matches status.paper[trayN].oidIndex
-                let matchedTrayName = null;
-                
-                // First try to match by OID index (alertGroupIndex)
-                if (alertGroupIdx > 0) {
-                  for (const [name, info] of Object.entries(status.paper)) {
-                    if (info.oidIndex === alertGroupIdx) {
-                      matchedTrayName = name;
-                      console.log(`  📊 [SNMP] Alert matched to ${name} by OID index ${alertGroupIdx}`);
-                      break;
-                    }
-                  }
-                }
-                
-                // If no match by OID index, try to match by description text
-                if (!matchedTrayName) {
-                  const trayMatch = alertLower.match(/tray\s*(\d+)/i);
-                  if (trayMatch) {
-                    const trayNumFromDesc = parseInt(trayMatch[1], 10);
-                    matchedTrayName = `tray${trayNumFromDesc}`;
-                    console.log(`  📊 [SNMP] Alert matched to ${matchedTrayName} by description text`);
-                  }
-                }
-                
-                // If still no match, DON'T default - just skip this alert for tray matching
-                if (!matchedTrayName && isPaperAlert) {
-                  console.log(`  📊 [SNMP] Alert "${alertDesc}" is paper-related but couldn't match to specific tray (idx=${alertGroupIdx}) - skipping`);
-                }
-                
-                // Check for paper-related alerts
-                if (isPaperAlert && matchedTrayName) {
-                  const trayInfo = status.paper[matchedTrayName];
-                  const trayLabel = trayInfo?.description || matchedTrayName;
-                  
-                  if (isLowPaper && !isEmptyPaper) {
-                    console.log(`  📊 [SNMP] → Paper LOW detected for ${matchedTrayName} (alertIdx=${alertGroupIdx})`);
-                    
-                    if (trayInfo) {
-                      trayInfo.state = 'low';
-                      trayInfo.display = '⚠️ LOW';
-                      trayInfo.alertDescription = alertDesc;
-                    }
-                    
-                    // Add warning if not already present
-                    if (!status.warnings.some(w => w.code === 'paper_low' && w.tray === matchedTrayName)) {
-                      status.warnings.push({
-                        code: 'paper_low',
-                        message: `${trayLabel} is low on paper`,
-                        tray: matchedTrayName,
-                      });
-                    }
-                  } else if (isEmptyPaper) {
-                    console.log(`  📊 [SNMP] → Paper EMPTY detected for ${matchedTrayName} (alertIdx=${alertGroupIdx})`);
-                    
-                    if (trayInfo) {
-                      trayInfo.state = 'empty';
-                      trayInfo.display = '⚠️ EMPTY';
-                      trayInfo.alertDescription = alertDesc;
-                    }
-                    
-                    // Add error if not already present
-                    if (!status.errors.some(e => e.code === 'paper_empty' && e.tray === matchedTrayName)) {
-                      status.errors.push({
-                        code: 'paper_empty',
-                        message: `${trayLabel} is empty`,
-                        tray: matchedTrayName,
-                      });
-                    }
-                  }
-                }
-                
-                // Check for ink-related alerts (group 11 = supplies)
-                const isInkAlert = alertGroup === 11 ||
-                                   alertLower.includes('ink') || 
-                                   alertLower.includes('cartridge') || 
-                                   alertLower.includes('supply');
-                
-                if (isInkAlert && !alertLower.includes('genuine')) { // Ignore "genuineHPSupply" messages
-                  if (alertLower.includes('low')) {
-                    if (!status.warnings.some(w => w.message === alertDesc)) {
-                      status.warnings.push({
-                        code: 'ink_low',
-                        message: alertDesc,
-                      });
-                    }
-                  } else if (alertLower.includes('empty') || alertLower.includes('out')) {
-                    if (!status.errors.some(e => e.message === alertDesc)) {
-                      status.errors.push({
-                        code: 'no_ink',
-                        message: alertDesc,
-                      });
-                    }
-                  }
-                }
-              });
-            }
-            
-            session.close();
-            resolve(status);
-          })
-          .catch((err) => {
-            console.log(`  ⚠️  SNMP walk error: ${err.message}`);
-            session.close();
-            resolve(status); // Return partial status
-          });
       });
-    });
+
+      session.close();
+      return status;
+
+    } catch (e) {
+      console.log(`  ⚠️  SNMP error: ${e.message}`);
+      session.close();
+      return status; // Return partial status
+    }
   }
 
   /**
@@ -744,62 +479,6 @@ export class PrinterStatusMonitor {
     });
   }
 
-  /**
-   * Parse the prtPrinterDetectedErrorState bitmap
-   */
-  parseErrorState(value) {
-    const errors = [];
-    const warnings = [];
-    
-    // Value can be a Buffer or number
-    let flags = 0;
-    if (Buffer.isBuffer(value)) {
-      if (value.length >= 1) flags |= value[0] << 8;
-      if (value.length >= 2) flags |= value[1];
-    } else {
-      flags = value;
-    }
-
-    if (flags & ERROR_STATE_FLAGS.noPaper) {
-      errors.push({ code: 'no_paper', message: 'Printer is out of paper' });
-    } else if (flags & ERROR_STATE_FLAGS.lowPaper) {
-      warnings.push({ code: 'low_paper', message: 'Printer is low on paper' });
-    }
-
-    if (flags & ERROR_STATE_FLAGS.noToner) {
-      errors.push({ code: 'no_ink', message: 'Printer is out of ink' });
-    } else if (flags & ERROR_STATE_FLAGS.lowToner) {
-      warnings.push({ code: 'low_ink', message: 'Printer is low on ink' });
-    }
-
-    if (flags & ERROR_STATE_FLAGS.doorOpen) {
-      errors.push({ code: 'door_open', message: 'Printer door is open' });
-    }
-
-    if (flags & ERROR_STATE_FLAGS.jammed) {
-      errors.push({ code: 'paper_jam', message: 'Paper jam detected' });
-    }
-
-    if (flags & ERROR_STATE_FLAGS.offline) {
-      errors.push({ code: 'offline', message: 'Printer is offline' });
-    }
-
-    if (flags & ERROR_STATE_FLAGS.serviceRequested) {
-      warnings.push({ code: 'service_needed', message: 'Printer needs service' });
-    }
-
-    if (flags & ERROR_STATE_FLAGS.inputTrayEmpty) {
-      errors.push({ code: 'tray_empty', message: 'Input tray is empty' });
-    }
-
-    if (flags & ERROR_STATE_FLAGS.outputFull) {
-      errors.push({ code: 'output_full', message: 'Output tray is full' });
-    } else if (flags & ERROR_STATE_FLAGS.outputNearFull) {
-      warnings.push({ code: 'output_near_full', message: 'Output tray is nearly full' });
-    }
-
-    return { errors, warnings };
-  }
 
   /**
    * Check Windows print queue
