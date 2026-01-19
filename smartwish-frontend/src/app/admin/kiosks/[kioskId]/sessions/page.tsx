@@ -100,6 +100,10 @@ export default function KioskSessionsPage({
   const [sessionToDelete, setSessionToDelete] = useState<KioskSession | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Delete all modal
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
   // Video modal
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedRecording, setSelectedRecording] = useState<SessionRecording | null>(null);
@@ -190,6 +194,61 @@ export default function KioskSessionsPage({
       alert(err instanceof Error ? err.message : "Failed to delete session");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    try {
+      const response = await fetch(
+        `/api/admin/kiosks/${kioskId}/sessions`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to delete all sessions" }));
+        throw new Error(errorData.error || "Failed to delete all sessions");
+      }
+
+      // Refresh data - clear all sessions
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              sessions: [],
+              total: 0,
+              summary: {
+                totalSessions: 0,
+                averageDuration: 0,
+                conversionRate: 0,
+                outcomeBreakdown: {
+                  printed_card: 0,
+                  printed_sticker: 0,
+                  sent_digital: 0,
+                  abandoned: 0,
+                  in_progress: 0,
+                },
+                featureUsage: {
+                  greetingCards: 0,
+                  stickers: 0,
+                  giftCards: 0,
+                  search: 0,
+                  imageUpload: 0,
+                  editor: 0,
+                  checkout: 0,
+                  payment: 0,
+                },
+              },
+            }
+          : null
+      );
+      setShowDeleteAllModal(false);
+      setPage(1); // Reset to first page
+    } catch (err) {
+      console.error("Error deleting all sessions:", err);
+      alert(err instanceof Error ? err.message : "Failed to delete all sessions");
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -321,21 +380,32 @@ export default function KioskSessionsPage({
       {/* Header */}
       <div className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/admin/kiosks"
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Session Analytics
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                {data?.kiosk?.name || kioskId}
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/admin/kiosks"
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
+              </Link>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Session Analytics
+                </h1>
+                <p className="mt-1 text-sm text-gray-500">
+                  {data?.kiosk?.name || kioskId}
+                </p>
+              </div>
             </div>
+            {data && data.total > 0 && (
+              <button
+                onClick={() => setShowDeleteAllModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors border border-red-200"
+              >
+                <TrashIcon className="h-4 w-4" />
+                Delete All Sessions
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -999,6 +1069,91 @@ export default function KioskSessionsPage({
                         <>
                           <TrashIcon className="h-4 w-4" />
                           Delete Recording
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Delete All Sessions Confirmation Modal */}
+      <Transition appear show={showDeleteAllModal} as={Fragment}>
+        <Dialog
+          as="div"
+          className="relative z-50"
+          onClose={() => !deletingAll && setShowDeleteAllModal(false)}
+        >
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-25" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-gray-900"
+                  >
+                    Delete All Sessions
+                  </Dialog.Title>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500">
+                      Are you sure you want to delete all {data?.total || 0} sessions for this kiosk? This will also delete:
+                    </p>
+                    <ul className="mt-2 text-sm text-gray-500 list-disc list-inside space-y-1">
+                      <li>All session events</li>
+                      <li>All session recordings (including video files)</li>
+                    </ul>
+                    <p className="mt-3 text-sm font-medium text-red-600">
+                      This action cannot be undone.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => setShowDeleteAllModal(false)}
+                      disabled={deletingAll}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-lg border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleDeleteAll}
+                      disabled={deletingAll}
+                    >
+                      {deletingAll ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <TrashIcon className="h-4 w-4 mr-2" />
+                          Delete All Sessions
                         </>
                       )}
                     </button>

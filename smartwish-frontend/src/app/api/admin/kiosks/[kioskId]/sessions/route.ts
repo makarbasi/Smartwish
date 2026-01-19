@@ -4,6 +4,8 @@ import { supabaseServer as supabase } from '@/lib/supabaseServer';
 import { sessionRowToSession } from '@/types/kioskSession';
 import type { SessionOutcome, SessionSummary, KioskSessionRow } from '@/types/kioskSession';
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com';
+
 /**
  * GET /api/admin/kiosks/[kioskId]/sessions
  * List sessions for a kiosk with filtering and summary
@@ -242,4 +244,129 @@ function calculateSummary(sessions: KioskSessionRow[]): SessionSummary {
     featureUsage,
     conversionRate,
   };
+}
+
+/**
+ * DELETE /api/admin/kiosks/[kioskId]/sessions
+ * Delete all sessions for a kiosk, including events and recordings
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ kioskId: string }> }
+) {
+  try {
+    // Check authentication
+    const authSession = await auth();
+    if (!authSession?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { kioskId } = await params;
+
+    // Verify kiosk exists
+    const { data: kiosk, error: kioskError } = await supabase
+      .from('kiosk_configs')
+      .select('kiosk_id')
+      .eq('kiosk_id', kioskId)
+      .single();
+
+    if (kioskError || !kiosk) {
+      return NextResponse.json({ error: 'Kiosk not found' }, { status: 404 });
+    }
+
+    // Get all sessions for this kiosk (to find ones with recordings)
+    const { data: allSessions, error: sessionsError } = await supabase
+      .from('kiosk_sessions')
+      .select('id, has_recording')
+      .eq('kiosk_id', kioskId);
+
+    if (sessionsError) {
+      console.error('Error fetching sessions for deletion:', sessionsError);
+      // If table doesn't exist, that's fine - nothing to delete
+      if (sessionsError.message?.includes('relation') && sessionsError.message?.includes('does not exist')) {
+        return NextResponse.json({ success: true, deleted: 0 });
+      }
+      return NextResponse.json(
+        { error: 'Failed to fetch sessions for deletion' },
+        { status: 500 }
+      );
+    }
+
+    const sessions = allSessions || [];
+    const sessionsWithRecordings = sessions.filter(s => s.has_recording);
+
+    // Delete recordings via backend for sessions that have them
+    if (sessionsWithRecordings.length > 0) {
+      console.log(`[Delete All] Found ${sessionsWithRecordings.length} sessions with recordings, deleting via backend...`);
+      
+      // Delete recordings in parallel (but limit concurrency to avoid overwhelming the backend)
+      const deletePromises = sessionsWithRecordings.map(async (session) => {
+        try {
+          const recordingResponse = await fetch(
+            `${BACKEND_URL}/admin/kiosks/${kioskId}/sessions/${session.id}/recording`,
+            { method: 'DELETE' }
+          );
+          
+          if (recordingResponse.ok) {
+            console.log(`[Delete All] Recording deleted for session: ${session.id}`);
+          } else {
+            console.warn(`[Delete All] Failed to delete recording for session ${session.id}:`, 
+              await recordingResponse.text());
+          }
+        } catch (recError) {
+          console.warn(`[Delete All] Error calling recording delete for session ${session.id}:`, recError);
+        }
+      });
+
+      // Wait for all recording deletions to complete (or fail)
+      await Promise.allSettled(deletePromises);
+    }
+
+    // Get all session IDs for deleting events
+    const sessionIds = sessions.map(s => s.id);
+
+    // Delete all events for all sessions (if any sessions exist)
+    if (sessionIds.length > 0) {
+      const { error: eventsError } = await supabase
+        .from('kiosk_session_events')
+        .delete()
+        .in('session_id', sessionIds);
+
+      if (eventsError) {
+        console.error('Error deleting session events:', eventsError);
+        // Continue with session deletion even if events deletion fails
+      } else {
+        console.log(`[Delete All] Deleted events for ${sessionIds.length} sessions`);
+      }
+    }
+
+    // Delete all sessions for this kiosk
+    const { error: deleteError, count } = await supabase
+      .from('kiosk_sessions')
+      .delete()
+      .eq('kiosk_id', kioskId)
+      .select('id', { count: 'exact', head: true });
+
+    if (deleteError) {
+      console.error('Error deleting sessions:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete sessions' },
+        { status: 500 }
+      );
+    }
+
+    const deletedCount = count || sessionIds.length;
+    console.log(`[Delete All] Deleted ${deletedCount} sessions for kiosk: ${kioskId}`);
+
+    return NextResponse.json({ 
+      success: true, 
+      deleted: deletedCount 
+    });
+  } catch (error) {
+    console.error('Error in delete all sessions:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }
