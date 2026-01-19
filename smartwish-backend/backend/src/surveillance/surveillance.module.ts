@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SurveillanceDetection } from './surveillance-detection.entity';
 import { SurveillanceDailyStats } from './surveillance-daily-stats.entity';
 import { SurveillanceService } from './surveillance.service';
-import { SurveillancePublicController, SurveillanceAdminController } from './surveillance.controller';
+import { SurveillancePublicController, SurveillanceAdminController, SurveillanceStreamController } from './surveillance.controller';
 import { KioskConfig } from '../kiosks/kiosk-config.entity';
 import { SupabaseStorageService } from '../saved-designs/supabase-storage.service';
 
@@ -18,6 +18,7 @@ import { SupabaseStorageService } from '../saved-designs/supabase-storage.servic
   controllers: [
     SurveillancePublicController,
     SurveillanceAdminController,
+    SurveillanceStreamController,
   ],
   providers: [SurveillanceService, SupabaseStorageService],
   exports: [SurveillanceService],

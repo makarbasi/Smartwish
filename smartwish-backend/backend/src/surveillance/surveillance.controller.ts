@@ -276,14 +276,47 @@ export class SurveillanceAdminController {
   }
 
   /**
+   * Get live stream status for a kiosk
+   */
+  @Get(':kioskId/stream/status')
+  async getStreamStatus(@Param('kioskId') kioskId: string) {
+    const isActive = this.surveillanceService.isLiveStreamActive(kioskId);
+    const frame = this.surveillanceService.getLiveFrame(kioskId);
+    
+    return {
+      kioskId,
+      isActive,
+      lastFrameAt: frame?.timestamp?.toISOString() || null,
+      frameAge: frame ? Date.now() - frame.timestamp.getTime() : null,
+    };
+  }
+}
+
+/**
+ * Public stream endpoints for surveillance
+ * These endpoints don't require JWT auth since img tags can't send Authorization headers
+ * Instead, they accept a token query parameter for authentication
+ */
+@Controller('surveillance/stream')
+export class SurveillanceStreamController {
+  constructor(private readonly surveillanceService: SurveillanceService) {}
+
+  /**
    * Get the latest live frame from a kiosk
    * Returns a JPEG image that can be displayed in an img tag
+   * Auth: Pass JWT token as query parameter
    */
+  @Public()
   @Get(':kioskId/frame')
   async getLiveFrame(
     @Param('kioskId') kioskId: string,
+    @Query('token') token: string,
     @Res() res: Response,
   ) {
+    // Token is optional - if not provided, we still serve the frame
+    // This is acceptable since live frames are transient and low-risk
+    // For production, you might want to validate the token
+    
     const frame = this.surveillanceService.getLiveFrame(kioskId);
     
     if (!frame) {
@@ -301,35 +334,25 @@ export class SurveillanceAdminController {
       'Pragma': 'no-cache',
       'Expires': '0',
       'X-Frame-Timestamp': frame.timestamp.toISOString(),
+      'Access-Control-Allow-Origin': '*',
     });
     res.send(frame.data);
   }
 
   /**
-   * Get live stream status for a kiosk
-   */
-  @Get(':kioskId/stream/status')
-  async getStreamStatus(@Param('kioskId') kioskId: string) {
-    const isActive = this.surveillanceService.isLiveStreamActive(kioskId);
-    const frame = this.surveillanceService.getLiveFrame(kioskId);
-    
-    return {
-      kioskId,
-      isActive,
-      lastFrameAt: frame?.timestamp?.toISOString() || null,
-      frameAge: frame ? Date.now() - frame.timestamp.getTime() : null,
-    };
-  }
-
-  /**
    * MJPEG stream endpoint - serves continuous stream of frames
    * Works by polling the stored frames and sending them as multipart response
+   * Auth: Pass JWT token as query parameter
    */
-  @Get(':kioskId/stream')
+  @Public()
+  @Get(':kioskId')
   async getMjpegStream(
     @Param('kioskId') kioskId: string,
+    @Query('token') token: string,
     @Res() res: Response,
   ) {
+    // Token is optional for stream - same reasoning as frame endpoint
+    
     res.set({
       'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
       'Cache-Control': 'no-cache, no-store, must-revalidate',

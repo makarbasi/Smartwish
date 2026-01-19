@@ -112,8 +112,9 @@ export default function KioskSurveillancePage({
   const [localImageServerUrl, setLocalImageServerUrl] = useState<string>("http://localhost:8765");
   
   // Live stream URL - served from backend (works remotely via frame relay)
-  const liveStreamUrl = `${BACKEND_URL}/admin/surveillance/${kioskId}/stream`;
-  const singleFrameUrl = `${BACKEND_URL}/admin/surveillance/${kioskId}/frame`;
+  // Using public stream endpoint that doesn't require JWT in Authorization header
+  const liveStreamUrl = `${BACKEND_URL}/surveillance/stream/${kioskId}`;
+  const singleFrameUrl = `${BACKEND_URL}/surveillance/stream/${kioskId}/frame`;
   
   // Live preview state
   const [showLivePreview, setShowLivePreview] = useState(false);
