@@ -151,16 +151,70 @@ function KioskHomePageContent() {
   const [testingPrintLog, setTestingPrintLog] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [showTestPanel, setShowTestPanel] = useState(false);
+  const [kioskCommissions, setKioskCommissions] = useState<{
+    managerPercent: number;
+    salesRepPercent: number;
+    hasManager: boolean;
+    hasSalesRep: boolean;
+  } | null>(null);
   
   // Test form values
   const [testPrice, setTestPrice] = useState('5.00');
   const [testProductName, setTestProductName] = useState('Test Greeting Card');
   const [testPaymentMethod, setTestPaymentMethod] = useState<'card' | 'promo_code'>('card');
   const [testPromoCode, setTestPromoCode] = useState('');
-  const [testGiftCardBrand, setTestGiftCardBrand] = useState('');
-  const [testGiftCardAmount, setTestGiftCardAmount] = useState('');
+  
+  // Stripe fee calculation (2.9% + $0.30)
+  const STRIPE_FEE_PERCENT = 0.029;
+  const STRIPE_FEE_FIXED = 0.30;
+  
+  // Calculate expected earnings breakdown
+  const calculateExpectedEarnings = (grossPrice: number) => {
+    if (!kioskCommissions) return null;
+    
+    const stripeFees = (grossPrice * STRIPE_FEE_PERCENT) + STRIPE_FEE_FIXED;
+    const netDistributable = grossPrice - stripeFees;
+    
+    const managerEarnings = kioskCommissions.hasManager 
+      ? netDistributable * (kioskCommissions.managerPercent / 100) 
+      : 0;
+    const salesRepEarnings = kioskCommissions.hasSalesRep 
+      ? netDistributable * (kioskCommissions.salesRepPercent / 100) 
+      : 0;
+    const smartwishEarnings = netDistributable - managerEarnings - salesRepEarnings;
+    
+    return {
+      gross: grossPrice,
+      stripeFees: Math.round(stripeFees * 100) / 100,
+      netDistributable: Math.round(netDistributable * 100) / 100,
+      managerEarnings: Math.round(managerEarnings * 100) / 100,
+      salesRepEarnings: Math.round(salesRepEarnings * 100) / 100,
+      smartwishEarnings: Math.round(smartwishEarnings * 100) / 100,
+    };
+  };
 
-  // TEST FUNCTION: Simulate a print job to test Supabase integration
+  // Fetch kiosk commission info when panel opens
+  const fetchKioskCommissions = async () => {
+    if (!kioskInfo?.id) return;
+    
+    try {
+      // Fetch kiosk details including manager/sales rep info
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/admin/kiosks/${kioskInfo.id}`);
+      if (response.ok) {
+        const kiosk = await response.json();
+        setKioskCommissions({
+          managerPercent: parseFloat(kiosk.managerCommissionPercent || '20'),
+          salesRepPercent: parseFloat(kiosk.salesRepCommissionPercent || '0'),
+          hasManager: !!kiosk.managerId,
+          hasSalesRep: !!kiosk.salesRepresentativeId,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch kiosk commissions:', err);
+    }
+  };
+
+  // TEST FUNCTION: Simulate a full payment flow
   const testPrintLogCreation = async () => {
     if (!kioskInfo?.id) {
       setTestResult('❌ ERROR: No kiosk activated!\n\nPlease activate a kiosk first via pairing.');
@@ -168,9 +222,10 @@ function KioskHomePageContent() {
     }
     
     setTestingPrintLog(true);
-    setTestResult(null);
+    setTestResult('Creating print log...');
     
-    const price = testPaymentMethod === 'promo_code' ? 0 : parseFloat(testPrice) || 5.00;
+    const grossPrice = testPaymentMethod === 'promo_code' ? 0 : parseFloat(testPrice) || 5.00;
+    const expectedEarnings = testPaymentMethod === 'card' ? calculateExpectedEarnings(grossPrice) : null;
     
     const testData: Record<string, unknown> = {
       kioskId: kioskInfo.id,
@@ -180,7 +235,7 @@ function KioskHomePageContent() {
       productType: 'greeting-card',
       productId: 'test-product-' + Date.now(),
       productName: testProductName + ' - ' + new Date().toLocaleTimeString(),
-      price,
+      price: grossPrice,
       stripePaymentIntentId: testPaymentMethod === 'card' ? 'pi_test_' + Date.now() : undefined,
       stripeChargeId: testPaymentMethod === 'card' ? 'ch_test_' + Date.now() : undefined,
       paperType: 'greeting-card',
@@ -188,41 +243,71 @@ function KioskHomePageContent() {
       trayNumber: 2,
       copies: 1,
     };
-    
-    // Add gift card info if provided
-    if (testGiftCardBrand) {
-      testData.giftCardBrand = testGiftCardBrand;
-      testData.giftCardAmount = parseFloat(testGiftCardAmount) || 25;
-      testData.giftCardCode = 'GC-TEST-' + Date.now();
-    }
 
     console.log('🧪 TEST: Creating test print log with data:', testData);
-    console.log('🔑 Using Kiosk ID:', kioskInfo.id, '(', kioskInfo.name || kioskInfo.kioskId, ')');
+    console.log('🔑 Using Kiosk UUID:', kioskInfo.id);
+    console.log('📊 Expected earnings:', expectedEarnings);
 
     try {
+      // Step 1: Create print log (this triggers earnings processing in backend)
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(testData),
       });
       
-      const result = await response.json();
+      const printLogResult = await response.json();
       
-      if (response.ok) {
-        console.log('🧪 TEST SUCCESS:', result);
-        setTestResult(
-          `✅ SUCCESS!\n` +
-          `ID: ${result.id}\n` +
-          `Print Code: ${result.printCode || 'N/A'}\n` +
-          `Kiosk: ${kioskInfo.name || kioskInfo.kioskId}\n` +
-          `Price: $${price.toFixed(2)}\n` +
-          `Payment: ${testPaymentMethod}\n\n` +
-          `Check Supabase & Admin/Manager portals!`
-        );
-      } else {
-        console.error('🧪 TEST FAILED:', result);
-        setTestResult(`❌ FAILED!\nStatus: ${response.status}\nError: ${JSON.stringify(result, null, 2)}`);
+      if (!response.ok) {
+        console.error('🧪 TEST FAILED:', printLogResult);
+        setTestResult(`❌ FAILED!\nStatus: ${response.status}\nError: ${JSON.stringify(printLogResult, null, 2)}`);
+        return;
       }
+      
+      console.log('🧪 Print log created:', printLogResult);
+      
+      // Step 2: Wait a moment for earnings to be processed
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Step 3: Fetch the earnings entry to verify it was created
+      let earningsInfo = 'Checking earnings...';
+      try {
+        const earningsResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/admin/earnings/kiosk/${kioskInfo.id}?limit=1`
+        );
+        if (earningsResponse.ok) {
+          const earningsData = await earningsResponse.json();
+          const latestEarning = earningsData.earnings?.[0] || earningsData[0];
+          
+          if (latestEarning && latestEarning.printLogId === printLogResult.id) {
+            earningsInfo = 
+              `\n\n💰 EARNINGS RECORDED:\n` +
+              `  Gross: $${latestEarning.grossAmount}\n` +
+              `  Stripe Fees: $${latestEarning.processingFees}\n` +
+              `  Net Distributable: $${latestEarning.netDistributable}\n` +
+              `  ─────────────────\n` +
+              `  Manager (${latestEarning.managerCommissionRate || 0}%): $${latestEarning.managerEarnings}\n` +
+              `  Sales Rep (${latestEarning.salesRepCommissionRate || 0}%): $${latestEarning.salesRepEarnings}\n` +
+              `  SmartWish: $${latestEarning.smartwishEarnings}`;
+          } else {
+            earningsInfo = '\n\n⚠️ Earnings entry not found - check backend logs';
+          }
+        }
+      } catch (earningsErr) {
+        earningsInfo = '\n\n⚠️ Could not verify earnings (may require auth)';
+      }
+      
+      setTestResult(
+        `✅ PRINT LOG CREATED!\n` +
+        `ID: ${printLogResult.id}\n` +
+        `Print Code: ${printLogResult.printCode || 'N/A'}\n` +
+        `Kiosk: ${kioskInfo.name || kioskInfo.kioskId}\n` +
+        `Commission Processed: ${printLogResult.commissionProcessed ? 'Yes' : 'No'}\n` +
+        `Earnings Ledger ID: ${printLogResult.earningsLedgerId || 'None'}` +
+        earningsInfo +
+        (expectedEarnings ? `\n\n📊 EXPECTED (if card):\n  Gross: $${expectedEarnings.gross}\n  Stripe: -$${expectedEarnings.stripeFees}\n  Net: $${expectedEarnings.netDistributable}\n  Manager: $${expectedEarnings.managerEarnings}\n  Sales Rep: $${expectedEarnings.salesRepEarnings}\n  SmartWish: $${expectedEarnings.smartwishEarnings}` : '')
+      );
+      
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('🧪 TEST ERROR:', error);
@@ -1048,15 +1133,18 @@ function KioskHomePageContent() {
       <div className="fixed bottom-4 right-4 z-50">
         {!showTestPanel ? (
           <button
-            onClick={() => setShowTestPanel(true)}
+            onClick={() => {
+              setShowTestPanel(true);
+              fetchKioskCommissions();
+            }}
             className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full shadow-lg"
           >
             🧪 Test
           </button>
         ) : (
-          <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 shadow-lg w-80 max-h-[80vh] overflow-auto">
+          <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 shadow-lg w-96 max-h-[85vh] overflow-auto">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-bold text-yellow-800">🧪 Test Print Log</h3>
+              <h3 className="font-bold text-yellow-800">🧪 Test Payment & Earnings</h3>
               <button onClick={() => setShowTestPanel(false)} className="text-yellow-800 hover:text-yellow-900">✕</button>
             </div>
             
@@ -1064,8 +1152,24 @@ function KioskHomePageContent() {
             <div className={`text-xs p-2 rounded mb-2 ${kioskInfo?.id ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
               <strong>Active Kiosk:</strong> {kioskInfo?.name || kioskInfo?.kioskId || 'NOT ACTIVATED!'}<br/>
               <span className="font-mono text-[10px]">{kioskInfo?.id || 'Pair a kiosk first!'}</span>
-              <p className="text-[10px] mt-1">Auto-synced from local print agent (localhost:8766)</p>
             </div>
+
+            {/* Commission Info */}
+            {kioskCommissions && (
+              <div className="text-xs p-2 rounded mb-2 bg-blue-100 text-blue-800">
+                <strong>Commission Config:</strong><br/>
+                <div className="grid grid-cols-2 gap-1 mt-1">
+                  <span>Manager: {kioskCommissions.hasManager ? `${kioskCommissions.managerPercent}%` : '❌ Not assigned'}</span>
+                  <span>Sales Rep: {kioskCommissions.hasSalesRep ? `${kioskCommissions.salesRepPercent}%` : '❌ Not assigned'}</span>
+                </div>
+                <button 
+                  onClick={fetchKioskCommissions}
+                  className="text-[10px] underline mt-1"
+                >
+                  Refresh
+                </button>
+              </div>
+            )}
 
             {/* Product Name */}
             <label className="block text-xs font-medium text-yellow-800 mb-1">Product Name</label>
@@ -1084,14 +1188,14 @@ function KioskHomePageContent() {
               onChange={(e) => setTestPaymentMethod(e.target.value as 'card' | 'promo_code')}
               className="w-full text-sm border rounded px-2 py-1 mb-2"
             >
-              <option value="card">Card Payment</option>
-              <option value="promo_code">Promo Code (Free)</option>
+              <option value="card">💳 Card Payment (with commissions)</option>
+              <option value="promo_code">🎟️ Promo Code (no commissions)</option>
             </select>
 
             {/* Price (only for card) */}
             {testPaymentMethod === 'card' && (
               <>
-                <label className="block text-xs font-medium text-yellow-800 mb-1">Price ($)</label>
+                <label className="block text-xs font-medium text-yellow-800 mb-1">Card Sale Price ($)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1100,6 +1204,33 @@ function KioskHomePageContent() {
                   className="w-full text-sm border rounded px-2 py-1 mb-2"
                   placeholder="5.00"
                 />
+                
+                {/* Expected Earnings Preview */}
+                {kioskCommissions && parseFloat(testPrice) > 0 && (
+                  <div className="text-xs p-2 rounded mb-2 bg-purple-100 text-purple-800">
+                    <strong>📊 Expected Earnings Breakdown:</strong>
+                    {(() => {
+                      const preview = calculateExpectedEarnings(parseFloat(testPrice) || 0);
+                      if (!preview) return null;
+                      return (
+                        <div className="mt-1 font-mono text-[10px]">
+                          <div>Gross Sale: ${preview.gross.toFixed(2)}</div>
+                          <div>Stripe Fees (2.9% + $0.30): -${preview.stripeFees.toFixed(2)}</div>
+                          <div className="border-t border-purple-300 mt-1 pt-1">Net Distributable: ${preview.netDistributable.toFixed(2)}</div>
+                          <div className="mt-1">
+                            <span className="text-green-700">Manager ({kioskCommissions.managerPercent}%): ${preview.managerEarnings.toFixed(2)}</span>
+                          </div>
+                          <div>
+                            <span className="text-orange-700">Sales Rep ({kioskCommissions.salesRepPercent}%): ${preview.salesRepEarnings.toFixed(2)}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">SmartWish: ${preview.smartwishEarnings.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </>
             )}
 
@@ -1114,30 +1245,9 @@ function KioskHomePageContent() {
                   className="w-full text-sm border rounded px-2 py-1 mb-2"
                   placeholder="MYPROMO"
                 />
-              </>
-            )}
-
-            {/* Gift Card (Optional) */}
-            <label className="block text-xs font-medium text-yellow-800 mb-1">Gift Card Brand (optional)</label>
-            <input
-              type="text"
-              value={testGiftCardBrand}
-              onChange={(e) => setTestGiftCardBrand(e.target.value)}
-              className="w-full text-sm border rounded px-2 py-1 mb-2"
-              placeholder="Amazon, Starbucks, etc."
-            />
-
-            {testGiftCardBrand && (
-              <>
-                <label className="block text-xs font-medium text-yellow-800 mb-1">Gift Card Amount ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={testGiftCardAmount}
-                  onChange={(e) => setTestGiftCardAmount(e.target.value)}
-                  className="w-full text-sm border rounded px-2 py-1 mb-2"
-                  placeholder="25.00"
-                />
+                <div className="text-xs p-2 rounded mb-2 bg-gray-100 text-gray-600">
+                  ℹ️ Promo codes = $0 earnings. The print will be logged but no commissions calculated.
+                </div>
               </>
             )}
 
@@ -1147,19 +1257,19 @@ function KioskHomePageContent() {
               disabled={testingPrintLog || !kioskInfo?.id}
               className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {testingPrintLog ? 'Creating...' : !kioskInfo?.id ? 'Pair Kiosk First!' : 'Create Test Print Log'}
+              {testingPrintLog ? '⏳ Processing...' : !kioskInfo?.id ? '❌ Pair Kiosk First!' : '🚀 Create Print Log & Earnings'}
             </button>
 
             {/* Result */}
             {testResult && (
-              <pre className="mt-2 text-xs bg-white p-2 rounded border overflow-auto max-h-32 whitespace-pre-wrap">
+              <pre className="mt-2 text-xs bg-white p-2 rounded border overflow-auto max-h-48 whitespace-pre-wrap">
                 {testResult}
               </pre>
             )}
 
             {/* Info */}
             <p className="mt-2 text-[10px] text-yellow-700">
-              Manager/Sales commissions are calculated based on kiosk config. Check Admin → Kiosk settings to adjust percentages.
+              💡 If commissions show as 0, check Admin → Kiosk → assign Manager and Sales Rep.
             </p>
           </div>
         )}

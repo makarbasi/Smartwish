@@ -20,13 +20,33 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Session] Starting session for kiosk: ${kioskId}`);
 
-    // Verify the kiosk exists
-    // Note: kioskId is the UUID (id field), not the kiosk_id string field
-    const { data: kiosk, error: kioskError } = await supabase
-      .from('kiosk_configs')
-      .select('id, kiosk_id')
-      .eq('id', kioskId)
-      .single();
+    // Check if input looks like a UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(kioskId);
+
+    // Verify the kiosk exists - try by UUID first, then by kiosk_id string
+    let kiosk;
+    let kioskError;
+
+    if (isUuid) {
+      const result = await supabase
+        .from('kiosk_configs')
+        .select('id, kiosk_id')
+        .eq('id', kioskId)
+        .single();
+      kiosk = result.data;
+      kioskError = result.error;
+    }
+
+    if (!kiosk) {
+      // Try by kiosk_id string (human-readable ID like "laptop_kiosk")
+      const result = await supabase
+        .from('kiosk_configs')
+        .select('id, kiosk_id')
+        .eq('kiosk_id', kioskId)
+        .single();
+      kiosk = result.data;
+      kioskError = result.error;
+    }
 
     if (kioskError || !kiosk) {
       console.log(`[Session] Error: Kiosk with id '${kioskId}' not found in kiosk_configs table`);

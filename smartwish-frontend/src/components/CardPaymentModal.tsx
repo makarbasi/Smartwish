@@ -212,6 +212,10 @@ function CardPaymentModalContent({
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
+  
+  // Store Stripe payment info after successful payment (for earnings tracking)
+  const [lastPaymentIntentId, setLastPaymentIntentId] = useState<string | undefined>(undefined)
+  const [lastChargeId, setLastChargeId] = useState<string | undefined>(undefined)
   const [loadingPrice, setLoadingPrice] = useState(!isStickers && !isKioskGiftCard) // Stickers and gift cards have known prices
 
   // Promo code state
@@ -1912,11 +1916,15 @@ function CardPaymentModalContent({
    * Create payment info object based on current state
    */
   const getPaymentInfo = (stripePaymentIntentId?: string, stripeChargeId?: string): PaymentInfo => {
+    // Use passed values, or fall back to stored state values from last payment
+    const paymentIntentId = stripePaymentIntentId || lastPaymentIntentId
+    const chargeId = stripeChargeId || lastChargeId
+    
     return {
       paymentMethod: promoApplied ? 'promo_code' : 'card',
       promoCodeUsed: promoApplied ? promoCode : undefined,
-      stripePaymentIntentId,
-      stripeChargeId,
+      stripePaymentIntentId: paymentIntentId,
+      stripeChargeId: chargeId,
       amount: promoApplied ? 0 : (priceData?.total || 0),
     }
   }
@@ -2179,6 +2187,11 @@ function CardPaymentModalContent({
           return
         }
 
+        // Store Stripe payment info for earnings tracking
+        setLastPaymentIntentId(paymentIntent.id)
+        setLastChargeId(paymentIntent.charges?.data[0]?.id)
+        console.log('💳 Stored payment info for earnings:', paymentIntent.id)
+        
         // Only call success if database operations completed successfully
         handlePaymentSuccess()
       }

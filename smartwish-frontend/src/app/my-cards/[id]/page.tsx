@@ -1536,7 +1536,22 @@ export default function CustomizeCardPage() {
     try {
       // Log the print job for manager tracking (if kiosk is activated)
       if (kioskId) {
-        const price = paymentInfo?.paymentMethod === 'promo_code' ? 0 : (paperType === 'greeting-card' ? 5.00 : 2.00);
+        // Use actual payment amount from paymentInfo, fallback to defaults only if not available
+        const defaultPrices: Record<string, number> = {
+          'greeting-card': 5.00,
+          'sticker': 2.00,
+        };
+        const price = paymentInfo?.amount !== undefined 
+          ? paymentInfo.amount 
+          : (defaultPrices[paperType] || 5.00);
+        
+        console.log(`📝 Print log data:`, {
+          kioskId,
+          productType: paperType,
+          price,
+          paymentMethod: paymentInfo?.paymentMethod,
+          paymentInfoAmount: paymentInfo?.amount,
+        });
         
         const logResult = await logPrintJob({
           kioskId,

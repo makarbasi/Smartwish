@@ -108,12 +108,17 @@ export default function KioskSurveillancePage({
   // Image preview modal
   const [previewImage, setPreviewImage] = useState<Detection | null>(null);
 
-  // Local image server URL (from print agent)
-  const [imageServerUrl, setImageServerUrl] = useState<string>("http://localhost:8765");
+  // Image server URL - use backend for live stream (works remotely), local for static images
+  const [localImageServerUrl, setLocalImageServerUrl] = useState<string>("http://localhost:8765");
+  
+  // Live stream URL - served from backend (works remotely via frame relay)
+  const liveStreamUrl = `${BACKEND_URL}/admin/surveillance/${kioskId}/stream`;
+  const singleFrameUrl = `${BACKEND_URL}/admin/surveillance/${kioskId}/frame`;
   
   // Live preview state
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [liveStreamError, setLiveStreamError] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<{ isActive: boolean; lastFrameAt: string | null } | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -133,9 +138,9 @@ export default function KioskSurveillancePage({
           const kiosk = await response.json();
           setKioskName(kiosk.name || kiosk.kioskId);
           
-          // Get image server URL from kiosk config if available
+          // Get local image server URL from kiosk config if available (for static detection images)
           if (kiosk.config?.surveillance?.httpPort) {
-            setImageServerUrl(`http://localhost:${kiosk.config.surveillance.httpPort}`);
+            setLocalImageServerUrl(`http://localhost:${kiosk.config.surveillance.httpPort}`);
           }
         }
       } catch (err) {
@@ -145,6 +150,34 @@ export default function KioskSurveillancePage({
 
     fetchKiosk();
   }, [status, kioskId]);
+
+  // Check stream status when showing live preview
+  useEffect(() => {
+    if (!showLivePreview || status !== "authenticated") return;
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/admin/surveillance/${kioskId}/stream/status`, {
+          headers: {
+            Authorization: `Bearer ${session?.user?.access_token}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setStreamStatus(data);
+          if (!data.isActive) {
+            setLiveStreamError(true);
+          }
+        }
+      } catch (err) {
+        console.error("Error checking stream status:", err);
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 5000);
+    return () => clearInterval(interval);
+  }, [showLivePreview, status, kioskId, session?.user?.access_token]);
 
   // Fetch summary stats
   const fetchSummaryStats = useCallback(async () => {
@@ -425,7 +458,9 @@ export default function KioskSurveillancePage({
 
   const getImageUrl = (imagePath: string | null): string | null => {
     if (!imagePath) return null;
-    return `${imageServerUrl}/${imagePath}`;
+    // Detection images are served from the local print agent server
+    // Note: These won't be accessible remotely unless you're on the same network as the kiosk
+    return `${localImageServerUrl}/${imagePath}`;
   };
 
   // Calculate change percentage
@@ -577,10 +612,18 @@ export default function KioskSurveillancePage({
                           Make sure the surveillance process is running on the kiosk
                         </p>
                         <p className="text-xs mt-4 text-gray-500">
-                          Stream URL: {imageServerUrl}/stream
+                          The kiosk must be running and connected to the server
                         </p>
+                        {streamStatus && !streamStatus.isActive && (
+                          <p className="text-xs mt-2 text-amber-400">
+                            Last frame: {streamStatus.lastFrameAt ? new Date(streamStatus.lastFrameAt).toLocaleTimeString() : 'Never'}
+                          </p>
+                        )}
                         <button
-                          onClick={() => setLiveStreamError(false)}
+                          onClick={() => {
+                            setLiveStreamError(false);
+                            setStreamStatus(null);
+                          }}
                           className="mt-4 px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-500"
                         >
                           Retry
@@ -590,7 +633,7 @@ export default function KioskSurveillancePage({
                   ) : (
                     <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden">
                       <img
-                        src={`${imageServerUrl}/stream`}
+                        src={liveStreamUrl}
                         alt="Live webcam feed"
                         className="w-full h-full object-contain"
                         onError={() => setLiveStreamError(true)}
@@ -598,7 +641,10 @@ export default function KioskSurveillancePage({
                     </div>
                   )}
                   <p className="text-xs text-gray-500 mt-2 text-center">
-                    Live feed from kiosk webcam • Stream served by local print agent at {imageServerUrl}
+                    Live feed from kiosk webcam • Stream relayed through server
+                    {streamStatus?.isActive && (
+                      <span className="text-green-500 ml-2">• Connected</span>
+                    )}
                   </p>
                 </div>
               )}

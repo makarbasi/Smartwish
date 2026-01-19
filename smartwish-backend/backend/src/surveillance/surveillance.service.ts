@@ -7,6 +7,26 @@ import { KioskConfig } from '../kiosks/kiosk-config.entity';
 import { CreateDetectionDto } from './dto/create-detection.dto';
 import { QueryDetectionsDto, DeleteDetectionsDto } from './dto/query-detections.dto';
 
+// In-memory storage for live frames (per kiosk)
+interface LiveFrame {
+  data: Buffer;
+  timestamp: Date;
+  contentType: string;
+}
+
+const liveFrames = new Map<string, LiveFrame>();
+
+// Clean up old frames every 30 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [kioskId, frame] of liveFrames.entries()) {
+    // Remove frames older than 60 seconds
+    if (now - frame.timestamp.getTime() > 60000) {
+      liveFrames.delete(kioskId);
+    }
+  }
+}, 30000);
+
 @Injectable()
 export class SurveillanceService {
   constructor(
@@ -367,5 +387,49 @@ export class SurveillanceService {
         kioskId: k.kioskId,
         name: k.name ?? null,
       }));
+  }
+
+  // ==================== Live Frame Handling ====================
+
+  /**
+   * Store a live frame from the kiosk
+   * Called by the local surveillance script to relay frames through the server
+   */
+  async storeLiveFrame(kioskId: string, frameData: Buffer, contentType: string = 'image/jpeg'): Promise<void> {
+    liveFrames.set(kioskId, {
+      data: frameData,
+      timestamp: new Date(),
+      contentType,
+    });
+  }
+
+  /**
+   * Get the latest live frame for a kiosk
+   * Returns null if no frame available or frame is stale (>10 seconds old)
+   */
+  getLiveFrame(kioskId: string): { data: Buffer; contentType: string; timestamp: Date } | null {
+    const frame = liveFrames.get(kioskId);
+    if (!frame) {
+      return null;
+    }
+
+    // Check if frame is stale (older than 10 seconds)
+    const age = Date.now() - frame.timestamp.getTime();
+    if (age > 10000) {
+      return null; // Frame too old, kiosk might be offline
+    }
+
+    return frame;
+  }
+
+  /**
+   * Check if live stream is active for a kiosk
+   */
+  isLiveStreamActive(kioskId: string): boolean {
+    const frame = liveFrames.get(kioskId);
+    if (!frame) return false;
+    
+    // Active if frame is less than 10 seconds old
+    return (Date.now() - frame.timestamp.getTime()) < 10000;
   }
 }

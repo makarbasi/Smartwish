@@ -13,6 +13,9 @@ import {
   HttpStatus,
   Sse,
   MessageEvent,
+  Res,
+  RawBodyRequest,
+  Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
@@ -20,6 +23,7 @@ import { SurveillanceService } from './surveillance.service';
 import { CreateDetectionDto, BatchCreateDetectionsDto } from './dto/create-detection.dto';
 import { QueryDetectionsDto, DeleteDetectionsDto } from './dto/query-detections.dto';
 import { Observable, interval, switchMap, from } from 'rxjs';
+import { Response, Request } from 'express';
 
 /**
  * Public endpoints for local print agent to report detections
@@ -85,6 +89,39 @@ export class SurveillancePublicController {
   @Get('health')
   health() {
     return { status: 'ok', timestamp: new Date().toISOString() };
+  }
+
+  /**
+   * Receive live frame from kiosk surveillance script
+   * The frame is stored in memory and served to admin viewers
+   * This enables remote viewing of kiosk camera from admin dashboard
+   */
+  @Public()
+  @Post('frame')
+  @HttpCode(HttpStatus.OK)
+  async uploadFrame(
+    @Headers('x-kiosk-api-key') apiKey: string,
+    @Headers('x-kiosk-id') kioskId: string,
+    @Headers('content-type') contentType: string,
+    @Req() req: RawBodyRequest<Request>,
+  ) {
+    if (!apiKey || !kioskId) {
+      throw new UnauthorizedException('Missing API key or kiosk ID');
+    }
+
+    const isValid = await this.surveillanceService.validateKioskApiKey(kioskId, apiKey);
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid API key for kiosk');
+    }
+
+    // Get the raw body (image data)
+    const frameData = req.rawBody;
+    if (!frameData || frameData.length === 0) {
+      return { success: false, error: 'No frame data received' };
+    }
+
+    await this.surveillanceService.storeLiveFrame(kioskId, frameData, contentType || 'image/jpeg');
+    return { success: true, size: frameData.length };
   }
 }
 
@@ -175,5 +212,97 @@ export class SurveillanceAdminController {
       switchMap(() => from(this.surveillanceService.getSummaryStats(kioskId))),
       switchMap((stats) => from(Promise.resolve({ data: stats } as MessageEvent))),
     );
+  }
+
+  /**
+   * Get the latest live frame from a kiosk
+   * Returns a JPEG image that can be displayed in an img tag
+   */
+  @Get(':kioskId/frame')
+  async getLiveFrame(
+    @Param('kioskId') kioskId: string,
+    @Res() res: Response,
+  ) {
+    const frame = this.surveillanceService.getLiveFrame(kioskId);
+    
+    if (!frame) {
+      res.status(503).json({ 
+        error: 'No live frame available',
+        message: 'Camera feed not available. Make sure surveillance is running on the kiosk.',
+      });
+      return;
+    }
+
+    res.set({
+      'Content-Type': frame.contentType,
+      'Content-Length': frame.data.length.toString(),
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'X-Frame-Timestamp': frame.timestamp.toISOString(),
+    });
+    res.send(frame.data);
+  }
+
+  /**
+   * Get live stream status for a kiosk
+   */
+  @Get(':kioskId/stream/status')
+  async getStreamStatus(@Param('kioskId') kioskId: string) {
+    const isActive = this.surveillanceService.isLiveStreamActive(kioskId);
+    const frame = this.surveillanceService.getLiveFrame(kioskId);
+    
+    return {
+      kioskId,
+      isActive,
+      lastFrameAt: frame?.timestamp?.toISOString() || null,
+      frameAge: frame ? Date.now() - frame.timestamp.getTime() : null,
+    };
+  }
+
+  /**
+   * MJPEG stream endpoint - serves continuous stream of frames
+   * Works by polling the stored frames and sending them as multipart response
+   */
+  @Get(':kioskId/stream')
+  async getMjpegStream(
+    @Param('kioskId') kioskId: string,
+    @Res() res: Response,
+  ) {
+    res.set({
+      'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    // Send frames continuously
+    const sendFrame = () => {
+      const frame = this.surveillanceService.getLiveFrame(kioskId);
+      
+      if (frame) {
+        try {
+          res.write('--frame\r\n');
+          res.write('Content-Type: image/jpeg\r\n\r\n');
+          res.write(frame.data);
+          res.write('\r\n');
+        } catch (err) {
+          // Client disconnected
+          clearInterval(intervalId);
+          return;
+        }
+      }
+    };
+
+    // Send initial frame
+    sendFrame();
+
+    // Then send frames every 100ms (10 FPS)
+    const intervalId = setInterval(sendFrame, 100);
+
+    // Clean up on disconnect
+    res.on('close', () => {
+      clearInterval(intervalId);
+    });
   }
 }

@@ -228,6 +228,101 @@ def start_http_server(port, base_directory):
 
 
 # =============================================================================
+# Frame Uploader - Sends live frames to cloud server for remote viewing
+# =============================================================================
+
+class FrameUploader:
+    """
+    Uploads live frames to the cloud server for remote viewing.
+    This enables admins to view the kiosk camera remotely through the web dashboard.
+    """
+    
+    def __init__(self, config: Config, frame_holder: FrameHolder):
+        self.config = config
+        self.frame_holder = frame_holder
+        self.running = True
+        self.upload_interval = 0.2  # Upload at 5 FPS (200ms between frames)
+        self.enabled = True  # Can be disabled if server doesn't support frame uploads
+        self.consecutive_failures = 0
+        self.max_failures = 10  # Disable after this many consecutive failures
+        
+        # Start background upload thread
+        self.upload_thread = threading.Thread(target=self._upload_worker, daemon=True)
+        self.upload_thread.start()
+        print(f"  ☁️  Frame uploader started (uploading to {self.config.server_url}/surveillance/frame)")
+    
+    def _upload_worker(self):
+        """Background worker that uploads frames to the server"""
+        while self.running:
+            if not self.enabled:
+                time.sleep(1)
+                continue
+            
+            try:
+                frame = self.frame_holder.get_frame(annotated=True)
+                if frame is not None:
+                    self._upload_frame(frame)
+                
+                time.sleep(self.upload_interval)
+                
+            except Exception as e:
+                print(f"  ⚠️ Frame uploader error: {e}")
+                time.sleep(1)
+    
+    def _upload_frame(self, frame):
+        """Upload a single frame to the server"""
+        if not self.enabled:
+            return
+        
+        url = f"{self.config.server_url}/surveillance/frame"
+        headers = {
+            'Content-Type': 'image/jpeg',
+            'x-kiosk-api-key': self.config.api_key,
+            'x-kiosk-id': self.config.kiosk_id,
+        }
+        
+        try:
+            # Encode frame as JPEG
+            _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            
+            response = requests.post(
+                url, 
+                data=jpeg.tobytes(), 
+                headers=headers, 
+                timeout=2  # Short timeout since we're uploading frequently
+            )
+            
+            if response.status_code == 200:
+                self.consecutive_failures = 0  # Reset failure counter
+            elif response.status_code == 404:
+                # Endpoint not deployed yet - disable uploader
+                if self.consecutive_failures == 0:
+                    print("  ⚠️ Frame upload endpoint not available (404) - disabling remote viewing")
+                self.consecutive_failures += 1
+                if self.consecutive_failures >= self.max_failures:
+                    print("  🔇 Frame uploader disabled (server doesn't support it)")
+                    self.enabled = False
+            else:
+                self.consecutive_failures += 1
+                if self.consecutive_failures >= self.max_failures:
+                    print(f"  🔇 Frame uploader disabled after {self.max_failures} failures")
+                    self.enabled = False
+                    
+        except requests.RequestException as e:
+            self.consecutive_failures += 1
+            # Don't spam logs for connection errors
+            if self.consecutive_failures == 1:
+                print(f"  ⚠️ Frame upload failed: {e}")
+            if self.consecutive_failures >= self.max_failures:
+                print(f"  🔇 Frame uploader disabled after {self.max_failures} failures")
+                self.enabled = False
+    
+    def stop(self):
+        """Stop the upload worker"""
+        self.running = False
+
+
+# =============================================================================
 # Detection Reporter - Sends detections to cloud server
 # =============================================================================
 
@@ -492,8 +587,9 @@ def main():
     config.output_dir.mkdir(parents=True, exist_ok=True)
     http_server = start_http_server(config.http_port, config.output_dir)
     
-    # Initialize reporter and tracker
+    # Initialize reporter, frame uploader, and tracker
     reporter = DetectionReporter(config)
+    frame_uploader = FrameUploader(config, frame_holder)  # Upload frames to backend for remote viewing
     tracker = PersonTracker(config, reporter)
     
     # Load tracker config if exists
@@ -579,6 +675,7 @@ def main():
         print(f"\n  📊 FINAL REPORT: {stats['daily_count']} people counted (stayed > {config.dwell_threshold}s)")
         print(f"     Total images saved: {stats['saved_images']}")
         
+        frame_uploader.stop()
         reporter.stop()
         cap.release()
         cv2.destroyAllWindows()

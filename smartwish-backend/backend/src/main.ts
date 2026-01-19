@@ -19,7 +19,9 @@ console.log(
 
 async function bootstrap() {
   console.log('Bootstrap starting...');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true, // Enable raw body parsing for binary uploads (surveillance frames)
+  });
 
   // Register global exception filter
   app.useGlobalFilters(new HttpExceptionFilter());
@@ -121,7 +123,7 @@ async function bootstrap() {
   const corsConfig = {
     origin: corsOriginValidator,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-kiosk-api-key', 'x-kiosk-id'],
     credentials: true,
     maxAge: 86400, // 24 hours
   };

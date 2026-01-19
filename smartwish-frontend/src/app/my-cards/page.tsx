@@ -1017,19 +1017,25 @@ function MyCardsContent() {
       if (kioskId) {
         console.log(`📝 Creating print log for kiosk: ${kioskId}`);
         // Default prices per product type (can be customized in future)
+        // Use actual payment amount from paymentInfo, fallback to defaults only if not available
         const defaultPrices: Record<string, number> = {
           'greeting-card': 5.00,
           'sticker': 2.00,
           'photo': 3.00,
           'label': 1.00,
         };
-        const price = paymentInfo?.paymentMethod === 'promo_code' ? 0 : (defaultPrices[paperType] || 5.00);
+        // Price priority: 1) Payment info amount, 2) Default based on paper type
+        // For promo codes, the amount should already be 0 in paymentInfo
+        const price = paymentInfo?.amount !== undefined 
+          ? paymentInfo.amount 
+          : (defaultPrices[paperType] || 5.00);
         
         console.log(`📝 Print log data:`, {
           kioskId,
           productType: paperType,
           price,
           paymentMethod: paymentInfo?.paymentMethod,
+          paymentInfoAmount: paymentInfo?.amount,
         });
         
         const logResult = await logPrintJob({

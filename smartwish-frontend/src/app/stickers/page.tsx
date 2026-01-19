@@ -13,11 +13,12 @@ import StickerGallery, { Sticker } from "@/components/stickers/StickerGallery";
 import StickerSlotModeSelector, { SlotMode } from "@/components/stickers/StickerSlotModeSelector";
 import UploadQRCode from "@/components/stickers/UploadQRCode";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
-import CardPaymentModal, { IssuedGiftCardData, BundleDiscountInfo } from "@/components/CardPaymentModal";
+import CardPaymentModal, { IssuedGiftCardData, BundleDiscountInfo, PaymentInfo } from "@/components/CardPaymentModal";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskInactivity } from "@/hooks/useKioskInactivity";
 import { useSessionTracking } from "@/hooks/useSessionTracking";
+import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
 
 // Gift card data interface
 interface GiftCardData {
@@ -96,8 +97,13 @@ function StickersContent() {
     trackStickerBrowse();
   }, [trackStickerBrowse]);
 
-  // Generate a stable kiosk session ID for this session
-  const [kioskSessionId] = useState<string>(() => crypto.randomUUID());
+  // Use actual kiosk session from context for print log tracking
+  const kioskSessionContext = useKioskSessionSafe();
+  const actualKioskSessionId = kioskSessionContext?.sessionId;
+  
+  // Fallback session ID for payment modal (if no active session)
+  const [fallbackSessionId] = useState<string>(() => crypto.randomUUID());
+  const kioskSessionId = actualKioskSessionId || fallbackSessionId;
   
   // Generate a stable sticker session ID for gift card storage
   const [stickerSessionId] = useState<string>(() => {
@@ -255,6 +261,9 @@ function StickersContent() {
   // Print status for tracking (same as greeting cards)
   const [printStatus, setPrintStatus] = useState<'idle' | 'sending' | 'printing' | 'completed' | 'failed'>('idle');
   const [printError, setPrintError] = useState<string | null>(null);
+  
+  // Track current print log ID for status updates
+  const [currentPrintLogId, setCurrentPrintLogId] = useState<string | null>(null);
 
   // Fetch stickers for carousel - get all 200 for variety across 4 rows
   const { data: stickersData, isLoading: isLoadingStickers } = useSWR<StickersApiResponse>(
@@ -508,6 +517,60 @@ function StickersContent() {
     setViewMode("initial");
   }, []);
 
+  // Log print job to backend for tracking and earnings calculation
+  const logPrintJob = async (data: {
+    kioskId: string;
+    kioskSessionId?: string;
+    paymentMethod?: string;
+    promoCodeUsed?: string;
+    productType: string;
+    productId?: string;
+    productName?: string;
+    pdfUrl?: string;
+    price?: number;
+    stripePaymentIntentId?: string;
+    stripeChargeId?: string;
+    tilloOrderId?: string;
+    tilloTransactionRef?: string;
+    giftCardBrand?: string;
+    giftCardAmount?: number;
+    giftCardCode?: string;
+    printerName?: string;
+    paperType?: string;
+    paperSize?: string;
+    trayNumber?: number | null;
+    copies?: number;
+  }) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await response.json();
+      console.log('📊 Sticker print job logged for tracking:', result.id, result.printCode ? `(${result.printCode})` : '');
+      return result;
+    } catch (err) {
+      console.warn('Failed to log sticker print job:', err);
+      // Don't throw - logging is optional, print should still proceed
+      return null;
+    }
+  };
+
+  // Helper to update print log status
+  const updatePrintLogStatus = async (logId: string, status: 'processing' | 'completed' | 'failed', errorMessage?: string) => {
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/kiosk/print-logs/${logId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, errorMessage }),
+      });
+      console.log(`📊 Sticker print log status updated to: ${status}`);
+    } catch (err) {
+      console.warn('Failed to update sticker print log status:', err);
+    }
+  };
+
   // Handle print button click - generate JPG and open payment modal
   const handlePrintClick = async () => {
     if (filledSlotsCount === 0) {
@@ -537,8 +600,12 @@ function StickersContent() {
   const handlePaymentSuccess = async (issuedGiftCard?: IssuedGiftCardData) => {
     console.log("🎯 handlePaymentSuccess called - starting sticker print flow");
     
+    // Extract payment info from the gift card data (CardPaymentModal attaches it)
+    const paymentInfo: PaymentInfo | undefined = (issuedGiftCard as any)?.paymentInfo;
+    console.log("💳 Payment info received:", paymentInfo);
+    
     // If a gift card was issued after payment, update our state with the real QR code
-    if (issuedGiftCard) {
+    if (issuedGiftCard && issuedGiftCard.storeName) {
       console.log("🎁 Gift card issued after payment:", issuedGiftCard.storeName, "$" + issuedGiftCard.amount);
       setGiftCardData({
         ...giftCardData,
@@ -567,12 +634,56 @@ function StickersContent() {
     // Pause inactivity timer during printing (5 minute timeout)
     pauseForPrinting();
     
+    // Create print log for tracking and earnings calculation
+    let printLogId: string | null = null;
+    if (kioskInfo?.id) {
+      try {
+        // Use actual payment amount from paymentInfo, or calculate from sticker price + gift card
+        const actualPrice = paymentInfo?.amount !== undefined 
+          ? paymentInfo.amount 
+          : (STICKER_SHEET_PRICE + (giftCardData?.amount || 0));
+        
+        const printLog = await logPrintJob({
+          kioskId: kioskInfo.id,
+          kioskSessionId: actualKioskSessionId || undefined,
+          paymentMethod: paymentInfo?.paymentMethod || 'card',
+          promoCodeUsed: paymentInfo?.promoCodeUsed,
+          productType: 'sticker_sheet',
+          productId: stickerOrderId,
+          productName: giftCardData ? `Sticker Sheet + ${giftCardData.storeName} Gift Card` : 'Sticker Sheet',
+          price: actualPrice,
+          stripePaymentIntentId: paymentInfo?.stripePaymentIntentId,
+          stripeChargeId: paymentInfo?.stripeChargeId,
+          giftCardBrand: giftCardData?.storeName || issuedGiftCard?.storeName,
+          giftCardAmount: giftCardData?.amount || issuedGiftCard?.amount,
+          giftCardCode: issuedGiftCard?.code,
+          paperType: 'sticker',
+          paperSize: '8.5x11',
+          copies: 1,
+        });
+        
+        if (printLog?.id) {
+          printLogId = printLog.id;
+          setCurrentPrintLogId(printLog.id);
+          console.log('📊 Sticker print log created:', printLog.id, printLog.printCode);
+        }
+      } catch (logErr) {
+        console.warn('Failed to create sticker print log:', logErr);
+        // Continue with printing even if logging fails
+      }
+    }
+    
     try {
       // Generate JPG and print - returns jobId for polling
       console.log("📤 Calling printStickerSheet...");
       const result = await printStickerSheet();
       console.log("📥 printStickerSheet returned:", result);
       const jobId = result?.jobId;
+      
+      // Update print log to processing status
+      if (printLogId) {
+        updatePrintLogStatus(printLogId, 'processing');
+      }
       
       if (jobId) {
         // Poll for actual print job completion from local agent
@@ -606,6 +717,11 @@ function StickersContent() {
                 setPrintStatus('completed');
                 setIsPrinting(false);
                 
+                // Update print log to completed
+                if (printLogId) {
+                  updatePrintLogStatus(printLogId, 'completed');
+                }
+                
                 // Track print completion and end session
                 trackPrintComplete('sticker');
                 endWithPrintedSticker();
@@ -617,6 +733,7 @@ function StickersContent() {
                 setTimeout(() => {
                   setShowPaymentModal(false);
                   setPrintStatus('idle');
+                  setCurrentPrintLogId(null);
                   setSlots(
                     Array.from({ length: 6 }, (_, i) => ({
                       id: i,
@@ -633,8 +750,14 @@ function StickersContent() {
                 isComplete = true;
                 clearInterval(pollInterval);
                 setPrintStatus('failed');
-                setPrintError(statusData.job?.error || 'Sticker print job failed');
+                const errorMsg = statusData.job?.error || 'Sticker print job failed';
+                setPrintError(errorMsg);
                 setIsPrinting(false);
+                
+                // Update print log to failed
+                if (printLogId) {
+                  updatePrintLogStatus(printLogId, 'failed', errorMsg);
+                }
                 
                 // Resume inactivity timer after print failure
                 resumeInactivity();
@@ -650,6 +773,11 @@ function StickersContent() {
               setPrintStatus('completed');
               setIsPrinting(false);
               
+              // Update print log to completed (assume success on timeout)
+              if (printLogId) {
+                updatePrintLogStatus(printLogId, 'completed');
+              }
+              
               // Resume inactivity timer after poll timeout
               resumeInactivity();
             }
@@ -664,6 +792,12 @@ function StickersContent() {
         setTimeout(() => {
           setPrintStatus('completed');
           setIsPrinting(false);
+          
+          // Update print log to completed (assume success)
+          if (printLogId) {
+            updatePrintLogStatus(printLogId, 'completed');
+          }
+          
           // Resume inactivity timer after fallback delay
           resumeInactivity();
         }, 5000);
@@ -673,12 +807,19 @@ function StickersContent() {
     } catch (error) {
       console.error("❌ Sticker print error:", error);
       setPrintStatus('failed');
-      setPrintError(error instanceof Error ? error.message : 'Print failed');
+      const errorMsg = error instanceof Error ? error.message : 'Print failed';
+      setPrintError(errorMsg);
       setIsPrinting(false);
+      
+      // Update print log to failed
+      if (printLogId) {
+        updatePrintLogStatus(printLogId, 'failed', errorMsg);
+      }
+      
       // Resume inactivity timer after print error
       resumeInactivity();
       // Show error in alert for debugging
-      alert(`Sticker print failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Sticker print failed: ${errorMsg}`);
     }
   };
 
