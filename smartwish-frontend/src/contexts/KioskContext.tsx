@@ -38,6 +38,7 @@ export interface KioskConfig {
   theme: string;
   featuredTemplateIds: string[];
   featuredCategories?: FeaturedCategoryConfig[]; // Categories to show as carousels on templates page
+  featuredStickerCategories?: FeaturedCategoryConfig[]; // Categories to show as carousels on stickers page
   promotedGiftCardIds?: string[]; // Gift card brand IDs/slugs to feature in Gift Hub
   micEnabled: boolean;
   giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
@@ -120,6 +121,7 @@ const DEFAULT_CONFIG: KioskConfig = {
   theme: 'default',
   featuredTemplateIds: [],
   featuredCategories: [], // No featured categories by default - shows regular grid view
+  featuredStickerCategories: [], // No featured sticker categories by default
   micEnabled: true,
   ads: { playlist: [] },
   printerProfile: 'default',

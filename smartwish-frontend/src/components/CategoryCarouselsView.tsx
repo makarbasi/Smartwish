@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import useSWR from "swr";
 import CategoryCarousel, { CarouselCard } from "./CategoryCarousel";
 import TemplatePreviewModal from "./TemplatePreviewModal";
 import AuthModal from "./AuthModal";
 import { useSession } from "next-auth/react";
 import { useAuthModal } from "@/contexts/AuthModalContext";
 import { FeaturedCategoryConfig } from "@/contexts/KioskContext";
+import { SparklesIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 
 type ApiTemplate = {
   id: string;
@@ -86,59 +86,6 @@ type TemplateCard = {
   };
 };
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-function transformApiTemplate(apiTemplate: ApiTemplate): TemplateCard {
-  const priceValue =
-    typeof apiTemplate.price === "string"
-      ? parseFloat(apiTemplate.price)
-      : apiTemplate.price;
-  const formattedPrice = priceValue > 0 ? `$${priceValue.toFixed(2)}` : "$0";
-
-  return {
-    id: apiTemplate.id,
-    name: apiTemplate.title,
-    price: formattedPrice,
-    rating: Math.min(5, Math.max(1, Math.round(apiTemplate.popularity / 20))),
-    reviewCount: Math.floor(apiTemplate.num_downloads / 10),
-    imageSrc: apiTemplate.image_1,
-    imageAlt: `${apiTemplate.title} template`,
-    publisher: {
-      name: apiTemplate.author_name?.name || apiTemplate.author || "SmartWish Studio",
-      avatar: "https://i.pravatar.cc/80?img=1",
-    },
-    downloads: apiTemplate.num_downloads,
-    category_id: apiTemplate.category_id,
-    category_name: apiTemplate.category_name,
-    category_display_name: apiTemplate.category_display_name,
-    likes: apiTemplate.popularity,
-    pages: [
-      apiTemplate.image_1,
-      apiTemplate.image_2,
-      apiTemplate.image_3,
-      apiTemplate.image_4,
-    ].filter(Boolean),
-    metadata: {
-      slug: apiTemplate.slug,
-      description: apiTemplate.description,
-      message: apiTemplate.message,
-      card_message: apiTemplate.card_message,
-      text: apiTemplate.text,
-      cover_image: apiTemplate.cover_image,
-      coverImage: apiTemplate.cover_image,
-      image_1: apiTemplate.image_1,
-      image_2: apiTemplate.image_2,
-      image_3: apiTemplate.image_3,
-      image_4: apiTemplate.image_4,
-      tags: apiTemplate.tags,
-      language: apiTemplate.language,
-      region: apiTemplate.region,
-      priceValue,
-      title: apiTemplate.title,
-    },
-  };
-}
-
 interface CategoryCarouselsViewProps {
   featuredCategories: FeaturedCategoryConfig[];
   onSwitchToGridView: (categoryId?: string, categoryName?: string) => void;
@@ -156,6 +103,13 @@ export default function CategoryCarouselsView({
   const [previewProduct, setPreviewProduct] = useState<TemplateCard | null>(null);
   const [categoryCards, setCategoryCards] = useState<Record<string, CarouselCard[]>>({});
   const [loadingCategories, setLoadingCategories] = useState<Set<string>>(new Set());
+  const [isHeaderVisible, setIsHeaderVisible] = useState(false);
+
+  // Animate header on mount
+  useEffect(() => {
+    const timer = setTimeout(() => setIsHeaderVisible(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Sort categories by displayOrder
   const sortedCategories = useMemo(() => 
@@ -171,8 +125,8 @@ export default function CategoryCarouselsView({
       try {
         const params = new URLSearchParams();
         params.set("category_id", category.categoryId);
-        params.set("limit", "20"); // Fetch more cards for carousel
-        params.set("sort", "popularity"); // Sort by popularity
+        params.set("limit", "20");
+        params.set("sort", "popularity");
         
         const response = await fetch(`/api/templates?${params.toString()}`);
         const data: ApiResponse = await response.json();
@@ -227,7 +181,6 @@ export default function CategoryCarouselsView({
       }
     };
 
-    // Fetch cards for all categories
     sortedCategories.forEach((category) => {
       if (!categoryCards[category.categoryId]) {
         fetchCategoryCards(category);
@@ -235,9 +188,13 @@ export default function CategoryCarouselsView({
     });
   }, [sortedCategories]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Calculate total cards
+  const totalCards = useMemo(() => {
+    return Object.values(categoryCards).reduce((sum, cards) => sum + cards.length, 0);
+  }, [categoryCards]);
+
   // Handle card click - show preview modal
   const handleCardClick = useCallback((card: CarouselCard) => {
-    // Find full template data from the API response
     const fullCard: TemplateCard = {
       id: card.id,
       name: card.name,
@@ -270,10 +227,8 @@ export default function CategoryCarouselsView({
   // Handle customize/use template from preview modal
   const openEditor = useCallback(
     async (product: TemplateCard) => {
-      // Always close preview modal first
       setPreviewOpen(false);
 
-      // Check authentication
       if (!session || status !== "authenticated") {
         const editorUrl = `/my-cards/template-editor?templateId=${product.id}&templateName=${encodeURIComponent(product.name)}`;
         setRedirectUrl(editorUrl);
@@ -281,10 +236,8 @@ export default function CategoryCarouselsView({
         return;
       }
 
-      // Generate a temporary ID for optimistic navigation
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      // Store template data in sessionStorage for immediate editor access
       const templateData = {
         id: tempId,
         templateId: product.id,
@@ -297,11 +250,8 @@ export default function CategoryCarouselsView({
       };
       
       sessionStorage.setItem(`pendingTemplate_${tempId}`, JSON.stringify(templateData));
-      
-      // Navigate immediately to editor
       router.push(`/my-cards/${tempId}?mode=template`);
 
-      // Start background save
       const priceValue = product.metadata?.priceValue 
         || (typeof product.price === 'string' ? parseFloat(product.price.replace('$', '')) : product.price)
         || 1.99;
@@ -365,19 +315,114 @@ export default function CategoryCarouselsView({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="relative">
+      {/* Decorative Background Elements */}
+      <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-100 rounded-full blur-3xl opacity-30" />
+        <div className="absolute top-1/3 right-1/4 w-80 h-80 bg-purple-100 rounded-full blur-3xl opacity-30" />
+        <div className="absolute bottom-1/4 left-1/3 w-72 h-72 bg-pink-100 rounded-full blur-3xl opacity-30" />
+      </div>
+
+      {/* Header Section */}
+      <div className={`mb-10 transition-all duration-700 ease-out ${isHeaderVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          {/* Title */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center shadow-xl shadow-indigo-500/30">
+                <SparklesIcon className="w-7 h-7 text-white" />
+              </div>
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 blur-lg opacity-40" />
+            </div>
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent">
+                Browse by Category
+              </h1>
+              <p className="text-gray-500 mt-1">
+                Discover {totalCards}+ beautiful greeting card designs
+              </p>
+            </div>
+          </div>
+
+          {/* View All Button */}
+          <button
+            onClick={() => onSwitchToGridView()}
+            className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all duration-300"
+          >
+            <Squares2X2Icon className="w-5 h-5 text-gray-500 group-hover:text-indigo-600 transition-colors" />
+            <span className="font-medium text-gray-700 group-hover:text-indigo-600 transition-colors">
+              View All Cards
+            </span>
+          </button>
+        </div>
+
+        {/* Category Pills */}
+        <div className="mt-6 flex flex-wrap gap-2">
+          {sortedCategories.map((category, index) => (
+            <button
+              key={category.categoryId}
+              onClick={() => onSwitchToGridView(category.categoryId, category.categoryName)}
+              className="group px-4 py-2 rounded-full bg-gradient-to-r from-gray-50 to-white border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all duration-300"
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              <span className="text-sm font-medium text-gray-700 group-hover:text-indigo-600 transition-colors">
+                {category.categoryName}
+              </span>
+              <span className="ml-2 text-xs text-gray-400 group-hover:text-indigo-400 transition-colors">
+                {categoryCards[category.categoryId]?.length || '...'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="relative mb-8">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200" />
+        </div>
+        <div className="relative flex justify-center">
+          <div className="bg-white px-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500" />
+              <div className="w-2 h-2 rounded-full bg-purple-500" />
+              <div className="w-2 h-2 rounded-full bg-pink-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Category Carousels */}
-      {sortedCategories.map((category) => (
-        <CategoryCarousel
-          key={category.categoryId}
-          categoryId={category.categoryId}
-          categoryName={category.categoryName}
-          cards={categoryCards[category.categoryId] || []}
-          onCardClick={handleCardClick}
-          onCategoryClick={handleCategoryClick}
-          isLoading={loadingCategories.has(category.categoryId)}
-        />
-      ))}
+      <div className="space-y-4">
+        {sortedCategories.map((category, index) => (
+          <CategoryCarousel
+            key={category.categoryId}
+            categoryId={category.categoryId}
+            categoryName={category.categoryName}
+            cards={categoryCards[category.categoryId] || []}
+            onCardClick={handleCardClick}
+            onCategoryClick={handleCategoryClick}
+            isLoading={loadingCategories.has(category.categoryId)}
+            index={index}
+          />
+        ))}
+      </div>
+
+      {/* Bottom CTA */}
+      <div className="mt-12 text-center">
+        <div className="inline-flex flex-col items-center gap-4 px-8 py-6 rounded-3xl bg-gradient-to-br from-indigo-50 via-white to-purple-50 border border-indigo-100 shadow-lg">
+          <p className="text-gray-600">
+            Can&apos;t find what you&apos;re looking for?
+          </p>
+          <button
+            onClick={() => onSwitchToGridView()}
+            className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-semibold shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40 hover:scale-105 transition-all duration-300"
+          >
+            <Squares2X2Icon className="w-5 h-5" />
+            <span>Browse All {totalCards}+ Cards</span>
+          </button>
+        </div>
+      </div>
 
       {/* Template Preview Modal */}
       {previewProduct && (

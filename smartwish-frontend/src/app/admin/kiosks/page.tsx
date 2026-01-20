@@ -80,6 +80,7 @@ type KioskConfig = {
   theme?: string;
   featuredTemplateIds?: string[];
   featuredCategories?: FeaturedCategoryConfig[]; // Categories to show as carousels on templates page
+  featuredStickerCategories?: FeaturedCategoryConfig[]; // Categories to show as carousels on stickers page
   promotedGiftCardIds?: string[]; // Gift card brand IDs/slugs to feature in Gift Hub
   micEnabled?: boolean;
   giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
@@ -166,6 +167,7 @@ const DEFAULT_CONFIG: KioskConfig = {
   theme: "default",
   featuredTemplateIds: [],
   featuredCategories: [], // No featured categories by default - shows regular grid view
+  featuredStickerCategories: [], // No featured sticker categories by default
   promotedGiftCardIds: [], // No promoted gift cards by default
   micEnabled: true,
   giftCardRibbonEnabled: true, // Show gift card marketplace ribbon by default
@@ -1106,9 +1108,13 @@ function KioskFormModal({
       )
     : tilloBrands.slice(0, 50); // Show first 50 if no search
 
-  // Categories for featured categories dropdown
+  // Categories for featured categories dropdown (greeting cards)
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  
+  // Sticker categories for featured sticker categories dropdown
+  const [stickerCategories, setStickerCategories] = useState<string[]>([]);
+  const [loadingStickerCategories, setLoadingStickerCategories] = useState(false);
   
   // Fetch categories when modal opens
   useEffect(() => {
@@ -1127,6 +1133,24 @@ function KioskFormModal({
         });
     }
   }, [open, categories.length]);
+  
+  // Fetch sticker categories when modal opens
+  useEffect(() => {
+    if (open && stickerCategories.length === 0 && !loadingStickerCategories) {
+      setLoadingStickerCategories(true);
+      fetch("/api/stickers/categories")
+        .then((res) => res.json())
+        .then((data) => {
+          setStickerCategories(data.data || []);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch sticker categories:", err);
+        })
+        .finally(() => {
+          setLoadingStickerCategories(false);
+        });
+    }
+  }, [open, stickerCategories.length]);
 
   // Bundle Discounts state
   const [showBundleAddModal, setShowBundleAddModal] = useState(false);
@@ -1729,6 +1753,162 @@ function KioskFormModal({
                           {(formData.config.featuredCategories || []).length === 0 && (
                             <p className="text-xs text-amber-600 mt-1">
                               No categories selected. The default 3-column grid view will be shown.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Featured Sticker Categories for Stickers Page Carousels */}
+                    <div className="border-t border-gray-200 pt-4 mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Featured Sticker Categories
+                      </label>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Select categories to show as horizontal carousels on the stickers page. 
+                        Each category will display stickers sorted by popularity.
+                      </p>
+                      
+                      {loadingStickerCategories ? (
+                        <div className="text-sm text-gray-500">Loading sticker categories...</div>
+                      ) : stickerCategories.length === 0 ? (
+                        <div className="text-sm text-gray-500">No sticker categories available</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {/* Selected Sticker Categories */}
+                          {(formData.config.featuredStickerCategories || []).length > 0 && (
+                            <div className="mb-3">
+                              <span className="text-xs font-medium text-gray-600 mb-1 block">
+                                Selected ({(formData.config.featuredStickerCategories || []).length}):
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {(formData.config.featuredStickerCategories || [])
+                                  .sort((a, b) => a.displayOrder - b.displayOrder)
+                                  .map((fc, index) => (
+                                    <div
+                                      key={fc.categoryId}
+                                      className="flex items-center gap-1.5 bg-pink-100 text-pink-700 px-2.5 py-1 rounded-full text-sm"
+                                    >
+                                      <span className="text-xs text-pink-500 mr-0.5">{index + 1}.</span>
+                                      <span>{fc.categoryName}</span>
+                                      {/* Move up */}
+                                      {index > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = [...(formData.config.featuredStickerCategories || [])];
+                                            const sorted = current.sort((a, b) => a.displayOrder - b.displayOrder);
+                                            const temp = sorted[index].displayOrder;
+                                            sorted[index].displayOrder = sorted[index - 1].displayOrder;
+                                            sorted[index - 1].displayOrder = temp;
+                                            setFormData({
+                                              ...formData,
+                                              config: { ...formData.config, featuredStickerCategories: current },
+                                            });
+                                          }}
+                                          className="text-pink-600 hover:text-pink-800 p-0.5"
+                                          title="Move up"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                      {/* Move down */}
+                                      {index < (formData.config.featuredStickerCategories || []).length - 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = [...(formData.config.featuredStickerCategories || [])];
+                                            const sorted = current.sort((a, b) => a.displayOrder - b.displayOrder);
+                                            const temp = sorted[index].displayOrder;
+                                            sorted[index].displayOrder = sorted[index + 1].displayOrder;
+                                            sorted[index + 1].displayOrder = temp;
+                                            setFormData({
+                                              ...formData,
+                                              config: { ...formData.config, featuredStickerCategories: current },
+                                            });
+                                          }}
+                                          className="text-pink-600 hover:text-pink-800 p-0.5"
+                                          title="Move down"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                      {/* Remove */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = (formData.config.featuredStickerCategories || [])
+                                            .filter((c) => c.categoryId !== fc.categoryId);
+                                          setFormData({
+                                            ...formData,
+                                            config: { ...formData.config, featuredStickerCategories: updated },
+                                          });
+                                        }}
+                                        className="text-pink-600 hover:text-red-600 p-0.5"
+                                        title="Remove"
+                                      >
+                                        <XMarkIcon className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Add Sticker Category Dropdown */}
+                          <div className="flex gap-2">
+                            <select
+                              id="add-featured-sticker-category"
+                              className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-pink-500 focus:ring-pink-500 text-sm"
+                              value=""
+                              onChange={(e) => {
+                                const categoryName = e.target.value;
+                                if (!categoryName) return;
+                                
+                                const existing = formData.config.featuredStickerCategories || [];
+                                // Use category name as both ID and name for stickers (they're string-based)
+                                if (existing.some((fc) => fc.categoryId === categoryName)) return;
+                                
+                                const maxOrder = existing.length > 0 
+                                  ? Math.max(...existing.map((fc) => fc.displayOrder)) 
+                                  : 0;
+                                
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    featuredStickerCategories: [
+                                      ...existing,
+                                      {
+                                        categoryId: categoryName,
+                                        categoryName: categoryName,
+                                        displayOrder: maxOrder + 1,
+                                      },
+                                    ],
+                                  },
+                                });
+                                
+                                e.target.value = "";
+                              }}
+                            >
+                              <option value="">Add a sticker category...</option>
+                              {stickerCategories
+                                .filter((c) => !(formData.config.featuredStickerCategories || []).some((fc) => fc.categoryId === c))
+                                .map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                          
+                          {(formData.config.featuredStickerCategories || []).length === 0 && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              No sticker categories selected. The default carousel view will be shown.
                             </p>
                           )}
                         </div>

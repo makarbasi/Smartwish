@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, Suspense } from "react";
+import { useState, useCallback, useEffect, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftIcon, PrinterIcon } from "@heroicons/react/24/outline";
 import useSWR from "swr";
@@ -11,10 +11,12 @@ import StickerSheet, { StickerSlot } from "@/components/stickers/StickerSheet";
 import StickerCarousel, { StickerItem } from "@/components/stickers/StickerCarousel";
 import StickerGallery, { Sticker } from "@/components/stickers/StickerGallery";
 import StickerSlotModeSelector, { SlotMode } from "@/components/stickers/StickerSlotModeSelector";
+import StickerCarouselsView from "@/components/stickers/StickerCarouselsView";
+import { StickerCarouselItem } from "@/components/stickers/StickerCategoryCarousel";
 import UploadQRCode from "@/components/stickers/UploadQRCode";
 import PinturaEditorModal from "@/components/PinturaEditorModal";
 import CardPaymentModal, { IssuedGiftCardData, BundleDiscountInfo, PaymentInfo } from "@/components/CardPaymentModal";
-import { useKiosk } from "@/contexts/KioskContext";
+import { useKiosk, BundleGiftCardConfig } from "@/contexts/KioskContext";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskInactivity } from "@/hooks/useKioskInactivity";
 import { useSessionTracking } from "@/hooks/useSessionTracking";
@@ -264,6 +266,21 @@ function StickersContent() {
   
   // Track current print log ID for status updates
   const [currentPrintLogId, setCurrentPrintLogId] = useState<string | null>(null);
+  
+  // Category carousels view state (for kiosk mode with featured sticker categories)
+  const featuredStickerCategories = kioskConfig?.featuredStickerCategories || [];
+  const bundleGiftCards = kioskConfig?.bundleDiscounts?.enabled 
+    ? (kioskConfig.bundleDiscounts.eligibleGiftCards || []).filter(gc => gc.appliesTo?.includes('sticker') ?? true)
+    : [];
+  
+  // Determine if we should show carousels based on conditions
+  const shouldShowCarousels = useMemo(() => {
+    return (
+      isKiosk &&
+      (featuredStickerCategories.length > 0 || bundleGiftCards.length > 0) &&
+      viewMode === "initial"
+    );
+  }, [isKiosk, featuredStickerCategories.length, bundleGiftCards.length, viewMode]);
 
   // Fetch stickers for carousel - get all 200 for variety across 4 rows
   const { data: stickersData, isLoading: isLoadingStickers, error: stickersError } = useSWR<StickersApiResponse>(
@@ -418,6 +435,47 @@ function StickersContent() {
   const handleGalleryClose = useCallback(() => {
     setSelectedSlotIndex(null);
     setViewMode("initial");
+  }, []);
+
+  // Handle sticker selection from carousels view - add to first empty slot
+  const handleCarouselStickerSelect = useCallback((sticker: StickerCarouselItem) => {
+    // Find the first empty slot
+    const emptySlotIndex = slots.findIndex(s => !s.imageUrl);
+    const targetSlotIndex = emptySlotIndex >= 0 ? emptySlotIndex : 0;
+    
+    // Add sticker to the slot
+    setSlots((prev) =>
+      prev.map((slot, i) =>
+        i === targetSlotIndex
+          ? { ...slot, imageUrl: sticker.imageUrl, editedImageBlob: null, originalImageUrl: sticker.imageUrl, isUpload: false }
+          : slot
+      )
+    );
+    
+    // Track sticker selection
+    trackStickerSelect({
+      itemId: sticker.id,
+      itemTitle: sticker.title,
+      itemCategory: sticker.category,
+    });
+  }, [slots, trackStickerSelect]);
+
+  // Handle upload click from carousels view
+  const handleCarouselUploadClick = useCallback(() => {
+    // Find the first empty slot
+    const emptySlotIndex = slots.findIndex(s => !s.imageUrl);
+    const targetSlotIndex = emptySlotIndex >= 0 ? emptySlotIndex : 0;
+    
+    setSelectedSlotIndex(targetSlotIndex);
+    setViewMode("upload-qr");
+    pauseForQRUpload();
+    trackStickerUploadStart();
+  }, [slots, pauseForQRUpload, trackStickerUploadStart]);
+
+  // Handle gift card sticker click from carousels view
+  const handleCarouselGiftCardClick = useCallback((giftCard: BundleGiftCardConfig) => {
+    setPendingBundleGiftCard(giftCard);
+    setPendingBundleAmount(giftCard.minAmount || 25);
   }, []);
 
   // Handle upload complete from QR code
@@ -1520,8 +1578,13 @@ function StickersContent() {
         </div>
 
         {/* ==================== BUNDLE GIFT CARD SECTION ==================== */}
+        {/* Show when:
+            - Not in carousels view: show full UI (selection + amount)
+            - In carousels view with pending/confirmed gift card: show amount selection only
+        */}
         {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && 
-         isKiosk && kioskConfig?.bundleDiscounts?.enabled && (kioskConfig.bundleDiscounts.eligibleGiftCards || []).length > 0 && (
+         isKiosk && kioskConfig?.bundleDiscounts?.enabled && (kioskConfig.bundleDiscounts.eligibleGiftCards || []).length > 0 &&
+         (!shouldShowCarousels || pendingBundleGiftCard || confirmedBundleGiftCard) && (
           <div className="max-w-lg mx-auto mt-6 mb-4 px-4">
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
               {/* Show confirmed bundle or selection UI */}
@@ -1807,8 +1870,20 @@ function StickersContent() {
           </div>
         )}
 
-        {/* ==================== CAROUSEL SECTION - MULTI-ROW ==================== */}
-        {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && (
+        {/* ==================== STICKER CAROUSELS VIEW (when enabled) ==================== */}
+        {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && shouldShowCarousels && (
+          <StickerCarouselsView
+            featuredCategories={featuredStickerCategories}
+            bundleGiftCards={bundleGiftCards}
+            onStickerSelect={handleCarouselStickerSelect}
+            onUploadClick={handleCarouselUploadClick}
+            onGiftCardStickerClick={handleCarouselGiftCardClick}
+            filledSlotsCount={filledSlotsCount}
+          />
+        )}
+
+        {/* ==================== OLD CAROUSEL SECTION (when carousels view not enabled) ==================== */}
+        {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && !shouldShowCarousels && (
           <div className="flex-1 min-h-0 flex flex-col mt-6">
             {/* Section header */}
             <div className="flex-shrink-0 flex items-center justify-center gap-3 mb-4">
