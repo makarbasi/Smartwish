@@ -10,8 +10,11 @@ import TemplatePreviewModal from "@/components/TemplatePreviewModal";
 import TemplateCard from "@/components/TemplateCard";
 import TemplateCardSkeleton from "@/components/TemplateCardSkeleton";
 import FloatingSearch from "@/components/FloatingSearch";
+import CategoryCarouselsView from "@/components/CategoryCarouselsView";
 import { AuthModalProvider, useAuthModal } from "@/contexts/AuthModalContext";
 import { useSessionTracking } from "@/hooks/useSessionTracking";
+import { useDeviceMode } from "@/contexts/DeviceModeContext";
+import { useKioskSafe } from "@/contexts/KioskContext";
 
 
 type ApiTemplate = {
@@ -182,6 +185,51 @@ function TemplatesPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const { authModalOpen, openAuthModal, closeAuthModal, setRedirectUrl } = useAuthModal();
+  
+  // Kiosk mode detection
+  const { isKiosk } = useDeviceMode();
+  const kioskContext = useKioskSafe();
+  const kioskConfig = kioskContext?.config;
+  
+  // Featured categories from kiosk config
+  const featuredCategories = kioskConfig?.featuredCategories || [];
+  
+  // Show carousels view when:
+  // 1. In kiosk mode
+  // 2. Featured categories are configured (at least 1)
+  // 3. No search query is active
+  // 4. No category filter is already selected via URL
+  const [showCarouselsView, setShowCarouselsView] = useState(true);
+  
+  // Determine if we should show carousels based on conditions
+  const shouldShowCarousels = useMemo(() => {
+    return (
+      isKiosk &&
+      featuredCategories.length > 0 &&
+      showCarouselsView &&
+      !q && // No search query
+      !category // No category filter from URL
+    );
+  }, [isKiosk, featuredCategories.length, showCarouselsView, q, category]);
+  
+  // Handle switching from carousels to grid view
+  const handleSwitchToGridView = useCallback((categoryId?: string, categoryName?: string) => {
+    setShowCarouselsView(false);
+    if (categoryId) {
+      setSelectedCategory(categoryId);
+      // Update URL with category filter
+      const params = new URLSearchParams();
+      params.set("category", categoryId);
+      router.push(`/templates?${params.toString()}`);
+    }
+  }, [router]);
+  
+  // Reset to carousels view when navigating back to templates without filters
+  useEffect(() => {
+    if (isKiosk && featuredCategories.length > 0 && !q && !category) {
+      setShowCarouselsView(true);
+    }
+  }, [isKiosk, featuredCategories.length, q, category]);
   
   // Session tracking for analytics
   const {
@@ -517,85 +565,111 @@ function TemplatesPageContent() {
           selectedCategory={selectedCategory}
         />
 
-        <section>
-          {isLoading ? (
-            <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
-              {Array(9)
-                .fill(0)
-                .map((_, i) => (
-                  <TemplateCardSkeleton key={`skeleton-${i}`} />
-                ))}
-            </div>
-          ) : (error || apiRouteError) ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
-              Failed to load templates. Please try again later.
-            </div>
-          ) : products.length === 0 ? (
-            <div className="rounded-lg border border-gray-200 p-12 text-center text-gray-600">
-              No templates found.
-            </div>
-          ) : (
-            <>
+        {/* Category Carousels View (Kiosk mode with featured categories) */}
+        {shouldShowCarousels ? (
+          <section>
+            <CategoryCarouselsView
+              featuredCategories={featuredCategories}
+              onSwitchToGridView={handleSwitchToGridView}
+            />
+          </section>
+        ) : (
+          /* Standard Grid View */
+          <section>
+            {/* Back to Categories button (when viewing filtered grid in kiosk mode) */}
+            {isKiosk && featuredCategories.length > 0 && !showCarouselsView && (
+              <button
+                onClick={() => {
+                  setShowCarouselsView(true);
+                  setSelectedCategory("");
+                  router.push("/templates");
+                }}
+                className="mb-6 inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+              >
+                <ChevronLeftIcon className="w-5 h-5" />
+                Back to Categories
+              </button>
+            )}
+            
+            {isLoading ? (
               <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
-                {pagedProducts.map((template, index) => (
-                  <TemplateCard
-                    key={`${template.id}-${index}`}
-                    template={template}
-                    index={index}
-                    onPreview={handlePreviewTemplate}
-                    onAuthRequired={handleAuthRequired}
-                    onLikeUpdate={handleLikeUpdate}
-                  />
-                ))}
+                {Array(9)
+                  .fill(0)
+                  .map((_, i) => (
+                    <TemplateCardSkeleton key={`skeleton-${i}`} />
+                  ))}
               </div>
+            ) : (error || apiRouteError) ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-12 text-center text-red-600">
+                Failed to load templates. Please try again later.
+              </div>
+            ) : products.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 p-12 text-center text-gray-600">
+                No templates found.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
+                  {pagedProducts.map((template, index) => (
+                    <TemplateCard
+                      key={`${template.id}-${index}`}
+                      template={template}
+                      index={index}
+                      onPreview={handlePreviewTemplate}
+                      onAuthRequired={handleAuthRequired}
+                      onLikeUpdate={handleLikeUpdate}
+                    />
+                  ))}
+                </div>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <nav
-                  className="mt-10 flex justify-center"
-                  aria-label="Pagination"
-                >
-                  <div className="inline-flex items-center gap-1 rounded-full bg-white px-1.5 py-1 shadow-sm ring-1 ring-gray-300">
-                    <button
-                      onClick={() => goToPage(safePage - 1)}
-                      disabled={safePage === 1}
-                      title="Previous"
-                      className="flex size-9 items-center justify-center rounded-full text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                    >
-                      <ChevronLeftIcon className="h-5 w-5" />
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                      (p) => (
-                        <button
-                          key={p}
-                          onClick={() => goToPage(p)}
-                          className={`flex size-9 items-center justify-center rounded-full text-sm ring-1 ring-transparent ${p === safePage
-                              ? "bg-indigo-600 text-white ring-indigo-600"
-                              : "text-gray-700 hover:bg-gray-50"
-                            }`}
-                        >
-                          {p}
-                        </button>
-                      )
-                    )}
-                    <button
-                      onClick={() => goToPage(safePage + 1)}
-                      disabled={safePage === totalPages}
-                      title="Next"
-                      className="flex size-9 items-center justify-center rounded-full text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                    >
-                      <ChevronRightIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                </nav>
-              )}
-            </>
-          )}
-        </section>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <nav
+                    className="mt-10 flex justify-center"
+                    aria-label="Pagination"
+                  >
+                    <div className="inline-flex items-center gap-1 rounded-full bg-white px-1.5 py-1 shadow-sm ring-1 ring-gray-300">
+                      <button
+                        onClick={() => goToPage(safePage - 1)}
+                        disabled={safePage === 1}
+                        title="Previous"
+                        className="flex size-9 items-center justify-center rounded-full text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        <ChevronLeftIcon className="h-5 w-5" />
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                        (p) => (
+                          <button
+                            key={p}
+                            onClick={() => goToPage(p)}
+                            className={`flex size-9 items-center justify-center rounded-full text-sm ring-1 ring-transparent ${p === safePage
+                                ? "bg-indigo-600 text-white ring-indigo-600"
+                                : "text-gray-700 hover:bg-gray-50"
+                              }`}
+                          >
+                            {p}
+                          </button>
+                        )
+                      )}
+                      <button
+                        onClick={() => goToPage(safePage + 1)}
+                        disabled={safePage === totalPages}
+                        title="Next"
+                        className="flex size-9 items-center justify-center rounded-full text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      >
+                        <ChevronRightIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </nav>
+                )}
+              </>
+            )}
+          </section>
+        )}
       </div>
 
-      {/* Template Preview Modal */}
-      {previewProduct && (
+      {/* Template Preview Modal (only for grid view - carousels view has its own) */}
+      {!shouldShowCarousels && previewProduct && (
         <TemplatePreviewModal
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
@@ -604,8 +678,10 @@ function TemplatesPageContent() {
         />
       )}
 
-      {/* Auth Modal - shared for both main page and preview modal */}
-      <AuthModal open={authModalOpen} onClose={closeAuthModal} />
+      {/* Auth Modal - shared for both main page and preview modal (only for grid view) */}
+      {!shouldShowCarousels && (
+        <AuthModal open={authModalOpen} onClose={closeAuthModal} />
+      )}
     </main>
   );
 }

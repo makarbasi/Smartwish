@@ -69,9 +69,17 @@ type BundleGiftCardConfig = {
   appliesTo?: ('greeting-card' | 'sticker')[]; // Default: both
 };
 
+// Featured category configuration for homepage carousels
+type FeaturedCategoryConfig = {
+  categoryId: string;
+  categoryName: string;
+  displayOrder: number;
+};
+
 type KioskConfig = {
   theme?: string;
   featuredTemplateIds?: string[];
+  featuredCategories?: FeaturedCategoryConfig[]; // Categories to show as carousels on templates page
   promotedGiftCardIds?: string[]; // Gift card brand IDs/slugs to feature in Gift Hub
   micEnabled?: boolean;
   giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
@@ -157,6 +165,7 @@ const PAPER_SIZES = [
 const DEFAULT_CONFIG: KioskConfig = {
   theme: "default",
   featuredTemplateIds: [],
+  featuredCategories: [], // No featured categories by default - shows regular grid view
   promotedGiftCardIds: [], // No promoted gift cards by default
   micEnabled: true,
   giftCardRibbonEnabled: true, // Show gift card marketplace ribbon by default
@@ -1097,6 +1106,28 @@ function KioskFormModal({
       )
     : tilloBrands.slice(0, 50); // Show first 50 if no search
 
+  // Categories for featured categories dropdown
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  
+  // Fetch categories when modal opens
+  useEffect(() => {
+    if (open && categories.length === 0 && !loadingCategories) {
+      setLoadingCategories(true);
+      fetch("/api/categories")
+        .then((res) => res.json())
+        .then((data) => {
+          setCategories(data.data || []);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch categories:", err);
+        })
+        .finally(() => {
+          setLoadingCategories(false);
+        });
+    }
+  }, [open, categories.length]);
+
   // Bundle Discounts state
   const [showBundleAddModal, setShowBundleAddModal] = useState(false);
   const [editingBundleGiftCard, setEditingBundleGiftCard] = useState<BundleGiftCardConfig | null>(null);
@@ -1543,6 +1574,166 @@ function KioskFormModal({
                     {/* NOTE: Printer Name and IP fields have been removed.
                         Printers are now configured via the Printers section in the admin portal.
                         Each kiosk can have multiple printers with different printable types (greeting-card, sticker). */}
+
+                    {/* Featured Categories for Homepage Carousels */}
+                    <div className="border-t border-gray-200 pt-4 mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Featured Categories
+                      </label>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Select categories to show as horizontal carousels on the greeting cards page. 
+                        Each category will display cards sorted by popularity.
+                      </p>
+                      
+                      {loadingCategories ? (
+                        <div className="text-sm text-gray-500">Loading categories...</div>
+                      ) : categories.length === 0 ? (
+                        <div className="text-sm text-gray-500">No categories available</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {/* Selected Categories */}
+                          {(formData.config.featuredCategories || []).length > 0 && (
+                            <div className="mb-3">
+                              <span className="text-xs font-medium text-gray-600 mb-1 block">
+                                Selected ({(formData.config.featuredCategories || []).length}):
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {(formData.config.featuredCategories || [])
+                                  .sort((a, b) => a.displayOrder - b.displayOrder)
+                                  .map((fc, index) => (
+                                    <div
+                                      key={fc.categoryId}
+                                      className="flex items-center gap-1.5 bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full text-sm"
+                                    >
+                                      <span className="text-xs text-indigo-500 mr-0.5">{index + 1}.</span>
+                                      <span>{fc.categoryName}</span>
+                                      {/* Move up */}
+                                      {index > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = [...(formData.config.featuredCategories || [])];
+                                            const sorted = current.sort((a, b) => a.displayOrder - b.displayOrder);
+                                            // Swap display orders
+                                            const temp = sorted[index].displayOrder;
+                                            sorted[index].displayOrder = sorted[index - 1].displayOrder;
+                                            sorted[index - 1].displayOrder = temp;
+                                            setFormData({
+                                              ...formData,
+                                              config: { ...formData.config, featuredCategories: current },
+                                            });
+                                          }}
+                                          className="text-indigo-600 hover:text-indigo-800 p-0.5"
+                                          title="Move up"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                      {/* Move down */}
+                                      {index < (formData.config.featuredCategories || []).length - 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = [...(formData.config.featuredCategories || [])];
+                                            const sorted = current.sort((a, b) => a.displayOrder - b.displayOrder);
+                                            // Swap display orders
+                                            const temp = sorted[index].displayOrder;
+                                            sorted[index].displayOrder = sorted[index + 1].displayOrder;
+                                            sorted[index + 1].displayOrder = temp;
+                                            setFormData({
+                                              ...formData,
+                                              config: { ...formData.config, featuredCategories: current },
+                                            });
+                                          }}
+                                          className="text-indigo-600 hover:text-indigo-800 p-0.5"
+                                          title="Move down"
+                                        >
+                                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                      {/* Remove */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = (formData.config.featuredCategories || [])
+                                            .filter((c) => c.categoryId !== fc.categoryId);
+                                          setFormData({
+                                            ...formData,
+                                            config: { ...formData.config, featuredCategories: updated },
+                                          });
+                                        }}
+                                        className="text-indigo-600 hover:text-red-600 p-0.5"
+                                        title="Remove"
+                                      >
+                                        <XMarkIcon className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Add Category Dropdown */}
+                          <div className="flex gap-2">
+                            <select
+                              id="add-featured-category"
+                              className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                              value=""
+                              onChange={(e) => {
+                                const categoryId = e.target.value;
+                                if (!categoryId) return;
+                                const category = categories.find((c) => c.id === categoryId);
+                                if (!category) return;
+                                
+                                const existing = formData.config.featuredCategories || [];
+                                if (existing.some((fc) => fc.categoryId === categoryId)) return;
+                                
+                                const maxOrder = existing.length > 0 
+                                  ? Math.max(...existing.map((fc) => fc.displayOrder)) 
+                                  : 0;
+                                
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    featuredCategories: [
+                                      ...existing,
+                                      {
+                                        categoryId: category.id,
+                                        categoryName: category.name,
+                                        displayOrder: maxOrder + 1,
+                                      },
+                                    ],
+                                  },
+                                });
+                                
+                                // Reset dropdown
+                                e.target.value = "";
+                              }}
+                            >
+                              <option value="">Add a category...</option>
+                              {categories
+                                .filter((c) => !(formData.config.featuredCategories || []).some((fc) => fc.categoryId === c.id))
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                          
+                          {(formData.config.featuredCategories || []).length === 0 && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              No categories selected. The default 3-column grid view will be shown.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">

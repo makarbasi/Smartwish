@@ -8,13 +8,28 @@ This script:
 4. Inserts records into Supabase stickers table
 
 Usage:
-    # Set environment variables first:
-    # Windows PowerShell:
+    # Option 1: Use .env file (recommended)
+    # The script will automatically load from:
+    #   - smartwish-backend/backend/.env
+    #   - .env (project root)
+    # Required variables in .env:
+    #   GEMINI_API_KEY=your_api_key (or GOOGLE_API_KEY)
+    #   SUPABASE_URL=your_supabase_url
+    #   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+    
+    # Process all subdirectories:
+    python scripts/generate_sticker_metadata.py
+    
+    # Process a specific folder with a custom category:
+    python scripts/generate_sticker_metadata.py --folder "D:\\path\\to\\folder" --category "bookish"
+    
+    # Automatically upload images to Supabase Storage:
+    python scripts/generate_sticker_metadata.py --folder "D:\\path\\to\\folder" --category "bookish" --upload-images
+    
+    # Option 2: Set environment variables manually (Windows PowerShell):
     $Env:GOOGLE_API_KEY = "your_api_key"
     $Env:SUPABASE_URL = "your_supabase_url"
     $Env:SUPABASE_SERVICE_ROLE_KEY = "your_service_role_key"
-    
-    # Then run:
     python scripts/generate_sticker_metadata.py
     
     # Or with custom paths:
@@ -49,9 +64,10 @@ try:
     from google.genai import types
     from PIL import Image
     from supabase import create_client, Client
+    from dotenv import load_dotenv
 except ImportError as e:
     logger.error(f"Missing required package: {e}")
-    logger.error("Install with: pip install google-genai pillow supabase")
+    logger.error("Install with: pip install google-genai pillow supabase python-dotenv")
     sys.exit(1)
 
 # Configuration
@@ -93,6 +109,7 @@ def get_category_from_folder(folder_name: str) -> str:
         'kidsvalentines': 'valentines',
         'reading_girly': 'bookish',
         'smuttybook': 'bookish',
+        'bookish': 'bookish',
     }
     folder_lower = folder_name.lower()
     return category_map.get(folder_lower, folder_lower)
@@ -205,30 +222,133 @@ def generate_embedding(client: genai.Client, text: str, retry_count: int = 3) ->
     return None
 
 
-def collect_sticker_images(stickers_dir: Path) -> List[Tuple[Path, str]]:
+def collect_sticker_images(stickers_dir: Path, target_folder: Optional[Path] = None, target_category: Optional[str] = None) -> List[Tuple[Path, str]]:
     """
     Collect all PNG images from stickers directory.
+    
+    Args:
+        stickers_dir: Base directory containing sticker folders (used if target_folder is None)
+        target_folder: Optional specific folder to process
+        target_category: Optional category to assign (required if target_folder is provided)
     """
     images = []
     
-    for folder in stickers_dir.iterdir():
-        if not folder.is_dir():
-            continue
-            
-        category = get_category_from_folder(folder.name)
+    if target_folder:
+        # Process a specific folder
+        if not target_folder.exists():
+            logger.error(f"Target folder not found: {target_folder}")
+            return []
         
-        for img_path in folder.glob("*.png"):
+        if not target_folder.is_dir():
+            logger.error(f"Target path is not a directory: {target_folder}")
+            return []
+        
+        if not target_category:
+            logger.error("--category is required when using --folder")
+            return []
+        
+        category = target_category
+        # Get images directly from this folder (not subdirectories)
+        for img_path in target_folder.glob("*.png"):
             images.append((img_path, category))
+        
+        logger.info(f"Found {len(images)} sticker images in {target_folder} (category: {category})")
+    else:
+        # Original behavior: process all subdirectories
+        for folder in stickers_dir.iterdir():
+            if not folder.is_dir():
+                continue
+                
+            category = get_category_from_folder(folder.name)
+            
+            for img_path in folder.glob("*.png"):
+                images.append((img_path, category))
+        
+        logger.info(f"Found {len(images)} sticker images in {stickers_dir}")
     
-    logger.info(f"Found {len(images)} sticker images in {stickers_dir}")
     return images
 
 
-def build_image_url(base_url: str, folder_name: str, filename: str) -> str:
-    """Build the Supabase storage URL for a sticker image"""
+def upload_image_to_storage(
+    supabase: Client,
+    image_path: Path,
+    category: str,
+    bucket_name: str = "smartwish-assets"
+) -> Optional[str]:
+    """
+    Upload an image to Supabase Storage and return the public URL.
+    
+    Args:
+        supabase: Supabase client
+        image_path: Path to the image file
+        category: Category name (used as folder in storage)
+        bucket_name: Storage bucket name
+        
+    Returns:
+        Public URL of the uploaded image, or None if upload failed
+    """
+    try:
+        # Read image file
+        with open(image_path, 'rb') as f:
+            image_data = f.read()
+        
+        # Build storage path: Stickers/{category}/{filename}
+        storage_path = f"Stickers/{category}/{image_path.name}"
+        
+        # Upload to Supabase Storage
+        upload_result = supabase.storage.from_(bucket_name).upload(
+            path=storage_path,
+            file=image_data,
+            file_options={
+                "content-type": "image/png",
+                "cache-control": "3600",
+                "upsert": False  # Don't overwrite existing files
+            }
+        )
+        
+        # Check for errors (Python client returns dict with 'error' key or raises exception)
+        if isinstance(upload_result, dict) and upload_result.get('error'):
+            error_msg = str(upload_result['error'])
+            # Check if file already exists (that's okay)
+            if "already exists" in error_msg.lower() or "duplicate" in error_msg.lower():
+                logger.info(f"Image already exists in storage: {storage_path}")
+            else:
+                logger.error(f"Upload error for {image_path.name}: {error_msg}")
+                return None
+        
+        # Get public URL
+        url_result = supabase.storage.from_(bucket_name).get_public_url(storage_path)
+        
+        # The get_public_url returns a dict with 'publicUrl' key
+        if isinstance(url_result, dict) and 'publicUrl' in url_result:
+            return url_result['publicUrl']
+        elif hasattr(url_result, 'public_url'):
+            return url_result.public_url
+        else:
+            # Fallback: construct URL manually
+            supabase_url = os.environ.get('SUPABASE_URL', '').rstrip('/')
+            return f"{supabase_url}/storage/v1/object/public/{bucket_name}/{storage_path}"
+            
+    except Exception as e:
+        logger.error(f"Error uploading {image_path.name} to storage: {e}")
+        return None
+
+
+def build_image_url(base_url: str, folder_name: str, filename: str, category: Optional[str] = None) -> str:
+    """
+    Build the Supabase storage URL for a sticker image.
+    
+    Args:
+        base_url: Base URL for Supabase storage
+        folder_name: Folder name (or category if provided)
+        filename: Image filename
+        category: Optional category to use instead of folder_name for URL path
+    """
+    # Use category for URL path if provided, otherwise use folder_name
+    url_path = category if category else folder_name
     # URL encode the filename to handle spaces and special characters
     encoded_filename = quote(filename)
-    return f"{base_url}/{folder_name}/{encoded_filename}"
+    return f"{base_url}/{url_path}/{encoded_filename}"
 
 
 def process_sticker(
@@ -236,7 +356,9 @@ def process_sticker(
     image_path: Path,
     category: str,
     base_url: str,
-    existing_slugs: set
+    existing_slugs: set,
+    supabase: Optional[Client] = None,
+    upload_images: bool = False
 ) -> Optional[StickerMetadata]:
     """
     Process a single sticker image: analyze with AI and generate embedding.
@@ -270,9 +392,18 @@ def process_sticker(
         counter += 1
     existing_slugs.add(slug)
     
-    # Build image URL
-    folder_name = image_path.parent.name
-    image_url = build_image_url(base_url, folder_name, image_path.name)
+    # Upload image to storage if requested, otherwise build URL from base_url
+    if upload_images and supabase:
+        # Upload image and get the actual URL
+        image_url = upload_image_to_storage(supabase, image_path, category)
+        if not image_url:
+            logger.warning(f"Failed to upload {image_path.name}, skipping...")
+            return None
+        logger.info(f"  Uploaded to storage: {image_path.name}")
+    else:
+        # Build image URL from base_url (assumes images are already uploaded)
+        folder_name = image_path.parent.name
+        image_url = build_image_url(base_url, folder_name, image_path.name, category=category)
     
     # Generate embedding from description and keywords
     embedding_text = f"""
@@ -371,29 +502,98 @@ def main():
         default=None,
         help="Limit number of stickers to process"
     )
+    parser.add_argument(
+        "--folder",
+        type=Path,
+        default=None,
+        help="Process a specific folder instead of all subdirectories (requires --category)"
+    )
+    parser.add_argument(
+        "--category",
+        type=str,
+        default=None,
+        help="Category to assign stickers (required when using --folder, e.g., 'bookish')"
+    )
+    parser.add_argument(
+        "--upload-images",
+        action="store_true",
+        help="Automatically upload images to Supabase Storage (otherwise assumes images are already uploaded)"
+    )
     args = parser.parse_args()
     
+    # Validate folder/category combination
+    if args.folder and not args.category:
+        logger.error("--category is required when using --folder")
+        logger.error("Example: --folder 'D:\\path\\to\\folder' --category 'bookish'")
+        sys.exit(1)
+    
+    if args.category and not args.folder:
+        logger.warning("--category is ignored when not using --folder")
+        logger.warning("Use --folder to process a specific folder with a custom category")
+    
+    # Load environment variables from .env file
+    # Try to load from backend/.env first, then from project root
+    backend_env = Path(__file__).parent.parent / "smartwish-backend" / "backend" / ".env"
+    root_env = Path(__file__).parent.parent / ".env"
+    
+    if backend_env.exists():
+        load_dotenv(backend_env)
+        logger.info(f"Loaded environment variables from {backend_env}")
+    elif root_env.exists():
+        load_dotenv(root_env)
+        logger.info(f"Loaded environment variables from {root_env}")
+    else:
+        logger.warning("No .env file found. Trying environment variables...")
+    
     # Check environment variables
-    api_key = os.environ.get('GOOGLE_API_KEY')
+    # Support both GEMINI_API_KEY (from .env) and GOOGLE_API_KEY
+    api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if not api_key:
-        logger.error("GOOGLE_API_KEY environment variable not set!")
-        logger.error("Set it with: $Env:GOOGLE_API_KEY = 'your_key'")
+        logger.error("API key not found!")
+        logger.error("Set GEMINI_API_KEY or GOOGLE_API_KEY in:")
+        logger.error(f"  - {backend_env}")
+        logger.error(f"  - {root_env}")
+        logger.error("  - Or as environment variable: $Env:GOOGLE_API_KEY = 'your_key'")
         sys.exit(1)
     
     supabase_url = os.environ.get('SUPABASE_URL')
     supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
     
-    if not args.dry_run and (not supabase_url or not supabase_key):
-        logger.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set!")
-        logger.error("Set them with:")
-        logger.error("  $Env:SUPABASE_URL = 'your_url'")
-        logger.error("  $Env:SUPABASE_SERVICE_ROLE_KEY = 'your_key'")
+    # Require Supabase credentials if uploading images or not in dry-run mode
+    if args.upload_images and (not supabase_url or not supabase_key):
+        logger.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when using --upload-images!")
+        logger.error("Set them in:")
+        logger.error(f"  - {backend_env}")
+        logger.error(f"  - {root_env}")
+        logger.error("  - Or as environment variables:")
+        logger.error("    $Env:SUPABASE_URL = 'your_url'")
+        logger.error("    $Env:SUPABASE_SERVICE_ROLE_KEY = 'your_key'")
         sys.exit(1)
     
-    # Validate stickers directory
-    if not args.stickers_dir.exists():
-        logger.error(f"Stickers directory not found: {args.stickers_dir}")
+    if not args.dry_run and (not supabase_url or not supabase_key):
+        logger.error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set!")
+        logger.error("Set them in:")
+        logger.error(f"  - {backend_env}")
+        logger.error(f"  - {root_env}")
+        logger.error("  - Or as environment variables:")
+        logger.error("    $Env:SUPABASE_URL = 'your_url'")
+        logger.error("    $Env:SUPABASE_SERVICE_ROLE_KEY = 'your_key'")
         sys.exit(1)
+    
+    # Validate stickers directory or target folder
+    if args.folder:
+        # Validate target folder
+        if not args.folder.exists():
+            logger.error(f"Target folder not found: {args.folder}")
+            sys.exit(1)
+        if not args.folder.is_dir():
+            logger.error(f"Target path is not a directory: {args.folder}")
+            sys.exit(1)
+    else:
+        # Validate stickers directory
+        if not args.stickers_dir.exists():
+            logger.error(f"Stickers directory not found: {args.stickers_dir}")
+            sys.exit(1)
     
     # Initialize Gemini client
     client = genai.Client(api_key=api_key)
@@ -401,12 +601,19 @@ def main():
     
     # Initialize Supabase client
     supabase: Optional[Client] = None
-    if not args.dry_run:
+    if not args.dry_run or args.upload_images:
+        if not supabase_url or not supabase_key:
+            logger.error("Supabase credentials required for this operation")
+            sys.exit(1)
         supabase = create_client(supabase_url, supabase_key)
         logger.info("Connected to Supabase")
     
     # Collect images
-    images = collect_sticker_images(args.stickers_dir)
+    images = collect_sticker_images(
+        args.stickers_dir,
+        target_folder=args.folder,
+        target_category=args.category
+    )
     
     if args.limit:
         images = images[:args.limit]
@@ -442,7 +649,9 @@ def main():
                 image_path,
                 category,
                 args.base_url,
-                existing_slugs
+                existing_slugs,
+                supabase=supabase,
+                upload_images=args.upload_images
             )
             
             if sticker:

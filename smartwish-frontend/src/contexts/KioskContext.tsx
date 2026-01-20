@@ -27,9 +27,17 @@ export interface BundleGiftCardConfig {
   appliesTo?: ('greeting-card' | 'sticker')[]; // Default: both
 }
 
+// Featured category configuration for homepage carousels
+export interface FeaturedCategoryConfig {
+  categoryId: string;
+  categoryName: string;
+  displayOrder: number;
+}
+
 export interface KioskConfig {
   theme: string;
   featuredTemplateIds: string[];
+  featuredCategories?: FeaturedCategoryConfig[]; // Categories to show as carousels on templates page
   promotedGiftCardIds?: string[]; // Gift card brand IDs/slugs to feature in Gift Hub
   micEnabled: boolean;
   giftCardRibbonEnabled?: boolean; // Show gift card marketplace ribbon (default true)
@@ -111,6 +119,7 @@ const CONFIG_CACHE_KEY = 'smartwish_kiosk_config';
 const DEFAULT_CONFIG: KioskConfig = {
   theme: 'default',
   featuredTemplateIds: [],
+  featuredCategories: [], // No featured categories by default - shows regular grid view
   micEnabled: true,
   ads: { playlist: [] },
   printerProfile: 'default',
