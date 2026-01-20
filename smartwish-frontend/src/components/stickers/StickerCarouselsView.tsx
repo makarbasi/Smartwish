@@ -27,6 +27,7 @@ interface StickerCarouselsViewProps {
   onStickerSelect: (sticker: StickerCarouselItem) => void;
   onUploadClick: () => void;
   onGiftCardStickerClick: (giftCard: BundleGiftCardConfig) => void;
+  onGiftCardHubClick: () => void; // Navigate to gift card hub
   filledSlotsCount: number; // Number of slots currently filled (0-6)
 }
 
@@ -36,6 +37,7 @@ export default function StickerCarouselsView({
   onStickerSelect,
   onUploadClick,
   onGiftCardStickerClick,
+  onGiftCardHubClick,
   filledSlotsCount,
 }: StickerCarouselsViewProps) {
   const [categoryStickers, setCategoryStickers] = useState<Record<string, StickerCarouselItem[]>>({});
@@ -166,6 +168,14 @@ export default function StickerCarouselsView({
       });
     });
     
+    // 3. Gift Card Hub action - browse all gift cards (LAST)
+    items.push({
+      id: "gift-card-hub-action",
+      title: "All Gift Cards",
+      imageUrl: "",
+      isGiftCardHubAction: true,
+    });
+    
     return items;
   }, [bundleGiftCards]);
 
@@ -173,6 +183,15 @@ export default function StickerCarouselsView({
   const handleQuickActionClick = useCallback((sticker: StickerCarouselItem) => {
     if (sticker.isUploadAction) {
       onUploadClick();
+    } else if (sticker.isGiftCardHubAction) {
+      // Check if all slots are filled - gift card needs 1 slot to print
+      if (allSlotsFilled) {
+        setShowSlotFullMessage(true);
+        // Auto-hide after 3 seconds
+        setTimeout(() => setShowSlotFullMessage(false), 3000);
+        return;
+      }
+      onGiftCardHubClick();
     } else if (sticker.isGiftCardSticker) {
       // Check if all slots are filled - gift card needs 1 slot to print
       if (allSlotsFilled) {
@@ -188,7 +207,7 @@ export default function StickerCarouselsView({
     } else {
       onStickerSelect(sticker);
     }
-  }, [bundleGiftCards, onUploadClick, onGiftCardStickerClick, onStickerSelect, allSlotsFilled]);
+  }, [bundleGiftCards, onUploadClick, onGiftCardHubClick, onGiftCardStickerClick, onStickerSelect, allSlotsFilled]);
 
   // Handle category click - not used in this version but kept for interface
   const handleCategoryClick = useCallback(() => {

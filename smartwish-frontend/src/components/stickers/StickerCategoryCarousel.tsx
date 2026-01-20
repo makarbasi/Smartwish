@@ -14,6 +14,7 @@ export type StickerCarouselItem = {
   tags?: string[];
   // Special item types
   isUploadAction?: boolean;
+  isGiftCardHubAction?: boolean; // Opens gift card hub to browse all gift cards
   isGiftCardSticker?: boolean;
   giftCardBrandName?: string;
   giftCardBrandLogo?: string;
@@ -404,6 +405,25 @@ export default function StickerCategoryCarousel({
                       </div>
                     </div>
                     <p className="mt-3 text-sm font-semibold text-gray-700 text-center">Upload Photo</p>
+                  </div>
+                ) : sticker.isGiftCardHubAction ? (
+                  /* Gift Card Hub Action - CIRCULAR with gradient */
+                  <div className="flex flex-col items-center">
+                    <div className="relative w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full overflow-hidden shadow-lg group-hover/sticker:shadow-2xl transition-all duration-500 transform group-hover/sticker:scale-[1.08] bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-600">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover/sticker:scale-110 transition-transform">
+                          <GiftIcon className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+                        </div>
+                        <span className="mt-1 text-xs font-medium text-white/90">Browse All</span>
+                      </div>
+                      {/* Animated border */}
+                      <div className="absolute inset-0 rounded-full ring-4 ring-white/30 group-hover/sticker:ring-white/50 transition-all" />
+                      {/* Shine effect */}
+                      <div className="absolute inset-0 opacity-0 group-hover/sticker:opacity-100 transition-opacity duration-500 pointer-events-none">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent transform -translate-x-full group-hover/sticker:translate-x-full transition-transform duration-1000" />
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-gray-700 text-center">Gift Card Hub</p>
                   </div>
                 ) : sticker.isGiftCardSticker ? (
                   /* Gift Card Sticker Card - CIRCULAR with logo filling */
