@@ -116,6 +116,21 @@ export default function StickerCarousel({
   isLoading = false,
 }: StickerCarouselProps) {
   const [isPaused, setIsPaused] = useState(false);
+  
+  // Debug logging for carousel data
+  useEffect(() => {
+    const stickersWithImageUrl = stickers.filter((s) => s.imageUrl && s.imageUrl.length > 0);
+    console.log('🎠 [StickerCarousel] Render:', {
+      totalStickers: stickers.length,
+      withImageUrl: stickersWithImageUrl.length,
+      isLoading,
+      sampleSticker: stickers[0] ? {
+        id: stickers[0].id,
+        hasImageUrl: !!stickers[0].imageUrl,
+        imageUrlLength: stickers[0].imageUrl?.length,
+      } : 'no stickers',
+    });
+  }, [stickers, isLoading]);
 
   // Row configurations: speed, reverse direction, initial offset (stagger)
   const rowConfigs = useMemo(() => [
@@ -169,6 +184,7 @@ export default function StickerCarousel({
   }
 
   if (stickers.length === 0) {
+    console.warn('⚠️ [StickerCarousel] No stickers to display - returning null');
     return null;
   }
 

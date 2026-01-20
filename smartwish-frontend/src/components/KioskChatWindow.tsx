@@ -102,7 +102,10 @@ export default function KioskChatWindow({ isOpen, onClose }: KioskChatWindowProp
         <div className="flex items-center gap-2">
           <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-amber-400 animate-pulse'}`} />
           <div>
-            <h3 className="font-semibold">Chat Support</h3>
+            <h3 className="font-semibold">
+              Chat Support
+              {kioskInfo?.name && <span className="font-normal text-indigo-200"> ({kioskInfo.name})</span>}
+            </h3>
             <p className="text-xs text-indigo-200">info@smartwish.us</p>
           </div>
         </div>

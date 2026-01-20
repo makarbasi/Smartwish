@@ -74,11 +74,19 @@ const getCachedData = <T,>(cacheKey: string): T | undefined => {
       const { data, timestamp } = JSON.parse(cached);
       // Use cache if less than 24 hours old
       if (Date.now() - timestamp < 86400000) {
-        return data;
+        // VALIDATE cached data - don't use if empty or malformed
+        if (data && data.success !== false && Array.isArray(data.data) && data.data.length > 0) {
+          return data;
+        } else {
+          console.warn(`⚠️ [getCachedData] Cached data for ${cacheKey} is empty or invalid`);
+          localStorage.removeItem(cacheKey);
+          return undefined;
+        }
       }
     }
   } catch (e) {
     // Ignore cache read errors
+    console.warn(`⚠️ [getCachedData] Error reading cache for ${cacheKey}:`, e);
   }
   return undefined;
 };
@@ -89,25 +97,50 @@ const fetcher = async (url: string) => {
   const cacheKey = `swr_cache_${url}`;
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
-    const { data, timestamp } = JSON.parse(cached);
-    // Use cache if less than 24 hours old (1 day)
-    if (Date.now() - timestamp < 86400000) {
-      return data;
+    try {
+      const { data, timestamp } = JSON.parse(cached);
+      // Use cache if less than 24 hours old (1 day)
+      if (Date.now() - timestamp < 86400000) {
+        // VALIDATE cached data - don't use if empty or malformed
+        if (data && data.success !== false && Array.isArray(data.data) && data.data.length > 0) {
+          console.log(`📦 [Cache] Using cached data for ${url}: ${data.data.length} items`);
+          return data;
+        } else {
+          console.warn(`⚠️ [Cache] Cached data for ${url} is empty or invalid, fetching fresh`);
+          // Remove invalid cache entry
+          localStorage.removeItem(cacheKey);
+        }
+      }
+    } catch (parseError) {
+      console.warn(`⚠️ [Cache] Failed to parse cache for ${url}:`, parseError);
+      localStorage.removeItem(cacheKey);
     }
   }
   
   // Fetch fresh data
+  console.log(`🌐 [Fetch] Fetching fresh data for ${url}`);
   const response = await fetch(url, {
     cache: 'default', // Use browser cache
   });
   const data = await response.json();
   
-  // Store in localStorage cache
-  try {
-    localStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
-  } catch (e) {
-    // localStorage might be full, ignore error
-    console.warn('Failed to cache data:', e);
+  console.log(`✅ [Fetch] Got response for ${url}:`, {
+    success: data?.success,
+    dataLength: Array.isArray(data?.data) ? data.data.length : 'not array',
+    total: data?.total,
+  });
+  
+  // Only cache valid data
+  if (data && data.success !== false && Array.isArray(data.data) && data.data.length > 0) {
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }));
+      console.log(`💾 [Cache] Cached data for ${url}`);
+    } catch (e) {
+      // localStorage might be full, ignore error
+      console.warn('Failed to cache data:', e);
+    }
+  } else {
+    console.warn(`⚠️ [Fetch] Response for ${url} has no data, not caching`);
   }
   
   return data;
@@ -515,6 +548,50 @@ function KioskHomePageContent() {
   // Track if component has mounted (for hydration-safe rendering)
   const [hasMounted, setHasMounted] = useState(false);
   
+  // Cache clearing utility for debugging
+  useEffect(() => {
+    // Check if clearCache query param is present
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('clearCache') === 'true') {
+      console.log('🧹 [CacheClearing] Clearing all SWR caches...');
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('swr_cache_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => {
+        console.log(`🗑️ Removing cache: ${key}`);
+        localStorage.removeItem(key);
+      });
+      localStorage.removeItem(STICKER_PROPS_CACHE_KEY);
+      console.log('✅ Cache cleared! Reloading without clearCache param...');
+      // Remove the clearCache param and reload
+      urlParams.delete('clearCache');
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      window.location.replace(newUrl);
+      return;
+    }
+    
+    // Expose cache-clearing function for debugging via console
+    (window as unknown as Record<string, unknown>).clearStickerCache = () => {
+      console.log('🧹 Clearing sticker/template caches...');
+      localStorage.removeItem(TEMPLATES_CACHE_KEY);
+      localStorage.removeItem(STICKERS_CACHE_KEY);
+      localStorage.removeItem(STICKER_PROPS_CACHE_KEY);
+      console.log('✅ Done! Reload the page to fetch fresh data.');
+    };
+    
+    console.log('💡 [Debug] To clear sticker cache, run: window.clearStickerCache() or add ?clearCache=true to URL');
+    
+    // Check for reduced motion preference
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (mediaQuery.matches) {
+      console.warn('⚠️ [Debug] User prefers reduced motion - this may affect sticker animations');
+    }
+  }, []);
+  
   // Get cached data on first client render using a ref (avoids re-computation)
   // This is initialized to undefined on server, then populated on client mount
   const cachedDataRef = useRef<{
@@ -571,6 +648,20 @@ function KioskHomePageContent() {
   
   // Get 30 unique stickers from different categories
   const allStickers = stickersDataAll?.data || [];
+  
+  // Debug log for stickers data
+  useEffect(() => {
+    console.log('🎨 [Stickers] Data state:', {
+      stickersDataAll: stickersDataAll ? 'received' : 'null',
+      success: stickersDataAll?.success,
+      dataLength: stickersDataAll?.data?.length ?? 'no data array',
+      sampleSticker: stickersDataAll?.data?.[0] ? {
+        id: stickersDataAll.data[0].id,
+        hasImageUrl: !!stickersDataAll.data[0].imageUrl,
+        imageUrl: stickersDataAll.data[0].imageUrl?.substring(0, 50),
+      } : 'no stickers',
+    });
+  }, [stickersDataAll]);
   const uniqueStickers = useMemo(() => {
     if (allStickers.length === 0) return [];
     
@@ -1325,6 +1416,15 @@ function KioskHomePageContent() {
           100% {
             transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px)), 550px, 0) rotate(calc(var(--rotation, 0deg) + 180deg)) scale(calc(var(--min-scale, 1) * 0.85));
             opacity: 0;
+          }
+        }
+        
+        /* Fallback for reduced motion - show stickers statically */
+        @media (prefers-reduced-motion: reduce) {
+          .sticker-rain {
+            animation: none !important;
+            opacity: 0.9 !important;
+            transform: translate3d(calc(-50% + var(--start-x, 0px)), calc(var(--fall-delay, 0s) * 50px), 0) rotate(var(--rotation, 0deg)) scale(var(--min-scale, 1)) !important;
           }
         }
       `}</style>

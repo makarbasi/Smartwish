@@ -266,10 +266,28 @@ function StickersContent() {
   const [currentPrintLogId, setCurrentPrintLogId] = useState<string | null>(null);
 
   // Fetch stickers for carousel - get all 200 for variety across 4 rows
-  const { data: stickersData, isLoading: isLoadingStickers } = useSWR<StickersApiResponse>(
+  const { data: stickersData, isLoading: isLoadingStickers, error: stickersError } = useSWR<StickersApiResponse>(
     "/api/stickers?limit=200",
     fetcher
   );
+  
+  // Debug logging for stickers data
+  useEffect(() => {
+    console.log('🎯 [StickersPage] Data state:', {
+      isLoading: isLoadingStickers,
+      hasError: !!stickersError,
+      error: stickersError?.message,
+      stickersData: stickersData ? 'received' : 'null',
+      success: stickersData?.success,
+      dataLength: stickersData?.data?.length ?? 'no data array',
+      total: stickersData?.total,
+      sampleSticker: stickersData?.data?.[0] ? {
+        id: stickersData.data[0].id,
+        title: stickersData.data[0].title,
+        hasImageUrl: !!stickersData.data[0].imageUrl,
+      } : 'no stickers',
+    });
+  }, [stickersData, isLoadingStickers, stickersError]);
 
   // Transform API data for carousel
   const carouselStickers: StickerItem[] = (stickersData?.data || []).map((s) => ({

@@ -1,8 +1,8 @@
 {
   "_readme": "=== SMARTWISH PRINT AGENT CONFIGURATION ===",
   
-  "cloudServerUrl": "http://localhost:3001",
-  "frontendUrl": "http://localhost:3000",
+  "cloudServerUrl": "https://smartwish.onrender.com",
+    "frontendUrl": "https://app.smartwish.us",
   "defaultPrinter": "",
   "pollInterval": 10000,
   
