@@ -2,8 +2,11 @@
  * Session Recording Service
  * 
  * Captures screen recordings of kiosk sessions at 1 FPS for admin review.
- * Uses Screen Capture API for actual pixel capture, with DOM snapshot fallback.
+ * Uses Screen Capture API for actual pixel capture, with html2canvas fallback for pixel-perfect capture.
+ * Also captures webcam video during sessions.
  */
+
+import html2canvas from 'html2canvas';
 
 // ==================== Types ====================
 
@@ -60,6 +63,11 @@ class SessionRecordingService {
   private mediaStream: MediaStream | null = null;
   private videoElement: HTMLVideoElement | null = null;
   private hasScreenCapturePermission: boolean = false;
+
+  // Webcam recording
+  private webcamStream: MediaStream | null = null;
+  private webcamMediaRecorder: MediaRecorder | null = null;
+  private webcamChunks: Blob[] = [];
 
   constructor() {
     // Check if we already have permission (from previous session)
@@ -165,13 +173,31 @@ class SessionRecordingService {
       // Create recording record in database
       await this.createRecordingRecord();
 
+      // Start webcam recording in parallel (non-blocking but log result)
+      this.startWebcamRecording()
+        .then((started) => {
+          if (started) {
+            console.log('[Recording] Webcam recording started successfully');
+          } else {
+            console.warn('[Recording] Webcam recording did not start (camera may be unavailable or permission denied)');
+          }
+        })
+        .catch((error) => {
+          console.error('[Recording] Webcam recording failed:', error);
+        });
+
       // Start capturing frames at 1fps
+      console.log('[Recording] Starting frame capture interval (1 FPS)...');
       this.captureInterval = setInterval(() => {
-        this.captureFrame();
+        this.captureFrame().catch((error) => {
+          console.error('[Recording] Frame capture error in interval:', error);
+        });
       }, FRAME_INTERVAL_MS);
 
       // Capture first frame immediately
+      console.log('[Recording] Capturing initial frame...');
       await this.captureFrame();
+      console.log('[Recording] Initial frame captured. Total frames:', this.frames.length);
 
       console.log('[Recording] Recording started successfully');
       return true;
@@ -207,11 +233,24 @@ class SessionRecordingService {
       await this.updateRecordingStatus('processing');
 
       // Encode frames to video
+      if (this.frames.length === 0) {
+        console.error('[Recording] CRITICAL: No frames captured!');
+        console.error('[Recording] Status was:', this.status);
+        console.error('[Recording] Canvas exists:', !!this.canvas);
+        console.error('[Recording] Context exists:', !!this.ctx);
+        console.error('[Recording] Has screen capture:', this.hasScreenCapturePermission);
+        console.error('[Recording] Has media stream:', !!this.mediaStream);
+        throw new Error('No frames captured - cannot create video');
+      }
+
+      console.log('[Recording] Encoding', this.frames.length, 'frames to video...');
       const videoBlob = await this.encodeVideo();
       
       if (!videoBlob) {
         throw new Error('Failed to encode video');
       }
+
+      console.log('[Recording] Video encoded successfully, size:', videoBlob.size, 'bytes');
 
       this.status = 'uploading';
       await this.updateRecordingStatus('uploading');
@@ -221,6 +260,22 @@ class SessionRecordingService {
 
       // Generate thumbnail from first frame
       const thumbnailUrl = await this.uploadThumbnail();
+
+      // Also stop and upload webcam recording (non-blocking)
+      console.log('[Recording] Stopping webcam recording...');
+      const webcamBlob = await this.stopWebcamRecording();
+      if (webcamBlob && webcamBlob.size > 0) {
+        console.log('[Recording] Uploading webcam video, size:', webcamBlob.size, 'bytes');
+        try {
+          const webcamUrl = await this.uploadWebcamToStorage(webcamBlob);
+          console.log('[Recording] Webcam video uploaded successfully:', webcamUrl);
+        } catch (error) {
+          console.error('[Recording] Webcam upload failed:', error);
+          // Don't throw - screen recording is more important
+        }
+      } else {
+        console.warn('[Recording] No webcam recording to upload (blob is null or empty)');
+      }
 
       // Update final status
       await this.finalizeRecording(storageUrl, thumbnailUrl, videoBlob.size);
@@ -252,6 +307,11 @@ class SessionRecordingService {
     if (this.captureInterval) {
       clearInterval(this.captureInterval);
       this.captureInterval = null;
+    }
+
+    // Stop webcam recording
+    if (this.webcamMediaRecorder && this.webcamMediaRecorder.state !== 'inactive') {
+      this.stopWebcamRecording().catch(console.warn);
     }
 
     // Mark the recording as failed/cancelled (admin can delete from admin panel)
@@ -314,7 +374,10 @@ class SessionRecordingService {
   }
 
   private async captureFrame(): Promise<void> {
-    if (this.status !== 'recording' || !this.ctx || !this.canvas) return;
+    if (this.status !== 'recording' || !this.ctx || !this.canvas) {
+      console.warn('[Recording] Cannot capture frame - status:', this.status, 'ctx:', !!this.ctx, 'canvas:', !!this.canvas);
+      return;
+    }
 
     // Check max frames limit
     if (this.frames.length >= MAX_FRAMES) {
@@ -328,26 +391,96 @@ class SessionRecordingService {
 
       // Try screen capture first
       if (this.hasScreenCapturePermission && this.videoElement && this.mediaStream) {
+        console.log('[Recording] Attempting screen capture from video stream...');
         dataUrl = await this.captureFromVideo();
+        if (dataUrl) {
+          console.log('[Recording] Screen capture successful');
+        } else {
+          console.warn('[Recording] Screen capture returned null');
+        }
       }
 
       // Fall back to DOM snapshot
       if (!dataUrl) {
+        console.log('[Recording] Screen capture not available, using html2canvas fallback');
         dataUrl = await this.captureDOMSnapshot();
+        if (!dataUrl) {
+          console.error('[Recording] html2canvas also failed - creating fallback placeholder');
+          // Create a simple placeholder frame so we at least have something
+          dataUrl = this.createPlaceholderFrame();
+        }
       }
       
-      if (dataUrl) {
+      if (dataUrl && dataUrl.length > 0) {
         this.frames.push({
           timestamp: Date.now(),
           dataUrl,
         });
         
+        console.log(`[Recording] ✓ Captured frame ${this.frames.length} (size: ${dataUrl.length} chars)`);
+        
         if (this.frames.length % 10 === 0) {
-          console.log('[Recording] Captured frame', this.frames.length);
+          console.log('[Recording] Progress: Captured', this.frames.length, 'frames');
+        }
+      } else {
+        console.error('[Recording] Frame capture failed - dataUrl is null or empty');
+        // Create placeholder so recording doesn't completely fail
+        const placeholder = this.createPlaceholderFrame();
+        if (placeholder) {
+          this.frames.push({
+            timestamp: Date.now(),
+            dataUrl: placeholder,
+          });
+          console.log('[Recording] Added placeholder frame due to capture failure');
         }
       }
     } catch (error) {
-      console.error('[Recording] Frame capture error:', error);
+      console.error('[Recording] Frame capture exception:', error);
+      // Create placeholder frame even on error
+      try {
+        const placeholder = this.createPlaceholderFrame();
+        if (placeholder) {
+          this.frames.push({
+            timestamp: Date.now(),
+            dataUrl: placeholder,
+          });
+          console.log('[Recording] Added placeholder frame after error');
+        }
+      } catch (e) {
+        console.error('[Recording] Even placeholder frame creation failed:', e);
+      }
+    }
+  }
+
+  /**
+   * Create a simple placeholder frame when capture fails
+   */
+  private createPlaceholderFrame(): string | null {
+    if (!this.ctx || !this.canvas) return null;
+
+    try {
+      // Clear canvas
+      this.ctx.fillStyle = '#1e293b';
+      this.ctx.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+
+      // Draw placeholder text
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.font = 'bold 32px system-ui';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText('Recording in Progress...', TARGET_WIDTH / 2, TARGET_HEIGHT / 2 - 40);
+      
+      this.ctx.font = '20px system-ui';
+      this.ctx.fillStyle = '#94a3b8';
+      this.ctx.fillText(`Frame ${this.frames.length + 1}`, TARGET_WIDTH / 2, TARGET_HEIGHT / 2);
+      this.ctx.fillText(new Date().toLocaleTimeString(), TARGET_WIDTH / 2, TARGET_HEIGHT / 2 + 30);
+
+      // Add recording overlay
+      this.drawRecordingOverlay();
+
+      return this.canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+    } catch (error) {
+      console.error('[Recording] Placeholder creation failed:', error);
+      return null;
     }
   }
 
@@ -425,179 +558,77 @@ class SessionRecordingService {
   }
 
   /**
-   * Fallback: Capture a DOM-based snapshot
-   * Creates a visual representation when screen capture isn't available
+   * Fallback: Capture actual pixels from DOM using html2canvas
+   * This provides pixel-perfect capture when Screen Capture API isn't available
    */
   private async captureDOMSnapshot(): Promise<string | null> {
-    if (!this.ctx || !this.canvas) return null;
+    if (!this.ctx || !this.canvas) {
+      console.warn('[Recording] Canvas not initialized for DOM snapshot');
+      return null;
+    }
 
     try {
-      // Create a gradient background
-      const gradient = this.ctx.createLinearGradient(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-      gradient.addColorStop(0, '#0f172a');
-      gradient.addColorStop(1, '#1e1b4b');
-      this.ctx.fillStyle = gradient;
-      this.ctx.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+      // Calculate scale to target resolution
+      const scale = Math.min(TARGET_WIDTH / window.innerWidth, TARGET_HEIGHT / window.innerHeight);
 
-      // Calculate scale
-      const scaleX = TARGET_WIDTH / window.innerWidth;
-      const scaleY = TARGET_HEIGHT / window.innerHeight;
-      const scale = Math.min(scaleX, scaleY);
-      const offsetY = 45; // Leave space for header
+      // Capture actual pixels from the DOM using html2canvas
+      console.log('[Recording] Capturing DOM with html2canvas...', {
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        scale,
+        hasBody: !!document.body,
+      });
 
-      // Draw elements
-      this.drawPageElements(scale, offsetY);
+      const capturedCanvas = await html2canvas(document.body, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scale: scale,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        removeContainer: false,
+        onclone: (clonedDoc) => {
+          console.log('[Recording] html2canvas onclone - document cloned');
+          // Ensure any dynamically loaded content is rendered
+          const clonedBody = clonedDoc.body;
+          if (clonedBody) {
+            clonedBody.style.visibility = 'visible';
+          }
+        },
+      }).catch((error) => {
+        console.error('[Recording] html2canvas promise rejected:', error);
+        return null;
+      });
 
-      // Draw header
-      this.ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
-      this.ctx.fillRect(0, 0, TARGET_WIDTH, 45);
+      if (!capturedCanvas) {
+        console.error('[Recording] html2canvas returned null canvas');
+        return null;
+      }
 
-      // Page title
-      this.ctx.fillStyle = '#f8fafc';
-      this.ctx.font = 'bold 16px system-ui, -apple-system, sans-serif';
-      this.ctx.fillText(document.title || 'SmartWish Kiosk', 70, 20);
+      if (capturedCanvas.width === 0 || capturedCanvas.height === 0) {
+        console.error('[Recording] html2canvas returned canvas with zero dimensions');
+        return null;
+      }
 
-      // Page path
-      this.ctx.fillStyle = '#94a3b8';
-      this.ctx.font = '11px system-ui, -apple-system, sans-serif';
-      this.ctx.fillText(window.location.pathname, 70, 36);
+      console.log('[Recording] html2canvas success - canvas size:', capturedCanvas.width, 'x', capturedCanvas.height);
 
-      // Recording indicator
-      this.ctx.fillStyle = '#ef4444';
-      this.ctx.beginPath();
-      this.ctx.arc(18, 22, 6, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.font = 'bold 11px system-ui';
-      this.ctx.fillText('REC', 32, 26);
+      // Draw captured canvas to our target canvas at target resolution
+      this.ctx.drawImage(capturedCanvas, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
 
-      // Timestamp
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.font = '12px system-ui';
-      this.ctx.fillText(new Date().toLocaleTimeString(), TARGET_WIDTH - 75, 22);
+      // Add recording overlay on top
+      this.drawRecordingOverlay();
 
-      // Frame counter
-      this.ctx.fillStyle = '#64748b';
-      this.ctx.font = '11px system-ui';
-      this.ctx.fillText(`Frame ${this.frames.length + 1}`, TARGET_WIDTH - 160, 22);
-      
-      // DOM Snapshot indicator
-      this.ctx.fillStyle = '#fbbf24';
-      this.ctx.font = '10px system-ui';
-      this.ctx.fillText('(DOM Snapshot)', TARGET_WIDTH - 100, 38);
-
-      return this.canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      const dataUrl = this.canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      console.log('[Recording] DOM snapshot captured successfully, size:', dataUrl.length);
+      return dataUrl;
     } catch (error) {
-      console.error('[Recording] DOM snapshot failed:', error);
+      console.error('[Recording] html2canvas capture failed:', error);
+      // Return null so caller knows capture failed
       return null;
     }
   }
 
-  /**
-   * Draw visible page elements on canvas
-   */
-  private drawPageElements(scale: number, offsetY: number = 0): void {
-    if (!this.ctx) return;
-
-    // Query important visible elements
-    const selectors = [
-      'button', 'a', 'img', 'input', 'textarea', 'select',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      '[role="button"]', '[role="link"]',
-      '.card', '.tile', '[class*="Card"]', '[class*="card"]'
-    ];
-
-    const elements = document.querySelectorAll(selectors.join(', '));
-
-    elements.forEach(element => {
-      try {
-        const rect = element.getBoundingClientRect();
-        
-        // Skip elements outside viewport or too small
-        if (rect.width < 10 || rect.height < 10) return;
-        if (rect.top > window.innerHeight || rect.left > window.innerWidth) return;
-        if (rect.bottom < 0 || rect.right < 0) return;
-
-        const x = rect.left * scale;
-        const y = rect.top * scale + offsetY;
-        const width = rect.width * scale;
-        const height = rect.height * scale;
-
-        // Clamp to canvas bounds
-        if (y + height > TARGET_HEIGHT - 20) return;
-
-        const tagName = element.tagName.toLowerCase();
-        
-        // Draw element representation based on type
-        if (tagName === 'img') {
-          this.ctx!.fillStyle = 'rgba(59, 130, 246, 0.4)';
-          this.ctx!.fillRect(x, y, width, height);
-          this.ctx!.strokeStyle = '#3b82f6';
-          this.ctx!.lineWidth = 1;
-          this.ctx!.strokeRect(x, y, width, height);
-          // Image icon
-          this.ctx!.fillStyle = '#60a5fa';
-          this.ctx!.font = '10px system-ui';
-          this.ctx!.fillText('🖼️', x + width/2 - 6, y + height/2 + 4);
-        } else if (tagName === 'button' || element.getAttribute('role') === 'button') {
-          this.ctx!.fillStyle = 'rgba(99, 102, 241, 0.5)';
-          this.ctx!.fillRect(x, y, width, height);
-          this.ctx!.strokeStyle = '#818cf8';
-          this.ctx!.lineWidth = 2;
-          this.ctx!.strokeRect(x, y, width, height);
-          // Draw button text
-          const text = element.textContent?.trim() || '';
-          if (text && width > 30) {
-            this.ctx!.fillStyle = '#e0e7ff';
-            this.ctx!.font = `bold ${Math.min(13, height * 0.35)}px system-ui`;
-            this.ctx!.fillText(this.truncateText(text, Math.floor(width / 7)), x + 6, y + height / 2 + 4);
-          }
-        } else if (tagName === 'a') {
-          this.ctx!.fillStyle = 'rgba(34, 197, 94, 0.3)';
-          this.ctx!.fillRect(x, y, width, height);
-          this.ctx!.strokeStyle = '#4ade80';
-          this.ctx!.lineWidth = 1;
-          this.ctx!.strokeRect(x, y, width, height);
-          const text = element.textContent?.trim() || '';
-          if (text && width > 20) {
-            this.ctx!.fillStyle = '#86efac';
-            this.ctx!.font = `${Math.min(11, height * 0.4)}px system-ui`;
-            this.ctx!.fillText(this.truncateText(text, Math.floor(width / 6)), x + 4, y + height / 2 + 3);
-          }
-        } else if (tagName === 'input' || tagName === 'textarea') {
-          this.ctx!.fillStyle = 'rgba(251, 191, 36, 0.3)';
-          this.ctx!.fillRect(x, y, width, height);
-          this.ctx!.strokeStyle = '#fcd34d';
-          this.ctx!.lineWidth = 1;
-          this.ctx!.strokeRect(x, y, width, height);
-        } else if (tagName.match(/^h[1-6]$/)) {
-          const text = element.textContent?.trim() || '';
-          if (text) {
-            this.ctx!.fillStyle = '#f8fafc';
-            const fontSize = tagName === 'h1' ? 18 : tagName === 'h2' ? 15 : 12;
-            this.ctx!.font = `bold ${fontSize}px system-ui`;
-            this.ctx!.fillText(this.truncateText(text, 45), x, y + height / 2 + fontSize / 3);
-          }
-        } else if (element.classList?.toString().match(/card|Card|tile|Tile/i)) {
-          this.ctx!.fillStyle = 'rgba(148, 163, 184, 0.2)';
-          this.ctx!.fillRect(x, y, width, height);
-          this.ctx!.strokeStyle = 'rgba(148, 163, 184, 0.5)';
-          this.ctx!.lineWidth = 1;
-          this.ctx!.strokeRect(x, y, width, height);
-        }
-      } catch {
-        // Skip elements that throw errors
-      }
-    });
-  }
-
-  /**
-   * Truncate text to a maximum length
-   */
-  private truncateText(text: string, maxLength: number): string {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength - 3) + '...';
-  }
 
   private async encodeVideo(): Promise<Blob | null> {
     if (this.frames.length === 0) {
@@ -701,25 +732,90 @@ class SessionRecordingService {
   }
 
   private async uploadToStorage(videoBlob: Blob): Promise<string> {
+    console.log('[Recording] Preparing upload:', {
+      blobSize: videoBlob.size,
+      blobType: videoBlob.type,
+      sessionId: this.sessionId,
+      recordingId: this.recordingDbId,
+    });
+
+    if (!videoBlob || videoBlob.size === 0) {
+      const errorMsg = 'Video blob is empty or invalid';
+      console.error('[Recording]', errorMsg);
+      await this.updateRecordingStatus('failed', errorMsg);
+      throw new Error(errorMsg);
+    }
+
     const formData = new FormData();
     const fileName = `${this.sessionId}_${Date.now()}.${videoBlob.type.includes('webm') ? 'webm' : 'json'}`;
+    
     formData.append('file', videoBlob, fileName);
     formData.append('sessionId', this.sessionId || '');
     formData.append('kioskId', this.kioskId || '');
     formData.append('recordingId', this.recordingDbId || '');
+    formData.append('type', 'video');
 
-    const response = await fetch('/api/kiosk/session/recording/upload', {
-      method: 'POST',
-      body: formData,
-    });
+    console.log('[Recording] Uploading to /api/kiosk/session/recording/upload...');
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Upload failed');
+    try {
+      const response = await fetch('/api/kiosk/session/recording/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('[Recording] Upload response status:', response.status);
+
+      if (!response.ok) {
+        let errorMessage = 'Upload failed';
+        let errorData: any = {};
+        
+        try {
+          errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || `Upload failed: HTTP ${response.status}`;
+        } catch {
+          const text = await response.text().catch(() => 'Unknown error');
+          errorMessage = `Upload failed: HTTP ${response.status} - ${text}`;
+        }
+        
+        console.error('[Recording] Upload failed:', {
+          status: response.status,
+          error: errorMessage,
+          details: errorData,
+        });
+        
+        // Mark recording as failed with specific error
+        await this.updateRecordingStatus('failed', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      
+      console.log('[Recording] Upload response data:', {
+        hasStorageUrl: !!data.storageUrl,
+        hasStoragePath: !!data.storagePath,
+        fileSize: data.fileSize,
+      });
+      
+      // Verify we got a URL back
+      if (!data.storageUrl) {
+        const errorMsg = 'Upload succeeded but no URL returned';
+        console.error('[Recording]', errorMsg, data);
+        await this.updateRecordingStatus('failed', errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      console.log('[Recording] Upload successful, storage URL:', data.storageUrl);
+      return data.storageUrl;
+    } catch (error) {
+      console.error('[Recording] Upload exception:', error);
+      if (error instanceof Error) {
+        if (error.message !== 'Upload failed') {
+          await this.updateRecordingStatus('failed', error.message);
+        }
+        throw error;
+      }
+      throw new Error('Unknown upload error');
     }
-
-    const data = await response.json();
-    return data.storageUrl;
   }
 
   private async uploadThumbnail(): Promise<string | null> {
@@ -824,6 +920,159 @@ class SessionRecordingService {
     }
   }
 
+  /**
+   * Start webcam recording alongside screen recording
+   */
+  private async startWebcamRecording(): Promise<boolean> {
+    try {
+      console.log('[Recording] Requesting webcam access...');
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn('[Recording] getUserMedia API not available in this browser');
+        return false;
+      }
+
+      // Request webcam access
+      this.webcamStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 15 },
+        },
+        audio: false, // No audio for privacy
+      });
+
+      console.log('[Recording] Webcam access granted');
+
+      // Check if MediaRecorder is available
+      if (typeof MediaRecorder === 'undefined') {
+        console.warn('[Recording] MediaRecorder API not available');
+        this.webcamStream.getTracks().forEach(track => track.stop());
+        this.webcamStream = null;
+        return false;
+      }
+
+      // Find supported mime type
+      let mimeType = 'video/webm;codecs=vp9';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+        }
+      }
+
+      console.log('[Recording] Using MediaRecorder mime type:', mimeType);
+
+      this.webcamMediaRecorder = new MediaRecorder(this.webcamStream, {
+        mimeType,
+        videoBitsPerSecond: 500000, // 500 kbps for webcam
+      });
+
+      this.webcamChunks = [];
+
+      this.webcamMediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.webcamChunks.push(event.data);
+          console.log('[Recording] Webcam chunk received, size:', event.data.size);
+        }
+      };
+
+      this.webcamMediaRecorder.onerror = (event) => {
+        console.error('[Recording] MediaRecorder error:', event);
+      };
+
+      // Start recording in 5-second intervals
+      this.webcamMediaRecorder.start(5000);
+      console.log('[Recording] Webcam MediaRecorder started, state:', this.webcamMediaRecorder.state);
+      return true;
+    } catch (error) {
+      console.error('[Recording] Webcam access denied or unavailable:', error);
+      if (error instanceof Error) {
+        console.error('[Recording] Error details:', error.message, error.name);
+      }
+      // Clean up on error
+      if (this.webcamStream) {
+        this.webcamStream.getTracks().forEach(track => track.stop());
+        this.webcamStream = null;
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Stop webcam recording and return blob
+   */
+  private async stopWebcamRecording(): Promise<Blob | null> {
+    if (!this.webcamMediaRecorder || this.webcamMediaRecorder.state === 'inactive') {
+      // Clean up stream if recorder wasn't started
+      if (this.webcamStream) {
+        this.webcamStream.getTracks().forEach(track => track.stop());
+        this.webcamStream = null;
+      }
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      this.webcamMediaRecorder!.onstop = () => {
+        const blob = new Blob(this.webcamChunks, { type: 'video/webm' });
+        
+        // Clean up
+        this.webcamStream?.getTracks().forEach(track => track.stop());
+        this.webcamStream = null;
+        this.webcamMediaRecorder = null;
+        this.webcamChunks = [];
+        
+        console.log('[Recording] Webcam recording stopped, size:', blob.size);
+        resolve(blob);
+      };
+
+      try {
+        if (this.webcamMediaRecorder && this.webcamMediaRecorder.state === 'recording') {
+          this.webcamMediaRecorder.stop();
+        } else {
+          // Already stopped, resolve immediately
+          resolve(null);
+        }
+      } catch (error) {
+        console.warn('[Recording] Error stopping webcam recorder:', error);
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Upload webcam recording to storage
+   */
+  private async uploadWebcamToStorage(webcamBlob: Blob): Promise<string> {
+    const formData = new FormData();
+    const fileName = `${this.sessionId}_webcam_${Date.now()}.webm`;
+    formData.append('file', webcamBlob, fileName);
+    formData.append('sessionId', this.sessionId || '');
+    formData.append('kioskId', this.kioskId || '');
+    formData.append('recordingId', this.recordingDbId || '');
+    formData.append('type', 'webcam');
+
+    try {
+      const response = await fetch('/api/kiosk/session/recording/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(error.error || 'Webcam upload failed');
+      }
+
+      const data = await response.json();
+      console.log('[Recording] Webcam video uploaded:', data.storageUrl);
+      return data.storageUrl;
+    } catch (error) {
+      console.error('[Recording] Webcam upload failed:', error);
+      throw error;
+    }
+  }
+
   private resetSession(): void {
     this.sessionId = null;
     this.kioskId = null;
@@ -836,6 +1085,14 @@ class SessionRecordingService {
     if (this.captureInterval) {
       clearInterval(this.captureInterval);
       this.captureInterval = null;
+    }
+
+    // Stop webcam recording if active
+    if (this.webcamMediaRecorder && this.webcamMediaRecorder.state !== 'inactive') {
+      this.stopWebcamRecording().catch(console.warn);
+    } else if (this.webcamStream) {
+      this.webcamStream.getTracks().forEach(track => track.stop());
+      this.webcamStream = null;
     }
     
     // Don't reset mediaStream or hasScreenCapturePermission - keep permission for next recording

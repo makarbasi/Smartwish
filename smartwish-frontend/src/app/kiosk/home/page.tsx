@@ -873,6 +873,17 @@ function KioskHomePageContent() {
               : 'opacity-50 cursor-not-allowed border-white/10'
           }`}
         >
+          {/* Price Ribbon */}
+          <div className="absolute -top-1 -right-1 z-30 overflow-hidden w-32 h-32 pointer-events-none">
+            <div className="absolute top-6 -right-9 w-40 transform rotate-45 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-center py-2 shadow-lg border-y-2 border-amber-300/50">
+              <span className="text-white font-black text-xl tracking-tight drop-shadow-md">$2.99</span>
+            </div>
+            {/* Shimmer effect */}
+            <div className="absolute top-6 -right-9 w-40 h-10 transform rotate-45 overflow-hidden">
+              <div className="w-full h-full bg-gradient-to-r from-transparent via-white/40 to-transparent price-ribbon-shimmer" />
+            </div>
+          </div>
+          
           {/* Glow effect on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/0 to-purple-600/0 group-hover:from-indigo-600/20 group-hover:to-purple-600/20 transition-all duration-500" />
           
@@ -960,6 +971,17 @@ function KioskHomePageContent() {
               : 'opacity-50 cursor-not-allowed border-white/10'
           }`}
         >
+          {/* Price Ribbon */}
+          <div className="absolute -top-1 -right-1 z-30 overflow-hidden w-32 h-32 pointer-events-none">
+            <div className="absolute top-6 -right-9 w-40 transform rotate-45 bg-gradient-to-r from-rose-400 via-rose-500 to-red-500 text-center py-2 shadow-lg border-y-2 border-rose-300/50">
+              <span className="text-white font-black text-xl tracking-tight drop-shadow-md">$3.99</span>
+            </div>
+            {/* Shimmer effect */}
+            <div className="absolute top-6 -right-9 w-40 h-10 transform rotate-45 overflow-hidden">
+              <div className="w-full h-full bg-gradient-to-r from-transparent via-white/40 to-transparent price-ribbon-shimmer" />
+            </div>
+          </div>
+          
           {/* Glow effect on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-pink-600/0 to-orange-600/0 group-hover:from-pink-600/20 group-hover:to-orange-600/20 transition-all duration-500" />
           
@@ -1370,6 +1392,20 @@ function KioskHomePageContent() {
 
       {/* Sticker rain animation styles - smooth, continuous fall with linear timing */}
       <style jsx global>{`
+        /* Price ribbon shimmer animation */
+        @keyframes priceRibbonShimmer {
+          0% {
+            transform: translateX(-150%);
+          }
+          50%, 100% {
+            transform: translateX(150%);
+          }
+        }
+        
+        .price-ribbon-shimmer {
+          animation: priceRibbonShimmer 3s ease-in-out infinite;
+        }
+        
         @keyframes stickerRain {
           0% {
             transform: translate3d(calc(-50% + var(--start-x, 0px)), -120px, 0) rotate(var(--rotation, 0deg)) scale(var(--min-scale, 1));

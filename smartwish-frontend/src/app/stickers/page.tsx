@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeftIcon, PrinterIcon } from "@heroicons/react/24/outline";
+import { PrinterIcon } from "@heroicons/react/24/outline";
 import useSWR from "swr";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
@@ -316,11 +316,6 @@ function StickersContent() {
 
   // Count filled slots (includes gift card slot if present)
   const filledSlotsCount = slots.filter((s, i) => s.imageUrl || (giftCardData && giftCardSlotIndex === i)).length;
-
-  // Handle back to home
-  const handleBackToHome = () => {
-    router.push("/kiosk/home");
-  };
 
   // Exit copy mode
   const handleExitCopyMode = useCallback(() => {
@@ -1433,14 +1428,8 @@ function StickersContent() {
         
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            {/* Back button */}
-            <button
-              onClick={handleBackToHome}
-              className="flex items-center gap-2 px-3 py-1.5 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all"
-            >
-              <ArrowLeftIcon className="w-4 h-4" />
-              <span className="font-medium text-sm">Back</span>
-            </button>
+            {/* Empty space for alignment */}
+            <div className="w-20"></div>
             
             {/* Title */}
             <div className="text-center">

@@ -200,11 +200,19 @@ class KioskSessionService {
    * Start screen recording for the session (non-blocking)
    */
   private async startRecording(): Promise<void> {
-    if (!this.sessionId || !this.kioskId) return;
+    if (!this.sessionId || !this.kioskId) {
+      console.warn('[SessionService] Cannot start recording - missing sessionId or kioskId');
+      return;
+    }
 
     try {
-      await sessionRecordingService.startRecording(this.sessionId, this.kioskId);
-      console.log('[SessionService] Screen recording started');
+      console.log('[SessionService] Starting screen recording for session:', this.sessionId);
+      const started = await sessionRecordingService.startRecording(this.sessionId, this.kioskId);
+      if (started) {
+        console.log('[SessionService] Screen recording started successfully');
+      } else {
+        console.warn('[SessionService] Screen recording did not start (may have failed)');
+      }
     } catch (error) {
       console.error('[SessionService] Failed to start recording (non-critical):', error);
       // Recording failure should not affect session tracking

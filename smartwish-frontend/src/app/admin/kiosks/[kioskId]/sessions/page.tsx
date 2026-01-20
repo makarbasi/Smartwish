@@ -35,6 +35,7 @@ interface SessionRecording {
   thumbnailUrl: string | null;
   duration: number | null;
   status: string;
+  errorMessage?: string | null;
 }
 
 interface SessionsResponse {
@@ -285,6 +286,7 @@ export default function KioskSessionsPage({
         thumbnailUrl: data.recording.thumbnailUrl,
         duration: data.recording.duration,
         status: data.recording.status,
+        errorMessage: data.recording.error_message || null,
       };
       
       setRecordingsCache(prev => ({ ...prev, [sessionId]: recording }));
@@ -956,14 +958,29 @@ export default function KioskSessionsPage({
                         Your browser does not support the video tag.
                       </video>
                     ) : (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 px-4">
                         <VideoCameraIcon className="h-16 w-16 mb-4" />
-                        <p className="text-lg">Recording not available</p>
-                        <p className="text-sm">
-                          {selectedRecording?.status === "pending"
-                            ? "Recording is still being processed"
-                            : "Recording file could not be loaded"}
+                        <p className="text-lg font-medium">Recording not available</p>
+                        <p className="text-sm mt-2 text-center max-w-md">
+                          {selectedRecording?.status === "recording" && "Recording is still in progress"}
+                          {selectedRecording?.status === "processing" && "Recording is being processed"}
+                          {selectedRecording?.status === "uploading" && "Recording is being uploaded"}
+                          {selectedRecording?.status === "failed" && (
+                            <span>
+                              Recording failed: {selectedRecording.errorMessage || "Unknown error"}
+                            </span>
+                          )}
+                          {selectedRecording?.status === "completed" && !selectedRecording.storageUrl && "Recording file could not be loaded (storage issue)"}
+                          {!selectedRecording?.status && "Recording file could not be loaded"}
                         </p>
+                        {selectedRecording?.errorMessage && (
+                          <details className="mt-4 text-xs text-gray-400 max-w-md">
+                            <summary className="cursor-pointer hover:text-gray-300">View error details</summary>
+                            <pre className="mt-2 p-2 bg-gray-900 rounded text-left overflow-auto">
+                              {selectedRecording.errorMessage}
+                            </pre>
+                          </details>
+                        )}
                       </div>
                     )}
                   </div>

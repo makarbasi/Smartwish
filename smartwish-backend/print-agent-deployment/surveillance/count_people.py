@@ -518,64 +518,43 @@ class PersonTracker:
             self.id_frame_counts[obj_id] += 1
             frame_count = self.id_frame_counts[obj_id]
             
-            # A. Upload image after threshold frames (default 10 = 2 seconds)
-            if frame_count == self.config.frame_threshold and obj_id not in self.saved_ids:
-                self.saved_ids.add(obj_id)
+            # Only save image AND count when person has stayed 8+ seconds
+            # (Previously saved at frame_threshold=10 frames, now save only at frames_to_count=40 frames)
+            if frame_count >= self.config.frames_to_count and obj_id not in self.counted_ids:
+                self.counted_ids.add(obj_id)
+                self.saved_ids.add(obj_id)  # Mark as saved
+                self.daily_count += 1
                 
-                # Try cloud upload first
+                # Calculate dwell time
+                dwell_seconds = (now - self.id_first_seen[obj_id]).total_seconds()
+                
+                # Upload image to cloud (only now, after 8+ seconds)
                 cloud_url = self.reporter.report_detection_with_image(
                     person_track_id=obj_id,
                     detected_at=now,
-                    dwell_seconds=None,
-                    was_counted=False,
+                    dwell_seconds=dwell_seconds,
+                    was_counted=True,  # Always true now since we save only after count
                     frame=frame,
                 )
                 
                 if cloud_url:
                     # Successfully uploaded to cloud
                     self.id_cloud_urls[obj_id] = cloud_url
-                    print(f"  📸 Uploaded image for ID {obj_id} to cloud")
+                    timestamp = now.strftime('%H:%M:%S')
+                    print(f"  ✅ [{timestamp}] ID {obj_id} stayed {dwell_seconds:.1f}s - Saved image - Total: {self.daily_count}")
                 else:
                     # Cloud upload failed, save locally as backup
                     local_path = self._save_image_locally(obj_id, now, frame)
-                    # Report detection with local path (won't be accessible remotely)
                     relative_path = str(local_path.relative_to(self.config.output_dir))
                     self.reporter.report_detection(
                         person_track_id=obj_id,
                         detected_at=now,
-                        dwell_seconds=None,
-                        was_counted=False,
+                        dwell_seconds=dwell_seconds,
+                        was_counted=True,
                         image_path=relative_path,
                     )
-                    print(f"  📸 Saved image for ID {obj_id} locally (cloud upload failed)")
-            
-            # B. Count person if seen for threshold frames (default 40 = 8 seconds)
-            if frame_count >= self.config.frames_to_count and obj_id not in self.counted_ids:
-                self.counted_ids.add(obj_id)
-                self.daily_count += 1
-                
-                # Calculate dwell time
-                dwell_seconds = (now - self.id_first_seen[obj_id]).total_seconds()
-                
-                # Get image path (cloud URL if available, otherwise local path)
-                image_path = self.id_cloud_urls.get(obj_id)
-                if not image_path and obj_id in self.saved_ids:
-                    # Find the local saved image path
-                    for f in self.today_dir.glob(f"id_{obj_id}_*.jpg"):
-                        image_path = str(f.relative_to(self.config.output_dir))
-                        break
-                
-                # Report as counted (update the detection)
-                self.reporter.report_detection(
-                    person_track_id=obj_id,
-                    detected_at=now,
-                    dwell_seconds=dwell_seconds,
-                    was_counted=True,
-                    image_path=image_path,
-                )
-                
-                timestamp = now.strftime('%H:%M:%S')
-                print(f"  ✅ [{timestamp}] ID {obj_id} stayed {dwell_seconds:.1f}s - Total counted: {self.daily_count}")
+                    timestamp = now.strftime('%H:%M:%S')
+                    print(f"  ✅ [{timestamp}] ID {obj_id} stayed {dwell_seconds:.1f}s - Saved locally - Total: {self.daily_count}")
     
     def _save_image_locally(self, obj_id: int, timestamp: datetime, frame) -> Path:
         """Save detection image to local disk (backup when cloud upload fails)"""
@@ -685,7 +664,7 @@ def main():
     
     print("")
     print("  🔄 Starting tracking...")
-    print(f"  Logic: Count if present > {config.dwell_threshold}s. Save image at {config.frame_threshold} frames.")
+    print(f"  Logic: Count AND save image if present > {config.dwell_threshold}s.")
     print("  Press 'q' in preview window or Ctrl+C to stop.")
     print("")
     

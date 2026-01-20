@@ -107,6 +107,7 @@ def get_category_from_folder(folder_name: str) -> str:
         'dogs': 'dogs',
         'kids': 'kids',
         'kidsvalentines': 'valentines',
+        'valentine animals': 'valentines',
         'reading_girly': 'bookish',
         'smuttybook': 'bookish',
         'bookish': 'bookish',

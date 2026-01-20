@@ -12,7 +12,7 @@ export interface UploadRecordingDto {
   recordingId: string;
   sessionId: string;
   kioskId: string;
-  type: 'video' | 'thumbnail';
+  type: 'video' | 'thumbnail' | 'webcam';
 }
 
 @Injectable()
@@ -111,10 +111,37 @@ export class SessionRecordingsService {
     contentType: string,
     dto: UploadRecordingDto,
   ) {
+    this.logger.log(`[Upload] Starting upload: type=${dto.type}, sessionId=${dto.sessionId}, size=${file.length}, contentType=${contentType}`);
+    
     const supabase = this.supabaseService.getClient();
     const bucket = 'session-recordings';
+
+    // Validate file
+    if (!file || file.length === 0) {
+      this.logger.error('[Upload] File is empty or invalid');
+      throw new Error('File is empty or invalid');
+    }
+
+    // Check bucket exists first
+    this.logger.log(`[Upload] Checking if bucket "${bucket}" exists...`);
+    const { data: buckets, error: bucketError } = await supabase.storage.listBuckets();
+    
+    if (bucketError) {
+      this.logger.error('[Upload] Error listing buckets:', bucketError);
+      throw new Error(`Failed to check storage buckets: ${bucketError.message}`);
+    }
+    
+    const bucketExists = buckets?.some(b => b.name === bucket);
+    this.logger.log(`[Upload] Bucket exists: ${bucketExists}, Available buckets: ${buckets?.map(b => b.name).join(', ') || 'none'}`);
+    
+    if (!bucketExists) {
+      this.logger.error(`[Upload] Storage bucket "${bucket}" does not exist`);
+      throw new Error('Storage bucket not configured. Please create the "session-recordings" bucket in Supabase.');
+    }
+
     const timestamp = Date.now();
     const isThumbnail = dto.type === 'thumbnail';
+    const isWebcam = dto.type === 'webcam';
     
     // Determine extension from content type
     let extension = 'webm';
@@ -128,8 +155,10 @@ export class SessionRecordingsService {
       extension = 'mp4';
     }
     
-    const folder = isThumbnail ? 'thumbnails' : 'videos';
-    const fileName = `${folder}/${dto.sessionId}_${timestamp}.${extension}`;
+    const folder = isThumbnail ? 'thumbnails' : isWebcam ? 'webcam' : 'videos';
+    const fileName = `${folder}/${dto.sessionId}_${isWebcam ? 'webcam_' : ''}${timestamp}.${extension}`;
+
+    this.logger.log(`[Upload] Uploading to: ${fileName}`);
 
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -141,42 +170,78 @@ export class SessionRecordingsService {
       });
 
     if (uploadError) {
-      this.logger.error('Upload error:', uploadError);
+      this.logger.error('[Upload] Upload error:', {
+        message: uploadError.message,
+        error: uploadError,
+      });
       
-      if (uploadError.message?.includes('Bucket not found')) {
+      if (uploadError.message?.includes('Bucket not found') || 
+          uploadError.message?.includes('404') ||
+          uploadError.message?.includes('not found')) {
         throw new Error('Storage bucket not configured. Please create the "session-recordings" bucket in Supabase.');
       }
       
       throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
+    if (!uploadData) {
+      this.logger.error('[Upload] Upload succeeded but no data returned');
+      throw new Error('Upload failed: No data returned from storage');
+    }
+
+    this.logger.log(`[Upload] File uploaded successfully: ${uploadData.path}`);
+
     // Get signed URL (7 day expiry)
-    const { data: urlData } = await supabase.storage
+    const { data: urlData, error: urlError } = await supabase.storage
       .from(bucket)
       .createSignedUrl(fileName, 60 * 60 * 24 * 7);
 
+    if (urlError) {
+      this.logger.error('[Upload] Error creating signed URL:', urlError);
+      throw new Error(`Failed to create signed URL: ${urlError.message}`);
+    }
+
     const storageUrl = urlData?.signedUrl || '';
 
-    this.logger.log(`Uploaded: ${fileName}`);
+    if (!storageUrl) {
+      this.logger.error('[Upload] Signed URL is empty');
+      throw new Error('Failed to generate signed URL');
+    }
+
+    this.logger.log(`[Upload] Signed URL created: ${storageUrl.substring(0, 50)}...`);
 
     // Update recording record
     if (dto.recordingId) {
       const updateData: any = {};
       
-      if (!isThumbnail) {
+      if (isThumbnail) {
+        updateData.thumbnail_path = fileName;
+        updateData.thumbnail_url = storageUrl;
+      } else if (isWebcam) {
+        updateData.webcam_storage_path = fileName;
+        updateData.webcam_storage_url = storageUrl;
+        updateData.webcam_file_size_bytes = file.length;
+      } else {
         updateData.storage_path = fileName;
         updateData.storage_url = storageUrl;
         updateData.file_size_bytes = file.length;
-      } else {
-        updateData.thumbnail_path = fileName;
-        updateData.thumbnail_url = storageUrl;
       }
 
-      await supabase
+      this.logger.log(`[Upload] Updating recording record: ${dto.recordingId}`);
+      const { error: updateError } = await supabase
         .from('session_recordings')
         .update(updateData)
         .eq('id', dto.recordingId);
+
+      if (updateError) {
+        this.logger.error('[Upload] Error updating recording record:', updateError);
+        // Don't throw - file was uploaded successfully
+      } else {
+        this.logger.log(`[Upload] Recording record updated successfully`);
+      }
     }
+
+    this.logger.log(`[Upload] Upload completed successfully: ${fileName}`);
 
     return {
       success: true,
@@ -254,6 +319,13 @@ export class SessionRecordingsService {
       recording.thumbnail_url = thumbUrl?.signedUrl || recording.thumbnail_url;
     }
 
+    if (recording.webcam_storage_path) {
+      const { data: webcamUrl } = await supabase.storage
+        .from('session-recordings')
+        .createSignedUrl(recording.webcam_storage_path, 60 * 60);
+      recording.webcam_storage_url = webcamUrl?.signedUrl || recording.webcam_storage_url;
+    }
+
     return recording;
   }
 
@@ -286,6 +358,10 @@ export class SessionRecordingsService {
     if (recording.thumbnail_path) {
       filesToDelete.push(recording.thumbnail_path);
       this.logger.log(`  - Will delete thumbnail: ${recording.thumbnail_path}`);
+    }
+    if (recording.webcam_storage_path) {
+      filesToDelete.push(recording.webcam_storage_path);
+      this.logger.log(`  - Will delete webcam video: ${recording.webcam_storage_path}`);
     }
 
     if (filesToDelete.length > 0) {

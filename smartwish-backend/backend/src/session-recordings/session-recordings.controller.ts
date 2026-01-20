@@ -78,13 +78,31 @@ export class SessionRecordingsPublicController {
     @UploadedFile() file: Express.Multer.File,
     @Body() body: { recordingId: string; sessionId: string; kioskId: string; type: string },
   ) {
+    console.log('[Upload Controller] Received upload request:', {
+      hasFile: !!file,
+      fileSize: file?.size || 0,
+      fileName: file?.originalname || 'unknown',
+      mimeType: file?.mimetype || 'unknown',
+      sessionId: body.sessionId,
+      recordingId: body.recordingId,
+      type: body.type,
+    });
+
     if (!file) {
+      console.error('[Upload Controller] No file received');
       throw new BadRequestException('File is required');
     }
     if (!body.sessionId) {
+      console.error('[Upload Controller] No sessionId provided');
       throw new BadRequestException('sessionId is required');
     }
 
+    if (!file.buffer || file.buffer.length === 0) {
+      console.error('[Upload Controller] File buffer is empty');
+      throw new BadRequestException('File buffer is empty');
+    }
+
+    console.log('[Upload Controller] Calling uploadFile service...');
     return this.recordingsService.uploadFile(
       file.buffer,
       file.mimetype,
@@ -92,7 +110,7 @@ export class SessionRecordingsPublicController {
         recordingId: body.recordingId,
         sessionId: body.sessionId,
         kioskId: body.kioskId,
-        type: body.type as 'video' | 'thumbnail',
+        type: body.type as 'video' | 'thumbnail' | 'webcam',
       },
     );
   }
