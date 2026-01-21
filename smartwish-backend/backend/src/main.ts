@@ -106,9 +106,17 @@ async function bootstrap() {
       // Skip rate limiting in development
       if (isDev) return true;
       
+      const path = req.path || '';
+      
+      // Skip rate limiting for authenticated admin endpoints
+      // These requests come from the frontend server (Vercel/Netlify) which has limited IPs
+      // Authentication is handled by JWT tokens, not IP-based rate limiting
+      if (path.startsWith('/admin/')) {
+        return true;
+      }
+      
       // Skip rate limiting for surveillance endpoints (high-frequency frame uploads)
       // These endpoints are authenticated via API key, not IP-based
-      const path = req.path || '';
       if (path.startsWith('/surveillance/frame') || 
           path.startsWith('/surveillance/stream') ||
           path.startsWith('/surveillance/detection-image')) {
@@ -123,6 +131,11 @@ async function bootstrap() {
       
       // Skip rate limiting for SSE/streaming endpoints
       if (path.includes('/stream') || path.includes('/live')) {
+        return true;
+      }
+      
+      // Skip rate limiting for kiosk config endpoints (authenticated via API key)
+      if (path.startsWith('/kiosk/config')) {
         return true;
       }
       

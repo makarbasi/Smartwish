@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com';
 
 // GET /api/admin/alerts - Get all active alerts across all kiosks
+// Uses the dedicated /admin/kiosks/critical-alerts endpoint (single DB query)
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -11,9 +12,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetch all kiosks first, then get alerts for each
-    // In production, you'd have a dedicated endpoint for all alerts
-    const kiosksResponse = await fetch(`${API_BASE}/admin/kiosks`, {
+    // Use the dedicated critical-alerts endpoint (single query, no N+1 problem)
+    const alertsResponse = await fetch(`${API_BASE}/admin/kiosks/critical-alerts`, {
       headers: {
         Authorization: `Bearer ${session.user.access_token}`,
         'Cache-Control': 'no-cache',
@@ -21,52 +21,31 @@ export async function GET(request: NextRequest) {
       cache: 'no-store',
     });
 
-    if (!kiosksResponse.ok) {
-      return NextResponse.json(
-        { error: 'Failed to fetch kiosks' },
-        { status: kiosksResponse.status }
-      );
+    if (!alertsResponse.ok) {
+      // If the endpoint fails, return empty array rather than error
+      // This prevents the banner from breaking the UI
+      console.error(`Failed to fetch alerts: ${alertsResponse.status}`);
+      return NextResponse.json([], {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      });
     }
 
-    const kiosks = await kiosksResponse.json();
+    const alerts = await alertsResponse.json();
     
-    // Collect all alerts from all kiosks
-    const allAlerts: any[] = [];
-    
-    for (const kiosk of kiosks) {
-      try {
-        const alertsResponse = await fetch(
-          `${API_BASE}/admin/kiosks/${encodeURIComponent(kiosk.kioskId)}/alerts`,
-          {
-            headers: {
-              Authorization: `Bearer ${session.user.access_token}`,
-              'Cache-Control': 'no-cache',
-            },
-            cache: 'no-store',
-          }
-        );
-        
-        if (alertsResponse.ok) {
-          const alerts = await alertsResponse.json();
-          // Add kiosk info to each alert
-          const alertsWithKiosk = alerts.map((alert: any) => ({
-            ...alert,
-            kiosk: {
-              kioskId: kiosk.kioskId,
-              name: kiosk.name,
-            },
-          }));
-          allAlerts.push(...alertsWithKiosk);
-        }
-      } catch (error) {
-        // Skip this kiosk if alerts fetch fails
-        console.error(`Failed to fetch alerts for kiosk ${kiosk.kioskId}:`, error);
-      }
-    }
+    // Transform to match expected format (add kiosk object for compatibility)
+    const formattedAlerts = alerts.map((alert: any) => ({
+      ...alert,
+      kiosk: {
+        kioskId: alert.kioskId,
+        name: alert.kioskName,
+      },
+    }));
 
-    // Sort by severity and then by creation date
+    // Alerts are already sorted by the backend, but ensure proper order
     const severityOrder = { critical: 0, error: 1, warning: 2, info: 3 };
-    allAlerts.sort((a, b) => {
+    formattedAlerts.sort((a: any, b: any) => {
       const severityDiff =
         (severityOrder[a.severity as keyof typeof severityOrder] || 99) -
         (severityOrder[b.severity as keyof typeof severityOrder] || 99);
@@ -74,8 +53,7 @@ export async function GET(request: NextRequest) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-    // Prevent caching of the response
-    return NextResponse.json(allAlerts, {
+    return NextResponse.json(formattedAlerts, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',
