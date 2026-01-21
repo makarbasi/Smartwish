@@ -22,6 +22,8 @@ export default function KioskChatButton({ isOpen, onToggle, unreadCount = 0 }: K
         flex items-center justify-center
         ${isOpen ? 'scale-95' : 'scale-100 hover:scale-110'}
         animate-in fade-in slide-in-from-bottom-4 duration-300
+        shadow-indigo-500/50 hover:shadow-indigo-500/70
+        ring-2 ring-indigo-400/30 hover:ring-indigo-400/50
       `}
       aria-label={isOpen ? 'Close chat' : 'Open chat'}
     >

@@ -38,18 +38,22 @@ export default function KioskScreenSaverManager({
   // Get screen saver configuration from kiosk config
   const screenSavers = useMemo(() => {
     const configuredScreenSavers = kioskInfo?.config?.screenSavers;
+    console.log("[ScreenSaverManager] Configured screenSavers:", configuredScreenSavers);
     if (configuredScreenSavers && configuredScreenSavers.length > 0) {
       return configuredScreenSavers;
     }
     // Fallback to default screen saver
+    console.log("[ScreenSaverManager] Using default screen saver");
     return [DEFAULT_SCREEN_SAVER];
   }, [kioskInfo?.config?.screenSavers]);
 
   const settings = useMemo(() => {
-    return {
+    const merged = {
       ...DEFAULT_SCREEN_SAVER_SETTINGS,
       ...kioskInfo?.config?.screenSaverSettings,
     };
+    console.log("[ScreenSaverManager] Settings:", merged);
+    return merged;
   }, [kioskInfo?.config?.screenSaverSettings]);
 
   // Current screen saver state
@@ -150,6 +154,11 @@ export default function KioskScreenSaverManager({
 
   // Don't render if not visible, has active session, or no screen saver selected
   if (!isVisible || hasActiveSession) {
+    console.log("[ScreenSaverManager] Not rendering:", {
+      isVisible,
+      hasActiveSession,
+      currentScreenSaver: !!currentScreenSaver,
+    });
     return null;
   }
 
@@ -166,12 +175,15 @@ export default function KioskScreenSaverManager({
 
   // Render the appropriate screen saver based on type
   const renderScreenSaver = () => {
+    const overlayText = settings.overlayText;
+    
     switch (currentScreenSaver.type) {
       case "video":
         return (
           <VideoScreenSaver
             url={currentScreenSaver.url || ""}
             onExit={handleInteraction}
+            overlayText={overlayText}
           />
         );
       
@@ -180,6 +192,7 @@ export default function KioskScreenSaverManager({
           <HtmlScreenSaver
             url={currentScreenSaver.url || ""}
             onExit={handleInteraction}
+            overlayText={overlayText}
           />
         );
       
@@ -195,6 +208,7 @@ export default function KioskScreenSaverManager({
                 onExit();
               }
             }}
+            overlayText={overlayText}
           />
         );
     }

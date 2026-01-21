@@ -6,6 +6,7 @@ import { getYouTubeEmbedUrl } from "@/utils/screenSaverUtils";
 interface VideoScreenSaverProps {
   url: string;
   onExit: (e: React.MouseEvent | React.TouchEvent | React.KeyboardEvent) => void;
+  overlayText?: string;
 }
 
 /**
@@ -18,7 +19,7 @@ interface VideoScreenSaverProps {
  * - Fullscreen display
  * - Touch/click to dismiss (handled by parent)
  */
-export default function VideoScreenSaver({ url, onExit }: VideoScreenSaverProps) {
+export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScreenSaverProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isYouTube, setIsYouTube] = useState(false);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
@@ -76,6 +77,16 @@ export default function VideoScreenSaver({ url, onExit }: VideoScreenSaverProps)
           style={{ border: "none", pointerEvents: "none" }}
           title="Screen Saver Video"
         />
+        {/* Overlay Text */}
+        {overlayText && (
+          <div className="absolute top-8 left-0 right-0 z-20 flex justify-center pointer-events-none">
+            <div className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 shadow-2xl max-w-4xl mx-4">
+              <p className="text-3xl md:text-4xl font-semibold text-white text-center leading-tight tracking-wide">
+                {overlayText}
+              </p>
+            </div>
+          </div>
+        )}
         {/* Overlay to capture clicks - YouTube iframe won't receive them */}
         <div 
           className="absolute inset-0 z-10"
@@ -99,6 +110,16 @@ export default function VideoScreenSaver({ url, onExit }: VideoScreenSaverProps)
         onError={handleVideoError}
         style={{ pointerEvents: "none" }}
       />
+      {/* Overlay Text */}
+      {overlayText && (
+        <div className="absolute top-8 left-0 right-0 z-20 flex justify-center pointer-events-none">
+          <div className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 shadow-2xl max-w-4xl mx-4">
+            <p className="text-3xl md:text-4xl font-semibold text-white text-center leading-tight tracking-wide">
+              {overlayText}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Tap to dismiss hint - fades out after a moment */}
       <div className="absolute bottom-8 left-0 right-0 flex justify-center pointer-events-none animate-fade-out-delayed">
         <div className="px-6 py-3 rounded-full bg-black/40 backdrop-blur-sm text-white/70 text-sm">

@@ -15,6 +15,7 @@ import Image from "next/image";
 interface DefaultScreenSaverProps {
   isVisible: boolean;
   onExit: () => void;
+  overlayText?: string;
 }
 
 type HeroCard = {
@@ -333,6 +334,7 @@ function HandwritingDemo({
 export default function DefaultScreenSaver({
   isVisible,
   onExit,
+  overlayText,
 }: DefaultScreenSaverProps) {
   const [heroCards, setHeroCards] = useState<HeroCard[]>(FALLBACK_HERO_CARDS);
   const [featuredIndex, setFeaturedIndex] = useState(0);
@@ -796,6 +798,17 @@ export default function DefaultScreenSaver({
           style={{ background: `${accentC}35` }}
         />
       </div>
+
+      {/* Overlay Text */}
+      {overlayText && (
+        <div className="absolute top-8 left-0 right-0 z-50 flex justify-center pointer-events-none">
+          <div className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 shadow-2xl max-w-4xl mx-4">
+            <p className="text-3xl md:text-4xl font-semibold text-white text-center leading-tight tracking-wide">
+              {overlayText}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 text-center text-white">
         <div className="max-w-3xl space-y-6">

@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 interface HtmlScreenSaverProps {
   url: string;
   onExit: (e: React.MouseEvent | React.TouchEvent | React.KeyboardEvent) => void;
+  overlayText?: string;
 }
 
 /**
@@ -16,7 +17,7 @@ interface HtmlScreenSaverProps {
  * - Touch/click overlay to dismiss (handled by parent)
  * - Error handling with fallback display
  */
-export default function HtmlScreenSaver({ url, onExit }: HtmlScreenSaverProps) {
+export default function HtmlScreenSaver({ url, onExit, overlayText }: HtmlScreenSaverProps) {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -75,6 +76,17 @@ export default function HtmlScreenSaver({ url, onExit }: HtmlScreenSaverProps) {
         sandbox="allow-scripts allow-same-origin"
         title="Screen Saver Content"
       />
+      
+      {/* Overlay Text */}
+      {overlayText && !isLoading && (
+        <div className="absolute top-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
+          <div className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 shadow-2xl max-w-4xl mx-4">
+            <p className="text-3xl md:text-4xl font-semibold text-white text-center leading-tight tracking-wide">
+              {overlayText}
+            </p>
+          </div>
+        </div>
+      )}
       
       {/* Overlay to capture clicks - iframe won't receive them */}
       <div 

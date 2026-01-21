@@ -29,6 +29,7 @@ export interface ScreenSaverSettings {
   inactivityTimeout?: number;    // Seconds before screen saver activates (default: 60)
   rotationInterval?: number;     // Seconds between screen saver rotations (default: 30)
   enableRotation?: boolean;      // Whether to rotate or stick with one (default: true)
+  overlayText?: string;         // Optional text overlay to display on top of screen savers
 }
 
 export type KioskConfig = {
@@ -64,9 +65,10 @@ const CONFIG_CACHE_KEY = 'smartwish_kiosk_config';
  * Default screen saver settings
  */
 export const DEFAULT_SCREEN_SAVER_SETTINGS: ScreenSaverSettings = {
-  inactivityTimeout: 60,      // 60 seconds
-  rotationInterval: 30,       // 30 seconds between rotations
+  inactivityTimeout: 5,      // 60 seconds
+  rotationInterval: 5,       // 30 seconds between rotations
   enableRotation: true,       // Enable rotation by default
+  overlayText: undefined,    // No overlay text by default
 };
 
 /**

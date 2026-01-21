@@ -227,10 +227,16 @@ function setCachedConfig(info: KioskInfo): void {
 }
 
 function mergeConfig(storedConfig: Record<string, unknown> | null | undefined): KioskConfig {
-  return {
+  const merged = {
     ...DEFAULT_CONFIG,
     ...(storedConfig || {}),
   } as KioskConfig;
+  console.log('[KioskContext] Merged config:', {
+    screenSavers: merged.screenSavers,
+    screenSaverSettings: merged.screenSaverSettings,
+    storedScreenSavers: storedConfig?.screenSavers,
+  });
+  return merged;
 }
 
 function getApiBase(): string {

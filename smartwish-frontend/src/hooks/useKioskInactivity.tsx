@@ -56,14 +56,26 @@ export function useKioskInactivity({
     // Check if screen savers are configured
     const hasScreenSavers = useMemo(() => {
         const screenSavers = kioskInfo?.config?.screenSavers;
-        return screenSavers && screenSavers.length > 0 && screenSavers.some(ss => ss.enabled !== false);
+        const has = screenSavers && screenSavers.length > 0 && screenSavers.some(ss => ss.enabled !== false);
+        console.log("🖥️ [KioskInactivity] hasScreenSavers check:", {
+            has,
+            screenSavers,
+            enabledCount: screenSavers?.filter(ss => ss.enabled !== false).length || 0,
+            totalCount: screenSavers?.length || 0,
+            kioskInfo: !!kioskInfo,
+            config: !!kioskInfo?.config,
+        });
+        return has;
     }, [kioskInfo?.config?.screenSavers]);
 
     // Disable screen saver on admin pages and setup pages
     const isExcludedPath = EXCLUDED_PATHS.some(path => pathname.startsWith(path));
-    // Disable timeout on /kiosk/home - user is already at home
+    // Check if on /kiosk/home - timeout modal disabled but screen saver still active
     const isKioskHome = pathname === '/kiosk/home';
-    const effectiveEnabled = enabled && !isExcludedPath && !isKioskHome;
+    // Screen saver is enabled everywhere except excluded paths (admin, etc.)
+    const screenSaverEnabled = enabled && !isExcludedPath;
+    // Timeout modal is disabled on kiosk home (user is already at home)
+    const timeoutEnabled = screenSaverEnabled && !isKioskHome;
 
     const [showScreenSaver, setShowScreenSaver] = useState(false);
     const [showTimeoutModal, setShowTimeoutModal] = useState(false);
@@ -171,7 +183,7 @@ export function useKioskInactivity({
 
     // Reset activity timers
     const resetActivity = useCallback(() => {
-        if (!isKiosk || !effectiveEnabled) return;
+        if (!isKiosk || !screenSaverEnabled) return;
         
         // If paused, don't reset timers
         if (isPausedRef.current) {
@@ -201,13 +213,17 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] 🚫 No screen savers configured - skipping visual display");
         }
 
-        // Set reset timer - show confirmation modal
-        console.log("🖥️ [KioskInactivity] ⏱️ Setting reset timer:", effectiveResetTimeout / 1000, "s", multiplier > 1 ? `(${multiplier}x multiplier)` : '');
-        resetTimerRef.current = setTimeout(() => {
-            console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired - showing timeout confirmation modal");
-            setShowTimeoutModal(true);
-        }, effectiveResetTimeout);
-    }, [isKiosk, effectiveEnabled, clearTimers, hasScreenSavers]);
+        // Set reset timer - show confirmation modal (only if not on kiosk home)
+        if (timeoutEnabled) {
+            console.log("🖥️ [KioskInactivity] ⏱️ Setting reset timer:", effectiveResetTimeout / 1000, "s", multiplier > 1 ? `(${multiplier}x multiplier)` : '');
+            resetTimerRef.current = setTimeout(() => {
+                console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired - showing timeout confirmation modal");
+                setShowTimeoutModal(true);
+            }, effectiveResetTimeout);
+        } else {
+            console.log("🖥️ [KioskInactivity] 🏠 On kiosk home - skipping timeout modal");
+        }
+    }, [isKiosk, screenSaverEnabled, timeoutEnabled, clearTimers, hasScreenSavers]);
 
     // Pause inactivity tracking (for QR upload, printing, etc.)
     const pauseInactivity = useCallback((reason: string, customTimeout?: number) => {
@@ -344,25 +360,43 @@ export function useKioskInactivity({
 
     // Start timers on initial mount only
     useEffect(() => {
-        if (!isKiosk || !effectiveEnabled) {
+        console.log("🖥️ [KioskInactivity] Initial mount check:", {
+            isKiosk,
+            screenSaverEnabled,
+            timeoutEnabled,
+            isKioskHome,
+            hasScreenSavers,
+            pathname,
+            hasActiveSession: kioskSession?.isSessionActive,
+            kioskInfoLoaded: !!kioskInfo,
+            configLoaded: !!kioskInfo?.config,
+        });
+        
+        if (!isKiosk || !screenSaverEnabled) {
+            console.log("🖥️ [KioskInactivity] Not starting timers:", !isKiosk ? "not in kiosk mode" : "screen saver disabled");
             clearTimers();
             setShowScreenSaver(false);
             setShowTimeoutModal(false);
             return;
         }
 
-        console.log("🖥️ [KioskInactivity] Starting initial timers");
+        if (!hasScreenSavers) {
+            console.log("🖥️ [KioskInactivity] ⚠️ No screen savers configured - timers won't start");
+            return;
+        }
+
+        console.log("🖥️ [KioskInactivity] ✅ Starting initial timers (kiosk home:", isKioskHome, ")");
         resetActivity();
 
         return () => {
             clearTimers();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isKiosk, effectiveEnabled]);
+    }, [isKiosk, screenSaverEnabled]);
 
     // Set up activity listeners
     useEffect(() => {
-        if (!isKiosk || !effectiveEnabled) {
+        if (!isKiosk || !screenSaverEnabled) {
             return;
         }
 
@@ -389,21 +423,40 @@ export function useKioskInactivity({
                 window.removeEventListener(event, activityHandler);
             });
         };
-    }, [isKiosk, effectiveEnabled, handleActivity]);
+    }, [isKiosk, screenSaverEnabled, handleActivity]);
 
     // Reset timers when pathname changes (navigation)
     useEffect(() => {
-        if (isKiosk && effectiveEnabled && !isPausedRef.current) {
+        if (isKiosk && screenSaverEnabled && !isPausedRef.current) {
             console.log("🖥️ [KioskInactivity] Page changed to:", pathname, "- resetting activity");
             setShowScreenSaver(false);
             resetActivity();
-        } else if (isKiosk && isKioskHome) {
-            console.log("🖥️ [KioskInactivity] ✅ On /kiosk/home - timeout disabled");
-            clearTimers();
-            setShowScreenSaver(false);
-            setShowTimeoutModal(false);
         }
-    }, [pathname, isKiosk, effectiveEnabled, isKioskHome, resetActivity, clearTimers]);
+    }, [pathname, isKiosk, screenSaverEnabled, resetActivity]);
+
+    // Expose test function for debugging (only in development)
+    useEffect(() => {
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+            (window as any).__testScreenSaver = () => {
+                console.log("🖥️ [KioskInactivity] TEST: Forcing screen saver to show");
+                setShowScreenSaver(true);
+            };
+            (window as any).__testScreenSaverDebug = () => {
+                console.log("🖥️ [KioskInactivity] DEBUG INFO:", {
+                    isKiosk,
+                    screenSaverEnabled,
+                    timeoutEnabled,
+                    isKioskHome,
+                    hasScreenSavers,
+                    showScreenSaver,
+                    hasActiveSession: kioskSession?.isSessionActive,
+                    screenSavers: kioskInfo?.config?.screenSavers,
+                    settings: kioskInfo?.config?.screenSaverSettings,
+                    pathname,
+                });
+            };
+        }
+    }, [isKiosk, screenSaverEnabled, timeoutEnabled, isKioskHome, hasScreenSavers, showScreenSaver, kioskSession?.isSessionActive, kioskInfo?.config?.screenSavers, kioskInfo?.config?.screenSaverSettings, pathname]);
 
     return {
         showScreenSaver: hasScreenSavers ? showScreenSaver : false, // Only show if screen savers are configured

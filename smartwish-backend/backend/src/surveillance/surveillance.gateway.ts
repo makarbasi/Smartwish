@@ -121,6 +121,10 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
 
   /**
    * Handle all incoming messages (JSON or binary)
+   * 
+   * Supports two message formats:
+   * 1. Python format: { type: 'auth', kioskId: '...', apiKey: '...' }
+   * 2. Frontend format: { event: 'subscribe', data: { kioskId: '...' } }
    */
   private async handleMessage(client: AuthenticatedSocket, data: Buffer | string) {
     // Binary data = frame from authenticated kiosk
@@ -134,8 +138,14 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
     // Try to parse JSON message
     try {
       const message = JSON.parse(data.toString());
-      const event = message.event;
-      const payload = message.data || {};
+      
+      // Support both message formats:
+      // Format 1 (Python): { type: 'auth', kioskId: '...', apiKey: '...' }
+      // Format 2 (Frontend): { event: 'auth', data: { kioskId: '...', apiKey: '...' } }
+      const event = message.event || message.type;
+      const payload = message.data || message; // Use message itself if no data wrapper
+
+      console.log(`[SurveillanceWS] Received message: event=${event}`);
 
       switch (event) {
         case 'auth':
@@ -153,7 +163,7 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
       }
     } catch (e) {
       // Not JSON - could be binary frame or invalid message
-      console.log('[SurveillanceWS] Non-JSON message received');
+      console.log('[SurveillanceWS] Non-JSON message received:', e);
     }
   }
 

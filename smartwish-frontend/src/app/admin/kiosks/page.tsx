@@ -705,6 +705,15 @@ export default function KiosksAdminPage() {
                         <UserGroupIcon className="h-3.5 w-3.5" />
                         Managers
                       </button>
+                      <Link
+                        href={`/admin/kiosks/${kiosk.kioskId}/screensavers`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200 rounded-lg transition-colors"
+                        title="Screen Savers"
+                      >
+                        <FilmIcon className="h-3.5 w-3.5" />
+                        Savers
+                      </Link>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
