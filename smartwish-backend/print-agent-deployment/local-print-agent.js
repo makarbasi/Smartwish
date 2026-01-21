@@ -1006,10 +1006,14 @@ async function main() {
   // DEVICE PAIRING - Get kiosk identity from cloud
   // =========================================================================
   
+  // Initialize surveillance manager variable (will be set later after pairing/config is loaded)
+  let surveillanceManager = null;
+
   const pairingServer = new DevicePairingServer({
     port: CONFIG.localServices.pairingPort,
+    surveillanceManager: surveillanceManager, // Pass surveillance manager for recording
   });
-  
+
   await pairingServer.start();
   
   let pairing = await pairingServer.loadPairing();
@@ -1070,8 +1074,26 @@ async function main() {
   // Clear old jobs from queue - start fresh every time
   await clearJobQueue();
 
-  // Start surveillance if enabled
-  const surveillanceManager = await startSurveillance(surveillanceConfig);
+  // Start continuous surveillance if enabled (for people counting)
+  // Session-based recording will be started/stopped via HTTP endpoints on pairing server
+  // If we already have a surveillance manager from config, use it, otherwise create new one
+  if (!surveillanceManager) {
+    surveillanceManager = await startSurveillance(surveillanceConfig);
+  } else if (surveillanceConfig && surveillanceConfig.enabled) {
+    // Update existing manager with new config
+    surveillanceManager.updateConfig({
+      kioskId: surveillanceConfig.kioskId,
+      apiKey: surveillanceConfig.apiKey,
+      webcamIndex: surveillanceConfig.webcamIndex ?? 0,
+      httpPort: surveillanceConfig.httpPort ?? 8765,
+      dwellThreshold: surveillanceConfig.dwellThresholdSeconds ?? 8,
+      frameThreshold: surveillanceConfig.frameThreshold ?? 10,
+      showPreview: surveillanceConfig.showPreview ?? false,
+    });
+  }
+  
+  // Update pairing server with surveillance manager (for session recording control)
+  pairingServer.surveillanceManager = surveillanceManager;
 
   // Start multi-printer monitoring
   const printerMonitor = await startPrinterMonitoring(pairing.kioskId, pairing.apiKey, kioskPrinters);

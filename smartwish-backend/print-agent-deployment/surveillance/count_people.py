@@ -29,6 +29,8 @@ import argparse
 import json
 import threading
 import queue
+import numpy as np
+import signal
 from datetime import datetime
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler, BaseHTTPRequestHandler
@@ -46,6 +48,20 @@ try:
 except ImportError:
     print("ERROR: requests not installed. Run: pip install requests")
     sys.exit(1)
+
+try:
+    import mss
+    import mss.tools
+except ImportError:
+    print("WARNING: mss not installed. Screen recording will be disabled.")
+    print("Run: pip install mss")
+    mss = None
+
+try:
+    from PIL import ImageGrab
+except ImportError:
+    print("WARNING: Pillow not installed. Screen recording fallback unavailable.")
+    ImageGrab = None
 
 
 # =============================================================================
@@ -65,6 +81,19 @@ class Config:
         self.show_preview = not args.no_preview
         self.batch_interval = args.batch_interval
         self.fps_target = 5  # Process at 5 FPS
+        
+        # Session-based recording
+        self.session_id = getattr(args, 'session_id', None)
+        self.record_webcam = getattr(args, 'record_webcam', True)
+        self.record_screen = getattr(args, 'record_screen', True)
+        self.webcam_fps = getattr(args, 'webcam_fps', 30)
+        self.screen_fps = getattr(args, 'screen_fps', 1)
+        self.output_video_dir = Path(getattr(args, 'output_video_dir', './recordings'))
+        
+        # Camera angle adjustment
+        self.camera_rotation = getattr(args, 'camera_rotation', 0)  # 0, 90, 180, 270
+        self.camera_flip_h = getattr(args, 'camera_flip_h', False)
+        self.camera_flip_v = getattr(args, 'camera_flip_v', False)
         
         # Calculated values
         self.frames_to_count = int(self.dwell_threshold * self.fps_target)  # 8s * 5fps = 40 frames
@@ -96,9 +125,11 @@ frame_holder = FrameHolder()
 
 
 class SurveillanceHTTPHandler(BaseHTTPRequestHandler):
-    """HTTP handler that serves images and live MJPEG stream"""
+    """HTTP handler that serves images, live MJPEG stream, and recording control"""
     
     base_directory = None
+    video_recorder = None  # Will be set after initialization
+    config = None  # Will be set after initialization
     
     def do_GET(self):
         # Live stream endpoint
@@ -210,20 +241,156 @@ class SurveillanceHTTPHandler(BaseHTTPRequestHandler):
         except Exception:
             self.send_error(500)
     
+    def do_POST(self):
+        """Handle POST requests for recording control"""
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+        
+        try:
+            data = json.loads(body) if body else {}
+        except:
+            data = {}
+        
+        # CORS headers
+        self.send_header_cors = lambda: (
+            self.send_header('Access-Control-Allow-Origin', '*'),
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'),
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type'),
+        )
+        
+        # POST /recording/start - Start session recording
+        if self.path == '/recording/start':
+            session_id = data.get('sessionId')
+            recording_config = data.get('config', {})
+            
+            if not session_id:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'sessionId required'}).encode())
+                return
+            
+            if self.video_recorder:
+                # Update recording config from request
+                if recording_config.get('recordWebcam') is not None:
+                    self.video_recorder.config.record_webcam = recording_config.get('recordWebcam', True)
+                if recording_config.get('recordScreen') is not None:
+                    self.video_recorder.config.record_screen = recording_config.get('recordScreen', True)
+                if recording_config.get('webcamFps'):
+                    self.video_recorder.webcam_fps = float(recording_config['webcamFps'])
+                    self.video_recorder.webcam_delay = 1.0 / self.video_recorder.webcam_fps
+                if recording_config.get('screenFps'):
+                    self.video_recorder.screen_fps = float(recording_config['screenFps'])
+                    self.video_recorder.screen_delay = 1.0 / self.video_recorder.screen_fps
+                if recording_config.get('cameraRotation') is not None:
+                    self.video_recorder.camera_transformer.rotation = int(recording_config['cameraRotation'])
+                if recording_config.get('cameraFlipHorizontal') is not None:
+                    self.video_recorder.camera_transformer.flip_h = recording_config.get('cameraFlipHorizontal', False)
+                if recording_config.get('cameraFlipVertical') is not None:
+                    self.video_recorder.camera_transformer.flip_v = recording_config.get('cameraFlipVertical', False)
+                
+                self.video_recorder.start_recording(session_id)
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'message': f'Recording started for session {session_id}',
+                    'recording': {
+                        'webcam': self.video_recorder.config.record_webcam,
+                        'screen': self.video_recorder.config.record_screen,
+                    }
+                }).encode())
+            else:
+                self.send_response(503)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Video recorder not available'}).encode())
+            return
+        
+        # POST /recording/stop - Stop session recording and upload
+        elif self.path == '/recording/stop':
+            session_id = data.get('sessionId')
+            
+            if self.video_recorder:
+                print(f"  📤 HTTP: Stop recording requested for session: {session_id or 'current'}")
+                self.video_recorder.stop_and_upload()
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'message': 'Recording stopped and upload initiated',
+                    'webcamFrames': self.video_recorder.webcam_frame_count,
+                    'screenFrames': self.video_recorder.screen_frame_count,
+                }).encode())
+            else:
+                self.send_response(503)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Video recorder not available'}).encode())
+            return
+        
+        # POST /recording/status - Get recording status
+        elif self.path == '/recording/status':
+            if self.video_recorder:
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'recording': self.video_recorder.is_recording,
+                    'sessionId': self.video_recorder.session_id,
+                    'webcamFrames': self.video_recorder.webcam_frame_count,
+                    'screenFrames': self.video_recorder.screen_frame_count,
+                }).encode())
+            else:
+                self.send_response(503)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Video recorder not available'}).encode())
+            return
+        
+        # Unknown endpoint
+        self.send_response(404)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps({'error': 'Not found'}).encode())
+    
+    def do_OPTIONS(self):
+        """Handle CORS preflight requests"""
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+    
     def log_message(self, format, *args):
         """Suppress HTTP request logging"""
         pass
 
 
-def start_http_server(port, base_directory):
+def start_http_server(port, base_directory, video_recorder=None, config=None):
     """Start HTTP server in a background thread"""
     SurveillanceHTTPHandler.base_directory = str(base_directory)
+    SurveillanceHTTPHandler.video_recorder = video_recorder
+    SurveillanceHTTPHandler.config = config
     server = HTTPServer(('0.0.0.0', port), SurveillanceHTTPHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    print(f"  🌐 Image server started on http://localhost:{port}")
+    print(f"  🌐 Surveillance HTTP server on http://localhost:{port}")
     print(f"  📹 Live stream: http://localhost:{port}/stream")
     print(f"  🖼️  Single frame: http://localhost:{port}/frame")
+    print(f"  🎬 Recording control: POST /recording/start, /recording/stop")
     return server
 
 
@@ -244,12 +411,15 @@ class FrameUploader:
         self.upload_interval = 0.2  # Upload at 5 FPS (200ms between frames)
         self.enabled = True  # Can be disabled if server doesn't support frame uploads
         self.consecutive_failures = 0
-        self.max_failures = 10  # Disable after this many consecutive failures
+        self.max_failures = 50  # Increased from 10 - give more chances before disabling
+        self.frames_uploaded = 0
         
         # Start background upload thread
         self.upload_thread = threading.Thread(target=self._upload_worker, daemon=True)
         self.upload_thread.start()
-        print(f"  ☁️  Frame uploader started (uploading to {self.config.server_url}/surveillance/frame)")
+        print(f"  ☁️  Frame uploader started")
+        print(f"     URL: {self.config.server_url}/surveillance/frame")
+        print(f"     Kiosk ID: {self.config.kiosk_id}")
     
     def _upload_worker(self):
         """Background worker that uploads frames to the server"""
@@ -294,10 +464,14 @@ class FrameUploader:
             
             if response.status_code == 200:
                 self.consecutive_failures = 0  # Reset failure counter
+                self.frames_uploaded += 1
+                # Log success every 100 frames
+                if self.frames_uploaded % 100 == 0:
+                    print(f"  ☁️  Live stream: {self.frames_uploaded} frames uploaded to server")
             elif response.status_code == 404:
-                # Endpoint not deployed yet - disable uploader
+                # Endpoint not deployed yet
                 if self.consecutive_failures == 0:
-                    print("  ⚠️ Frame upload endpoint not available (404) - disabling remote viewing")
+                    print(f"  ⚠️ Frame upload endpoint returned 404: {url}")
                 self.consecutive_failures += 1
                 if self.consecutive_failures >= self.max_failures:
                     print("  🔇 Frame uploader disabled (server doesn't support it)")
@@ -578,7 +752,7 @@ class PersonTracker:
 # =============================================================================
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='SmartWish Kiosk Surveillance')
+    parser = argparse.ArgumentParser(description='SmartWish Kiosk Surveillance with Recording')
     parser.add_argument('--kiosk-id', required=True, help='Unique kiosk identifier')
     parser.add_argument('--server-url', default='https://smartwish.onrender.com', help='Cloud server URL')
     parser.add_argument('--api-key', required=True, help='Kiosk API key')
@@ -589,7 +763,437 @@ def parse_args():
     parser.add_argument('--http-port', type=int, default=8765, help='Port for local HTTP server')
     parser.add_argument('--no-preview', action='store_true', help='Disable OpenCV preview window')
     parser.add_argument('--batch-interval', type=int, default=30, help='Seconds between batch uploads')
+    
+    # Session-based recording arguments
+    parser.add_argument('--session-id', help='Session ID for this recording session')
+    parser.add_argument('--record-webcam', type=lambda x: x.lower() == 'true', default=True, help='Enable webcam video recording')
+    parser.add_argument('--record-screen', type=lambda x: x.lower() == 'true', default=True, help='Enable screen video recording')
+    parser.add_argument('--webcam-fps', type=int, default=30, help='Webcam recording FPS')
+    parser.add_argument('--screen-fps', type=int, default=1, help='Screen recording FPS')
+    parser.add_argument('--output-video-dir', default='./recordings', help='Directory for video recordings')
+    
+    # Camera angle adjustment arguments
+    parser.add_argument('--camera-rotation', type=int, default=0, choices=[0, 90, 180, 270], help='Rotate camera: 0, 90, 180, 270 degrees')
+    parser.add_argument('--camera-flip-h', type=lambda x: x.lower() == 'true', default=False, help='Flip camera horizontally')
+    parser.add_argument('--camera-flip-v', type=lambda x: x.lower() == 'true', default=False, help='Flip camera vertically')
+    
     return parser.parse_args()
+
+
+# =============================================================================
+# Video Recording Classes (Threaded - Like Reference Script)
+# =============================================================================
+
+class CameraTransformer:
+    """Applies camera angle adjustments (rotation and flips)"""
+    
+    def __init__(self, rotation=0, flip_h=False, flip_v=False):
+        self.rotation = rotation
+        self.flip_h = flip_h
+        self.flip_v = flip_v
+    
+    def get_rotation_flag(self, angle):
+        """Helper to map angle to OpenCV constants (like reference script)"""
+        if angle == 90:
+            return cv2.ROTATE_90_CLOCKWISE
+        elif angle == 180:
+            return cv2.ROTATE_180
+        elif angle == 270:
+            return cv2.ROTATE_90_COUNTERCLOCKWISE
+        return None
+    
+    def transform(self, frame):
+        """Apply rotation and flips to frame"""
+        if frame is None:
+            return None
+        
+        # Apply horizontal flip
+        if self.flip_h:
+            frame = cv2.flip(frame, 1)
+        
+        # Apply vertical flip
+        if self.flip_v:
+            frame = cv2.flip(frame, 0)
+        
+        # Apply rotation
+        rotate_code = self.get_rotation_flag(self.rotation)
+        if rotate_code is not None:
+            frame = cv2.rotate(frame, rotate_code)
+        
+        return frame
+
+
+class VideoRecorder:
+    """
+    Handles webcam capture and video recording.
+    
+    ARCHITECTURE:
+    - Webcam capture thread runs ALWAYS (provides frames for YOLO + streaming)
+    - Video recording is OPTIONAL and controlled via start_recording/stop_and_upload
+    - Screen recording thread starts/stops with session recording
+    
+    This ensures:
+    1. People counting (YOLO) always works
+    2. Recording only happens during sessions (when triggered via HTTP)
+    """
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.session_id = None
+        self.video_dir = None
+        self.webcam_path = None
+        self.screen_path = None
+        
+        # FPS settings
+        self.webcam_fps = float(config.webcam_fps) if config.webcam_fps > 0 else 10.0
+        self.screen_fps = float(config.screen_fps) if config.screen_fps > 0 else 5.0
+        
+        # Delays for timing control
+        self.webcam_delay = 1.0 / self.webcam_fps
+        self.screen_delay = 1.0 / self.screen_fps
+        
+        # Frame counters
+        self.webcam_frame_count = 0
+        self.screen_frame_count = 0
+        
+        # Recording state (for VIDEO writing, not webcam capture)
+        self.is_recording = False  # Video writing state
+        self.webcam_writer = None
+        self.screen_thread = None
+        self.screen_stop_event = threading.Event()
+        
+        # Webcam capture state (always running)
+        self.capture_running = False
+        self.capture_thread = None
+        
+        # Camera transformer
+        self.camera_transformer = CameraTransformer(
+            rotation=config.camera_rotation,
+            flip_h=config.camera_flip_h,
+            flip_v=config.camera_flip_v
+        )
+        
+        # Webcam index
+        self.webcam_index = config.webcam_index
+        
+        # Shared frame for YOLO (always available from capture thread)
+        self.latest_frame = None
+        self.frame_lock = threading.Lock()
+        
+        # Video writer lock
+        self.writer_lock = threading.Lock()
+    
+    def start_capture(self):
+        """Start webcam capture thread (always running for YOLO/streaming)"""
+        if self.capture_running:
+            return
+        
+        self.capture_running = True
+        self.capture_thread = threading.Thread(target=self._webcam_capture_thread, daemon=True)
+        self.capture_thread.start()
+        print(f"  [Capture] Starting webcam capture thread...")
+    
+    def get_latest_frame(self):
+        """Get the latest webcam frame (for YOLO processing)"""
+        with self.frame_lock:
+            return self.latest_frame.copy() if self.latest_frame is not None else None
+    
+    def start_recording(self, session_id=None):
+        """Start video recording for a session"""
+        if self.is_recording:
+            print("  ⚠️ Already recording!")
+            return
+        
+        self.session_id = session_id or f"session-{int(time.time())}"
+        self.video_dir = self.config.output_video_dir / self.config.kiosk_id / self.session_id
+        self.video_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Reset counters
+        self.webcam_frame_count = 0
+        self.screen_frame_count = 0
+        
+        # Set up paths
+        if self.config.record_webcam:
+            self.webcam_path = self.video_dir / f"webcam_{timestamp}.mp4"
+        else:
+            self.webcam_path = None
+        
+        if self.config.record_screen:
+            self.screen_path = self.video_dir / f"screen_{timestamp}.mp4"
+        else:
+            self.screen_path = None
+        
+        # Start recording flag - this enables video writing in capture thread
+        self.is_recording = True
+        
+        print(f"\n  🎬 STARTED SESSION RECORDING for {self.session_id}")
+        print(f"     Webcam recording: {self.config.record_webcam}")
+        print(f"     Screen recording: {self.config.record_screen}")
+        
+        # Start screen recording thread if enabled
+        if self.config.record_screen and (mss or ImageGrab):
+            self.screen_stop_event.clear()
+            self.screen_thread = threading.Thread(target=self._record_screen_thread, daemon=True)
+            self.screen_thread.start()
+    
+    def _webcam_capture_thread(self):
+        """
+        Webcam capture thread - runs CONTINUOUSLY.
+        - Always captures frames (for YOLO/streaming)
+        - Optionally writes to video file when is_recording=True
+        """
+        # Open camera
+        cap = cv2.VideoCapture(self.webcam_index)
+        if not cap.isOpened():
+            print(f"  [Capture] ERROR: Cannot open webcam {self.webcam_index}")
+            self.capture_running = False
+            return
+        
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use MP4 codec (Supabase doesn't support AVI)
+        writer = None
+        writer_initialized = False
+        
+        print(f"  [Capture] Webcam opened (index: {self.webcam_index}, rotation: {self.camera_transformer.rotation}°)")
+        
+        while self.capture_running:
+            ret, frame = cap.read()
+            if not ret:
+                time.sleep(0.1)
+                continue
+            
+            # Apply rotation/flips
+            transformed = self.camera_transformer.transform(frame)
+            
+            # Share frame with main loop for YOLO processing (always)
+            with self.frame_lock:
+                self.latest_frame = transformed
+            
+            # Write to video file only if recording is active
+            if self.is_recording and self.config.record_webcam:
+                with self.writer_lock:
+                    # Initialize VideoWriter on first frame
+                    if not writer_initialized and self.webcam_path:
+                        height, width = transformed.shape[:2]
+                        print(f"  [Recording] Initializing webcam VideoWriter: {width}x{height}")
+                        writer = cv2.VideoWriter(str(self.webcam_path), fourcc, self.webcam_fps, (width, height))
+                        if writer.isOpened():
+                            writer_initialized = True
+                            self.webcam_writer = writer
+                            print(f"  [Recording] ✅ Webcam recording started: {self.webcam_path}")
+                        else:
+                            print(f"  [Recording] ❌ Failed to open VideoWriter!")
+                            writer = None
+                    
+                    # Write frame
+                    if writer and writer.isOpened():
+                        writer.write(transformed)
+                        self.webcam_frame_count += 1
+                        if self.webcam_frame_count % 100 == 0:
+                            print(f"  [Recording] 📹 Webcam: {self.webcam_frame_count} frames")
+            
+            # If recording stopped, close writer
+            elif writer_initialized and not self.is_recording:
+                with self.writer_lock:
+                    if writer:
+                        writer.release()
+                        print(f"  [Recording] Webcam writer closed ({self.webcam_frame_count} frames)")
+                    writer = None
+                    writer_initialized = False
+                    self.webcam_writer = None
+            
+            time.sleep(self.webcam_delay)
+        
+        # Cleanup
+        cap.release()
+        if writer:
+            writer.release()
+        print(f"  [Capture] Webcam capture thread stopped")
+    
+    def _record_screen_thread(self):
+        """
+        Screen recording thread - runs only during session recording.
+        Captures screen at configured FPS.
+        """
+        if mss:
+            sct = mss.mss()
+            monitor = sct.monitors[1]  # Primary monitor
+        else:
+            sct = None
+        
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use MP4 codec (Supabase doesn't support AVI)
+        out = None
+        
+        print(f"  [Screen] Ready to record.")
+        
+        while self.is_recording and not self.screen_stop_event.is_set():
+            try:
+                # Capture screen
+                if sct:
+                    img = sct.grab(monitor)
+                    frame = np.array(img)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                elif ImageGrab:
+                    screenshot = ImageGrab.grab()
+                    frame = np.array(screenshot)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                else:
+                    break
+                
+                # Initialize VideoWriter on first frame
+                if out is None:
+                    height, width = frame.shape[:2]
+                    print(f"  [Screen] Recording resolution: {width}x{height}")
+                    out = cv2.VideoWriter(str(self.screen_path), fourcc, self.screen_fps, (width, height))
+                    if not out.isOpened():
+                        print(f"  [Screen] ERROR: Failed to open VideoWriter!")
+                        break
+                    print(f"  [Screen] ✅ Screen recording started: {self.screen_path}")
+                
+                out.write(frame)
+                self.screen_frame_count += 1
+                
+                if self.screen_frame_count % 30 == 0:
+                    print(f"  [Screen] 🖥️ {self.screen_frame_count} frames")
+                
+                time.sleep(self.screen_delay)
+                
+            except Exception as e:
+                print(f"  [Screen] Error: {e}")
+                time.sleep(0.5)
+        
+        if out:
+            out.release()
+        print(f"  [Screen] Recording stopped ({self.screen_frame_count} frames)")
+    
+    def stop_and_upload(self):
+        """Stop recording and upload videos to cloud storage"""
+        # Idempotent - safe to call multiple times
+        if not self.is_recording:
+            return
+        
+        print(f"\n  🛑 STOPPING SESSION RECORDING for {self.session_id}...")
+        self.is_recording = False
+        
+        # Signal screen thread to stop
+        self.screen_stop_event.set()
+        
+        # Wait for screen thread
+        if self.screen_thread and self.screen_thread.is_alive():
+            self.screen_thread.join(timeout=5.0)
+        
+        # Close webcam writer (the capture thread will detect is_recording=False and close it)
+        # Wait a moment for it to close
+        time.sleep(1.0)
+        
+        # Force close webcam writer if still open
+        with self.writer_lock:
+            if self.webcam_writer:
+                self.webcam_writer.release()
+                self.webcam_writer = None
+        
+        # Small delay to ensure files are fully written
+        time.sleep(0.5)
+        
+        print(f"  📊 Recording stats: Webcam={self.webcam_frame_count} frames, Screen={self.screen_frame_count} frames")
+        
+        # Upload videos
+        if self.webcam_path and self.webcam_path.exists():
+            file_size = self.webcam_path.stat().st_size
+            if file_size > 1024:  # Only upload if file is larger than 1KB
+                print(f"  📤 Uploading webcam video: {file_size / 1024:.2f} KB")
+                self._upload_video(self.webcam_path, 'webcam')
+            else:
+                print(f"  ⚠️ Webcam video too small ({file_size} bytes), skipping upload")
+        else:
+            print(f"  ℹ️ No webcam video to upload")
+        
+        if self.screen_path and self.screen_path.exists():
+            file_size = self.screen_path.stat().st_size
+            if file_size > 1024:  # Only upload if file is larger than 1KB
+                print(f"  📤 Uploading screen video: {file_size / 1024:.2f} KB")
+                self._upload_video(self.screen_path, 'screen')
+            else:
+                print(f"  ⚠️ Screen video too small ({file_size} bytes), skipping upload")
+        else:
+            print(f"  ℹ️ No screen video to upload")
+        
+        print(f"  ✅ Session recording complete for {self.session_id}")
+    
+    def _upload_video(self, video_path: Path, video_type: str):
+        """Upload video file to cloud storage"""
+        if not video_path.exists():
+            print(f"  ⚠️ Video file not found: {video_path}")
+            return
+        
+        url = f"{self.config.server_url}/kiosk/session/recording/upload-python"
+        
+        print(f"  📤 Upload details:")
+        print(f"     URL: {url}")
+        print(f"     Session ID: {self.session_id}")
+        print(f"     Kiosk ID: {self.config.kiosk_id}")
+        print(f"     Video type: {video_type}")
+        print(f"     File: {video_path}")
+        
+        headers = {
+            'x-kiosk-api-key': self.config.api_key,
+            'x-kiosk-id': self.config.kiosk_id,
+        }
+        
+        try:
+            file_size = video_path.stat().st_size
+            file_size_mb = file_size / 1024 / 1024
+            file_size_kb = file_size / 1024
+            
+            # Determine MIME type based on file extension
+            mime_type = 'video/mp4' if video_path.suffix == '.mp4' else 'video/x-msvideo'
+            
+            print(f"  📤 Uploading {video_type} video ({file_size_kb:.2f} KB / {file_size_mb:.2f} MB)...")
+            print(f"     MIME type: {mime_type}")
+            
+            with open(video_path, 'rb') as f:
+                files = {'file': (video_path.name, f, mime_type)}
+                data = {
+                    'sessionId': self.session_id,
+                    'kioskId': self.config.kiosk_id,
+                    'type': video_type,
+                }
+                
+                response = requests.post(url, files=files, data=data, headers=headers, timeout=300)
+                
+                print(f"     Response status: {response.status_code}")
+                
+                if response.status_code == 200 or response.status_code == 201:
+                    result = response.json()
+                    print(f"  ✅ {video_type.capitalize()} video uploaded successfully!")
+                    print(f"     Storage URL: {result.get('storageUrl', 'N/A')}")
+                    print(f"     Storage Path: {result.get('storagePath', 'N/A')}")
+                else:
+                    print(f"  ❌ Failed to upload {video_type} video: HTTP {response.status_code}")
+                    print(f"     Response: {response.text[:500]}")
+                    
+        except requests.exceptions.Timeout:
+            print(f"  ❌ Upload timeout: Server took too long to respond")
+        except requests.exceptions.ConnectionError as e:
+            print(f"  ❌ Connection error: Could not reach server at {self.config.server_url}")
+            print(f"     Error: {e}")
+        except Exception as e:
+            print(f"  ❌ Error uploading {video_type} video: {type(e).__name__}: {e}")
+
+
+# Global video recorder instance for signal handling
+_video_recorder = None
+_should_stop = False
+
+
+def signal_handler(signum, frame):
+    """Handle SIGTERM/SIGINT for graceful shutdown"""
+    global _should_stop, _video_recorder
+    print(f"\n  ⚠️ Received signal {signum}, initiating graceful shutdown...")
+    _should_stop = True
+    if _video_recorder:
+        _video_recorder.stop_and_upload()
 
 
 def find_model_file(script_dir: Path) -> Path:
@@ -612,6 +1216,8 @@ def find_model_file(script_dir: Path) -> Path:
 
 
 def main():
+    global _video_recorder, _should_stop
+    
     args = parse_args()
     config = Config(args)
     
@@ -624,7 +1230,14 @@ def main():
     print(f"  Dwell threshold: {config.dwell_threshold}s ({config.frames_to_count} frames)")
     print(f"  Save image after: {config.frame_threshold} frames")
     print(f"  Output: {config.output_dir}")
+    print(f"  Record Webcam: {config.record_webcam}")
+    print(f"  Record Screen: {config.record_screen}")
     print("")
+    
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    print("  ✅ Signal handlers registered (SIGTERM, SIGINT)")
     
     # Find and load YOLO model
     script_dir = Path(__file__).parent
@@ -637,33 +1250,47 @@ def main():
         print(f"  ❌ Failed to load YOLO model: {e}")
         sys.exit(1)
     
-    # Initialize webcam
-    print(f"  📹 Opening webcam {config.webcam_index}...")
-    cap = cv2.VideoCapture(config.webcam_index)
+    # Initialize video recorder (for webcam capture + optional recording)
+    video_recorder = VideoRecorder(config)
     
-    if not cap.isOpened():
-        print(f"  ❌ Failed to open webcam {config.webcam_index}")
+    # Store globally for signal handler
+    _video_recorder = video_recorder
+    
+    # Start webcam capture thread (ALWAYS runs for YOLO/streaming)
+    video_recorder.start_capture()
+    
+    # Wait for webcam capture thread to start
+    print(f"  📹 Waiting for webcam capture...")
+    wait_start = time.time()
+    while video_recorder.get_latest_frame() is None and time.time() - wait_start < 10:
+        time.sleep(0.1)
+    if video_recorder.get_latest_frame() is None:
+        print(f"  ❌ Webcam capture failed to start")
         sys.exit(1)
+    print(f"  ✅ Webcam capture active")
     
-    # Set camera resolution (optional)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    
-    # Start HTTP server for serving images
+    # Start HTTP server (with video_recorder for recording control)
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    http_server = start_http_server(config.http_port, config.output_dir)
+    http_server = start_http_server(config.http_port, config.output_dir, video_recorder, config)
     
-    # Initialize reporter, frame uploader, and tracker
+    # Initialize reporter, frame uploader, tracker
     reporter = DetectionReporter(config)
     frame_uploader = FrameUploader(config, frame_holder)  # Upload frames to backend for remote viewing
     tracker = PersonTracker(config, reporter)
+    
+    # NOTE: Recording does NOT auto-start!
+    # Recording is started via HTTP POST /recording/start when a session begins
+    # Recording is stopped via HTTP POST /recording/stop when a session ends
+    print("")
+    print("  📝 Session recording is DISABLED by default")
+    print("     Recording will start when a session begins (via HTTP command)")
+    print("")
     
     # Load tracker config if exists
     tracker_config = script_dir / 'custom_tracker.yaml'
     tracker_yaml = str(tracker_config) if tracker_config.exists() else 'bytetrack.yaml'
     
-    print("")
-    print("  🔄 Starting tracking...")
+    print("  🔄 Starting people tracking (YOLO)...")
     print(f"  Logic: Count AND save image if present > {config.dwell_threshold}s.")
     print("  Press 'q' in preview window or Ctrl+C to stop.")
     print("")
@@ -671,18 +1298,19 @@ def main():
     frame_interval = 1.0 / config.fps_target  # Target 5 FPS
     
     try:
-        while cap.isOpened():
+        while not _should_stop:
             start_time = time.time()
             
-            success, frame = cap.read()
-            if not success:
-                print("  ⚠️ Failed to read frame, retrying...")
-                time.sleep(0.5)
+            # Get frame from video recorder capture thread (always running)
+            frame = video_recorder.get_latest_frame()
+            if frame is None:
+                time.sleep(0.05)
                 continue
+            transformed_frame = frame  # Already transformed by capture thread
             
-            # Run YOLO tracking
+            # Run YOLO tracking on frame
             results = model.track(
-                source=frame,
+                source=transformed_frame,
                 persist=True,
                 classes=[0],  # Only detect people (class 0)
                 tracker=tracker_yaml,
@@ -693,7 +1321,7 @@ def main():
             for r in results:
                 if r.boxes is not None and r.boxes.id is not None:
                     track_ids = r.boxes.id.int().tolist()
-                    tracker.process_detections(track_ids, frame)
+                    tracker.process_detections(track_ids, transformed_frame)
                 
                 # Create annotated frame for streaming/preview
                 annotated_frame = r.plot()
@@ -718,7 +1346,7 @@ def main():
                 )
                 
                 # Update frame holder for HTTP streaming
-                frame_holder.set_frame(frame, annotated_frame)
+                frame_holder.set_frame(transformed_frame, annotated_frame)
                 
                 # Show local preview if enabled
                 if config.show_preview:
@@ -741,9 +1369,17 @@ def main():
         print(f"\n  📊 FINAL REPORT: {stats['daily_count']} people counted (stayed > {config.dwell_threshold}s)")
         print(f"     Total images saved: {stats['saved_images']}")
         
+        # Stop and upload video recordings if active
+        if video_recorder.is_recording:
+            video_recorder.stop_and_upload()
+        
+        # Stop webcam capture
+        video_recorder.capture_running = False
+        if video_recorder.capture_thread:
+            video_recorder.capture_thread.join(timeout=2.0)
+        
         frame_uploader.stop()
         reporter.stop()
-        cap.release()
         cv2.destroyAllWindows()
         print("  ✅ Surveillance stopped")
 

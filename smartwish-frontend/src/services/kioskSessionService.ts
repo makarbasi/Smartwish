@@ -3,7 +3,6 @@
  * 
  * Handles event collection, batching, and sending to the backend.
  * Designed for minimal performance impact with batched network calls.
- * Also integrates with screen recording for session playback.
  */
 
 import type {
@@ -14,7 +13,6 @@ import type {
   LogEventRequest,
   SessionOutcome,
 } from '@/types/kioskSession';
-import { sessionRecordingService } from './sessionRecordingService';
 
 // ==================== Configuration ====================
 
@@ -182,8 +180,8 @@ class KioskSessionService {
 
       console.log('[SessionService] Session started:', this.sessionId);
       
-      // Start screen recording (non-blocking)
-      this.startRecording();
+      // Note: Recording is now handled by Python script (count_people.py) automatically
+      // No frontend recording needed
       
       // Persist state to survive HMR
       this.persistSessionState();
@@ -197,41 +195,10 @@ class KioskSessionService {
   }
 
   /**
-   * Start screen recording for the session (non-blocking)
+   * Note: Recording is now handled by Python script automatically
+   * When a session starts/ends, the backend triggers Python recording
+   * No frontend recording code needed
    */
-  private async startRecording(): Promise<void> {
-    if (!this.sessionId || !this.kioskId) {
-      console.warn('[SessionService] Cannot start recording - missing sessionId or kioskId');
-      return;
-    }
-
-    try {
-      console.log('[SessionService] Starting screen recording for session:', this.sessionId);
-      const started = await sessionRecordingService.startRecording(this.sessionId, this.kioskId);
-      if (started) {
-        console.log('[SessionService] Screen recording started successfully');
-      } else {
-        console.warn('[SessionService] Screen recording did not start (may have failed)');
-      }
-    } catch (error) {
-      console.error('[SessionService] Failed to start recording (non-critical):', error);
-      // Recording failure should not affect session tracking
-    }
-  }
-
-  /**
-   * Stop screen recording (non-blocking)
-   */
-  private async stopRecording(): Promise<void> {
-    if (!sessionRecordingService.isRecording) return;
-
-    try {
-      await sessionRecordingService.stopRecording();
-      console.log('[SessionService] Screen recording stopped');
-    } catch (error) {
-      console.error('[SessionService] Failed to stop recording (non-critical):', error);
-    }
-  }
 
   /**
    * End the current session
@@ -247,8 +214,7 @@ class KioskSessionService {
     // Track session end event
     this.trackEvent('session_end', this.currentPage, undefined, { outcome });
 
-    // Stop screen recording (non-blocking, but wait for completion)
-    await this.stopRecording();
+    // Note: Recording stop is handled by backend/Python automatically when session ends
 
     // Flush remaining events
     await this.flushEvents();
@@ -299,10 +265,7 @@ class KioskSessionService {
     console.log('[SessionService] Processing timeout, ending session as abandoned');
     this.trackEvent('session_timeout', this.currentPage);
     
-    // Cancel recording on timeout (don't bother uploading abandoned sessions that timed out)
-    if (sessionRecordingService.isRecording) {
-      sessionRecordingService.cancelRecording();
-    }
+    // Note: Recording stop is handled by backend/Python automatically when session ends
     
     await this.endSession('abandoned');
   }

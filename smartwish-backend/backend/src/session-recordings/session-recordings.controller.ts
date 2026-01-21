@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -67,7 +68,7 @@ export class SessionRecordingsPublicController {
   }
 
   /**
-   * Upload recording file (video or thumbnail)
+   * Upload recording file (video or thumbnail) - DEPRECATED: Use upload-python instead
    */
   @Public()
   @Post('upload')
@@ -111,6 +112,79 @@ export class SessionRecordingsPublicController {
         sessionId: body.sessionId,
         kioskId: body.kioskId,
         type: body.type as 'video' | 'thumbnail' | 'webcam',
+      },
+    );
+  }
+
+  /**
+   * Upload video file from Python script (new endpoint for Python-based recording)
+   */
+  @Public()
+  @Post('upload-python')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 500 * 1024 * 1024 }, // 500MB max for videos
+  }))
+  async uploadPythonRecording(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { sessionId: string; kioskId: string; type: 'webcam' | 'screen' },
+    @Headers('x-kiosk-api-key') apiKey?: string,
+    @Headers('x-kiosk-id') kioskIdHeader?: string,
+  ) {
+    const kioskId = body.kioskId || kioskIdHeader;
+    
+    console.log('[Upload Python] Received upload request:', {
+      hasFile: !!file,
+      fileSize: file?.size || 0,
+      fileName: file?.originalname || 'unknown',
+      mimeType: file?.mimetype || 'unknown',
+      sessionId: body.sessionId,
+      kioskId: kioskId,
+      type: body.type,
+      hasApiKey: !!apiKey,
+    });
+
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    if (!body.sessionId) {
+      throw new BadRequestException('sessionId is required');
+    }
+    if (!kioskId) {
+      throw new BadRequestException('kioskId is required');
+    }
+
+    if (!file.buffer || file.buffer.length === 0) {
+      throw new BadRequestException('File buffer is empty');
+    }
+
+    // Validate API key if provided
+    if (apiKey) {
+      // TODO: Add API key validation if needed
+      // For now, we'll trust the kioskId and sessionId match
+    }
+
+    // Get or create recording record for this session
+    let recording = await this.recordingsService.getRecordingBySessionId(body.sessionId);
+    if (!recording) {
+      // Create new recording record
+      recording = await this.recordingsService.createRecording({
+        sessionId: body.sessionId,
+        kioskId: kioskId,
+        resolution: body.type === 'webcam' ? '1280x720' : '1920x1080',
+        frameRate: body.type === 'webcam' ? 30 : 1,
+      });
+    }
+
+    // Upload the video file
+    console.log(`[Upload Python] Uploading ${body.type} video for session ${body.sessionId}...`);
+    return this.recordingsService.uploadFile(
+      file.buffer,
+      file.mimetype || 'video/mp4',
+      {
+        recordingId: recording.id,
+        sessionId: body.sessionId,
+        kioskId: kioskId,
+        type: body.type === 'webcam' ? 'webcam' : 'video',
       },
     );
   }

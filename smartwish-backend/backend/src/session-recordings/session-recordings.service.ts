@@ -153,6 +153,8 @@ export class SessionRecordingsService {
       extension = 'json';
     } else if (contentType.includes('mp4')) {
       extension = 'mp4';
+    } else if (contentType.includes('x-msvideo') || contentType.includes('avi')) {
+      extension = 'avi';
     }
     
     const folder = isThumbnail ? 'thumbnails' : isWebcam ? 'webcam' : 'videos';

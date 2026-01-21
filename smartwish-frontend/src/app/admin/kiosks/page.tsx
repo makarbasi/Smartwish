@@ -101,6 +101,15 @@ type KioskConfig = {
     frameThreshold: number; // Frames before saving image (default 10)
     httpPort: number; // Port for local image server (default 8765)
   };
+  recording?: {
+    recordWebcam: boolean; // Enable webcam video recording (default: true)
+    recordScreen: boolean; // Enable screen video recording (default: true)
+    webcamFps: number; // Webcam recording FPS (default: 30)
+    screenFps: number; // Screen recording FPS (default: 1)
+    cameraRotation: number; // Rotate camera: 0, 90, 180, 270 degrees (default: 0)
+    cameraFlipHorizontal: boolean; // Flip camera horizontally (default: false)
+    cameraFlipVertical: boolean; // Flip camera vertically (default: false)
+  };
   giftCardTile?: {
     enabled: boolean; // Master toggle - show/hide the tile
     visibility: 'visible' | 'hidden' | 'disabled'; // visible=show, hidden=don't show, disabled=show but grayed out
@@ -187,6 +196,15 @@ const DEFAULT_CONFIG: KioskConfig = {
     dwellThresholdSeconds: 8,
     frameThreshold: 10,
     httpPort: 8765,
+  },
+  recording: {
+    recordWebcam: true, // Enable webcam recording by default
+    recordScreen: true, // Enable screen recording by default
+    webcamFps: 30, // 30 FPS for webcam
+    screenFps: 1, // 1 FPS for screen
+    cameraRotation: 0, // No rotation
+    cameraFlipHorizontal: false, // No horizontal flip
+    cameraFlipVertical: false, // No vertical flip
   },
   giftCardTile: {
     enabled: false, // Disabled by default
@@ -2267,6 +2285,263 @@ function KioskFormModal({
                           </div>
                         </div>
                       )}
+                    </div>
+
+                    {/* Recording Settings */}
+                    <div className="col-span-2 border-t pt-4 mt-2">
+                      <h5 className="text-sm font-semibold text-gray-800 mb-3">
+                        🎥 Session Recording Settings
+                      </h5>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Configure automatic session recording (webcam + screen). Recording starts automatically when sessions begin if enabled. Each kiosk can have different settings.
+                      </p>
+
+                      <div className="space-y-4 ml-4 pl-4 border-l-2 border-blue-200">
+                        {/* Recording Options */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <label className="text-sm font-medium text-gray-700">
+                                Record Webcam
+                              </label>
+                              <p className="text-xs text-gray-500">
+                                Record webcam video during sessions
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    recording: {
+                                      ...formData.config.recording,
+                                      recordWebcam: !(formData.config.recording?.recordWebcam ?? true),
+                                      recordScreen: formData.config.recording?.recordScreen ?? true,
+                                      webcamFps: formData.config.recording?.webcamFps ?? 30,
+                                      screenFps: formData.config.recording?.screenFps ?? 1,
+                                      cameraRotation: formData.config.recording?.cameraRotation ?? 0,
+                                      cameraFlipHorizontal: formData.config.recording?.cameraFlipHorizontal ?? false,
+                                      cameraFlipVertical: formData.config.recording?.cameraFlipVertical ?? false,
+                                    },
+                                  },
+                                })
+                              }
+                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
+                                formData.config.recording?.recordWebcam !== false
+                                  ? "bg-blue-500"
+                                  : "bg-gray-200"
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  formData.config.recording?.recordWebcam !== false
+                                    ? "translate-x-5"
+                                    : "translate-x-0"
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <label className="text-sm font-medium text-gray-700">
+                                Record Screen
+                              </label>
+                              <p className="text-xs text-gray-500">
+                                Record screen activity during sessions
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    recording: {
+                                      ...formData.config.recording,
+                                      recordWebcam: formData.config.recording?.recordWebcam ?? true,
+                                      recordScreen: !(formData.config.recording?.recordScreen ?? true),
+                                      webcamFps: formData.config.recording?.webcamFps ?? 30,
+                                      screenFps: formData.config.recording?.screenFps ?? 1,
+                                      cameraRotation: formData.config.recording?.cameraRotation ?? 0,
+                                      cameraFlipHorizontal: formData.config.recording?.cameraFlipHorizontal ?? false,
+                                      cameraFlipVertical: formData.config.recording?.cameraFlipVertical ?? false,
+                                    },
+                                  },
+                                })
+                              }
+                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
+                                formData.config.recording?.recordScreen !== false
+                                  ? "bg-blue-500"
+                                  : "bg-gray-200"
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  formData.config.recording?.recordScreen !== false
+                                    ? "translate-x-5"
+                                    : "translate-x-0"
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Camera Angle Settings */}
+                        <div className="grid grid-cols-2 gap-4 pt-3 border-t">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Camera Rotation</label>
+                            <select
+                              value={formData.config.recording?.cameraRotation ?? 0}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    recording: {
+                                      ...formData.config.recording,
+                                      recordWebcam: formData.config.recording?.recordWebcam ?? true,
+                                      recordScreen: formData.config.recording?.recordScreen ?? true,
+                                      webcamFps: formData.config.recording?.webcamFps ?? 30,
+                                      screenFps: formData.config.recording?.screenFps ?? 1,
+                                      cameraRotation: parseInt(e.target.value) || 0,
+                                      cameraFlipHorizontal: formData.config.recording?.cameraFlipHorizontal ?? false,
+                                      cameraFlipVertical: formData.config.recording?.cameraFlipVertical ?? false,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            >
+                              <option value="0">0° (Normal)</option>
+                              <option value="90">90° (Clockwise)</option>
+                              <option value="180">180° (Upside Down)</option>
+                              <option value="270">270° (Counter-clockwise)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Camera Flips</label>
+                            <div className="space-y-2">
+                              <label className="flex items-center gap-2 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.config.recording?.cameraFlipHorizontal ?? false}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      config: {
+                                        ...formData.config,
+                                        recording: {
+                                          ...formData.config.recording,
+                                          recordWebcam: formData.config.recording?.recordWebcam ?? true,
+                                          recordScreen: formData.config.recording?.recordScreen ?? true,
+                                          webcamFps: formData.config.recording?.webcamFps ?? 30,
+                                          screenFps: formData.config.recording?.screenFps ?? 1,
+                                          cameraRotation: formData.config.recording?.cameraRotation ?? 0,
+                                          cameraFlipHorizontal: e.target.checked,
+                                          cameraFlipVertical: formData.config.recording?.cameraFlipVertical ?? false,
+                                        },
+                                      },
+                                    })
+                                  }
+                                  className="rounded border-gray-300"
+                                />
+                                Flip Horizontal
+                              </label>
+                              <label className="flex items-center gap-2 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.config.recording?.cameraFlipVertical ?? false}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      config: {
+                                        ...formData.config,
+                                        recording: {
+                                          ...formData.config.recording,
+                                          recordWebcam: formData.config.recording?.recordWebcam ?? true,
+                                          recordScreen: formData.config.recording?.recordScreen ?? true,
+                                          webcamFps: formData.config.recording?.webcamFps ?? 30,
+                                          screenFps: formData.config.recording?.screenFps ?? 1,
+                                          cameraRotation: formData.config.recording?.cameraRotation ?? 0,
+                                          cameraFlipHorizontal: formData.config.recording?.cameraFlipHorizontal ?? false,
+                                          cameraFlipVertical: e.target.checked,
+                                        },
+                                      },
+                                    })
+                                  }
+                                  className="rounded border-gray-300"
+                                />
+                                Flip Vertical
+                              </label>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Webcam FPS</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="60"
+                              value={formData.config.recording?.webcamFps ?? 30}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    recording: {
+                                      ...formData.config.recording,
+                                      recordWebcam: formData.config.recording?.recordWebcam ?? true,
+                                      recordScreen: formData.config.recording?.recordScreen ?? true,
+                                      webcamFps: parseInt(e.target.value) || 30,
+                                      screenFps: formData.config.recording?.screenFps ?? 1,
+                                      cameraRotation: formData.config.recording?.cameraRotation ?? 0,
+                                      cameraFlipHorizontal: formData.config.recording?.cameraFlipHorizontal ?? false,
+                                      cameraFlipVertical: formData.config.recording?.cameraFlipVertical ?? false,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Frames per second for webcam</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Screen FPS</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="30"
+                              value={formData.config.recording?.screenFps ?? 1}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  config: {
+                                    ...formData.config,
+                                    recording: {
+                                      ...formData.config.recording,
+                                      recordWebcam: formData.config.recording?.recordWebcam ?? true,
+                                      recordScreen: formData.config.recording?.recordScreen ?? true,
+                                      webcamFps: formData.config.recording?.webcamFps ?? 30,
+                                      screenFps: parseInt(e.target.value) || 1,
+                                      cameraRotation: formData.config.recording?.cameraRotation ?? 0,
+                                      cameraFlipHorizontal: formData.config.recording?.cameraFlipHorizontal ?? false,
+                                      cameraFlipVertical: formData.config.recording?.cameraFlipVertical ?? false,
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Frames per second for screen</p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Gift Card Tile Configuration */}

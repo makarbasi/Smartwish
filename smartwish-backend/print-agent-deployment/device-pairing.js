@@ -30,6 +30,7 @@ export class DevicePairingServer {
     this.onPaired = options.onPaired || (() => {});
     this.server = null;
     this.pairing = null;
+    this.surveillanceManager = options.surveillanceManager || null;
   }
 
   /**
@@ -91,6 +92,68 @@ export class DevicePairingServer {
         if (req.method === 'GET' && url.pathname === '/pairing') {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(this.pairing || {}));
+          return;
+        }
+
+        // POST /session/recording/start - Start session recording
+        if (req.method === 'POST' && url.pathname === '/session/recording/start') {
+          let body = '';
+          req.on('data', chunk => body += chunk);
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body);
+              const { sessionId, kioskConfig } = data;
+              
+              if (!sessionId) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'sessionId is required' }));
+                return;
+              }
+              
+              if (this.surveillanceManager) {
+                await this.surveillanceManager.startSessionRecording(sessionId, kioskConfig || {});
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, message: 'Recording started' }));
+              } else {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Surveillance manager not available' }));
+              }
+            } catch (err) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
+        // POST /session/recording/stop - Stop session recording
+        if (req.method === 'POST' && url.pathname === '/session/recording/stop') {
+          let body = '';
+          req.on('data', chunk => body += chunk);
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body);
+              const { sessionId } = data;
+              
+              if (!sessionId) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'sessionId is required' }));
+                return;
+              }
+              
+              if (this.surveillanceManager) {
+                await this.surveillanceManager.stopSessionRecording(sessionId);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, message: 'Recording stopped' }));
+              } else {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Surveillance manager not available' }));
+              }
+            } catch (err) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
           return;
         }
 

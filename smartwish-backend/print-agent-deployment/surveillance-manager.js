@@ -34,6 +34,9 @@ export class SurveillanceManager {
     this.restartCount = 0;
     this.maxRestarts = 10; // Max restarts before giving up
     this.scriptPath = path.join(__dirname, 'surveillance', 'count_people.py');
+    
+    // Session-based recording processes (one per session)
+    this.sessionProcesses = new Map(); // Map<sessionId, { process, config }>
   }
 
   /**
@@ -199,6 +202,118 @@ export class SurveillanceManager {
     if (wasRunning) {
       setTimeout(() => this.start(), 1000);
     }
+  }
+
+  /**
+   * Start session-based recording via HTTP endpoint
+   * The surveillance process is already running - this just tells it to start recording
+   */
+  async startSessionRecording(sessionId, kioskConfig = {}) {
+    const recordingConfig = kioskConfig.recording || {};
+    
+    // Check if recording is enabled
+    const recordWebcam = recordingConfig.recordWebcam !== false; // Default: enabled
+    const recordScreen = recordingConfig.recordScreen !== false; // Default: enabled
+    
+    if (!recordWebcam && !recordScreen) {
+      console.log(`  [Session Recording] Recording disabled for session ${sessionId}`);
+      return;
+    }
+
+    console.log(`  [Session Recording] 🎬 Starting recording for session ${sessionId}`);
+    console.log(`    Webcam: ${recordWebcam ? 'enabled' : 'disabled'}`);
+    console.log(`    Screen: ${recordScreen ? 'enabled' : 'disabled'}`);
+
+    try {
+      // Call the surveillance process HTTP endpoint to start recording
+      const response = await fetch(`http://localhost:${this.config.httpPort}/recording/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId,
+          config: {
+            recordWebcam: recordWebcam,
+            recordScreen: recordScreen,
+            webcamFps: recordingConfig.webcamFps || 10,
+            screenFps: recordingConfig.screenFps || 5,
+            cameraRotation: recordingConfig.cameraRotation || 0,
+            cameraFlipHorizontal: recordingConfig.cameraFlipHorizontal || false,
+            cameraFlipVertical: recordingConfig.cameraFlipVertical || false,
+          },
+        }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`  [Session Recording] ✅ Recording started: ${result.message}`);
+        this.sessionProcesses.set(sessionId, { startedAt: new Date(), config: recordingConfig });
+      } else {
+        const error = await response.text();
+        console.error(`  [Session Recording] ❌ Failed to start recording: ${error}`);
+      }
+    } catch (err) {
+      console.error(`  [Session Recording] ❌ Error starting recording: ${err.message}`);
+      console.log(`  [Session Recording] Is the surveillance process running on port ${this.config.httpPort}?`);
+    }
+  }
+
+  /**
+   * Stop session-based recording and trigger upload via HTTP endpoint
+   */
+  async stopSessionRecording(sessionId) {
+    if (!this.sessionProcesses.has(sessionId)) {
+      console.log(`  [Session Recording] No active recording for session ${sessionId}`);
+      // Still try to stop in case the state is out of sync
+    }
+
+    console.log(`  [Session Recording] 🛑 Stopping recording for session ${sessionId}`);
+    
+    try {
+      // Call the surveillance process HTTP endpoint to stop recording
+      const response = await fetch(`http://localhost:${this.config.httpPort}/recording/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sessionId }),
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`  [Session Recording] ✅ Recording stopped: ${result.message}`);
+        console.log(`    Webcam frames: ${result.webcamFrames || 0}`);
+        console.log(`    Screen frames: ${result.screenFrames || 0}`);
+      } else {
+        const error = await response.text();
+        console.error(`  [Session Recording] ❌ Failed to stop recording: ${error}`);
+      }
+    } catch (err) {
+      console.error(`  [Session Recording] ❌ Error stopping recording: ${err.message}`);
+    }
+    
+    this.sessionProcesses.delete(sessionId);
+  }
+
+  /**
+   * Get status of session recording via HTTP endpoint
+   */
+  async getSessionRecordingStatus(sessionId) {
+    try {
+      const response = await fetch(`http://localhost:${this.config.httpPort}/recording/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sessionId }),
+      });
+      
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (err) {
+      // Surveillance process may not be running
+    }
+    
+    return {
+      recording: false,
+      sessionId: sessionId,
+    };
   }
 }
 

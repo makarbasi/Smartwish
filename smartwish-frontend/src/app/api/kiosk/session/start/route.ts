@@ -24,13 +24,14 @@ export async function POST(request: NextRequest) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(kioskId);
 
     // Verify the kiosk exists - try by UUID first, then by kiosk_id string
+    // Also fetch kiosk config for recording settings
     let kiosk;
     let kioskError;
 
     if (isUuid) {
       const result = await supabase
         .from('kiosk_configs')
-        .select('id, kiosk_id')
+        .select('id, kiosk_id, config')
         .eq('id', kioskId)
         .single();
       kiosk = result.data;
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
       // Try by kiosk_id string (human-readable ID like "laptop_kiosk")
       const result = await supabase
         .from('kiosk_configs')
-        .select('id, kiosk_id')
+        .select('id, kiosk_id, config')
         .eq('kiosk_id', kioskId)
         .single();
       kiosk = result.data;
@@ -90,6 +91,43 @@ export async function POST(request: NextRequest) {
 
     if (eventError) {
       console.error('Error logging session start event:', eventError);
+    }
+
+    // Trigger Python recording if enabled (call local print agent)
+    // This happens automatically in the background - no user interaction needed
+    try {
+      const pairingPort = 8766; // Default pairing server port
+      const kioskConfig = kiosk.config || {};
+      const recordingConfig = kioskConfig.recording || {};
+      
+      // Check if recording is enabled for this kiosk
+      const recordWebcam = recordingConfig.recordWebcam !== false; // Default: enabled
+      const recordScreen = recordingConfig.recordScreen !== false; // Default: enabled
+      
+      if (recordWebcam || recordScreen) {
+        console.log(`[Session] Triggering Python recording for session ${session.id}...`);
+        
+        // Call local print agent to start recording (non-blocking)
+        fetch(`http://localhost:${pairingPort}/session/recording/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: session.id,
+            kioskConfig: {
+              recording: recordingConfig,
+            },
+          }),
+        }).catch((err) => {
+          // If local agent is not running, that's okay - recording just won't happen
+          console.log(`[Session] Could not reach local print agent for recording: ${err.message}`);
+          console.log('[Session] Recording will be skipped (local agent may not be running)');
+        });
+      } else {
+        console.log(`[Session] Recording disabled for kiosk ${kiosk.kiosk_id}`);
+      }
+    } catch (err) {
+      // Recording failure should not affect session creation
+      console.log(`[Session] Failed to trigger recording (non-critical): ${err}`);
     }
 
     console.log(`[Session] Started new session: ${session.id} for kiosk: ${kiosk.kiosk_id}`);
