@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
+import { useKiosk } from "@/contexts/KioskContext";
+import { DEFAULT_SCREEN_SAVER_SETTINGS } from "@/utils/kioskConfig";
 
 interface UseKioskInactivityOptions {
-    screenSaverTimeout?: number; // milliseconds (default: 60 seconds)
+    screenSaverTimeout?: number; // milliseconds (default: from config or 60 seconds)
     resetTimeout?: number; // milliseconds (default: 90 seconds)
     enabled?: boolean;
 }
@@ -28,18 +30,34 @@ const PRINT_JOB_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 // Payment timeout multiplier
 const PAYMENT_TIMEOUT_MULTIPLIER = 2; // Double timeout during payment
 
-// Flag to temporarily disable screen saver display (but keep redirect logic)
-const SCREEN_SAVER_DISABLED = true; // Set to false to re-enable screen saver
-
 export function useKioskInactivity({
-    screenSaverTimeout = 60000, // 60 seconds (1 minute)
+    screenSaverTimeout: propScreenSaverTimeout,
     resetTimeout = 90000, // 90 seconds (1.5 minutes)
     enabled = true,
 }: UseKioskInactivityOptions = {}) {
     const { isKiosk } = useDeviceMode();
+    const { kioskInfo } = useKiosk();
     const pathname = usePathname();
     const router = useRouter();
     const kioskSession = useKioskSessionSafe();
+    
+    // Get screen saver settings from kiosk config
+    const screenSaverSettings = useMemo(() => {
+        return {
+            ...DEFAULT_SCREEN_SAVER_SETTINGS,
+            ...kioskInfo?.config?.screenSaverSettings,
+        };
+    }, [kioskInfo?.config?.screenSaverSettings]);
+    
+    // Use config timeout if available, otherwise use prop or default
+    const screenSaverTimeout = propScreenSaverTimeout ?? 
+        (screenSaverSettings.inactivityTimeout ? screenSaverSettings.inactivityTimeout * 1000 : 60000);
+    
+    // Check if screen savers are configured
+    const hasScreenSavers = useMemo(() => {
+        const screenSavers = kioskInfo?.config?.screenSavers;
+        return screenSavers && screenSavers.length > 0 && screenSavers.some(ss => ss.enabled !== false);
+    }, [kioskInfo?.config?.screenSavers]);
 
     // Disable screen saver on admin pages and setup pages
     const isExcludedPath = EXCLUDED_PATHS.some(path => pathname.startsWith(path));
@@ -171,8 +189,8 @@ export function useKioskInactivity({
         const effectiveScreenSaverTimeout = customTimeoutRef.current || (screenSaverTimeoutRef.current * multiplier);
         const effectiveResetTimeout = customTimeoutRef.current || (resetTimeoutRef.current * multiplier);
 
-        // Set screen saver timer (only if screen saver is enabled)
-        if (!SCREEN_SAVER_DISABLED) {
+        // Set screen saver timer (only if screen savers are configured)
+        if (hasScreenSavers) {
             console.log("🖥️ [KioskInactivity] ⏱️ Setting screen saver timer:", effectiveScreenSaverTimeout / 1000, "s", multiplier > 1 ? `(${multiplier}x multiplier)` : '');
             screenSaverTimerRef.current = setTimeout(() => {
                 console.log("🖥️ [KioskInactivity] ⏰ Screen saver timer fired - showing screen saver");
@@ -180,7 +198,7 @@ export function useKioskInactivity({
                 setShowScreenSaver(true);
             }, effectiveScreenSaverTimeout);
         } else {
-            console.log("🖥️ [KioskInactivity] 🚫 Screen saver disabled - skipping visual display");
+            console.log("🖥️ [KioskInactivity] 🚫 No screen savers configured - skipping visual display");
         }
 
         // Set reset timer - show confirmation modal
@@ -189,7 +207,7 @@ export function useKioskInactivity({
             console.log("🖥️ [KioskInactivity] ⏰ Reset timer fired - showing timeout confirmation modal");
             setShowTimeoutModal(true);
         }, effectiveResetTimeout);
-    }, [isKiosk, effectiveEnabled, clearTimers]);
+    }, [isKiosk, effectiveEnabled, clearTimers, hasScreenSavers]);
 
     // Pause inactivity tracking (for QR upload, printing, etc.)
     const pauseInactivity = useCallback((reason: string, customTimeout?: number) => {
@@ -388,7 +406,7 @@ export function useKioskInactivity({
     }, [pathname, isKiosk, effectiveEnabled, isKioskHome, resetActivity, clearTimers]);
 
     return {
-        showScreenSaver: SCREEN_SAVER_DISABLED ? false : showScreenSaver, // Always false if disabled
+        showScreenSaver: hasScreenSavers ? showScreenSaver : false, // Only show if screen savers are configured
         showTimeoutModal,
         exitScreenSaver,
         resetActivity,

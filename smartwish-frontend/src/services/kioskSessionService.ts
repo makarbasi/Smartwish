@@ -182,8 +182,12 @@ class KioskSessionService {
 
       console.log('[SessionService] Session started:', this.sessionId);
       
-      // Note: Recording is now handled by Python script (count_people.py) automatically
-      // No frontend recording needed
+      // Trigger recording on the LOCAL print agent (runs on same machine as kiosk browser)
+      // This ONLY works because the browser is on the kiosk machine - not from the server
+      if (data.recording?.enabled) {
+        console.log('[SessionService] Triggering local recording for session:', this.sessionId);
+        this.triggerLocalRecording(this.sessionId, data.recording);
+      }
       
       // Persist state to survive HMR
       this.persistSessionState();
@@ -197,10 +201,57 @@ class KioskSessionService {
   }
 
   /**
-   * Note: Recording is now handled by Python script automatically
-   * When a session starts/ends, the backend triggers Python recording
-   * No frontend recording code needed
+   * Trigger recording on the local print agent
+   * This is called from the kiosk browser (which runs on the local machine)
+   * so it CAN reach localhost:8766 - unlike server-side code on Vercel
    */
+  private triggerLocalRecording(sessionId: string, recordingConfig: { config?: any }) {
+    const pairingPort = 8766; // Default pairing server port
+    
+    fetch(`http://localhost:${pairingPort}/session/recording/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        kioskConfig: {
+          recording: recordingConfig.config || {},
+        },
+      }),
+    })
+      .then((res) => {
+        if (res.ok) {
+          console.log('[SessionService] Local recording started successfully');
+        } else {
+          console.warn('[SessionService] Local print agent returned error:', res.status);
+        }
+      })
+      .catch((err) => {
+        // If local agent is not running, that's okay - recording just won't happen
+        console.warn('[SessionService] Could not reach local print agent:', err.message);
+        console.log('[SessionService] Recording skipped (print agent may not be running)');
+      });
+  }
+
+  /**
+   * Stop recording on the local print agent
+   */
+  private stopLocalRecording(sessionId: string) {
+    const pairingPort = 8766;
+    
+    fetch(`http://localhost:${pairingPort}/session/recording/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })
+      .then((res) => {
+        if (res.ok) {
+          console.log('[SessionService] Local recording stopped successfully');
+        }
+      })
+      .catch((err) => {
+        console.warn('[SessionService] Could not stop local recording:', err.message);
+      });
+  }
 
   /**
    * End the current session
@@ -216,7 +267,10 @@ class KioskSessionService {
     // Track session end event
     this.trackEvent('session_end', this.currentPage, undefined, { outcome });
 
-    // Note: Recording stop is handled by backend/Python automatically when session ends
+    // Stop recording on the local print agent (before we clear sessionId)
+    if (this.sessionId) {
+      this.stopLocalRecording(this.sessionId);
+    }
 
     // Flush remaining events
     await this.flushEvents();

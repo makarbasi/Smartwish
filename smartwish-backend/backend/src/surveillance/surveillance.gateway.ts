@@ -1,14 +1,12 @@
 import {
   WebSocketGateway,
   WebSocketServer,
-  SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  MessageBody,
-  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, WebSocket } from 'ws';
 import { SurveillanceService } from './surveillance.service';
+import { IncomingMessage } from 'http';
 
 interface AuthenticatedSocket extends WebSocket {
   kioskId?: string;
@@ -26,11 +24,10 @@ interface AuthenticatedSocket extends WebSocket {
  * - Admin viewers connect and subscribe to specific kiosk feeds
  * - Gateway relays frames from kiosk to all subscribed viewers
  * 
- * Message Protocol:
- * - Kiosk authentication: { type: 'auth', kioskId: string, apiKey: string }
- * - Viewer subscription: { type: 'subscribe', kioskId: string }
- * - Kiosk sends frames as binary data after authentication
- * - Viewers receive binary frames for subscribed kiosk
+ * Message Protocol (JSON):
+ * - Kiosk authentication: { event: 'auth', data: { kioskId: string, apiKey: string } }
+ * - Viewer subscription: { event: 'subscribe', data: { kioskId: string } }
+ * - Kiosk frame: { event: 'frame' } followed by binary data
  */
 @WebSocketGateway({
   path: '/ws/surveillance',
@@ -57,6 +54,12 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
   };
 
   constructor(private readonly surveillanceService: SurveillanceService) {
+    console.log('[SurveillanceWS] Gateway initialized');
+  }
+
+  afterInit() {
+    console.log('[SurveillanceWS] WebSocket server started at /ws/surveillance');
+    
     // Heartbeat to detect dead connections
     setInterval(() => {
       this.server?.clients?.forEach((ws: AuthenticatedSocket) => {
@@ -70,13 +73,18 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
     }, 30000);
   }
 
-  handleConnection(client: AuthenticatedSocket) {
+  handleConnection(client: AuthenticatedSocket, request: IncomingMessage) {
     client.isAlive = true;
     client.on('pong', () => {
       client.isAlive = true;
     });
     
-    console.log('[SurveillanceWS] New connection');
+    console.log('[SurveillanceWS] New connection from:', request.socket?.remoteAddress);
+    
+    // Handle all messages manually (raw ws adapter doesn't use decorators well)
+    client.on('message', (data: Buffer | string) => {
+      this.handleMessage(client, data);
+    });
   }
 
   handleDisconnect(client: AuthenticatedSocket) {
@@ -112,13 +120,49 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
   }
 
   /**
-   * Handle kiosk authentication
-   * Kiosk sends: { type: 'auth', kioskId: string, apiKey: string }
+   * Handle all incoming messages (JSON or binary)
    */
-  @SubscribeMessage('auth')
-  async handleKioskAuth(
-    @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { kioskId: string; apiKey: string },
+  private async handleMessage(client: AuthenticatedSocket, data: Buffer | string) {
+    // Binary data = frame from authenticated kiosk
+    if (Buffer.isBuffer(data)) {
+      if (client.isKiosk && client.kioskId) {
+        this.handleFrame(client, data);
+      }
+      return;
+    }
+
+    // Try to parse JSON message
+    try {
+      const message = JSON.parse(data.toString());
+      const event = message.event;
+      const payload = message.data || {};
+
+      switch (event) {
+        case 'auth':
+          await this.handleKioskAuth(client, payload);
+          break;
+        case 'subscribe':
+          this.handleViewerSubscribe(client, payload);
+          break;
+        case 'frame':
+          // Frame event followed by binary - binary will come as next message
+          // Some clients send event + binary separately
+          break;
+        default:
+          console.log(`[SurveillanceWS] Unknown event: ${event}`);
+      }
+    } catch (e) {
+      // Not JSON - could be binary frame or invalid message
+      console.log('[SurveillanceWS] Non-JSON message received');
+    }
+  }
+
+  /**
+   * Handle kiosk authentication
+   */
+  private async handleKioskAuth(
+    client: AuthenticatedSocket,
+    data: { kioskId: string; apiKey: string },
   ) {
     const { kioskId, apiKey } = data;
     
@@ -127,9 +171,12 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
       return;
     }
 
+    console.log(`[SurveillanceWS] Auth attempt from kiosk: ${kioskId}`);
+
     // Validate API key
     const isValid = await this.surveillanceService.validateKioskApiKey(kioskId, apiKey);
     if (!isValid) {
+      console.log(`[SurveillanceWS] Invalid API key for kiosk: ${kioskId}`);
       client.send(JSON.stringify({ type: 'error', message: 'Invalid API key' }));
       client.close();
       return;
@@ -150,16 +197,21 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
     
     console.log(`[SurveillanceWS] Kiosk authenticated: ${kioskId}`);
     client.send(JSON.stringify({ type: 'auth_success', kioskId }));
+    
+    // Check if there are already viewers waiting
+    const viewerSet = this.viewers.get(kioskId);
+    if (viewerSet && viewerSet.size > 0) {
+      console.log(`[SurveillanceWS] ${viewerSet.size} viewers waiting for ${kioskId}, starting stream`);
+      client.send(JSON.stringify({ type: 'start_streaming' }));
+    }
   }
 
   /**
    * Handle viewer subscription
-   * Viewer sends: { type: 'subscribe', kioskId: string }
    */
-  @SubscribeMessage('subscribe')
-  handleViewerSubscribe(
-    @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { kioskId: string },
+  private handleViewerSubscribe(
+    client: AuthenticatedSocket,
+    data: { kioskId: string },
   ) {
     const { kioskId } = data;
     
@@ -202,13 +254,8 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
 
   /**
    * Handle binary frame data from kiosk
-   * Kiosk sends raw binary JPEG data after authentication
    */
-  @SubscribeMessage('frame')
-  handleFrame(
-    @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() frameData: Buffer,
-  ) {
+  private handleFrame(client: AuthenticatedSocket, frameData: Buffer) {
     if (!client.isKiosk || !client.kioskId) {
       return; // Ignore frames from non-authenticated clients
     }
@@ -235,16 +282,11 @@ export class SurveillanceGateway implements OnGatewayConnection, OnGatewayDiscon
 
     if (sentCount > 0) {
       this.stats.framesRelayed++;
-    }
-  }
-
-  /**
-   * Handle raw binary messages (frames sent directly as binary)
-   */
-  handleMessage(client: AuthenticatedSocket, data: Buffer | string) {
-    // If it's binary data and client is authenticated kiosk, treat as frame
-    if (Buffer.isBuffer(data) && client.isKiosk && client.kioskId) {
-      this.handleFrame(client, data);
+      
+      // Log every 100 frames
+      if (this.stats.framesRelayed % 100 === 0) {
+        console.log(`[SurveillanceWS] Relayed ${this.stats.framesRelayed} frames total`);
+      }
     }
   }
 

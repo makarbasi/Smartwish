@@ -93,47 +93,27 @@ export async function POST(request: NextRequest) {
       console.error('Error logging session start event:', eventError);
     }
 
-    // Trigger Python recording if enabled (call local print agent)
-    // This happens automatically in the background - no user interaction needed
-    try {
-      const pairingPort = 8766; // Default pairing server port
-      const kioskConfig = kiosk.config || {};
-      const recordingConfig = kioskConfig.recording || {};
-      
-      // Check if recording is enabled for this kiosk
-      const recordWebcam = recordingConfig.recordWebcam !== false; // Default: enabled
-      const recordScreen = recordingConfig.recordScreen !== false; // Default: enabled
-      
-      if (recordWebcam || recordScreen) {
-        console.log(`[Session] Triggering Python recording for session ${session.id}...`);
-        
-        // Call local print agent to start recording (non-blocking)
-        fetch(`http://localhost:${pairingPort}/session/recording/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: session.id,
-            kioskConfig: {
-              recording: recordingConfig,
-            },
-          }),
-        }).catch((err) => {
-          // If local agent is not running, that's okay - recording just won't happen
-          console.log(`[Session] Could not reach local print agent for recording: ${err.message}`);
-          console.log('[Session] Recording will be skipped (local agent may not be running)');
-        });
-      } else {
-        console.log(`[Session] Recording disabled for kiosk ${kiosk.kiosk_id}`);
-      }
-    } catch (err) {
-      // Recording failure should not affect session creation
-      console.log(`[Session] Failed to trigger recording (non-critical): ${err}`);
-    }
+    // Get recording config to return to client
+    // NOTE: Recording is triggered CLIENT-SIDE because the kiosk browser runs locally
+    // and can reach localhost:8766 (the print agent). The server (Vercel) cannot.
+    const kioskConfig = kiosk.config || {};
+    const recordingConfig = kioskConfig.recording || {};
+    
+    const recordWebcam = recordingConfig.recordWebcam !== false; // Default: enabled
+    const recordScreen = recordingConfig.recordScreen !== false; // Default: enabled
 
     console.log(`[Session] Started new session: ${session.id} for kiosk: ${kiosk.kiosk_id}`);
+    console.log(`[Session] Recording config: webcam=${recordWebcam}, screen=${recordScreen}`);
 
     return NextResponse.json({
       sessionId: session.id,
+      // Return recording config so client can trigger recording locally
+      recording: {
+        enabled: recordWebcam || recordScreen,
+        recordWebcam,
+        recordScreen,
+        config: recordingConfig,
+      },
     });
   } catch (error) {
     console.error('Error in session start:', error);

@@ -7,6 +7,30 @@
 
 // ==================== Types ====================
 
+/**
+ * Screen saver item configuration
+ */
+export type ScreenSaverType = 'video' | 'html' | 'default' | 'none';
+
+export interface ScreenSaverItem {
+  id: string;                    // Unique identifier
+  type: ScreenSaverType;         // Type of screen saver
+  name?: string;                 // Display name for admin UI
+  url?: string;                  // Video URL or HTML page URL (for video/html types)
+  weight: number;                // Weight for rotation (1-100)
+  duration?: number;             // How long to show this screen saver (seconds) before rotating
+  enabled?: boolean;             // Whether this screen saver is active
+}
+
+/**
+ * Screen saver global settings
+ */
+export interface ScreenSaverSettings {
+  inactivityTimeout?: number;    // Seconds before screen saver activates (default: 60)
+  rotationInterval?: number;     // Seconds between screen saver rotations (default: 30)
+  enableRotation?: boolean;      // Whether to rotate or stick with one (default: true)
+}
+
 export type KioskConfig = {
   theme: string;
   featuredTemplateIds: string[];
@@ -15,6 +39,9 @@ export type KioskConfig = {
     playlist: Array<{ url: string; duration?: number; weight?: number }>;
   };
   printerProfile: string;
+  // Screen saver configuration
+  screenSavers?: ScreenSaverItem[];
+  screenSaverSettings?: ScreenSaverSettings;
   [key: string]: unknown;
 };
 
@@ -33,12 +60,35 @@ export type KioskConfigResponse = {
 const KIOSK_ID_KEY = 'smartwish_kiosk_id';
 const CONFIG_CACHE_KEY = 'smartwish_kiosk_config';
 
+/**
+ * Default screen saver settings
+ */
+export const DEFAULT_SCREEN_SAVER_SETTINGS: ScreenSaverSettings = {
+  inactivityTimeout: 60,      // 60 seconds
+  rotationInterval: 30,       // 30 seconds between rotations
+  enableRotation: true,       // Enable rotation by default
+};
+
+/**
+ * Default screen saver (the existing card showcase)
+ */
+export const DEFAULT_SCREEN_SAVER: ScreenSaverItem = {
+  id: 'default-screensaver',
+  type: 'default',
+  name: 'Card Showcase',
+  weight: 100,
+  duration: 30,
+  enabled: true,
+};
+
 export const DEFAULT_KIOSK_CONFIG: KioskConfig = {
   theme: 'default',
   featuredTemplateIds: [],
   micEnabled: true,
   ads: { playlist: [] },
   printerProfile: 'default',
+  screenSavers: [DEFAULT_SCREEN_SAVER],
+  screenSaverSettings: DEFAULT_SCREEN_SAVER_SETTINGS,
 };
 
 // ==================== Storage Functions ====================

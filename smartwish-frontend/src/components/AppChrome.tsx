@@ -8,7 +8,7 @@ import Sidebar from '@/components/Sidebar'
 import MobileMenu from '@/components/MobileMenu'
 import { useDeviceMode } from '@/contexts/DeviceModeContext'
 import { useKioskInactivity } from '@/hooks/useKioskInactivity'
-import KioskScreenSaver from '@/components/KioskScreenSaver'
+import { KioskScreenSaverManager } from '@/components/screensavers'
 import KioskProductSwitcher from '@/components/KioskProductSwitcher'
 import KioskChat from '@/components/KioskChat'
 import { KioskTimeoutModal } from '@/components/KioskTimeoutModal'
@@ -68,8 +68,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       {/* Hide Footer in Kiosk mode */}
       {isLanding && !isKiosk && <Footer />}
       
-      {/* Kiosk Screen Saver */}
-      <KioskScreenSaver isVisible={showScreenSaver} onExit={exitScreenSaver} />
+      {/* Kiosk Screen Saver Manager - handles multiple screen saver types with weighted rotation */}
+      <KioskScreenSaverManager isVisible={showScreenSaver} onExit={exitScreenSaver} />
       
       {/* Kiosk Timeout Confirmation Modal */}
       <KioskTimeoutModal

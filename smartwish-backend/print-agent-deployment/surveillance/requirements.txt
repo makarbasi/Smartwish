@@ -10,6 +10,13 @@ opencv-python>=4.8.0
 # HTTP requests to cloud server
 requests>=2.31.0
 
+# WebSocket for real-time frame streaming
+websocket-client>=1.6.0
+
+# Screen recording (for session recording)
+mss>=9.0.0
+pillow>=10.0.0
+
 # Optional: GPU acceleration (uncomment if you have CUDA)
 # torch>=2.0.0
 # torchvision>=0.15.0

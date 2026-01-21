@@ -105,28 +105,10 @@ export async function POST(request: NextRequest) {
       console.error('Error logging session end event:', eventError);
     }
 
-    // Trigger Python recording stop (call local print agent)
-    // This will stop recording and upload videos automatically
-    try {
-      const pairingPort = 8766; // Default pairing server port
-      console.log(`[Session] Stopping Python recording for session ${sessionId}...`);
-      
-      // Call local print agent to stop recording (non-blocking)
-      fetch(`http://localhost:${pairingPort}/session/recording/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: sessionId,
-        }),
-      }).catch((err) => {
-        // If local agent is not running, that's okay
-        console.log(`[Session] Could not reach local print agent to stop recording: ${err.message}`);
-      });
-    } catch (err) {
-      // Recording stop failure should not affect session ending
-      console.log(`[Session] Failed to stop recording (non-critical): ${err}`);
-    }
-
+    // NOTE: Recording stop is triggered CLIENT-SIDE by the kiosk browser
+    // The browser runs locally and can reach localhost:8766 (print agent)
+    // This server-side code (on Vercel) cannot reach the local print agent
+    
     console.log(`[Session] Ended session: ${sessionId} with outcome: ${outcome} (${durationSeconds}s)`);
 
     return NextResponse.json({
