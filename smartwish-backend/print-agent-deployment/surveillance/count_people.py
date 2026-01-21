@@ -440,13 +440,12 @@ class FrameUploader:
                 time.sleep(1)
     
     def _upload_frame(self, frame):
-        """Upload a single frame to the server"""
+        """Upload a single frame to the server using multipart form upload"""
         if not self.enabled:
             return
         
         url = f"{self.config.server_url}/surveillance/frame"
         headers = {
-            'Content-Type': 'image/jpeg',
             'x-kiosk-api-key': self.config.api_key,
             'x-kiosk-id': self.config.kiosk_id,
         }
@@ -454,20 +453,31 @@ class FrameUploader:
         try:
             # Encode frame as JPEG
             _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            jpeg_bytes = jpeg.tobytes()
+            
+            # Use multipart form upload (more reliable than raw body)
+            files = {'file': ('frame.jpg', jpeg_bytes, 'image/jpeg')}
             
             response = requests.post(
                 url, 
-                data=jpeg.tobytes(), 
+                files=files,
                 headers=headers, 
                 timeout=2  # Short timeout since we're uploading frequently
             )
             
             if response.status_code == 200:
-                self.consecutive_failures = 0  # Reset failure counter
-                self.frames_uploaded += 1
-                # Log success every 100 frames
-                if self.frames_uploaded % 100 == 0:
-                    print(f"  ☁️  Live stream: {self.frames_uploaded} frames uploaded to server")
+                result = response.json()
+                if result.get('success'):
+                    self.consecutive_failures = 0  # Reset failure counter
+                    self.frames_uploaded += 1
+                    # Log success every 100 frames
+                    if self.frames_uploaded % 100 == 0:
+                        print(f"  ☁️  Live stream: {self.frames_uploaded} frames uploaded to server")
+                else:
+                    # Server returned 200 but with error
+                    self.consecutive_failures += 1
+                    if self.consecutive_failures == 1:
+                        print(f"  ⚠️ Frame upload error: {result.get('error', 'unknown')}")
             elif response.status_code == 404:
                 # Endpoint not deployed yet
                 if self.consecutive_failures == 0:

@@ -16,7 +16,10 @@ import {
   Res,
   RawBodyRequest,
   Req,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
 import { SurveillanceService } from './surveillance.service';
@@ -95,14 +98,22 @@ export class SurveillancePublicController {
    * Receive live frame from kiosk surveillance script
    * The frame is stored in memory and served to admin viewers
    * This enables remote viewing of kiosk camera from admin dashboard
+   * 
+   * Accepts both:
+   * - Multipart file upload (preferred)
+   * - Raw body (fallback)
    */
   @Public()
   @Post('frame')
   @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  }))
   async uploadFrame(
     @Headers('x-kiosk-api-key') apiKey: string,
     @Headers('x-kiosk-id') kioskId: string,
     @Headers('content-type') contentType: string,
+    @UploadedFile() file: Express.Multer.File,
     @Req() req: RawBodyRequest<Request>,
   ) {
     if (!apiKey || !kioskId) {
@@ -114,8 +125,20 @@ export class SurveillancePublicController {
       throw new UnauthorizedException('Invalid API key for kiosk');
     }
 
-    // Get the raw body (image data)
-    const frameData = req.rawBody;
+    // Try multiple sources for frame data:
+    // 1. Multipart file upload (if file interceptor caught it)
+    // 2. Raw body from NestJS
+    // 3. Body from bodyParser.raw()
+    let frameData: Buffer | undefined;
+    
+    if (file && file.buffer && file.buffer.length > 0) {
+      frameData = file.buffer;
+    } else if (req.rawBody && req.rawBody.length > 0) {
+      frameData = req.rawBody;
+    } else if ((req as any).body && Buffer.isBuffer((req as any).body) && (req as any).body.length > 0) {
+      frameData = (req as any).body;
+    }
+    
     if (!frameData || frameData.length === 0) {
       return { success: false, error: 'No frame data received' };
     }
