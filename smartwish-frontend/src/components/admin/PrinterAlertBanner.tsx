@@ -35,6 +35,10 @@ export function PrinterAlertBanner() {
   const lastAlertIdsRef = useRef<Set<string>>(new Set());
   const eventSourceRef = useRef<EventSource | null>(null);
 
+  // Track consecutive failures for backoff
+  const failureCountRef = useRef(0);
+  const backoffDelayRef = useRef(30000); // Start with 30s, increase on failures
+  
   // Fetch alerts via REST API (primary method)
   const fetchAlerts = useCallback(async () => {
     try {
@@ -44,7 +48,20 @@ export function PrinterAlertBanner() {
           "Cache-Control": "no-cache",
         },
       });
+      
+      if (response.status === 429) {
+        // Rate limited - increase backoff and skip
+        failureCountRef.current++;
+        backoffDelayRef.current = Math.min(backoffDelayRef.current * 2, 300000); // Max 5 min
+        console.warn(`[PrinterAlertBanner] Rate limited, backing off to ${backoffDelayRef.current/1000}s`);
+        return;
+      }
+      
       if (response.ok) {
+        // Reset backoff on success
+        failureCountRef.current = 0;
+        backoffDelayRef.current = 30000;
+        
         const data = await response.json();
         if (Array.isArray(data)) {
           const activeAlerts = data.filter((a: KioskAlert) => !a.resolvedAt);
@@ -76,12 +93,16 @@ export function PrinterAlertBanner() {
     }
   }, [dismissed]);
 
-  // Polling effect - 30 seconds (increased from 10s to reduce rate limit issues)
+  // Polling effect - 60 seconds (increased from 30s to reduce rate limit issues)
   // SSE provides real-time updates for critical alerts, polling is just a fallback
   useEffect(() => {
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 30000); // 30 seconds (was 10s - too aggressive)
-    return () => clearInterval(interval);
+    // Use dynamic interval based on backoff state
+    const intervalId = setInterval(() => {
+      fetchAlerts();
+    }, 60000); // 60 seconds baseline
+    
+    return () => clearInterval(intervalId);
   }, [fetchAlerts]);
 
   // SSE for real-time critical alerts (backup/supplement to polling)

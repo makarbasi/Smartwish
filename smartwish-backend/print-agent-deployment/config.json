@@ -2,7 +2,7 @@
   "_readme": "=== SMARTWISH PRINT AGENT CONFIGURATION ===",
   
   "cloudServerUrl": "https://smartwish.onrender.com",
-    "frontendUrl": "https://app.smartwish.us",
+  "frontendUrl": "https://app.smartwish.us",
   "defaultPrinter": "",
   "pollInterval": 10000,
   

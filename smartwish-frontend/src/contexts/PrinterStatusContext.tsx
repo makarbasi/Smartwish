@@ -181,6 +181,16 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fetchedKioskIdRef = useRef<string | null>(null);
+  
+  // OPTIMIZATION: Skip polling on admin/manager pages
+  const [shouldPoll, setShouldPoll] = useState(false);
+  
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const path = window.location.pathname;
+    const isAdminOrManagerPage = path.startsWith('/admin') || path.startsWith('/manager') || path.startsWith('/sales-rep');
+    setShouldPoll(!isAdminOrManagerPage);
+  }, []);
 
   // Load dismissed alerts from sessionStorage
   useEffect(() => {
@@ -252,6 +262,7 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [kioskInfo?.id]); // Removed 'status' from dependencies to prevent infinite loop
 
   // Start/stop polling based on kiosk activation
+  // OPTIMIZATION: Only poll on kiosk pages, not admin/manager pages
   useEffect(() => {
     // Clear existing interval
     if (pollIntervalRef.current) {
@@ -259,8 +270,8 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
       pollIntervalRef.current = null;
     }
 
-    // Start polling if kiosk is activated
-    if (isActivated && kioskInfo?.id) {
+    // Start polling if kiosk is activated AND we're not on admin/manager pages
+    if (isActivated && kioskInfo?.id && shouldPoll) {
       // Initial fetch
       fetchStatus();
 
@@ -274,7 +285,7 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
         pollIntervalRef.current = null;
       }
     };
-  }, [isActivated, kioskInfo?.id, fetchStatus]);
+  }, [isActivated, kioskInfo?.id, fetchStatus, shouldPoll]);
 
   // Dismiss an alert for this session
   const dismissAlert = useCallback((code: string) => {

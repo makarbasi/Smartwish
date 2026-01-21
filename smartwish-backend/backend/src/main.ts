@@ -85,9 +85,14 @@ async function bootstrap() {
   };
   
   // Rate limiting - DISABLED in development, configurable in production
+  // Increased to 3000 requests/minute to accommodate:
+  // - Multiple browser tabs
+  // - Print agent polling
+  // - Admin dashboard
+  // - Multiple concurrent users
   const globalRateLimit = rateLimit.default({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000') || 60 * 1000, // 1 minute window
-    max: isDev ? 0 : (parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000') || 1000), // 0 = disabled in dev, 1000 in prod (increased from 300)
+    max: isDev ? 0 : (parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '3000') || 3000), // 0 = disabled in dev, 3000 in prod (increased from 1000)
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -96,7 +101,7 @@ async function bootstrap() {
     keyGenerator: getClientIp,
   });
 
-  console.log(`Global rate limit: ${isDev ? 'DISABLED (dev mode)' : `${process.env.RATE_LIMIT_MAX_REQUESTS || '1000'} requests per minute (production)`}`);
+  console.log(`Global rate limit: ${isDev ? 'DISABLED (dev mode)' : `${process.env.RATE_LIMIT_MAX_REQUESTS || '3000'} requests per minute (production)`}`);
   const loginRateLimit = rateLimit.default({
     windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || (isDev ? '60000' : '900000')) || (isDev ? 60 * 1000 : 15 * 60 * 1000), // 1 min in dev, 15 min in prod
     max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || (isDev ? '50' : '10')) || (isDev ? 50 : 10), // 50 attempts in dev, 10 in prod (increased from 5)

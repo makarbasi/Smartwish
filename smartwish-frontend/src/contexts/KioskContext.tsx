@@ -248,6 +248,17 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Track if we've already fetched config for a specific kioskId to prevent duplicates
   const fetchedKioskIdRef = useRef<string | null>(null);
+  
+  // OPTIMIZATION: Skip kiosk initialization on admin/manager pages to prevent unnecessary API calls
+  const [shouldInitialize, setShouldInitialize] = useState(false);
+  
+  // Check if we're on an admin or manager page (these don't need kiosk functionality)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const path = window.location.pathname;
+    const isAdminOrManagerPage = path.startsWith('/admin') || path.startsWith('/manager') || path.startsWith('/sales-rep');
+    setShouldInitialize(!isAdminOrManagerPage);
+  }, []);
 
   // Computed values
   const isActivated = !!kioskId && !!kioskInfo;
@@ -388,7 +399,15 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   // Initialize: First check local print agent pairing, then fall back to localStorage
+  // OPTIMIZATION: Only run on non-admin pages
   useEffect(() => {
+    // Skip initialization on admin/manager pages to prevent unnecessary API calls
+    if (!shouldInitialize) {
+      console.log('[KioskContext] ⏭️ Skipping initialization (admin/manager page)');
+      setLoading(false);
+      return;
+    }
+    
     const initializeKiosk = async () => {
       console.log('[KioskContext] 🚀 Initializing...');
       
@@ -444,7 +463,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     
     initializeKiosk();
-  }, []);
+  }, [shouldInitialize]);
 
   // Fetch config when kioskId changes
   useEffect(() => {
@@ -518,6 +537,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   // Start/stop heartbeat interval when kiosk is activated/deactivated
+  // OPTIMIZATION: Only send heartbeats on kiosk pages, not admin/manager pages
   useEffect(() => {
     // Clear existing interval
     if (heartbeatIntervalRef.current) {
@@ -525,8 +545,8 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       heartbeatIntervalRef.current = null;
     }
 
-    // Start heartbeat if kiosk is activated
-    if (kioskId && isActivated) {
+    // Start heartbeat if kiosk is activated AND we should initialize (not on admin pages)
+    if (kioskId && isActivated && shouldInitialize) {
       // Send initial heartbeat immediately
       sendHeartbeat(kioskId);
       
