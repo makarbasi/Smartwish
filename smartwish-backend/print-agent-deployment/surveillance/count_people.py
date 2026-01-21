@@ -951,7 +951,11 @@ class VideoRecorder:
             self.capture_running = False
             return
         
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use MP4 codec (Supabase doesn't support AVI)
+        # Try multiple codecs for best browser compatibility
+        # H.264 (avc1/H264) works best in browsers, mp4v is fallback
+        codec_options = ['avc1', 'H264', 'mp4v']
+        fourcc = None
+        codec_name = None
         writer = None
         writer_initialized = False
         
@@ -973,17 +977,26 @@ class VideoRecorder:
             # Write to video file only if recording is active
             if self.is_recording and self.config.record_webcam:
                 with self.writer_lock:
-                    # Initialize VideoWriter on first frame
+                    # Initialize VideoWriter on first frame - try multiple codecs
                     if not writer_initialized and self.webcam_path:
                         height, width = transformed.shape[:2]
                         print(f"  [Recording] Initializing webcam VideoWriter: {width}x{height}")
-                        writer = cv2.VideoWriter(str(self.webcam_path), fourcc, self.webcam_fps, (width, height))
-                        if writer.isOpened():
+                        
+                        # Try each codec until one works
+                        for codec in codec_options:
+                            fourcc = cv2.VideoWriter_fourcc(*codec)
+                            writer = cv2.VideoWriter(str(self.webcam_path), fourcc, self.webcam_fps, (width, height))
+                            if writer.isOpened():
+                                codec_name = codec
+                                break
+                            writer = None
+                        
+                        if writer and writer.isOpened():
                             writer_initialized = True
                             self.webcam_writer = writer
-                            print(f"  [Recording] ✅ Webcam recording started: {self.webcam_path}")
+                            print(f"  [Recording] ✅ Webcam recording started (codec: {codec_name}): {self.webcam_path}")
                         else:
-                            print(f"  [Recording] ❌ Failed to open VideoWriter!")
+                            print(f"  [Recording] ❌ Failed to open VideoWriter with any codec!")
                             writer = None
                     
                     # Write frame
@@ -1022,8 +1035,10 @@ class VideoRecorder:
         else:
             sct = None
         
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use MP4 codec (Supabase doesn't support AVI)
+        # Try multiple codecs for best browser compatibility
+        codec_options = ['avc1', 'H264', 'mp4v']
         out = None
+        codec_name = None
         
         print(f"  [Screen] Ready to record.")
         
@@ -1041,15 +1056,24 @@ class VideoRecorder:
                 else:
                     break
                 
-                # Initialize VideoWriter on first frame
+                # Initialize VideoWriter on first frame - try multiple codecs
                 if out is None:
                     height, width = frame.shape[:2]
                     print(f"  [Screen] Recording resolution: {width}x{height}")
-                    out = cv2.VideoWriter(str(self.screen_path), fourcc, self.screen_fps, (width, height))
-                    if not out.isOpened():
-                        print(f"  [Screen] ERROR: Failed to open VideoWriter!")
+                    
+                    # Try each codec until one works
+                    for codec in codec_options:
+                        fourcc = cv2.VideoWriter_fourcc(*codec)
+                        out = cv2.VideoWriter(str(self.screen_path), fourcc, self.screen_fps, (width, height))
+                        if out.isOpened():
+                            codec_name = codec
+                            break
+                        out = None
+                    
+                    if not out or not out.isOpened():
+                        print(f"  [Screen] ERROR: Failed to open VideoWriter with any codec!")
                         break
-                    print(f"  [Screen] ✅ Screen recording started: {self.screen_path}")
+                    print(f"  [Screen] ✅ Screen recording started (codec: {codec_name}): {self.screen_path}")
                 
                 out.write(frame)
                 self.screen_frame_count += 1
