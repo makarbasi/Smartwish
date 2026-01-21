@@ -21,8 +21,11 @@ import {
   VideoCameraIcon,
   EyeIcon,
   XMarkIcon,
+  SignalIcon,
+  SignalSlashIcon,
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
+import { useSurveillanceStream } from "@/hooks/useSurveillanceStream";
 
 interface Detection {
   id: string;
@@ -120,6 +123,16 @@ export default function KioskSurveillancePage({
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [liveStreamError, setLiveStreamError] = useState(false);
   const [streamStatus, setStreamStatus] = useState<{ isActive: boolean; lastFrameAt: string | null } | null>(null);
+  
+  // WebSocket stream for real-time video (preferred over MJPEG polling)
+  const { status: wsStatus, frameUrl: wsFrameUrl } = useSurveillanceStream({
+    kioskId,
+    enabled: showLivePreview,
+  });
+  
+  // Use WebSocket stream if available, fallback to MJPEG
+  const useWebSocket = wsStatus.connected || wsStatus.framesReceived > 0;
+  const effectiveFrameUrl = useWebSocket ? wsFrameUrl : liveStreamUrl;
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -630,7 +643,7 @@ export default function KioskSurveillancePage({
 
               {showLivePreview && (
                 <div className="relative">
-                  {liveStreamError ? (
+                  {(liveStreamError && !wsStatus.connected && wsStatus.framesReceived === 0) ? (
                     <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
                       <div className="text-center text-gray-400">
                         <VideoCameraIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
@@ -641,6 +654,11 @@ export default function KioskSurveillancePage({
                         <p className="text-xs mt-4 text-gray-500">
                           The kiosk must be running and connected to the server
                         </p>
+                        {wsStatus.error && (
+                          <p className="text-xs mt-2 text-red-400">
+                            Error: {wsStatus.error}
+                          </p>
+                        )}
                         {streamStatus && !streamStatus.isActive && (
                           <p className="text-xs mt-2 text-amber-400">
                             Last frame: {streamStatus.lastFrameAt ? new Date(streamStatus.lastFrameAt).toLocaleTimeString() : 'Never'}
@@ -659,20 +677,42 @@ export default function KioskSurveillancePage({
                     </div>
                   ) : (
                     <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden">
-                      <img
-                        src={liveStreamUrl}
-                        alt="Live webcam feed"
-                        className="w-full h-full object-contain"
-                        onError={() => setLiveStreamError(true)}
-                      />
+                      {effectiveFrameUrl ? (
+                        <img
+                          src={effectiveFrameUrl}
+                          alt="Live webcam feed"
+                          className="w-full h-full object-contain"
+                          onError={() => !useWebSocket && setLiveStreamError(true)}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="text-center text-gray-400">
+                            <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                            <p className="text-sm">Connecting to stream...</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    Live feed from kiosk webcam • Stream relayed through server
-                    {streamStatus?.isActive && (
-                      <span className="text-green-500 ml-2">• Connected</span>
+                  <div className="flex items-center justify-center gap-4 mt-2 text-xs text-gray-500">
+                    <span>Live feed from kiosk webcam</span>
+                    {useWebSocket ? (
+                      <span className="flex items-center gap-1 text-green-500">
+                        <SignalIcon className="h-3 w-3" />
+                        WebSocket ({wsStatus.framesReceived} frames)
+                      </span>
+                    ) : wsStatus.connected ? (
+                      <span className="flex items-center gap-1 text-amber-500">
+                        <SignalIcon className="h-3 w-3" />
+                        Connected (waiting for frames)
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-gray-400">
+                        <SignalSlashIcon className="h-3 w-3" />
+                        MJPEG fallback
+                      </span>
                     )}
-                  </p>
+                  </div>
                 </div>
               )}
 

@@ -63,6 +63,15 @@ except ImportError:
     print("WARNING: Pillow not installed. Screen recording fallback unavailable.")
     ImageGrab = None
 
+try:
+    import websocket
+    WEBSOCKET_AVAILABLE = True
+except ImportError:
+    print("WARNING: websocket-client not installed. WebSocket streaming unavailable.")
+    print("Run: pip install websocket-client")
+    WEBSOCKET_AVAILABLE = False
+    websocket = None
+
 
 # =============================================================================
 # Configuration
@@ -504,6 +513,210 @@ class FrameUploader:
     def stop(self):
         """Stop the upload worker"""
         self.running = False
+
+
+# =============================================================================
+# WebSocket Frame Streamer - Real-time frame streaming via WebSocket
+# =============================================================================
+
+class WebSocketFrameStreamer:
+    """
+    Streams live frames to the cloud server via WebSocket for real-time viewing.
+    This is more efficient than HTTP polling and provides lower latency.
+    
+    IMPORTANT: Only streams when admin viewers are watching!
+    The server sends 'start_streaming' when a viewer subscribes and
+    'stop_streaming' when all viewers disconnect.
+    
+    Protocol:
+    1. Connect to WebSocket server at ws(s)://server/ws/surveillance
+    2. Send auth message: {"type": "auth", "kioskId": "...", "apiKey": "..."}
+    3. Wait for auth_success response
+    4. Wait for 'start_streaming' message (admin viewer watching)
+    5. Send binary JPEG frames until 'stop_streaming' received
+    """
+    
+    def __init__(self, config: Config, frame_holder: FrameHolder):
+        self.config = config
+        self.frame_holder = frame_holder
+        self.running = True
+        self.connected = False
+        self.authenticated = False
+        self.streaming_active = False  # Only stream when viewers are watching
+        self.ws = None
+        self.stream_interval = 0.1  # 10 FPS (100ms between frames)
+        self.frames_sent = 0
+        self.reconnect_delay = 5  # Start with 5 seconds
+        self.max_reconnect_delay = 60  # Max 60 seconds
+        self.consecutive_failures = 0
+        
+        # Build WebSocket URL
+        server_url = self.config.server_url
+        if server_url.startswith('https://'):
+            ws_url = 'wss://' + server_url[8:] + '/ws/surveillance'
+        elif server_url.startswith('http://'):
+            ws_url = 'ws://' + server_url[7:] + '/ws/surveillance'
+        else:
+            ws_url = 'ws://' + server_url + '/ws/surveillance'
+        self.ws_url = ws_url
+        
+        print(f"  🔌 WebSocket frame streamer initializing...")
+        print(f"     URL: {self.ws_url}")
+        print(f"     Kiosk ID: {self.config.kiosk_id}")
+        print(f"     Streaming: ON-DEMAND (only when admin is viewing)")
+        
+        # Start background connection thread
+        self.connect_thread = threading.Thread(target=self._connect_loop, daemon=True)
+        self.connect_thread.start()
+    
+    def _connect_loop(self):
+        """Main connection loop - handles reconnection on failures"""
+        while self.running:
+            try:
+                self._connect_and_stream()
+            except Exception as e:
+                if self.running:
+                    print(f"  ⚠️ WebSocket error: {e}")
+                    self.connected = False
+                    self.authenticated = False
+                    self.streaming_active = False
+                    
+                    # Exponential backoff
+                    self.consecutive_failures += 1
+                    delay = min(self.reconnect_delay * (2 ** (self.consecutive_failures - 1)), self.max_reconnect_delay)
+                    print(f"  🔄 Reconnecting in {delay}s...")
+                    time.sleep(delay)
+    
+    def _connect_and_stream(self):
+        """Connect to WebSocket and stream frames when requested"""
+        if not WEBSOCKET_AVAILABLE:
+            print("  ⚠️ WebSocket not available, falling back to HTTP upload")
+            self.running = False
+            return
+        
+        print(f"  🔌 Connecting to WebSocket: {self.ws_url}")
+        
+        # Create WebSocket connection
+        self.ws = websocket.WebSocket()
+        self.ws.connect(self.ws_url, timeout=10)
+        self.connected = True
+        print(f"  ✅ WebSocket connected")
+        
+        # Authenticate
+        auth_message = json.dumps({
+            "event": "auth",
+            "data": {
+                "kioskId": self.config.kiosk_id,
+                "apiKey": self.config.api_key
+            }
+        })
+        self.ws.send(auth_message)
+        
+        # Wait for auth response
+        response = self.ws.recv()
+        response_data = json.loads(response)
+        
+        if response_data.get('type') == 'auth_success':
+            self.authenticated = True
+            self.consecutive_failures = 0  # Reset on successful auth
+            print(f"  ✅ WebSocket authenticated for kiosk: {self.config.kiosk_id}")
+            print(f"  ⏸️  Waiting for admin viewer to start stream...")
+        elif response_data.get('type') == 'error':
+            print(f"  ❌ WebSocket auth failed: {response_data.get('message')}")
+            self.ws.close()
+            self.running = False
+            return
+        
+        # Set socket to non-blocking for checking incoming messages
+        self.ws.settimeout(0.05)  # 50ms timeout for recv
+        
+        # Main loop - wait for commands and stream when active
+        last_frame_time = 0
+        while self.running and self.connected:
+            try:
+                # Check for incoming messages (start/stop streaming)
+                try:
+                    message = self.ws.recv()
+                    if message:
+                        msg_data = json.loads(message)
+                        msg_type = msg_data.get('type')
+                        
+                        if msg_type == 'start_streaming':
+                            if not self.streaming_active:
+                                self.streaming_active = True
+                                print(f"  ▶️  Admin viewer connected - starting stream")
+                        elif msg_type == 'stop_streaming':
+                            if self.streaming_active:
+                                self.streaming_active = False
+                                print(f"  ⏹️  No viewers - stopping stream (saving resources)")
+                except websocket.WebSocketTimeoutException:
+                    pass  # No message, continue
+                except json.JSONDecodeError:
+                    pass  # Invalid JSON, ignore
+                
+                # Only stream if viewers are watching
+                if not self.streaming_active:
+                    time.sleep(0.1)  # Sleep longer when not streaming
+                    continue
+                
+                current_time = time.time()
+                if current_time - last_frame_time < self.stream_interval:
+                    time.sleep(0.01)  # Small sleep to prevent busy waiting
+                    continue
+                
+                frame = self.frame_holder.get_frame(annotated=True)
+                if frame is not None:
+                    # Encode frame as JPEG
+                    _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    jpeg_bytes = jpeg.tobytes()
+                    
+                    # Send as binary frame with a frame message wrapper
+                    # The gateway expects a 'frame' event
+                    frame_message = json.dumps({"event": "frame", "data": {}})
+                    self.ws.send(frame_message)
+                    self.ws.send_binary(jpeg_bytes)
+                    
+                    self.frames_sent += 1
+                    last_frame_time = current_time
+                    
+                    # Log progress every 100 frames
+                    if self.frames_sent % 100 == 0:
+                        print(f"  🔌 WebSocket: {self.frames_sent} frames streamed")
+                
+            except websocket.WebSocketConnectionClosedException:
+                print("  ⚠️ WebSocket connection closed")
+                self.connected = False
+                break
+            except Exception as e:
+                print(f"  ⚠️ WebSocket send error: {e}")
+                self.connected = False
+                break
+        
+        # Clean up
+        self.streaming_active = False
+        try:
+            self.ws.close()
+        except:
+            pass
+    
+    def stop(self):
+        """Stop the WebSocket streamer"""
+        self.running = False
+        self.connected = False
+        self.streaming_active = False
+        if self.ws:
+            try:
+                self.ws.close()
+            except:
+                pass
+    
+    def is_connected(self):
+        """Check if WebSocket is connected and authenticated"""
+        return self.connected and self.authenticated
+    
+    def is_streaming(self):
+        """Check if actively streaming frames"""
+        return self.streaming_active
 
 
 # =============================================================================
@@ -1307,9 +1520,19 @@ def main():
     config.output_dir.mkdir(parents=True, exist_ok=True)
     http_server = start_http_server(config.http_port, config.output_dir, video_recorder, config)
     
-    # Initialize reporter, frame uploader, tracker
+    # Initialize reporter, frame streamer, tracker
     reporter = DetectionReporter(config)
-    frame_uploader = FrameUploader(config, frame_holder)  # Upload frames to backend for remote viewing
+    
+    # Use WebSocket for real-time streaming (preferred) with HTTP fallback
+    ws_streamer = None
+    frame_uploader = None
+    if WEBSOCKET_AVAILABLE:
+        ws_streamer = WebSocketFrameStreamer(config, frame_holder)  # WebSocket streaming (preferred)
+        print("  🔌 Using WebSocket for real-time frame streaming")
+    else:
+        frame_uploader = FrameUploader(config, frame_holder)  # HTTP fallback
+        print("  📡 Using HTTP for frame upload (WebSocket unavailable)")
+    
     tracker = PersonTracker(config, reporter)
     
     # NOTE: Recording does NOT auto-start!
@@ -1412,7 +1635,11 @@ def main():
         if video_recorder.capture_thread:
             video_recorder.capture_thread.join(timeout=2.0)
         
-        frame_uploader.stop()
+        # Stop frame streaming
+        if ws_streamer:
+            ws_streamer.stop()
+        if frame_uploader:
+            frame_uploader.stop()
         reporter.stop()
         cv2.destroyAllWindows()
         print("  ✅ Surveillance stopped")

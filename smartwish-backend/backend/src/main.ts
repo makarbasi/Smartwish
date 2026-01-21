@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { HttpExceptionFilter } from './http-exception.filter';
 import * as helmet from 'helmet';
 import * as rateLimit from 'express-rate-limit';
+import { WsAdapter } from '@nestjs/platform-ws';
 
 console.log(
   '=== SMARTWISH BACKEND STARTUP - UNIQUE LOG - ' + new Date().toISOString(),
@@ -22,6 +23,10 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true, // Enable raw body parsing for binary uploads (surveillance frames)
   });
+
+  // Configure WebSocket adapter for real-time surveillance streaming
+  app.useWebSocketAdapter(new WsAdapter(app));
+  console.log('WebSocket adapter configured for surveillance streaming');
 
   // Register global exception filter
   app.useGlobalFilters(new HttpExceptionFilter());
@@ -97,7 +102,32 @@ async function bootstrap() {
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: false,
-    skip: () => isDev, // Skip rate limiting entirely in development
+    skip: (req: any) => {
+      // Skip rate limiting in development
+      if (isDev) return true;
+      
+      // Skip rate limiting for surveillance endpoints (high-frequency frame uploads)
+      // These endpoints are authenticated via API key, not IP-based
+      const path = req.path || '';
+      if (path.startsWith('/surveillance/frame') || 
+          path.startsWith('/surveillance/stream') ||
+          path.startsWith('/surveillance/detection-image')) {
+        return true;
+      }
+      
+      // Skip rate limiting for print agent endpoints (frequent status updates)
+      if (path.startsWith('/kiosk/printer-status') ||
+          path.startsWith('/local-agent/printer-status')) {
+        return true;
+      }
+      
+      // Skip rate limiting for SSE/streaming endpoints
+      if (path.includes('/stream') || path.includes('/live')) {
+        return true;
+      }
+      
+      return false;
+    },
     keyGenerator: getClientIp,
   });
 

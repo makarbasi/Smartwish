@@ -105,20 +105,43 @@ export function PrinterAlertBanner() {
     return () => clearInterval(intervalId);
   }, [fetchAlerts]);
 
+  // SSE reconnection backoff state
+  const sseReconnectDelayRef = useRef(30000); // Start with 30s
+  const sseReconnectAttemptsRef = useRef(0);
+  const maxSseReconnectAttempts = 5; // Stop trying after 5 failures
+  
   // SSE for real-time critical alerts (backup/supplement to polling)
+  // OPTIMIZATION: Disabled by default since polling already handles alerts
+  // SSE was causing repeated 429 errors due to reconnection loops
   useEffect(() => {
+    // DISABLED: SSE causes too many connection attempts when rate limited
+    // Polling every 60s is sufficient for admin alerts
+    // Uncomment below to re-enable SSE when rate limits are resolved
+    return;
+    
+    /*
     // Only connect SSE if we have a valid API_BASE
     if (!API_BASE || API_BASE.includes('localhost')) {
       return; // Skip SSE for local development
     }
 
     const connectSSE = () => {
+      // Stop trying after too many failures
+      if (sseReconnectAttemptsRef.current >= maxSseReconnectAttempts) {
+        console.warn('[PrinterAlertBanner] SSE disabled after too many failures, using polling only');
+        return;
+      }
+      
       try {
         // Connect to the SSE endpoint
         const eventSource = new EventSource(`${API_BASE}/admin/printer-status/stream`);
         eventSourceRef.current = eventSource;
 
         eventSource.onmessage = (event) => {
+          // Reset backoff on successful message
+          sseReconnectDelayRef.current = 30000;
+          sseReconnectAttemptsRef.current = 0;
+          
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'critical-alerts' && Array.isArray(data.alerts)) {
@@ -139,9 +162,14 @@ export function PrinterAlertBanner() {
         };
 
         eventSource.onerror = () => {
-          // Reconnect after 30 seconds on error
+          // Exponential backoff on error
+          sseReconnectAttemptsRef.current++;
+          const delay = sseReconnectDelayRef.current;
+          sseReconnectDelayRef.current = Math.min(delay * 2, 300000); // Max 5 minutes
+          
+          console.warn(`[PrinterAlertBanner] SSE error, reconnecting in ${delay/1000}s (attempt ${sseReconnectAttemptsRef.current})`);
           eventSource.close();
-          setTimeout(connectSSE, 30000);
+          setTimeout(connectSSE, delay);
         };
       } catch (e) {
         // SSE not supported or connection failed
@@ -157,6 +185,7 @@ export function PrinterAlertBanner() {
         eventSourceRef.current = null;
       }
     };
+    */
   }, [fetchAlerts]);
 
   if (loading || dismissed || alerts.length === 0) {
