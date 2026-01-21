@@ -53,6 +53,10 @@ temp/
 # Backend downloads
 smartwish-backend/downloads/
 
+# Recordings (video files are too large for Git)
+smartwish-backend/print-agent-deployment/recordings/
+smartwish-backend/print-agent-deployment/surveillance/recordings/
+
 # Package manager locks (optional - some teams commit these)
 # package-lock.json
 # yarn.lock
