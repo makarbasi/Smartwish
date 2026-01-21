@@ -9,6 +9,7 @@ import React, {
   useRef,
 } from 'react';
 import { useKiosk } from './KioskContext';
+import { cachedFetch, resetBackoff } from '@/utils/requestUtils';
 
 // =============================================================================
 // Types
@@ -161,7 +162,9 @@ export const usePrinterStatusSafe = () => {
 // Provider
 // =============================================================================
 
-const POLL_INTERVAL = 10000; // Poll every 10 seconds for faster updates
+// Increased from 10s to 30s to reduce rate limit issues
+// Printer status doesn't change frequently enough to justify 10s polling
+const POLL_INTERVAL = 30000; // Poll every 30 seconds (was 10s - too aggressive)
 const STORAGE_KEY = 'smartwish_dismissed_printer_alerts';
 
 function getApiBase(): string {
@@ -193,7 +196,7 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  // Fetch printer status from backend
+  // Fetch printer status from backend with caching and deduplication
   const fetchStatus = useCallback(async () => {
     if (!kioskInfo?.id) return;
 
@@ -204,23 +207,40 @@ export const PrinterStatusProvider: React.FC<{ children: React.ReactNode }> = ({
       fetchedKioskIdRef.current = kioskInfo.id;
     }
 
+    const url = `${getApiBase()}/kiosk/printer-status/${kioskInfo.id}`;
+    const cacheKey = `printer-status:${kioskInfo.id}`;
+
     try {
-      const response = await fetch(
-        `${getApiBase()}/kiosk/printer-status/${kioskInfo.id}`
+      // Use cached fetch with 20-second TTL (shorter than poll interval to allow manual refresh)
+      const data = await cachedFetch(
+        cacheKey,
+        async () => {
+          const response = await fetch(url);
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[PrinterStatus] Rate limited, will retry later');
+              return null;
+            }
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.json();
+        },
+        20000 // 20 second cache TTL
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.status) {
-          setStatus({
-            ...defaultStatus,
-            ...data.status,
-          });
-          setLastUpdated(new Date());
-        } else {
-          // No status yet - printer agent may not have reported
-          setStatus(null);
-        }
+      if (data?.status) {
+        setStatus({
+          ...defaultStatus,
+          ...data.status,
+        });
+        setLastUpdated(new Date());
+        resetBackoff(cacheKey);
+      } else if (data === null) {
+        // Rate limited or error - keep existing status
+        console.log('[PrinterStatus] Using cached status due to rate limit');
+      } else {
+        // No status yet - printer agent may not have reported
+        setStatus(null);
       }
     } catch (error) {
       console.error('[PrinterStatus] Failed to fetch status:', error);

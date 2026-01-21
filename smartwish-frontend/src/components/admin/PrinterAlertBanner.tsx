@@ -76,10 +76,11 @@ export function PrinterAlertBanner() {
     }
   }, [dismissed]);
 
-  // Primary polling effect - faster polling (10 seconds)
+  // Polling effect - 30 seconds (increased from 10s to reduce rate limit issues)
+  // SSE provides real-time updates for critical alerts, polling is just a fallback
   useEffect(() => {
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 10000); // 10 seconds instead of 30
+    const interval = setInterval(fetchAlerts, 30000); // 30 seconds (was 10s - too aggressive)
     return () => clearInterval(interval);
   }, [fetchAlerts]);
 

@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, KioskConfigRow } from '@/lib/supabase';
+import { cachedFetch, fetchWithRetry, resetBackoff, getBackoffDelay } from '@/utils/requestUtils';
 
 // ==================== Types ====================
 
@@ -252,19 +253,45 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isActivated = !!kioskId && !!kioskInfo;
   const config = kioskInfo?.config || DEFAULT_CONFIG;
 
-  // Fetch config from backend API
+  // Fetch config from backend API with caching and rate limit handling
   const fetchConfig = useCallback(async (id: string): Promise<KioskInfo | null> => {
+    const url = `${getApiBase()}/kiosk/config/${id}`;
+    const cacheKey = `kiosk-config:${id}`;
+    
     try {
-      const url = `${getApiBase()}/kiosk/config/${id}`;
       console.log(`[KioskContext] Fetching config from: ${url}`);
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[KioskContext] ❌ Config fetch failed (${response.status}):`, errorText);
-        throw new Error('Failed to fetch kiosk configuration');
+      
+      // Use cached fetch with 60-second TTL
+      // Config rarely changes and we have realtime subscriptions for updates
+      const data = await cachedFetch(
+        cacheKey,
+        async () => {
+          const response = await fetch(url);
+          if (!response.ok) {
+            if (response.status === 429) {
+              console.warn('[KioskContext] ⚠️ Rate limited, using cached config');
+              // Get backoff delay for logging
+              const delay = getBackoffDelay(cacheKey);
+              console.log(`[KioskContext] Next retry in ${delay}ms`);
+              return null; // Will fall back to cached data
+            }
+            const errorText = await response.text();
+            console.error(`[KioskContext] ❌ Config fetch failed (${response.status}):`, errorText);
+            throw new Error('Failed to fetch kiosk configuration');
+          }
+          return response.json();
+        },
+        60000 // 60 second cache TTL (config rarely changes, realtime updates handle changes)
+      );
+
+      if (!data) {
+        // Rate limited - return null, caller will use cached version
+        return null;
       }
-      const data = await response.json();
+
       console.log('[KioskContext] ✅ Config fetched successfully:', data.kioskId, data.name);
+      resetBackoff(cacheKey);
+      
       return {
         id: data.id,
         kioskId: data.kioskId,
@@ -462,8 +489,10 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [kioskId, fetchConfig, subscribeToUpdates, unsubscribeFromUpdates]);
 
-  // Send heartbeat when kiosk is activated
+  // Send heartbeat when kiosk is activated (with rate limit handling)
   const sendHeartbeat = useCallback(async (id: string) => {
+    const cacheKey = `heartbeat:${id}`;
+    
     try {
       const response = await fetch('/api/kiosk/heartbeat', {
         method: 'POST',
@@ -471,10 +500,17 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         body: JSON.stringify({ kioskId: id }),
       });
       
+      if (response.status === 429) {
+        // Rate limited - skip this heartbeat silently, will retry next interval
+        console.log('[KioskContext] ⚠️ Heartbeat rate limited, will retry next interval');
+        return;
+      }
+      
       if (!response.ok) {
         console.error('[KioskContext] Heartbeat failed:', response.status);
       } else {
         console.log('[KioskContext] ✅ Heartbeat sent for kiosk:', id);
+        resetBackoff(cacheKey);
       }
     } catch (error) {
       console.error('[KioskContext] Error sending heartbeat:', error);
@@ -494,10 +530,11 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Send initial heartbeat immediately
       sendHeartbeat(kioskId);
       
-      // Then send heartbeat every 30 seconds
+      // Then send heartbeat every 60 seconds (increased from 30s to reduce request volume)
+      // Heartbeat is mainly for "online" status which doesn't need frequent updates
       heartbeatIntervalRef.current = setInterval(() => {
         sendHeartbeat(kioskId);
-      }, 30000); // 30 seconds
+      }, 60000); // 60 seconds (was 30s)
 
       console.log('[KioskContext] Started heartbeat interval for kiosk:', kioskId);
     }

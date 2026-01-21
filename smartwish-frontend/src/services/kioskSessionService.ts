@@ -16,10 +16,12 @@ import type {
 
 // ==================== Configuration ====================
 
-const BATCH_INTERVAL_MS = 5000; // Send events every 5 seconds
-const MAX_BATCH_SIZE = 50; // Maximum events per batch
+// Increased from 5s to 15s to reduce request volume
+// Events are batched and don't need real-time delivery
+const BATCH_INTERVAL_MS = 15000; // Send events every 15 seconds (was 5s)
+const MAX_BATCH_SIZE = 100; // Maximum events per batch (increased to accommodate longer intervals)
 const RETRY_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 1000;
+const RETRY_DELAY_MS = 2000; // Increased from 1s to reduce retry spam
 
 // ==================== Types ====================
 

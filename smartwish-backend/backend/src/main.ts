@@ -64,34 +64,50 @@ async function bootstrap() {
   // Check if we're in development mode
   const isDev = process.env.NODE_ENV !== 'production';
   
-  // Rate limiting - DISABLED in development, strict in production
+  // Trust proxy for Render/cloud deployments (to get real client IP from X-Forwarded-For)
+  app.set('trust proxy', 1);
+  
+  // Helper to get real client IP (works behind proxies like Render, Cloudflare, etc.)
+  const getClientIp = (req: any): string => {
+    // Check X-Forwarded-For header (set by proxies)
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      // X-Forwarded-For can be a comma-separated list, take the first (original client)
+      const ips = forwardedFor.split(',').map((ip: string) => ip.trim());
+      return ips[0];
+    }
+    // Check X-Real-IP header (set by some proxies)
+    if (req.headers['x-real-ip']) {
+      return req.headers['x-real-ip'];
+    }
+    // Fall back to direct connection IP
+    return req.ip || req.connection?.remoteAddress || 'unknown';
+  };
+  
+  // Rate limiting - DISABLED in development, configurable in production
   const globalRateLimit = rateLimit.default({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000') || 60 * 1000, // 1 minute window
-    max: isDev ? 0 : (parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '300') || 300), // 0 = disabled in dev, 300 in prod
+    max: isDev ? 0 : (parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000') || 1000), // 0 = disabled in dev, 1000 in prod (increased from 300)
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: false,
     skip: () => isDev, // Skip rate limiting entirely in development
-    keyGenerator: (req: any) => {
-      return req.ip || req.connection?.remoteAddress || 'unknown';
-    }
+    keyGenerator: getClientIp,
   });
 
-  console.log(`Global rate limit: ${isDev ? 'DISABLED (dev mode)' : '300 requests per minute (production)'}`);
+  console.log(`Global rate limit: ${isDev ? 'DISABLED (dev mode)' : `${process.env.RATE_LIMIT_MAX_REQUESTS || '1000'} requests per minute (production)`}`);
   const loginRateLimit = rateLimit.default({
     windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || (isDev ? '60000' : '900000')) || (isDev ? 60 * 1000 : 15 * 60 * 1000), // 1 min in dev, 15 min in prod
-    max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || (isDev ? '50' : '5')) || (isDev ? 50 : 5), // 50 attempts in dev, 5 in prod
+    max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS || (isDev ? '50' : '10')) || (isDev ? 50 : 10), // 50 attempts in dev, 10 in prod (increased from 5)
     message: 'Too many login attempts from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: true,
-    keyGenerator: (req: any) => {
-      return req.ip || req.connection?.remoteAddress || 'unknown';
-    }
+    keyGenerator: getClientIp,
   });
   
-  console.log(`Login rate limit: ${isDev ? '50 requests per minute (dev mode)' : '5 requests per 15 minutes (production)'}`);
+  console.log(`Login rate limit: ${isDev ? '50 requests per minute (dev mode)' : '10 requests per 15 minutes (production)'}`);
 
   // Configure CORS FIRST (before rate limiting so 429 responses include CORS headers)
   const allowedOrigins = process.env.ALLOWED_ORIGINS

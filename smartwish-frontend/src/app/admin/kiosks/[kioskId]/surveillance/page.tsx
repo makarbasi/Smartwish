@@ -176,7 +176,8 @@ export default function KioskSurveillancePage({
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 5000);
+    // Increased from 5s to 15s - stream status doesn't change that frequently
+    const interval = setInterval(checkStatus, 15000);
     return () => clearInterval(interval);
   }, [showLivePreview, status, kioskId, session?.user?.access_token]);
 
