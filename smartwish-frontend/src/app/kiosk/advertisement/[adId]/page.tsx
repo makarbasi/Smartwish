@@ -168,18 +168,31 @@ export default function KioskAdvertisementPage() {
         
         {/* Top Section: Offer Badge */}
         <div className="w-full mt-8" style={{ maxWidth: '1000px', marginLeft: 'auto', marginRight: 'auto', paddingLeft: '20px', paddingRight: '20px' }}>
-          <div className="relative bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-center py-5 px-6 rounded-2xl overflow-hidden shadow-2xl">
+          <div 
+            className="relative bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-center py-5 px-6 rounded-2xl overflow-hidden shadow-2xl"
+            style={{
+              animation: mounted ? 'pulseGlow 2s ease-in-out 0.5s infinite' : 'none',
+            }}
+          >
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shine" />
             <div className="relative">
               <span 
-                className="text-white font-black text-5xl tracking-tight drop-shadow-lg block animate-bounce-subtle"
+                className="text-white font-black text-5xl tracking-tight drop-shadow-lg block"
                 style={{
-                  animation: mounted ? 'bounce-subtle 2s ease-in-out infinite, fadeInDown 0.8s ease-out' : 'none',
+                  animation: mounted ? 'flyInFromTopExtreme 1.5s cubic-bezier(0.25, 0.46, 0.45, 1.4) 0.2s both, bounce-subtle 2s ease-in-out 1.7s infinite' : 'none',
+                  textShadow: '0 0 20px rgba(255, 255, 255, 0.8), 0 0 40px rgba(255, 200, 0, 0.6)',
                 }}
               >
                 {ad.offerHighlight}
               </span>
-              <div className="mt-2 text-white/95 text-lg font-bold">EXCLUSIVE OFFER</div>
+              <div 
+                className="mt-2 text-white/95 text-lg font-bold"
+                style={{
+                  animation: mounted ? 'flyInFromBottomExtreme 1.2s cubic-bezier(0.25, 0.46, 0.45, 1.4) 0.5s both' : 'none',
+                }}
+              >
+                EXCLUSIVE OFFER
+              </div>
             </div>
           </div>
         </div>
@@ -413,6 +426,69 @@ export default function KioskAdvertisementPage() {
           }
           50% {
             transform: translateY(-5px);
+          }
+        }
+        
+        @keyframes pulseGlow {
+          0%, 100% {
+            box-shadow: 0 0 20px rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4);
+          }
+          50% {
+            box-shadow: 0 0 40px rgba(255, 193, 7, 1), 0 0 80px rgba(255, 152, 0, 0.8), 0 0 120px rgba(255, 87, 34, 0.4);
+          }
+        }
+        
+        @keyframes flyInFromTopExtreme {
+          0% {
+            opacity: 0;
+            transform: translateY(-400px) translateX(-200px) scale(0.2) rotate(-45deg);
+            filter: blur(20px);
+          }
+          30% {
+            opacity: 0.8;
+            transform: translateY(50px) translateX(30px) scale(1.5) rotate(15deg);
+            filter: blur(5px);
+          }
+          50% {
+            opacity: 1;
+            transform: translateY(-20px) translateX(-10px) scale(1.2) rotate(-5deg);
+            filter: blur(0px);
+          }
+          70% {
+            transform: translateY(10px) translateX(5px) scale(1.05) rotate(2deg);
+          }
+          85% {
+            transform: translateY(-3px) translateX(-2px) scale(0.98) rotate(-1deg);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) translateX(0) scale(1) rotate(0deg);
+            filter: blur(0px);
+          }
+        }
+        
+        @keyframes flyInFromBottomExtreme {
+          0% {
+            opacity: 0;
+            transform: translateY(150px) scale(0.3) rotate(25deg);
+            filter: blur(15px);
+          }
+          40% {
+            opacity: 0.9;
+            transform: translateY(-15px) scale(1.3) rotate(-8deg);
+            filter: blur(3px);
+          }
+          60% {
+            transform: translateY(8px) scale(1.1) rotate(3deg);
+            filter: blur(0px);
+          }
+          80% {
+            transform: translateY(-4px) scale(0.95) rotate(-1deg);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1) rotate(0deg);
+            filter: blur(0px);
           }
         }
         
