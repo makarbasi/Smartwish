@@ -60,6 +60,7 @@ export default function KioskScreenSaverManager({
   const [currentScreenSaver, setCurrentScreenSaver] = useState<ScreenSaverItem | null>(null);
   const rotationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasExitedRef = useRef(false);
+  const previousScreenSaverIdRef = useRef<string | null>(null);
 
   // Check if there's an active session - don't show screen saver if so
   const hasActiveSession = kioskSession?.isSessionActive ?? false;
@@ -79,12 +80,37 @@ export default function KioskScreenSaverManager({
     if (enabledScreenSavers.length === 0) {
       // No enabled screen savers - don't show anything
       setCurrentScreenSaver(null);
+      previousScreenSaverIdRef.current = null;
       return;
     }
 
-    const selected = selectWeightedScreenSaver(enabledScreenSavers);
-    console.log("[ScreenSaverManager] Selected screen saver:", selected?.name || selected?.type);
+    // If we only have one screen saver, use it
+    if (enabledScreenSavers.length === 1) {
+      const selected = enabledScreenSavers[0];
+      console.log("[ScreenSaverManager] Only one screen saver available:", selected?.name || selected?.type);
+      setCurrentScreenSaver(selected);
+      previousScreenSaverIdRef.current = selected.id;
+      return;
+    }
+
+    // Filter out the previous screen saver to avoid immediate repeats
+    const availableScreenSavers = enabledScreenSavers.filter(
+      ss => ss.id !== previousScreenSaverIdRef.current
+    );
+
+    // If we filtered out the only option, use all screen savers (fallback)
+    const candidates = availableScreenSavers.length > 0 ? availableScreenSavers : enabledScreenSavers;
+
+    const selected = selectWeightedScreenSaver(candidates);
+    console.log("[ScreenSaverManager] Selected screen saver:", selected?.name || selected?.type, {
+      previousId: previousScreenSaverIdRef.current,
+      selectedId: selected?.id,
+      totalAvailable: enabledScreenSavers.length,
+      candidatesCount: candidates.length
+    });
+    
     setCurrentScreenSaver(selected);
+    previousScreenSaverIdRef.current = selected?.id || null;
   }, [screenSavers]);
 
   // Start rotation timer for the current screen saver
@@ -111,10 +137,13 @@ export default function KioskScreenSaverManager({
     if (isVisible && !hasActiveSession) {
       console.log("[ScreenSaverManager] Screen saver visible - selecting initial screen saver");
       hasExitedRef.current = false;
+      // Reset previous screen saver when starting fresh
+      previousScreenSaverIdRef.current = null;
       selectNewScreenSaver();
     } else if (!isVisible || hasActiveSession) {
       clearRotationTimer();
       setCurrentScreenSaver(null);
+      // Don't reset previousScreenSaverIdRef here - keep it for next time
     }
     
     return () => {

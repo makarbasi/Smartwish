@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { ChatBubbleLeftRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface KioskChatButtonProps {
@@ -9,22 +10,38 @@ interface KioskChatButtonProps {
 }
 
 export default function KioskChatButton({ isOpen, onToggle, unreadCount = 0 }: KioskChatButtonProps) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const glowStyle = isHovered ? {
+    boxShadow: `
+      0 0 15px rgba(99, 102, 241, 0.7),
+      0 0 30px rgba(99, 102, 241, 0.5),
+      0 0 45px rgba(99, 102, 241, 0.3)
+    `
+  } : {
+    boxShadow: `
+      0 0 10px rgba(99, 102, 241, 0.5),
+      0 0 20px rgba(99, 102, 241, 0.3),
+      0 0 30px rgba(99, 102, 241, 0.2)
+    `
+  };
 
   return (
     <button
       onClick={onToggle}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className={`
         fixed bottom-6 right-6 z-[9999]
         h-14 w-14 rounded-full
         bg-indigo-600 hover:bg-indigo-700
-        text-white shadow-lg hover:shadow-xl
+        text-white
         transition-all duration-200
         flex items-center justify-center
         ${isOpen ? 'scale-95' : 'scale-100 hover:scale-110'}
         animate-in fade-in slide-in-from-bottom-4 duration-300
-        shadow-indigo-500/50 hover:shadow-indigo-500/70
-        ring-2 ring-indigo-400/30 hover:ring-indigo-400/50
       `}
+      style={glowStyle}
       aria-label={isOpen ? 'Close chat' : 'Open chat'}
     >
       {isOpen ? (

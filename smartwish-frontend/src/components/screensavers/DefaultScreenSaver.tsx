@@ -802,7 +802,7 @@ export default function DefaultScreenSaver({
       {/* Overlay Text */}
       {overlayText && (
         <div className="absolute top-8 left-0 right-0 z-50 flex justify-center pointer-events-none">
-          <div className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 shadow-2xl max-w-4xl mx-4">
+          <div className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 shadow-2xl max-w-4xl mx-4 overlay-text-glow">
             <p className="text-3xl md:text-4xl font-semibold text-white text-center leading-tight tracking-wide">
               {overlayText}
             </p>
@@ -1205,6 +1205,30 @@ export default function DefaultScreenSaver({
           50% {
             transform: scale(1.12);
             opacity: 0.25;
+          }
+        }
+
+        .overlay-text-glow {
+          box-shadow: 0 0 20px rgba(255, 255, 255, 0.15),
+                      0 0 40px rgba(255, 255, 255, 0.1),
+                      0 0 60px rgba(255, 255, 255, 0.05),
+                      inset 0 0 20px rgba(255, 255, 255, 0.05);
+          animation: subtleGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes subtleGlow {
+          0%,
+          100% {
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.15),
+                        0 0 40px rgba(255, 255, 255, 0.1),
+                        0 0 60px rgba(255, 255, 255, 0.05),
+                        inset 0 0 20px rgba(255, 255, 255, 0.05);
+          }
+          50% {
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.2),
+                        0 0 50px rgba(255, 255, 255, 0.15),
+                        0 0 70px rgba(255, 255, 255, 0.08),
+                        inset 0 0 25px rgba(255, 255, 255, 0.08);
           }
         }
       `}</style>
