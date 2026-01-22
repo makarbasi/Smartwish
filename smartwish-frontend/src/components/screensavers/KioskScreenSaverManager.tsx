@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { usePathname } from "next/navigation";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
 import {
@@ -34,6 +35,7 @@ export default function KioskScreenSaverManager({
 }: KioskScreenSaverManagerProps) {
   const { kioskInfo } = useKiosk();
   const kioskSession = useKioskSessionSafe();
+  const pathname = usePathname();
   
   // Get screen saver configuration from kiosk config
   const screenSavers = useMemo(() => {
@@ -63,7 +65,9 @@ export default function KioskScreenSaverManager({
   const previousScreenSaverIdRef = useRef<string | null>(null);
 
   // Check if there's an active session - don't show screen saver if so
-  const hasActiveSession = kioskSession?.isSessionActive ?? false;
+  // EXCEPT on /kiosk/home where sessions are automatically ended
+  const isOnKioskHome = pathname === '/kiosk/home';
+  const hasActiveSession = isOnKioskHome ? false : (kioskSession?.isSessionActive ?? false);
 
   // Clear rotation timer
   const clearRotationTimer = useCallback(() => {
@@ -135,7 +139,12 @@ export default function KioskScreenSaverManager({
   // Initialize screen saver when becoming visible
   useEffect(() => {
     if (isVisible && !hasActiveSession) {
-      console.log("[ScreenSaverManager] Screen saver visible - selecting initial screen saver");
+      console.log("[ScreenSaverManager] Screen saver visible - selecting initial screen saver", {
+        isOnKioskHome,
+        pathname,
+        hasActiveSession,
+        rawSessionActive: kioskSession?.isSessionActive,
+      });
       hasExitedRef.current = false;
       // Reset previous screen saver when starting fresh
       previousScreenSaverIdRef.current = null;
@@ -149,7 +158,7 @@ export default function KioskScreenSaverManager({
     return () => {
       clearRotationTimer();
     };
-  }, [isVisible, hasActiveSession, selectNewScreenSaver, clearRotationTimer]);
+  }, [isVisible, hasActiveSession, selectNewScreenSaver, clearRotationTimer, isOnKioskHome, pathname, kioskSession?.isSessionActive]);
 
   // Start rotation timer when current screen saver changes
   useEffect(() => {
@@ -186,7 +195,10 @@ export default function KioskScreenSaverManager({
     console.log("[ScreenSaverManager] Not rendering:", {
       isVisible,
       hasActiveSession,
+      isOnKioskHome,
+      rawSessionActive: kioskSession?.isSessionActive,
       currentScreenSaver: !!currentScreenSaver,
+      pathname,
     });
     return null;
   }

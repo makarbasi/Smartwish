@@ -358,9 +358,9 @@ export function useKioskInactivity({
     }, [showScreenSaver, showTimeoutModal, exitScreenSaver, resetActivity]);
 
 
-    // Start timers on initial mount only
+    // Start timers on initial mount and when screen saver config changes
     useEffect(() => {
-        console.log("🖥️ [KioskInactivity] Initial mount check:", {
+        console.log("🖥️ [KioskInactivity] Timer initialization check:", {
             isKiosk,
             screenSaverEnabled,
             timeoutEnabled,
@@ -382,17 +382,17 @@ export function useKioskInactivity({
 
         if (!hasScreenSavers) {
             console.log("🖥️ [KioskInactivity] ⚠️ No screen savers configured - timers won't start");
+            clearTimers();
             return;
         }
 
-        console.log("🖥️ [KioskInactivity] ✅ Starting initial timers (kiosk home:", isKioskHome, ")");
+        console.log("🖥️ [KioskInactivity] ✅ Starting/restarting timers (kiosk home:", isKioskHome, ")");
         resetActivity();
 
         return () => {
             clearTimers();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isKiosk, screenSaverEnabled]);
+    }, [isKiosk, screenSaverEnabled, hasScreenSavers, clearTimers, resetActivity]);
 
     // Set up activity listeners
     useEffect(() => {
