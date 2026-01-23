@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1080, height=1920, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>San Diego Events Kiosk</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Load the Scraped Data -->
+    <script src="event_data.js" onerror="window.REAL_EVENT_DATA = null;"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            width: 1080px; height: 1920px;
+            background-color: #f8fafc;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            color: #1e293b;
+            overflow: hidden;
+        }
+
+        /* --- UPGRADED HEADER --- */
+        header {
+            height: 280px;
+            /* Deep Premium Gradient */
+            background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+            /* Subtle Texture Overlay */
+            background-image: radial-gradient(circle at 10% 20%, rgba(255,255,255,0.05) 0%, transparent 20%),
+                              radial-gradient(circle at 90% 80%, rgba(255,255,255,0.05) 0%, transparent 20%),
+                              linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            
+            padding: 0 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+            color: white;
+            position: relative;
+            z-index: 10;
+            
+            /* Modern Curve Design */
+            border-bottom-left-radius: 60px;
+            border-bottom-right-radius: 60px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 10px;
+        }
+
+        h1 { 
+            font-family: 'Outfit', sans-serif; 
+            font-size: 80px; 
+            font-weight: 800; 
+            text-transform: uppercase; 
+            letter-spacing: -2px; 
+            margin: 0;
+            line-height: 1;
+            background: linear-gradient(to right, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Dynamic Date in Header */
+        .header-date {
+            text-align: right;
+        }
+        .header-day { font-size: 24px; font-weight: 600; color: #94a3b8; display: block; text-transform: uppercase; letter-spacing: 2px;}
+        .header-full-date { font-family: 'Outfit', sans-serif; font-size: 32px; font-weight: 700; color: white; display: block; }
+
+        .subtitle { 
+            font-size: 28px; 
+            color: rgba(255,255,255,0.8); 
+            display: flex; 
+            align-items: center; 
+            gap: 15px; 
+            margin-top: 15px;
+            font-weight: 500;
+        }
+        
+        .live-dot { 
+            width: 14px; height: 14px; 
+            background: #22c55e; 
+            border-radius: 50%; 
+            box-shadow: 0 0 15px #22c55e; 
+            animation: pulse 2s infinite; 
+        }
+
+        /* --- CONTENT CONTAINER --- */
+        #event-container {
+            width: 100%;
+            height: 1640px; /* Taller now that footer is gone */
+            padding: 50px 0 80px 0; /* Bottom padding prevents cutoff */
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+        #event-container::-webkit-scrollbar { display: none; }
+
+        /* --- CATEGORY SECTION --- */
+        .category-section { margin-bottom: 60px; padding-left: 50px; }
+        
+        .category-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-right: 60px;
+            margin-bottom: 30px;
+        }
+
+        .category-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 52px;
+            font-weight: 800;
+            color: #1e293b;
+            text-transform: capitalize;
+            position: relative;
+            padding-left: 30px;
+        }
+        
+        /* Decorative line next to title */
+        .category-title::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 10%;
+            height: 80%;
+            width: 8px;
+            background: #FF512F;
+            border-radius: 4px;
+        }
+
+        .scroll-hint { font-size: 22px; font-weight: 600; color: #94a3b8; font-family: 'Plus Jakarta Sans'; }
+
+        /* --- CAROUSEL --- */
+        .carousel {
+            display: flex;
+            gap: 40px;
+            overflow-x: auto;
+            padding: 20px 20px 60px 10px; /* Padding for shadow */
+        }
+        .carousel::-webkit-scrollbar { display: none; }
+
+        /* --- CARD DESIGN --- */
+        .card {
+            flex: 0 0 480px; /* Card Width */
+            height: 600px;    /* Card Height */
+            background: white;
+            border-radius: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.06);
+            overflow: hidden;
+            position: relative;
+            transition: transform 0.3s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Image Area */
+        .card-img-wrap { height: 280px; width: 100%; position: relative; background: #e2e8f0; }
+        .card-img { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Card Content Area */
+        .card-body { 
+            padding: 35px; 
+            display: flex; 
+            flex: 1; 
+            justify-content: space-between;
+            background: white;
+        }
+
+        /* Left side: Text Info */
+        .card-info {
+            width: 65%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 34px; 
+            font-weight: 700;
+            color: #0f172a; 
+            line-height: 1.1;
+            margin-bottom: 10px;
+            display: -webkit-box; 
+            -webkit-line-clamp: 3; 
+            -webkit-box-orient: vertical; 
+            overflow: hidden;
+        }
+
+        .details-row { font-size: 20px; color: #64748b; margin-top: 8px; display: flex; align-items: center; gap: 8px;}
+        .price { font-size: 30px; font-weight: 800; color: #10b981; margin-top: 15px; }
+        
+        .date-display {
+            font-size: 18px; font-weight: 700; color: #FF512F;
+            text-transform: uppercase; margin-top: auto;
+        }
+
+        /* Right side: QR Code (CLEAN - No Container) */
+        .card-qr {
+            width: 30%;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end; /* Align to right */
+            justify-content: flex-end; /* Align to bottom */
+            /* Removed background/border */
+            padding-bottom: 5px; 
+        }
+        
+        .qr-img {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1/1;
+            mix-blend-mode: multiply;
+        }
+
+        .scan-text {
+            font-size: 14px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-top: 5px;
+            text-transform: uppercase;
+            text-align: center;
+            width: 100%;
+        }
+
+        /* Animations */
+        .fade-in { animation: fadeIn 0.8s ease forwards; opacity: 0; }
+        @keyframes fadeIn { to { opacity: 1; } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-top">
+            <h1>San Diego Events</h1>
+            <div class="header-date">
+                <span class="header-day" id="current-day">FRIDAY</span>
+                <span class="header-full-date" id="current-date">OCT 24</span>
+            </div>
+        </div>
+        <div class="subtitle">
+            <div class="live-dot"></div>
+            Happening now in America's Finest City
+        </div>
+    </header>
+
+    <div id="event-container">
+        <!-- Events Injected Here -->
+    </div>
+
+    <script>
+        // --- 0. Header Date Logic ---
+        const date = new Date();
+        const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        
+        document.getElementById('current-day').innerText = days[date.getDay()];
+        document.getElementById('current-date').innerText = `${months[date.getMonth()]} ${date.getDate()}`;
+
+
+        // --- 1. Load Data ---
+        const container = document.getElementById('event-container');
+        let data = {};
+        
+        if (typeof REAL_EVENT_DATA !== 'undefined' && REAL_EVENT_DATA) {
+            data = REAL_EVENT_DATA;
+        } else {
+            // Fallback
+            data = { "System": [{title: "Data Missing. Run Python Script.", date:{month:"ERR", day:"!"}, url:"http://google.com"}] };
+        }
+
+        // --- 2. Render Categories ---
+        Object.keys(data).forEach((catName, i) => {
+            const events = data[catName];
+            if (!events || events.length === 0) return;
+
+            // Section
+            const section = document.createElement('div');
+            section.className = 'category-section fade-in';
+            section.style.animationDelay = `${i * 0.1}s`;
+
+            // Title
+            section.innerHTML = `
+                <div class="category-header">
+                    <div class="category-title">${catName}</div>
+                    <span class="scroll-hint">Swipe ➔</span>
+                </div>
+            `;
+
+            // Carousel
+            const carousel = document.createElement('div');
+            carousel.className = 'carousel';
+
+            // Cards
+            events.forEach(evt => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                
+                let imgSrc = evt.image ? evt.image : 'https://via.placeholder.com/400x300?text=San+Diego';
+                
+                // QR Code URL
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=000000&margin=0&data=${encodeURIComponent(evt.url)}`;
+
+                card.innerHTML = `
+                    <div class="card-img-wrap">
+                        <img src="${imgSrc}" class="card-img" onerror="this.src='https://via.placeholder.com/400?text=Image+Error'">
+                    </div>
+                    
+                    <div class="card-body">
+                        <!-- Left Side: Info -->
+                        <div class="card-info">
+                            <div>
+                                <div class="card-title">${evt.title}</div>
+                                <div class="details-row">📍 ${evt.location}</div>
+                                <div class="details-row">🕒 ${evt.date.time}</div>
+                            </div>
+                            <div>
+                                <div class="price">${evt.price}</div>
+                                <div class="date-display">${evt.date.month} ${evt.date.day}</div>
+                            </div>
+                        </div>
+
+                        <!-- Right Side: QR Code (No Container) -->
+                        <div class="card-qr">
+                            <img src="${qrUrl}" class="qr-img" alt="Scan QR">
+                            <div class="scan-text">Get<br>Tix</div>
+                        </div>
+                    </div>
+                `;
+                carousel.appendChild(card);
+            });
+
+            section.appendChild(carousel);
+            container.appendChild(section);
+        });
+
+        // --- 3. Kiosk Scroll Logic ---
+        let isPaused = false;
+        
+        document.addEventListener('touchstart', () => { isPaused = true; });
+        document.addEventListener('touchend', () => { setTimeout(() => isPaused = false, 5000); });
+        document.addEventListener('mousedown', () => { isPaused = true; });
+        document.addEventListener('mouseup', () => { setTimeout(() => isPaused = false, 5000); });
+
+        function autoScroll() {
+            // Vertical Scroll
+            const pageSpeed = 0.5;
+            let pageDir = 1;
+            let atBottom = false;
+
+            setInterval(() => {
+                if(isPaused) return;
+
+                container.scrollTop += (pageSpeed * pageDir);
+                
+                if (container.scrollTop >= (container.scrollHeight - container.clientHeight)) {
+                    if(!atBottom) {
+                        atBottom = true;
+                        isPaused = true; // Pause at bottom
+                        setTimeout(() => { pageDir = -1; isPaused = false; }, 4000);
+                    }
+                } else if (container.scrollTop <= 0) {
+                    if(atBottom) {
+                        atBottom = false;
+                        isPaused = true; // Pause at top
+                        setTimeout(() => { pageDir = 1; isPaused = false; }, 4000);
+                    }
+                }
+            }, 30);
+
+            // Horizontal Scroll
+            const carousels = document.querySelectorAll('.carousel');
+            carousels.forEach((car, index) => {
+                let speed = 0.6;
+                let dir = 1; 
+                let carPaused = false;
+
+                setInterval(() => {
+                    if(isPaused || carPaused) return;
+
+                    car.scrollLeft += (speed * dir);
+                    
+                    if (car.scrollLeft >= (car.scrollWidth - car.clientWidth)) {
+                        carPaused = true;
+                        setTimeout(() => { dir = -1; carPaused = false; }, 2000);
+                    } else if (car.scrollLeft <= 0) {
+                        carPaused = true;
+                        setTimeout(() => { dir = 1; carPaused = false; }, 2000);
+                    }
+                }, 30);
+            });
+        }
+
+        setTimeout(autoScroll, 2000);
+
+    </script>
+</body>
+</html>

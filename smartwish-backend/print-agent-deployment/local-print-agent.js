@@ -29,6 +29,7 @@ import { promisify } from 'util';
 import { getSurveillanceManager } from './surveillance-manager.js';
 import { DevicePairingServer, fetchKioskConfig } from './device-pairing.js';
 import { MultiPrinterMonitor } from './printer-status-monitor.js';
+import { fork } from 'child_process';
 
 const execAsync = promisify(exec);
 
@@ -85,6 +86,13 @@ const CONFIG = {
     dwellThresholdSeconds: fileConfig.surveillance?.dwellThresholdSeconds ?? 8,
     frameThreshold: fileConfig.surveillance?.frameThreshold ?? 10,
   },
+
+  // Events scraper configuration
+  eventsScraper: {
+    enabled: fileConfig.eventsScraper?.enabled ?? true,
+    runOnStartup: fileConfig.eventsScraper?.runOnStartup ?? true,
+    scheduleTime: fileConfig.eventsScraper?.scheduleTime || '03:00', // Daily at 3 AM
+  },
 };
 
 // Paper size configurations
@@ -139,6 +147,37 @@ async function ensureTempDir() {
   } catch (err) {
     // Directory might already exist
   }
+}
+
+/**
+ * Start the events scraper manager
+ */
+function startEventsScraper() {
+  if (!CONFIG.eventsScraper.enabled) {
+    console.log('  ℹ️  Events scraper is disabled in config');
+    return null;
+  }
+
+  console.log('  📅 Starting Events Scraper Manager...');
+  
+  const scraperPath = path.join(__dirname, 'events-scraper-manager.js');
+  const scraperProcess = fork(scraperPath, [], {
+    detached: false,
+    stdio: 'inherit'
+  });
+
+  scraperProcess.on('error', (err) => {
+    console.error(`  ❌ Events scraper error: ${err.message}`);
+  });
+
+  scraperProcess.on('exit', (code) => {
+    if (code !== 0) {
+      console.error(`  ⚠️  Events scraper exited with code ${code}`);
+    }
+  });
+
+  console.log('  ✅ Events scraper started');
+  return scraperProcess;
 }
 
 async function downloadPdf(url, savePath) {
@@ -1098,6 +1137,9 @@ async function main() {
   // Start multi-printer monitoring
   const printerMonitor = await startPrinterMonitoring(pairing.kioskId, pairing.apiKey, kioskPrinters);
 
+  // Start events scraper
+  const eventsScraperProcess = startEventsScraper();
+
   console.log('🔄 Waiting for print jobs...');
   console.log(`   Kiosk: ${pairing.kioskId}`);
   console.log('   Press Ctrl+C to stop\n');
@@ -1110,6 +1152,9 @@ async function main() {
     }
     if (surveillanceManager) {
       surveillanceManager.stop();
+    }
+    if (eventsScraperProcess) {
+      eventsScraperProcess.kill();
     }
     pairingServer.stop();
     process.exit(0);

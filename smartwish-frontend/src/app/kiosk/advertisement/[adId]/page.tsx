@@ -46,6 +46,105 @@ export default function KioskAdvertisementPage() {
 
   useEffect(() => {
     setMounted(true);
+    
+    // Set viewport meta tag for kiosk display (1080x1920)
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (viewport) {
+      viewport.setAttribute('content', 'width=1080, height=1920, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+    }
+    
+    // Inject global styles for kiosk display
+    const styleId = 'kiosk-ad-styles';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        * { box-sizing: border-box; }
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden;
+          width: 100vw !important;
+          height: 100vh !important;
+          max-width: 1080px !important;
+          max-height: 1920px !important;
+        }
+        #__next {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+        }
+        @media screen and (orientation: portrait) {
+          html {
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+          }
+        }
+        @keyframes float {
+          0%, 100% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(-20px) rotate(180deg); }
+        }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%) skewX(-12deg); }
+          100% { transform: translateX(200%) skewX(-12deg); }
+        }
+        @keyframes shine {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes fadeInDown {
+          from { opacity: 0; transform: translateY(-30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes bounce-subtle {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-5px); }
+        }
+        @keyframes pulseGlow {
+          0%, 100% { box-shadow: 0 0 20px rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4); }
+          50% { box-shadow: 0 0 40px rgba(255, 193, 7, 1), 0 0 80px rgba(255, 152, 0, 0.8), 0 0 120px rgba(255, 87, 34, 0.4); }
+        }
+        @keyframes flyInFromTopExtreme {
+          0% { opacity: 0; transform: translateY(-400px) translateX(-200px) scale(0.2) rotate(-45deg); filter: blur(20px); }
+          30% { opacity: 0.8; transform: translateY(50px) translateX(30px) scale(1.5) rotate(15deg); filter: blur(5px); }
+          50% { opacity: 1; transform: translateY(-20px) translateX(-10px) scale(1.2) rotate(-5deg); filter: blur(0px); }
+          70% { transform: translateY(10px) translateX(5px) scale(1.05) rotate(2deg); }
+          85% { transform: translateY(-3px) translateX(-2px) scale(0.98) rotate(-1deg); }
+          100% { opacity: 1; transform: translateY(0) translateX(0) scale(1) rotate(0deg); filter: blur(0px); }
+        }
+        @keyframes flyInFromBottomExtreme {
+          0% { opacity: 0; transform: translateY(150px) scale(0.3) rotate(25deg); filter: blur(15px); }
+          40% { opacity: 0.9; transform: translateY(-15px) scale(1.3) rotate(-8deg); filter: blur(3px); }
+          60% { transform: translateY(8px) scale(1.1) rotate(3deg); filter: blur(0px); }
+          80% { transform: translateY(-4px) scale(0.95) rotate(-1deg); }
+          100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); filter: blur(0px); }
+        }
+        .animate-shimmer { animation: shimmer 3s infinite; }
+        .animate-shine { animation: shine 2s infinite; }
+        .animate-bounce-subtle { animation: bounce-subtle 2s ease-in-out infinite; }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Cleanup - restore default viewport on unmount
+    return () => {
+      if (viewport) {
+        viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=5, user-scalable=true');
+      }
+      const injectedStyle = document.getElementById(styleId);
+      if (injectedStyle) {
+        injectedStyle.remove();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -98,17 +197,19 @@ export default function KioskAdvertisementPage() {
     <div 
       className="bg-gradient-to-br from-amber-950 via-slate-900 to-orange-950 flex flex-col overflow-hidden relative" 
       style={{ 
-        width: '1080px', 
-        height: '1920px', 
+        width: '100vw', 
+        height: '100vh', 
+        minWidth: '1080px',
+        minHeight: '1920px',
+        maxWidth: '1080px',
+        maxHeight: '1920px',
         margin: '0', 
         padding: '0', 
-        position: 'absolute', 
+        position: 'fixed', 
         top: '0', 
         left: '0',
-        marginLeft: '0',
-        marginRight: '0',
-        paddingLeft: '0',
-        paddingRight: '0'
+        right: '0',
+        bottom: '0',
       }}
     >
       <PrinterAlertBanner position="top" showWarnings={false} />
@@ -222,7 +323,6 @@ export default function KioskAdvertisementPage() {
                   }}
                   onError={(e) => {
                     console.error('Logo image failed to load:', ad.logo);
-                    // Try alternative paths
                     const img = e.target as HTMLImageElement;
                     if (!img.src.includes('cold-stone')) {
                       img.src = '/ads/cold-stone-logo.png';
@@ -340,170 +440,6 @@ export default function KioskAdvertisementPage() {
           </div>
         </div>
       </div>
-
-      {/* Custom animations */}
-      <style jsx global>{`
-        * {
-          box-sizing: border-box;
-        }
-        
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-          overflow: hidden;
-          width: 1080px;
-          height: 1920px;
-        }
-        
-        #__next {
-          margin: 0 !important;
-          padding: 0 !important;
-          width: 1080px;
-          height: 1920px;
-        }
-        
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0) rotate(0deg);
-          }
-          50% {
-            transform: translateY(-20px) rotate(180deg);
-          }
-        }
-        
-        @keyframes shimmer {
-          0% {
-            transform: translateX(-100%) skewX(-12deg);
-          }
-          100% {
-            transform: translateX(200%) skewX(-12deg);
-          }
-        }
-        
-        @keyframes shine {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-        
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-        
-        @keyframes fadeInDown {
-          from {
-            opacity: 0;
-            transform: translateY(-30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes bounce-subtle {
-          0%, 100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-5px);
-          }
-        }
-        
-        @keyframes pulseGlow {
-          0%, 100% {
-            box-shadow: 0 0 20px rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4);
-          }
-          50% {
-            box-shadow: 0 0 40px rgba(255, 193, 7, 1), 0 0 80px rgba(255, 152, 0, 0.8), 0 0 120px rgba(255, 87, 34, 0.4);
-          }
-        }
-        
-        @keyframes flyInFromTopExtreme {
-          0% {
-            opacity: 0;
-            transform: translateY(-400px) translateX(-200px) scale(0.2) rotate(-45deg);
-            filter: blur(20px);
-          }
-          30% {
-            opacity: 0.8;
-            transform: translateY(50px) translateX(30px) scale(1.5) rotate(15deg);
-            filter: blur(5px);
-          }
-          50% {
-            opacity: 1;
-            transform: translateY(-20px) translateX(-10px) scale(1.2) rotate(-5deg);
-            filter: blur(0px);
-          }
-          70% {
-            transform: translateY(10px) translateX(5px) scale(1.05) rotate(2deg);
-          }
-          85% {
-            transform: translateY(-3px) translateX(-2px) scale(0.98) rotate(-1deg);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) translateX(0) scale(1) rotate(0deg);
-            filter: blur(0px);
-          }
-        }
-        
-        @keyframes flyInFromBottomExtreme {
-          0% {
-            opacity: 0;
-            transform: translateY(150px) scale(0.3) rotate(25deg);
-            filter: blur(15px);
-          }
-          40% {
-            opacity: 0.9;
-            transform: translateY(-15px) scale(1.3) rotate(-8deg);
-            filter: blur(3px);
-          }
-          60% {
-            transform: translateY(8px) scale(1.1) rotate(3deg);
-            filter: blur(0px);
-          }
-          80% {
-            transform: translateY(-4px) scale(0.95) rotate(-1deg);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1) rotate(0deg);
-            filter: blur(0px);
-          }
-        }
-        
-        .animate-shimmer {
-          animation: shimmer 3s infinite;
-        }
-        
-        .animate-shine {
-          animation: shine 2s infinite;
-        }
-        
-        .animate-bounce-subtle {
-          animation: bounce-subtle 2s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   );
 }

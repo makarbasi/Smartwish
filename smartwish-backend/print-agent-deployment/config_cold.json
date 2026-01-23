@@ -1,8 +1,8 @@
 {
   "_readme": "=== SMARTWISH PRINT AGENT CONFIGURATION ===",
   
-  "cloudServerUrl": "http://localhost:3001",
-    "frontendUrl": "http://localhost:3000",
+  "cloudServerUrl": "https://smartwish.onrender.com",
+  "frontendUrl": "https://app.smartwish.us",
   "defaultPrinter": "",
   "pollInterval": 10000,
   
@@ -14,8 +14,8 @@
   
   "surveillance": {
     "enabled": true,
-    "kioskId": "PC_KIOSK_2",
-    "apiKey": "c00bc4c8772d235c9baea1d0faa9d31bb41d57001d5305cc",
+    "kioskId": "KIOSK1_test",
+    "apiKey": "f246ab390772b93896463fbaaa57ad2ce752bf95729262d4",
     "webcamIndex": 0,
     "httpPort": 8765,
     "showPreview": true,
