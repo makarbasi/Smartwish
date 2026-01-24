@@ -135,6 +135,12 @@ type KioskConfig = {
     enabled: boolean; // Master toggle for bundle discounts
     eligibleGiftCards: BundleGiftCardConfig[]; // List of gift cards with bundle discounts
   };
+  // Printer status (populated by API)
+  printerStatus?: {
+    online: boolean;
+    errors?: string[];
+    warnings?: string[];
+  };
 };
 
 type Kiosk = {
@@ -149,6 +155,11 @@ type Kiosk = {
   isOnline?: boolean; // Device online (based on heartbeat)
   hasActiveSession?: boolean; // Active user session
   lastHeartbeat?: string | null;
+  printerStatus?: { // Printer status (populated by API)
+    online: boolean;
+    errors?: string[];
+    warnings?: string[];
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -682,8 +693,8 @@ export default function KiosksAdminPage() {
             {kiosks.map((kiosk) => {
               // Determine printer status summary
               const printerStatus = kiosk.printerStatus || kiosk.config?.printerStatus;
-              const hasErrors = printerStatus?.errors?.length > 0;
-              const hasWarnings = printerStatus?.warnings?.length > 0;
+              const hasErrors = (printerStatus?.errors?.length ?? 0) > 0;
+              const hasWarnings = (printerStatus?.warnings?.length ?? 0) > 0;
               const printerStatusSummary = !printerStatus
                 ? "No Status"
                 : hasErrors
@@ -2259,14 +2270,14 @@ function KioskFormModal({
                             })
                           }
                           className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 ${formData.config.surveillance?.enabled
-                              ? "bg-amber-500"
-                              : "bg-gray-200"
+                            ? "bg-amber-500"
+                            : "bg-gray-200"
                             }`}
                         >
                           <span
                             className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.surveillance?.enabled
-                                ? "translate-x-5"
-                                : "translate-x-0"
+                              ? "translate-x-5"
+                              : "translate-x-0"
                               }`}
                           />
                         </button>
@@ -2415,14 +2426,14 @@ function KioskFormModal({
                                 })
                               }
                               className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${formData.config.recording?.recordWebcam !== false
-                                  ? "bg-blue-500"
-                                  : "bg-gray-200"
+                                ? "bg-blue-500"
+                                : "bg-gray-200"
                                 }`}
                             >
                               <span
                                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.recording?.recordWebcam !== false
-                                    ? "translate-x-5"
-                                    : "translate-x-0"
+                                  ? "translate-x-5"
+                                  : "translate-x-0"
                                   }`}
                               />
                             </button>
@@ -2458,14 +2469,14 @@ function KioskFormModal({
                                 })
                               }
                               className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${formData.config.recording?.recordScreen !== false
-                                  ? "bg-blue-500"
-                                  : "bg-gray-200"
+                                ? "bg-blue-500"
+                                : "bg-gray-200"
                                 }`}
                             >
                               <span
                                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.recording?.recordScreen !== false
-                                    ? "translate-x-5"
-                                    : "translate-x-0"
+                                  ? "translate-x-5"
+                                  : "translate-x-0"
                                   }`}
                               />
                             </button>
@@ -2667,14 +2678,14 @@ function KioskFormModal({
                             })
                           }
                           className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${formData.config.giftCardTile?.enabled
-                              ? "bg-emerald-500"
-                              : "bg-gray-200"
+                            ? "bg-emerald-500"
+                            : "bg-gray-200"
                             }`}
                         >
                           <span
                             className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.giftCardTile?.enabled
-                                ? "translate-x-5"
-                                : "translate-x-0"
+                              ? "translate-x-5"
+                              : "translate-x-0"
                               }`}
                           />
                         </button>
@@ -2731,8 +2742,8 @@ function KioskFormModal({
                                   })
                                 }
                                 className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${currentSource === 'smartwish'
-                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
-                                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
+                                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                                   }`}
                               >
                                 🏪 SmartWish Internal
@@ -2754,8 +2765,8 @@ function KioskFormModal({
                                   })
                                 }
                                 className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${currentSource === 'tillo'
-                                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                                   }`}
                               >
                                 🌐 Tillo Marketplace
@@ -3096,14 +3107,14 @@ function KioskFormModal({
                                 })
                               }
                               className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${(formData.config.giftCardTile?.allowCustomAmount ?? true)
-                                  ? "bg-emerald-500"
-                                  : "bg-gray-200"
+                                ? "bg-emerald-500"
+                                : "bg-gray-200"
                                 }`}
                             >
                               <span
                                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${(formData.config.giftCardTile?.allowCustomAmount ?? true)
-                                    ? "translate-x-5"
-                                    : "translate-x-0"
+                                  ? "translate-x-5"
+                                  : "translate-x-0"
                                   }`}
                               />
                             </button>
@@ -3140,14 +3151,14 @@ function KioskFormModal({
                             })
                           }
                           className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2 ${formData.config.bundleDiscounts?.enabled
-                              ? "bg-purple-500"
-                              : "bg-gray-200"
+                            ? "bg-purple-500"
+                            : "bg-gray-200"
                             }`}
                         >
                           <span
                             className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.bundleDiscounts?.enabled
-                                ? "translate-x-5"
-                                : "translate-x-0"
+                              ? "translate-x-5"
+                              : "translate-x-0"
                               }`}
                           />
                         </button>
@@ -3187,8 +3198,8 @@ function KioskFormModal({
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium text-gray-900 truncate">{card.brandName}</span>
                                     <span className={`text-xs px-2 py-0.5 rounded-full ${card.source === 'tillo'
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'bg-emerald-100 text-emerald-700'
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : 'bg-emerald-100 text-emerald-700'
                                       }`}>
                                       {card.source === 'tillo' ? 'Tillo' : 'SmartWish'}
                                     </span>
@@ -3318,8 +3329,8 @@ function KioskFormModal({
                                             type="button"
                                             onClick={() => setBundleFormData({ ...bundleFormData, source: 'smartwish', brandId: undefined, brandSlug: undefined, brandName: undefined, brandLogo: undefined })}
                                             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${bundleFormData.source === 'smartwish'
-                                                ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
-                                                : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                                              ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
+                                              : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
                                               }`}
                                           >
                                             SmartWish Internal
@@ -3328,8 +3339,8 @@ function KioskFormModal({
                                             type="button"
                                             onClick={() => setBundleFormData({ ...bundleFormData, source: 'tillo', brandId: undefined, brandSlug: undefined, brandName: undefined, brandLogo: undefined })}
                                             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${bundleFormData.source === 'tillo'
-                                                ? 'bg-blue-100 text-blue-700 border-2 border-blue-400'
-                                                : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                                              ? 'bg-blue-100 text-blue-700 border-2 border-blue-400'
+                                              : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
                                               }`}
                                           >
                                             Tillo Marketplace
