@@ -79,6 +79,9 @@ class KioskSessionService {
     warn: typeof console.warn;
     error: typeof console.error;
   } | null = null;
+  private errorHandler: ((event: ErrorEvent) => void) | null = null;
+  private rejectionHandler: ((event: PromiseRejectionEvent) => void) | null = null;
+  private originalWebSocket: typeof WebSocket | null = null;
 
   constructor() {
     // Recover session state from storage (survives HMR in dev mode)
@@ -274,6 +277,7 @@ class KioskSessionService {
   /**
    * Start capturing console logs
    * Overrides console.log/info/warn/error to capture all output
+   * Also captures global errors, unhandled rejections, and WebSocket errors
    */
   private startConsoleCapture(): void {
     if (this.originalConsole) {
@@ -322,6 +326,59 @@ class KioskSessionService {
     console.info = captureLog('info', this.originalConsole.info);
     console.warn = captureLog('warn', this.originalConsole.warn);
     console.error = captureLog('error', this.originalConsole.error);
+
+    // Add global error handler for uncaught errors
+    this.errorHandler = (event: ErrorEvent) => {
+      this.consoleLogs.push({
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        message: `[Uncaught Error] ${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
+      });
+    };
+    window.addEventListener('error', this.errorHandler);
+
+    // Add unhandled promise rejection handler
+    this.rejectionHandler = (event: PromiseRejectionEvent) => {
+      let reason = 'Unknown reason';
+      try {
+        reason = event.reason?.message || event.reason?.toString() || JSON.stringify(event.reason);
+      } catch {
+        reason = String(event.reason);
+      }
+      this.consoleLogs.push({
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        message: `[Unhandled Promise Rejection] ${reason}`,
+      });
+    };
+    window.addEventListener('unhandledrejection', this.rejectionHandler);
+
+    // Patch WebSocket to capture connection errors
+    if (typeof window !== 'undefined' && window.WebSocket) {
+      this.originalWebSocket = window.WebSocket;
+      const self = this;
+      const OriginalWebSocket = window.WebSocket;
+
+      // Create a patched WebSocket class
+      window.WebSocket = function (url: string | URL, protocols?: string | string[]) {
+        const ws = new OriginalWebSocket(url, protocols);
+
+        // Capture WebSocket errors
+        ws.addEventListener('error', () => {
+          self.consoleLogs.push({
+            timestamp: new Date().toISOString(),
+            level: 'error',
+            message: `[WebSocket Error] Connection to '${url}' failed`,
+          });
+        });
+
+        return ws;
+      } as unknown as typeof WebSocket;
+
+      // Copy static properties
+      Object.assign(window.WebSocket, OriginalWebSocket);
+      window.WebSocket.prototype = OriginalWebSocket.prototype;
+    }
   }
 
   /**
@@ -339,6 +396,23 @@ class KioskSessionService {
     console.error = this.originalConsole.error;
 
     this.originalConsole = null;
+
+    // Remove global error handlers
+    if (this.errorHandler) {
+      window.removeEventListener('error', this.errorHandler);
+      this.errorHandler = null;
+    }
+
+    if (this.rejectionHandler) {
+      window.removeEventListener('unhandledrejection', this.rejectionHandler);
+      this.rejectionHandler = null;
+    }
+
+    // Restore original WebSocket
+    if (this.originalWebSocket) {
+      window.WebSocket = this.originalWebSocket;
+      this.originalWebSocket = null;
+    }
   }
 
   /**

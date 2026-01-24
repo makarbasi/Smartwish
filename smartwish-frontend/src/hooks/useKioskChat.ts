@@ -185,21 +185,21 @@ export function useKioskChat(): UseKioskChatReturn {
       console.log('[useKioskChat] resetSession: No kioskId, skipping');
       return;
     }
-    
+
     console.log('[useKioskChat] 🔄 RESETTING SESSION for kioskId:', kioskId);
     console.log('[useKioskChat] Old session:', sessionId);
-    
+
     // Close existing SSE connection immediately
     if (eventSourceRef.current) {
       console.log('[useKioskChat] Closing old SSE connection');
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
-    
+
     // Generate new session ID
     const newSessionId = resetSessionId(kioskId);
     console.log('[useKioskChat] ✅ New session:', newSessionId);
-    
+
     // Clear all state
     setSessionId(newSessionId);
     setMessages([]);
@@ -236,7 +236,7 @@ export function useKioskChat(): UseKioskChatReturn {
   // Set up real-time subscription via Server-Sent Events
   useEffect(() => {
     console.log('[useKioskChat] 🔌 Effect running, kioskId:', kioskId, 'sessionId:', sessionId);
-    
+
     if (!kioskId || !sessionId) {
       console.log('[useKioskChat] No kioskId or sessionId, setting isLoading=false, isConnected=false');
       setIsConnected(false);
@@ -259,7 +259,11 @@ export function useKioskChat(): UseKioskChatReturn {
     };
 
     eventSource.onerror = (error) => {
-      console.error('[useKioskChat] ❌ SSE error:', error);
+      // EventSource errors don't have much detail, check readyState for more info
+      const state = eventSource.readyState;
+      const stateText = state === 0 ? 'CONNECTING' : state === 1 ? 'OPEN' : 'CLOSED';
+      console.error(`[useKioskChat] ❌ SSE error (state: ${stateText}):`, error);
+      console.error('[useKioskChat] SSE URL:', `/api/kiosk/chat/stream?kioskId=${kioskId}&sessionId=${sessionId}`);
       setIsConnected(false);
       // EventSource will automatically reconnect
     };
@@ -292,13 +296,13 @@ export function useKioskChat(): UseKioskChatReturn {
             // (kiosk's own message coming back via SSE before temp replacement)
             if (newMessage.sender_type === 'kiosk') {
               const matchingTemp = prev.find(
-                (m) => m.id.startsWith('temp-') && 
-                       m.message === newMessage.message &&
-                       m.sender_type === 'kiosk'
+                (m) => m.id.startsWith('temp-') &&
+                  m.message === newMessage.message &&
+                  m.sender_type === 'kiosk'
               );
               if (matchingTemp) {
                 // Replace temp message with real one
-                return prev.map((m) => 
+                return prev.map((m) =>
                   m.id === matchingTemp.id ? newMessage : m
                 );
               }

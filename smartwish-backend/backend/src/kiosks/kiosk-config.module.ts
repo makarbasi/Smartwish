@@ -22,6 +22,8 @@ import {
   KioskPrinterAdminController,
   PrinterStatusSSEController,
 } from './kiosk-config.controller';
+import { KioskSyncGateway } from './kiosk-sync.gateway';
+import { KioskBroadcastController } from './kiosk-broadcast.controller';
 import { User } from '../user/user.entity';
 import { EarningsModule } from '../earnings/earnings.module';
 
@@ -61,8 +63,10 @@ import { EarningsModule } from '../earnings/earnings.module';
     LocalPrintAgentController,
     KioskPrinterAdminController,
     PrinterStatusSSEController,
+    KioskBroadcastController,
   ],
-  providers: [KioskConfigService],
-  exports: [KioskConfigService],
+  providers: [KioskConfigService, KioskSyncGateway],
+  exports: [KioskConfigService, KioskSyncGateway],
 })
-export class KioskConfigModule {}
+export class KioskConfigModule { }
+

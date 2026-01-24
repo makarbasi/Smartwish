@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { getYouTubeEmbedUrl } from "@/utils/screenSaverUtils";
+import localAssetDB from "@/lib/LocalAssetDB";
 
 interface VideoScreenSaverProps {
   url: string;
@@ -14,6 +15,7 @@ interface VideoScreenSaverProps {
  * 
  * Features:
  * - Supports direct video URLs (MP4, WebM) and YouTube URLs
+ * - **IndexedDB caching** - Videos are cached locally for instant loading
  * - Always muted (no sound)
  * - Autoplay with loop
  * - Fullscreen display
@@ -24,34 +26,95 @@ export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScre
   const [isYouTube, setIsYouTube] = useState(false);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
 
-  // Determine video type and prepare URL
+  // Determine video type and load from cache or cloud
   useEffect(() => {
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      // YouTube videos can't be cached, use embed
       setIsYouTube(true);
       const embed = getYouTubeEmbedUrl(url);
       setEmbedUrl(embed);
+      setIsLoading(false);
     } else {
+      // Direct video URL - try to load from cache first
       setIsYouTube(false);
       setEmbedUrl(null);
+      setIsLoading(true);
+      loadVideoWithCache(url);
     }
     setHasError(false);
   }, [url]);
+
+  // Load video from IndexedDB cache, or fetch from cloud and cache it
+  const loadVideoWithCache = useCallback(async (videoUrl: string) => {
+    try {
+      console.log('[VideoScreenSaver] Loading video:', videoUrl);
+
+      // Try to get from cache first
+      const cachedBlob = await localAssetDB.getImageBlob(videoUrl);
+
+      if (cachedBlob) {
+        console.log('[VideoScreenSaver] ✅ Loaded from cache');
+        const blobUrl = URL.createObjectURL(cachedBlob);
+        setVideoSrc(blobUrl);
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('[VideoScreenSaver] Cache miss - fetching from cloud...');
+
+      // Fetch from cloud
+      const response = await fetch(videoUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      console.log(`[VideoScreenSaver] Downloaded ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
+
+      // Cache for next time
+      await localAssetDB.cacheImageBlob(videoUrl, blob);
+      console.log('[VideoScreenSaver] ✅ Cached for future use');
+
+      // Create blob URL and play
+      const blobUrl = URL.createObjectURL(blob);
+      setVideoSrc(blobUrl);
+      setIsLoading(false);
+
+    } catch (error) {
+      console.error('[VideoScreenSaver] Failed to load video:', error);
+      // Fallback to direct URL (streaming without cache)
+      setVideoSrc(url);
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Cleanup blob URLs on unmount or URL change
+  useEffect(() => {
+    return () => {
+      if (videoSrc && videoSrc.startsWith('blob:')) {
+        URL.revokeObjectURL(videoSrc);
+      }
+    };
+  }, [videoSrc]);
 
   // Handle video errors
   const handleVideoError = useCallback(() => {
     console.error("[VideoScreenSaver] Video failed to load:", url);
     setHasError(true);
+    setIsLoading(false);
   }, [url]);
 
-  // Ensure video plays
+  // Ensure video plays when src is set
   useEffect(() => {
-    if (videoRef.current && !isYouTube) {
+    if (videoRef.current && videoSrc && !isYouTube) {
       videoRef.current.play().catch((err) => {
         console.warn("[VideoScreenSaver] Autoplay failed:", err);
       });
     }
-  }, [isYouTube, url]);
+  }, [isYouTube, videoSrc]);
 
   // Show error state
   if (hasError) {
@@ -88,7 +151,7 @@ export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScre
           </div>
         )}
         {/* Overlay to capture clicks - YouTube iframe won't receive them */}
-        <div 
+        <div
           className="absolute inset-0 z-10"
           style={{ pointerEvents: "auto" }}
         />
@@ -99,19 +162,30 @@ export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScre
   // Render direct video
   return (
     <div className="absolute inset-0 bg-black">
-      <video
-        ref={videoRef}
-        src={url}
-        className="w-full h-full object-cover"
-        autoPlay
-        loop
-        muted
-        playsInline
-        onError={handleVideoError}
-        style={{ pointerEvents: "none" }}
-      />
+      {/* Loading indicator */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <div className="w-12 h-12 border-4 border-white/20 border-t-white/80 rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* Video element - uses cached blob URL or falls back to direct URL */}
+      {videoSrc && (
+        <video
+          ref={videoRef}
+          src={videoSrc}
+          className="w-full h-full object-cover"
+          autoPlay
+          loop
+          muted
+          playsInline
+          onError={handleVideoError}
+          style={{ pointerEvents: "none", opacity: isLoading ? 0 : 1 }}
+        />
+      )}
+
       {/* Overlay Text */}
-      {overlayText && (
+      {overlayText && !isLoading && (
         <div className="absolute top-8 left-0 right-0 z-20 flex justify-center pointer-events-none">
           <div className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 shadow-2xl max-w-4xl mx-4 overlay-text-glow">
             <p className="text-3xl md:text-4xl font-semibold text-white text-center leading-tight tracking-wide">
@@ -120,12 +194,15 @@ export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScre
           </div>
         </div>
       )}
+
       {/* Tap to dismiss hint - fades out after a moment */}
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center pointer-events-none animate-fade-out-delayed">
-        <div className="px-6 py-3 rounded-full bg-black/40 backdrop-blur-sm text-white/70 text-sm">
-          Tap anywhere to continue
+      {!isLoading && (
+        <div className="absolute bottom-8 left-0 right-0 flex justify-center pointer-events-none animate-fade-out-delayed">
+          <div className="px-6 py-3 rounded-full bg-black/40 backdrop-blur-sm text-white/70 text-sm">
+            Tap anywhere to continue
+          </div>
         </div>
-      </div>
+      )}
       <style jsx>{`
         @keyframes fadeOutDelayed {
           0%, 70% {

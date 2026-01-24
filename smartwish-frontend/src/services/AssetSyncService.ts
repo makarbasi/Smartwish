@@ -16,6 +16,7 @@ import localAssetDB, { CachedSticker, CachedTemplate } from '@/lib/LocalAssetDB'
 const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const IMAGE_CACHE_BATCH_SIZE = 5; // How many images to cache in parallel
 const WS_RECONNECT_DELAY_MS = 5000; // WebSocket reconnection delay
+const WS_MAX_RETRIES = 3; // Max WebSocket reconnection attempts
 
 export interface SyncResult {
     success: boolean;
@@ -44,6 +45,7 @@ class AssetSyncService {
     private wsReconnectTimer: NodeJS.Timeout | null = null;
     private dailySyncTimer: NodeJS.Timeout | null = null;
     private kioskId: string | null = null;
+    private wsRetryCount = 0;
 
     // Event callbacks
     private onSyncStartCallbacks: Array<(type: 'stickers' | 'templates') => void> = [];
@@ -395,10 +397,14 @@ class AssetSyncService {
             return;
         }
 
-        // Build WebSocket URL
-        const wsBase = process.env.NEXT_PUBLIC_WS_URL ??
-            process.env.NEXT_PUBLIC_API_BASE?.replace('http', 'ws') ??
-            'wss://smartwish.onrender.com';
+        // Build WebSocket URL - only connect if explicitly configured
+        const wsBase = process.env.NEXT_PUBLIC_WS_URL;
+
+        // If no WebSocket URL configured, skip connection (feature not available)
+        if (!wsBase) {
+            console.log('[AssetSyncService] WebSocket URL not configured, admin sync via polling only');
+            return;
+        }
 
         const wsUrl = `${wsBase}/ws/kiosk/${this.kioskId}`;
 
@@ -408,6 +414,7 @@ class AssetSyncService {
 
             this.wsConnection.onopen = () => {
                 console.log('[AssetSyncService] WebSocket connected');
+                this.wsRetryCount = 0; // Reset retry counter on successful connection
             };
 
             this.wsConnection.onmessage = (event) => {
@@ -420,12 +427,13 @@ class AssetSyncService {
             };
 
             this.wsConnection.onclose = () => {
-                console.log('[AssetSyncService] WebSocket disconnected, reconnecting...');
+                console.log('[AssetSyncService] WebSocket disconnected');
                 this.scheduleWebSocketReconnect();
             };
 
-            this.wsConnection.onerror = (error) => {
-                console.error('[AssetSyncService] WebSocket error:', error);
+            this.wsConnection.onerror = () => {
+                // Don't log error details - just the fact that it failed
+                // The onclose handler will be called next and trigger reconnect
             };
         } catch (error) {
             console.error('[AssetSyncService] Failed to connect WebSocket:', error);
@@ -466,12 +474,21 @@ class AssetSyncService {
     }
 
     /**
-     * Schedule WebSocket reconnection
+     * Schedule WebSocket reconnection with retry limit
      */
     private scheduleWebSocketReconnect(): void {
         if (this.wsReconnectTimer) {
             clearTimeout(this.wsReconnectTimer);
         }
+
+        this.wsRetryCount++;
+
+        if (this.wsRetryCount > WS_MAX_RETRIES) {
+            console.warn(`[AssetSyncService] WebSocket failed after ${WS_MAX_RETRIES} attempts, giving up`);
+            return;
+        }
+
+        console.log(`[AssetSyncService] Scheduling WebSocket reconnect (attempt ${this.wsRetryCount}/${WS_MAX_RETRIES})...`);
 
         this.wsReconnectTimer = setTimeout(() => {
             this.connectWebSocket();
