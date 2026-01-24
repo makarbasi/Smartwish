@@ -15,6 +15,8 @@ import { AuthModalProvider, useAuthModal } from "@/contexts/AuthModalContext";
 import { useSessionTracking } from "@/hooks/useSessionTracking";
 import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskSafe } from "@/contexts/KioskContext";
+import { useLocalTemplates } from "@/hooks/useLocalTemplates";
+import assetSyncService from "@/services/AssetSyncService";
 
 
 type ApiTemplate = {
@@ -185,22 +187,22 @@ function TemplatesPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const { authModalOpen, openAuthModal, closeAuthModal, setRedirectUrl } = useAuthModal();
-  
+
   // Kiosk mode detection
   const { isKiosk } = useDeviceMode();
   const kioskContext = useKioskSafe();
   const kioskConfig = kioskContext?.config;
-  
+
   // Featured categories from kiosk config
   const featuredCategories = kioskConfig?.featuredCategories || [];
-  
+
   // Show carousels view when:
   // 1. In kiosk mode
   // 2. Featured categories are configured (at least 1)
   // 3. No search query is active
   // 4. No category filter is already selected via URL
   const [showCarouselsView, setShowCarouselsView] = useState(true);
-  
+
   // Determine if we should show carousels based on conditions
   const shouldShowCarousels = useMemo(() => {
     return (
@@ -211,7 +213,7 @@ function TemplatesPageContent() {
       !category // No category filter from URL
     );
   }, [isKiosk, featuredCategories.length, showCarouselsView, q, category]);
-  
+
   // Handle switching from carousels to grid view
   const handleSwitchToGridView = useCallback((categoryId?: string, categoryName?: string) => {
     setShowCarouselsView(false);
@@ -223,14 +225,14 @@ function TemplatesPageContent() {
       router.push(`/templates?${params.toString()}`);
     }
   }, [router]);
-  
+
   // Reset to carousels view when navigating back to templates without filters
   useEffect(() => {
     if (isKiosk && featuredCategories.length > 0 && !q && !category) {
       setShowCarouselsView(true);
     }
   }, [isKiosk, featuredCategories.length, q, category]);
-  
+
   // Session tracking for analytics
   const {
     trackCardBrowse,
@@ -242,6 +244,18 @@ function TemplatesPageContent() {
   useEffect(() => {
     trackCardBrowse();
   }, [trackCardBrowse]);
+
+  // Initialize sync service for kiosk mode
+  useEffect(() => {
+    if (isKiosk && kioskContext?.kioskInfo?.id) {
+      assetSyncService.initialize(kioskContext.kioskInfo.id);
+    }
+    return () => {
+      if (isKiosk) {
+        assetSyncService.destroy();
+      }
+    };
+  }, [isKiosk, kioskContext?.kioskInfo?.id]);
 
   // Debug: Track authModalOpen state changes (only when it changes)
   useEffect(() => {
@@ -280,12 +294,22 @@ function TemplatesPageContent() {
     return `/api/templates${queryString ? `?${queryString}` : ""}`;
   }, [q, region, language, author, selectedCategory]);
 
-  // Fetch data using SWR
+  // Use local-first templates in kiosk mode
+  const {
+    templates: localTemplates,
+    isLoading: isLoadingLocal,
+    isFromCache,
+  } = useLocalTemplates({ categoryId: selectedCategory, enabled: isKiosk });
+
+  // Fetch data using SWR (for non-kiosk mode)
   const {
     data: apiResponse,
     error,
-    isLoading,
-  } = useSWR<ApiResponse>(apiUrl, fetcher);
+    isLoading: isLoadingSWR,
+  } = useSWR<ApiResponse>(isKiosk ? null : apiUrl, fetcher);
+
+  // Combine loading states
+  const isLoading = isKiosk ? isLoadingLocal : isLoadingSWR;
 
   // Detect API route error responses (status 500 returns a JSON with `error` key)
   const apiRouteError = useMemo(() => {
@@ -293,10 +317,43 @@ function TemplatesPageContent() {
     return typeof maybeError === 'string' && maybeError.length > 0;
   }, [apiResponse]);
 
+  // Transform local templates to TemplateCard format for kiosk mode
   const products = useMemo(() => {
+    if (isKiosk) {
+      // Use local templates in kiosk mode
+      return localTemplates.map((t): TemplateCard => ({
+        id: t.id,
+        name: t.title,
+        price: t.price ? `$${t.price.toFixed(2)}` : '$0',
+        rating: Math.min(5, Math.max(1, Math.round((t.popularity || 0) / 20))),
+        reviewCount: 0,
+        imageSrc: t.image1,
+        imageAlt: `${t.title} template`,
+        publisher: { name: 'SmartWish Studio', avatar: 'https://i.pravatar.cc/80?img=1' },
+        downloads: 0,
+        category_id: t.categoryId,
+        category_name: t.categoryName,
+        likes: t.popularity || 0,
+        pages: [t.image1, t.image2, t.image3, t.image4].filter(Boolean),
+        metadata: {
+          slug: t.slug,
+          description: t.description,
+          image_1: t.image1,
+          image_2: t.image2,
+          image_3: t.image3,
+          image_4: t.image4,
+          tags: t.tags,
+          language: t.language,
+          region: t.region,
+          priceValue: t.price,
+          title: t.title,
+        },
+      }));
+    }
+    // Use API response for non-kiosk mode
     if (!apiResponse?.data) return [];
     return apiResponse.data.map(transformApiTemplate);
-  }, [apiResponse]);
+  }, [isKiosk, localTemplates, apiResponse]);
 
   // Removed: batch like-status fetch (template likes are not used)
 
@@ -402,7 +459,7 @@ function TemplatesPageContent() {
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const idGenTime = performance.now();
       console.log(`⏱️ [FLOW] Temp ID generated in ${(idGenTime - flowStart).toFixed(1)}ms`);
-      
+
       // Store template data in sessionStorage for immediate editor access
       const templateData = {
         id: tempId,
@@ -414,13 +471,13 @@ function TemplatesPageContent() {
         metadata: product.metadata,
         isTemporary: true, // Flag to indicate this is not yet saved
       };
-      
+
       sessionStorage.setItem(`pendingTemplate_${tempId}`, JSON.stringify(templateData));
       const storageTime = performance.now();
       console.log(`⏱️ [FLOW] Data stored in sessionStorage in ${(storageTime - idGenTime).toFixed(1)}ms`);
-      
+
       console.log("📝 Navigating to editor with temp ID:", tempId);
-      
+
       // Navigate immediately to editor
       const navStart = performance.now();
       router.push(`/my-cards/${tempId}?mode=template`);
@@ -430,12 +487,12 @@ function TemplatesPageContent() {
 
       // Start background save (fire and forget)
       console.log("🎨 Starting background copy to saved designs...");
-      
+
       // Get price from product (formatted string like "$2.99") or metadata
-      const priceValue = product.metadata?.priceValue 
+      const priceValue = product.metadata?.priceValue
         || (typeof product.price === 'string' ? parseFloat(product.price.replace('$', '')) : product.price)
         || 1.99;
-      
+
       const copyPayload = {
         title: product.name,
         categoryId: product.category_id || '1',
@@ -443,11 +500,11 @@ function TemplatesPageContent() {
         price: priceValue, // ✅ Include price in copy payload
         templateMeta: product.metadata
           ? {
-              ...product.metadata,
-              id: product.id,
-              title: product.metadata.title || product.name,
-              price: priceValue, // ✅ Also include in metadata
-            }
+            ...product.metadata,
+            id: product.id,
+            title: product.metadata.title || product.name,
+            price: priceValue, // ✅ Also include in metadata
+          }
           : undefined,
         fallbackImages: product.pages,
       };
@@ -484,15 +541,15 @@ function TemplatesPageContent() {
 
           if (savedDesignResult.success && savedDesignResult.data) {
             const savedDesignId = savedDesignResult.data.id;
-            
+
             // Store the mapping from temp ID to real ID
             sessionStorage.setItem(`tempIdMap_${tempId}`, savedDesignId);
-            
+
             // Notify the editor that save is complete
             window.dispatchEvent(new CustomEvent('templateSaved', {
               detail: { tempId, savedDesignId, savedDesign: savedDesignResult.data }
             }));
-            
+
             console.log("📢 Dispatched templateSaved event");
           }
         })
@@ -532,7 +589,7 @@ function TemplatesPageContent() {
   const handlePreviewTemplate = (template: TemplateCard) => {
     console.log("🎬 handlePreviewTemplate called with:", template.name);
     setPreviewProduct(template);
-    
+
     // Track card selection for session analytics
     trackCardSelect({
       itemId: template.id,
@@ -594,7 +651,7 @@ function TemplatesPageContent() {
                 </span>
               </button>
             )}
-            
+
             {isLoading ? (
               <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-3 lg:grid-cols-3">
                 {Array(9)
@@ -647,8 +704,8 @@ function TemplatesPageContent() {
                             key={p}
                             onClick={() => goToPage(p)}
                             className={`flex size-9 items-center justify-center rounded-full text-sm ring-1 ring-transparent ${p === safePage
-                                ? "bg-indigo-600 text-white ring-indigo-600"
-                                : "text-gray-700 hover:bg-gray-50"
+                              ? "bg-indigo-600 text-white ring-indigo-600"
+                              : "text-gray-700 hover:bg-gray-50"
                               }`}
                           >
                             {p}

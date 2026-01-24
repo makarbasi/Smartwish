@@ -78,6 +78,8 @@ function ScreenSaverFormModal({
     weight: 50,
     duration: 30,
     enabled: true,
+    interactive: false,
+    interactiveIdleTimeout: 30,
   });
   const [errors, setErrors] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -93,6 +95,8 @@ function ScreenSaverFormModal({
         weight: screenSaver.weight,
         duration: screenSaver.duration || 30,
         enabled: screenSaver.enabled !== false,
+        interactive: screenSaver.interactive || false,
+        interactiveIdleTimeout: screenSaver.interactiveIdleTimeout || 30,
       });
     } else {
       setFormData({
@@ -102,6 +106,8 @@ function ScreenSaverFormModal({
         weight: 50,
         duration: 30,
         enabled: true,
+        interactive: false,
+        interactiveIdleTimeout: 30,
       });
     }
     setErrors([]);
@@ -164,6 +170,8 @@ function ScreenSaverFormModal({
       weight: formData.weight || 50,
       duration: formData.duration || 30,
       enabled: formData.enabled !== false,
+      interactive: formData.interactive || false,
+      interactiveIdleTimeout: formData.interactiveIdleTimeout || 30,
     };
 
     onSave(newScreenSaver);
@@ -350,6 +358,56 @@ function ScreenSaverFormModal({
                 Enabled
               </label>
             </div>
+
+            {/* Interactive Mode (only for HTML type) */}
+            {formData.type === "html" && (
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <input
+                    type="checkbox"
+                    id="interactive"
+                    checked={formData.interactive === true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, interactive: e.target.checked }))
+                    }
+                    className="h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500"
+                  />
+                  <div>
+                    <label htmlFor="interactive" className="text-sm font-medium text-gray-700">
+                      Interactive Mode
+                    </label>
+                    <p className="text-xs text-gray-500">
+                      Allows users to interact with the content (clicking won&apos;t dismiss)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Idle Timeout (only shown when interactive is enabled) */}
+                {formData.interactive && (
+                  <div className="ml-7">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Idle Timeout (seconds)
+                    </label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="300"
+                      value={formData.interactiveIdleTimeout || 30}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          interactiveIdleTimeout: parseInt(e.target.value) || 30,
+                        }))
+                      }
+                      className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      How long after user stops interacting before rotating to next screen saver
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Errors */}
             {errors.length > 0 && (
@@ -856,6 +914,13 @@ export default function ScreenSaversPage() {
                     <span className="text-xs text-gray-500">Duration:</span>
                     <span className="text-sm">{ss.duration || 30}s</span>
                   </div>
+
+                  {/* Interactive badge */}
+                  {ss.interactive && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                      Interactive
+                    </span>
+                  )}
 
                   {/* Enabled toggle */}
                   <button

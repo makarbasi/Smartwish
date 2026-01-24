@@ -19,6 +19,9 @@ interface KioskScreenSaverManagerProps {
   onExit: () => void;
 }
 
+// Default idle timeout for interactive screen savers (seconds)
+const DEFAULT_INTERACTIVE_IDLE_TIMEOUT = 30;
+
 /**
  * KioskScreenSaverManager - Orchestrates multiple screen savers with weighted rotation
  * 
@@ -28,6 +31,7 @@ interface KioskScreenSaverManagerProps {
  * - Manages rotation timing based on duration settings
  * - Renders the appropriate screen saver type (video, html, default, none)
  * - Only shows screen savers when there is NO active kiosk session
+ * - Supports interactive mode where clicking doesn't dismiss but tracks idle time
  */
 export default function KioskScreenSaverManager({
   isVisible,
@@ -60,7 +64,9 @@ export default function KioskScreenSaverManager({
 
   // Current screen saver state
   const [currentScreenSaver, setCurrentScreenSaver] = useState<ScreenSaverItem | null>(null);
+  const [cachedScreenSavers, setCachedScreenSavers] = useState<ScreenSaverItem[]>([]);
   const rotationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const interactiveIdleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasExitedRef = useRef(false);
   const previousScreenSaverIdRef = useRef<string | null>(null);
 
@@ -74,6 +80,14 @@ export default function KioskScreenSaverManager({
     if (rotationTimerRef.current) {
       clearTimeout(rotationTimerRef.current);
       rotationTimerRef.current = null;
+    }
+  }, []);
+
+  // Clear interactive idle timer
+  const clearInteractiveIdleTimer = useCallback(() => {
+    if (interactiveIdleTimerRef.current) {
+      clearTimeout(interactiveIdleTimerRef.current);
+      interactiveIdleTimerRef.current = null;
     }
   }, []);
 
@@ -136,6 +150,69 @@ export default function KioskScreenSaverManager({
     }, duration * 1000);
   }, [clearRotationTimer, settings.enableRotation, settings.rotationInterval, currentScreenSaver?.duration, selectNewScreenSaver]);
 
+  // Start or reset the interactive idle timer
+  const startInteractiveIdleTimer = useCallback(() => {
+    clearInteractiveIdleTimer();
+    clearRotationTimer();
+    
+    if (!currentScreenSaver?.interactive) return;
+    
+    const idleTimeout = (currentScreenSaver.interactiveIdleTimeout || DEFAULT_INTERACTIVE_IDLE_TIMEOUT) * 1000;
+    console.log(`[ScreenSaverManager] Starting interactive idle timer: ${idleTimeout / 1000}s`);
+    
+    interactiveIdleTimerRef.current = setTimeout(() => {
+      console.log("[ScreenSaverManager] Interactive idle timeout - rotating to next screen saver");
+      
+      // Check if there are other enabled screen savers to rotate to
+      const enabledScreenSavers = screenSavers.filter(ss => ss.enabled !== false);
+      if (enabledScreenSavers.length > 1 && settings.enableRotation) {
+        // Rotate to next screen saver
+        selectNewScreenSaver();
+      } else {
+        // Only one screen saver or rotation disabled - exit entirely
+        console.log("[ScreenSaverManager] No rotation available - exiting screen saver");
+        hasExitedRef.current = true;
+        clearRotationTimer();
+        clearInteractiveIdleTimer();
+        onExit();
+      }
+    }, idleTimeout);
+  }, [currentScreenSaver, screenSavers, settings.enableRotation, clearInteractiveIdleTimer, clearRotationTimer, onExit, selectNewScreenSaver]);
+
+  // Handle interaction on interactive screen saver (reset idle timer)
+  const handleInteractiveActivity = useCallback(() => {
+    if (!currentScreenSaver?.interactive) return;
+    
+    console.log("[ScreenSaverManager] Interactive activity detected - resetting idle timer");
+    startInteractiveIdleTimer();
+  }, [currentScreenSaver?.interactive, startInteractiveIdleTimer]);
+
+  // Track activity at document level for interactive screen savers
+  // Note: iframe content activity is tracked directly in HtmlScreenSaver component
+  // This handles activity outside the iframe (e.g., clicking around the edges)
+  useEffect(() => {
+    if (!isVisible || !currentScreenSaver?.interactive) return;
+
+    const handleDirectActivity = () => {
+      console.log("[ScreenSaverManager] Activity detected outside iframe - resetting idle timer");
+      startInteractiveIdleTimer();
+    };
+
+    console.log("[ScreenSaverManager] Setting up document-level activity tracking for interactive mode");
+
+    document.addEventListener('mousedown', handleDirectActivity, { passive: true });
+    document.addEventListener('touchstart', handleDirectActivity, { passive: true });
+    document.addEventListener('keydown', handleDirectActivity, { passive: true });
+    document.addEventListener('click', handleDirectActivity, { passive: true });
+
+    return () => {
+      document.removeEventListener('mousedown', handleDirectActivity);
+      document.removeEventListener('touchstart', handleDirectActivity);
+      document.removeEventListener('keydown', handleDirectActivity);
+      document.removeEventListener('click', handleDirectActivity);
+    };
+  }, [isVisible, currentScreenSaver?.interactive, startInteractiveIdleTimer]);
+
   // Initialize screen saver when becoming visible
   useEffect(() => {
     if (isVisible && !hasActiveSession) {
@@ -151,29 +228,58 @@ export default function KioskScreenSaverManager({
       selectNewScreenSaver();
     } else if (!isVisible || hasActiveSession) {
       clearRotationTimer();
+      clearInteractiveIdleTimer();
       setCurrentScreenSaver(null);
       // Don't reset previousScreenSaverIdRef here - keep it for next time
     }
     
     return () => {
       clearRotationTimer();
+      clearInteractiveIdleTimer();
     };
-  }, [isVisible, hasActiveSession, selectNewScreenSaver, clearRotationTimer, isOnKioskHome, pathname, kioskSession?.isSessionActive]);
+  }, [isVisible, hasActiveSession, selectNewScreenSaver, clearRotationTimer, clearInteractiveIdleTimer, isOnKioskHome, pathname, kioskSession?.isSessionActive]);
 
   // Start rotation timer when current screen saver changes
   useEffect(() => {
     if (isVisible && currentScreenSaver && !hasActiveSession) {
-      startRotationTimer();
+      // For interactive screen savers, start the idle timer instead of rotation timer
+      if (currentScreenSaver.interactive) {
+        console.log("[ScreenSaverManager] Interactive screen saver - starting idle timer");
+        startInteractiveIdleTimer();
+      } else {
+        startRotationTimer();
+      }
     }
     
     return () => {
       clearRotationTimer();
+      clearInteractiveIdleTimer();
     };
-  }, [isVisible, currentScreenSaver, hasActiveSession, startRotationTimer, clearRotationTimer]);
+  }, [isVisible, currentScreenSaver, hasActiveSession, startRotationTimer, startInteractiveIdleTimer, clearRotationTimer, clearInteractiveIdleTimer]);
+
+  // Cache HTML screen savers so they don't reload on rotation
+  useEffect(() => {
+    if (!currentScreenSaver || currentScreenSaver.type !== "html") return;
+    setCachedScreenSavers((prev) => {
+      if (prev.some((ss) => ss.id === currentScreenSaver.id)) {
+        return prev;
+      }
+      return [...prev, currentScreenSaver];
+    });
+  }, [currentScreenSaver]);
 
   // Handle interaction to exit screen saver
   const handleInteraction = useCallback((e: React.MouseEvent | React.TouchEvent | React.KeyboardEvent) => {
-    console.log("[ScreenSaverManager] handleInteraction called:", e.type);
+    console.log("[ScreenSaverManager] handleInteraction called:", e.type, {
+      interactive: currentScreenSaver?.interactive,
+    });
+    
+    // If this is an interactive screen saver, don't exit - just reset idle timer
+    if (currentScreenSaver?.interactive) {
+      console.log("[ScreenSaverManager] Interactive mode - resetting idle timer instead of exiting");
+      handleInteractiveActivity();
+      return;
+    }
     
     // Prevent double-exit
     if (hasExitedRef.current) {
@@ -186,9 +292,10 @@ export default function KioskScreenSaverManager({
     e.preventDefault();
     
     clearRotationTimer();
+    clearInteractiveIdleTimer();
     console.log("[ScreenSaverManager] Calling onExit()");
     onExit();
-  }, [onExit, clearRotationTimer]);
+  }, [onExit, clearRotationTimer, clearInteractiveIdleTimer, currentScreenSaver?.interactive, handleInteractiveActivity]);
 
   // Don't render if not visible, has active session, or no screen saver selected
   if (!isVisible || hasActiveSession) {
@@ -214,6 +321,9 @@ export default function KioskScreenSaverManager({
     return null;
   }
 
+  // Check if current screen saver is interactive
+  const isInteractive = currentScreenSaver.interactive === true;
+
   // Render the appropriate screen saver based on type
   const renderScreenSaver = () => {
     const overlayText = settings.overlayText;
@@ -229,12 +339,45 @@ export default function KioskScreenSaverManager({
         );
       
       case "html":
+        const cachedHtmlScreenSavers = cachedScreenSavers.filter(
+          (ss) => ss.type === "html"
+        );
+        const activeHtmlId = currentScreenSaver.id;
+        const activeHtmlIsCached = cachedHtmlScreenSavers.some(
+          (ss) => ss.id === activeHtmlId
+        );
+
         return (
-          <HtmlScreenSaver
-            url={currentScreenSaver.url || ""}
-            onExit={handleInteraction}
-            overlayText={overlayText}
-          />
+          <div className="absolute inset-0">
+            {cachedHtmlScreenSavers.map((ss) => {
+              const isActive = ss.id === activeHtmlId;
+              return (
+                <div
+                  key={ss.id}
+                  className={`absolute inset-0 ${
+                    isActive ? "opacity-100" : "opacity-0 pointer-events-none"
+                  }`}
+                >
+                  <HtmlScreenSaver
+                    url={ss.url || ""}
+                    onExit={handleInteraction}
+                    overlayText={isActive ? overlayText : undefined}
+                    interactive={isActive ? isInteractive : false}
+                    onActivity={isActive ? handleInteractiveActivity : undefined}
+                  />
+                </div>
+              );
+            })}
+            {!activeHtmlIsCached && (
+              <HtmlScreenSaver
+                url={currentScreenSaver.url || ""}
+                onExit={handleInteraction}
+                overlayText={overlayText}
+                interactive={isInteractive}
+                onActivity={handleInteractiveActivity}
+              />
+            )}
+          </div>
         );
       
       case "default":
@@ -246,6 +389,7 @@ export default function KioskScreenSaverManager({
               if (!hasExitedRef.current) {
                 hasExitedRef.current = true;
                 clearRotationTimer();
+                clearInteractiveIdleTimer();
                 onExit();
               }
             }}
@@ -257,11 +401,17 @@ export default function KioskScreenSaverManager({
 
   return (
     <div
-      className="fixed inset-0 z-[2147483647] cursor-pointer select-none touch-none"
+      className={`fixed inset-0 z-[2147483647] select-none ${
+        isInteractive ? "cursor-default" : "cursor-pointer touch-none"
+      }`}
       onClick={handleInteraction}
-      onTouchEnd={handleInteraction}
+      onTouchStart={isInteractive ? handleInteractiveActivity : undefined}
+      onTouchEnd={isInteractive ? undefined : handleInteraction}
+      onMouseMove={isInteractive ? handleInteractiveActivity : undefined}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
+        if (isInteractive) {
+          handleInteractiveActivity();
+        } else if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
           handleInteraction(e);
         }
       }}

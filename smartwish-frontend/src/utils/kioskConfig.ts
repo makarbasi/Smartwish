@@ -20,6 +20,8 @@ export interface ScreenSaverItem {
   weight: number;                // Weight for rotation (1-100)
   duration?: number;             // How long to show this screen saver (seconds) before rotating
   enabled?: boolean;             // Whether this screen saver is active
+  interactive?: boolean;         // If true, clicking won't dismiss - user can interact with it
+  interactiveIdleTimeout?: number; // Seconds of inactivity before rotating to next screen saver (default: 30)
 }
 
 /**

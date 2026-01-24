@@ -34,6 +34,12 @@ interface QueuedEvent {
   timestamp: string;
 }
 
+interface ConsoleLogEntry {
+  timestamp: string;
+  level: 'log' | 'info' | 'warn' | 'error';
+  message: string;
+}
+
 type SessionState = 'idle' | 'active' | 'ending';
 
 // ==================== Storage Keys ====================
@@ -64,6 +70,15 @@ class KioskSessionService {
   private pageEnteredAt: number = 0;
   private isOnline: boolean = true;
   private offlineQueue: QueuedEvent[] = [];
+
+  // Console log capture
+  private consoleLogs: ConsoleLogEntry[] = [];
+  private originalConsole: {
+    log: typeof console.log;
+    info: typeof console.info;
+    warn: typeof console.warn;
+    error: typeof console.error;
+  } | null = null;
 
   constructor() {
     // Recover session state from storage (survives HMR in dev mode)
@@ -100,7 +115,7 @@ class KioskSessionService {
       const stored = sessionStorage.getItem(SESSION_STORAGE_KEY);
       if (stored) {
         const state: PersistedSessionState = JSON.parse(stored);
-        
+
         // Check if session is too old
         const age = Date.now() - (state.persistedAt || 0);
         if (age > MAX_SESSION_AGE_MS) {
@@ -108,7 +123,7 @@ class KioskSessionService {
           this.clearPersistedState();
           return;
         }
-        
+
         // Only recover if session was active
         if (state.state === 'active' && state.sessionId) {
           this.sessionId = state.sessionId;
@@ -116,10 +131,10 @@ class KioskSessionService {
           this.state = 'active';
           this.currentPage = state.currentPage;
           this.pageEnteredAt = state.pageEnteredAt;
-          
+
           // Restart batch timer
           this.startBatchTimer();
-          
+
           console.log('[SessionService] Recovered session state:', this.sessionId);
         }
       }
@@ -181,17 +196,20 @@ class KioskSessionService {
       });
 
       console.log('[SessionService] Session started:', this.sessionId);
-      
+
       // Trigger recording on the LOCAL print agent (runs on same machine as kiosk browser)
       // This ONLY works because the browser is on the kiosk machine - not from the server
       if (data.recording?.enabled) {
         console.log('[SessionService] Triggering local recording for session:', this.sessionId);
-        this.triggerLocalRecording(this.sessionId, data.recording);
+        this.triggerLocalRecording(this.sessionId!, data.recording);
       }
-      
+
+      // Start capturing console logs
+      this.startConsoleCapture();
+
       // Persist state to survive HMR
       this.persistSessionState();
-      
+
       return this.sessionId;
     } catch (error) {
       console.error('[SessionService] Failed to start session:', error);
@@ -207,7 +225,7 @@ class KioskSessionService {
    */
   private triggerLocalRecording(sessionId: string, recordingConfig: { config?: any }) {
     const pairingPort = 8766; // Default pairing server port
-    
+
     fetch(`http://localhost:${pairingPort}/session/recording/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -237,7 +255,7 @@ class KioskSessionService {
    */
   private stopLocalRecording(sessionId: string) {
     const pairingPort = 8766;
-    
+
     fetch(`http://localhost:${pairingPort}/session/recording/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -254,6 +272,113 @@ class KioskSessionService {
   }
 
   /**
+   * Start capturing console logs
+   * Overrides console.log/info/warn/error to capture all output
+   */
+  private startConsoleCapture(): void {
+    if (this.originalConsole) {
+      return; // Already capturing
+    }
+
+    // Store original console methods
+    this.originalConsole = {
+      log: console.log.bind(console),
+      info: console.info.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console),
+    };
+
+    // Clear previous logs
+    this.consoleLogs = [];
+
+    // Create capture wrapper
+    const captureLog = (level: 'log' | 'info' | 'warn' | 'error', originalFn: (...args: unknown[]) => void) => {
+      return (...args: unknown[]) => {
+        // Call original console method
+        originalFn(...args);
+
+        // Capture the log entry
+        const message = args
+          .map((arg) => {
+            if (typeof arg === 'string') return arg;
+            try {
+              return JSON.stringify(arg);
+            } catch {
+              return String(arg);
+            }
+          })
+          .join(' ');
+
+        this.consoleLogs.push({
+          timestamp: new Date().toISOString(),
+          level,
+          message,
+        });
+      };
+    };
+
+    // Override console methods
+    console.log = captureLog('log', this.originalConsole.log);
+    console.info = captureLog('info', this.originalConsole.info);
+    console.warn = captureLog('warn', this.originalConsole.warn);
+    console.error = captureLog('error', this.originalConsole.error);
+  }
+
+  /**
+   * Stop capturing console logs and restore original methods
+   */
+  private stopConsoleCapture(): void {
+    if (!this.originalConsole) {
+      return; // Not capturing
+    }
+
+    // Restore original console methods
+    console.log = this.originalConsole.log;
+    console.info = this.originalConsole.info;
+    console.warn = this.originalConsole.warn;
+    console.error = this.originalConsole.error;
+
+    this.originalConsole = null;
+  }
+
+  /**
+   * Send captured console logs to the local print agent
+   */
+  private sendConsoleLogs(sessionId: string, kioskId: string): void {
+    if (this.consoleLogs.length === 0) {
+      return;
+    }
+
+    const pairingPort = 8766;
+
+    const payload = {
+      sessionId,
+      kioskId,
+      capturedAt: new Date().toISOString(),
+      logs: this.consoleLogs,
+    };
+
+    fetch(`http://localhost:${pairingPort}/session/logs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => {
+        if (res.ok) {
+          console.log(`[SessionService] Sent ${this.consoleLogs.length} console logs to local agent`);
+        } else {
+          console.warn('[SessionService] Failed to send console logs:', res.status);
+        }
+      })
+      .catch((err) => {
+        console.warn('[SessionService] Could not send console logs:', err.message);
+      });
+
+    // Clear logs after sending
+    this.consoleLogs = [];
+  }
+
+  /**
    * End the current session
    */
   async endSession(outcome: SessionOutcome): Promise<void> {
@@ -266,6 +391,12 @@ class KioskSessionService {
 
     // Track session end event
     this.trackEvent('session_end', this.currentPage, undefined, { outcome });
+
+    // Stop console capture and send logs to local agent (before stopping recording)
+    this.stopConsoleCapture();
+    if (this.sessionId && this.kioskId) {
+      this.sendConsoleLogs(this.sessionId, this.kioskId);
+    }
 
     // Stop recording on the local print agent (before we clear sessionId)
     if (this.sessionId) {
@@ -312,7 +443,7 @@ class KioskSessionService {
    */
   async handleTimeout(): Promise<void> {
     console.log('[SessionService] handleTimeout called, current state:', this.state, 'sessionId:', this.sessionId);
-    
+
     if (this.state !== 'active') {
       console.log('[SessionService] handleTimeout skipped - session not active');
       return;
@@ -320,9 +451,9 @@ class KioskSessionService {
 
     console.log('[SessionService] Processing timeout, ending session as abandoned');
     this.trackEvent('session_timeout', this.currentPage);
-    
+
     // Note: Recording stop is handled by backend/Python automatically when session ends
-    
+
     await this.endSession('abandoned');
   }
 

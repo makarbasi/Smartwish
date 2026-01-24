@@ -12,14 +12,14 @@ export interface UploadRecordingDto {
   recordingId: string;
   sessionId: string;
   kioskId: string;
-  type: 'video' | 'thumbnail' | 'webcam';
+  type: 'video' | 'thumbnail' | 'webcam' | 'console_log';
 }
 
 @Injectable()
 export class SessionRecordingsService {
   private readonly logger = new Logger(SessionRecordingsService.name);
 
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(private readonly supabaseService: SupabaseService) { }
 
   /**
    * Create a new recording record when session recording begins
@@ -112,7 +112,7 @@ export class SessionRecordingsService {
     dto: UploadRecordingDto,
   ) {
     this.logger.log(`[Upload] Starting upload: type=${dto.type}, sessionId=${dto.sessionId}, size=${file.length}, contentType=${contentType}`);
-    
+
     const supabase = this.supabaseService.getClient();
     const bucket = 'session-recordings';
 
@@ -125,15 +125,15 @@ export class SessionRecordingsService {
     // Check bucket exists first
     this.logger.log(`[Upload] Checking if bucket "${bucket}" exists...`);
     const { data: buckets, error: bucketError } = await supabase.storage.listBuckets();
-    
+
     if (bucketError) {
       this.logger.error('[Upload] Error listing buckets:', bucketError);
       throw new Error(`Failed to check storage buckets: ${bucketError.message}`);
     }
-    
+
     const bucketExists = buckets?.some(b => b.name === bucket);
     this.logger.log(`[Upload] Bucket exists: ${bucketExists}, Available buckets: ${buckets?.map(b => b.name).join(', ') || 'none'}`);
-    
+
     if (!bucketExists) {
       this.logger.error(`[Upload] Storage bucket "${bucket}" does not exist`);
       throw new Error('Storage bucket not configured. Please create the "session-recordings" bucket in Supabase.');
@@ -142,7 +142,8 @@ export class SessionRecordingsService {
     const timestamp = Date.now();
     const isThumbnail = dto.type === 'thumbnail';
     const isWebcam = dto.type === 'webcam';
-    
+    const isConsoleLog = dto.type === 'console_log';
+
     // Determine extension from content type
     let extension = 'webm';
     if (contentType.includes('jpeg') || contentType.includes('jpg')) {
@@ -156,9 +157,9 @@ export class SessionRecordingsService {
     } else if (contentType.includes('x-msvideo') || contentType.includes('avi')) {
       extension = 'avi';
     }
-    
-    const folder = isThumbnail ? 'thumbnails' : isWebcam ? 'webcam' : 'videos';
-    const fileName = `${folder}/${dto.sessionId}_${isWebcam ? 'webcam_' : ''}${timestamp}.${extension}`;
+
+    const folder = isThumbnail ? 'thumbnails' : isWebcam ? 'webcam' : isConsoleLog ? 'console_logs' : 'videos';
+    const fileName = `${folder}/${dto.sessionId}_${isWebcam ? 'webcam_' : isConsoleLog ? 'console_logs_' : ''}${timestamp}.${extension}`;
 
     this.logger.log(`[Upload] Uploading to: ${fileName}`);
 
@@ -176,13 +177,13 @@ export class SessionRecordingsService {
         message: uploadError.message,
         error: uploadError,
       });
-      
-      if (uploadError.message?.includes('Bucket not found') || 
-          uploadError.message?.includes('404') ||
-          uploadError.message?.includes('not found')) {
+
+      if (uploadError.message?.includes('Bucket not found') ||
+        uploadError.message?.includes('404') ||
+        uploadError.message?.includes('not found')) {
         throw new Error('Storage bucket not configured. Please create the "session-recordings" bucket in Supabase.');
       }
-      
+
       throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
@@ -215,7 +216,7 @@ export class SessionRecordingsService {
     // Update recording record
     if (dto.recordingId) {
       const updateData: any = {};
-      
+
       if (isThumbnail) {
         updateData.thumbnail_path = fileName;
         updateData.thumbnail_url = storageUrl;
@@ -223,6 +224,9 @@ export class SessionRecordingsService {
         updateData.webcam_storage_path = fileName;
         updateData.webcam_storage_url = storageUrl;
         updateData.webcam_file_size_bytes = file.length;
+      } else if (isConsoleLog) {
+        updateData.console_log_storage_path = fileName;
+        updateData.console_log_storage_url = storageUrl;
       } else {
         updateData.storage_path = fileName;
         updateData.storage_url = storageUrl;
@@ -368,7 +372,7 @@ export class SessionRecordingsService {
 
     if (filesToDelete.length > 0) {
       this.logger.log(`Deleting ${filesToDelete.length} files from storage bucket 'session-recordings'...`);
-      
+
       const { data: deleteData, error: storageError } = await supabase.storage
         .from('session-recordings')
         .remove(filesToDelete);
@@ -402,7 +406,7 @@ export class SessionRecordingsService {
         .from('kiosk_sessions')
         .update({ has_recording: false })
         .eq('id', recording.session_id);
-      
+
       if (updateError) {
         this.logger.warn(`Failed to update session has_recording flag: ${updateError.message}`);
       } else {

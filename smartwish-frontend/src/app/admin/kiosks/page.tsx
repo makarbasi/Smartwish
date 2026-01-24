@@ -24,6 +24,7 @@ import {
   SparklesIcon,
   ChartBarIcon,
   VideoCameraIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { Dialog, Transition } from "@headlessui/react";
@@ -262,6 +263,10 @@ export default function KiosksAdminPage() {
   });
   const [saving, setSaving] = useState(false);
 
+  // Sync state
+  const [syncingKioskId, setSyncingKioskId] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+
   // Redirect if not authenticated
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -433,6 +438,59 @@ export default function KiosksAdminPage() {
     }
   };
 
+  // Sync handlers for asset caching
+  const handleSyncKiosk = async (kioskId: string) => {
+    setSyncingKioskId(kioskId);
+    try {
+      const response = await fetch("/api/admin/kiosks/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kioskIds: [kioskId], command: "sync_assets" }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to trigger sync");
+      }
+
+      const result = await response.json();
+      alert(`✅ Sync command sent to kiosk.\n\n${result.message}`);
+    } catch (err) {
+      console.error("Error syncing kiosk:", err);
+      alert(err instanceof Error ? err.message : "Failed to trigger sync");
+    } finally {
+      setSyncingKioskId(null);
+    }
+  };
+
+  const handleSyncAllKiosks = async () => {
+    if (!confirm("Are you sure you want to sync assets on ALL active kiosks? This may take a moment.")) {
+      return;
+    }
+
+    setSyncingAll(true);
+    try {
+      const response = await fetch("/api/admin/kiosks/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kioskIds: "all", command: "sync_assets" }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to trigger sync");
+      }
+
+      const result = await response.json();
+      alert(`✅ Sync command sent to ${result.kioskCount} kiosk(s).\n\n${result.message}`);
+    } catch (err) {
+      console.error("Error syncing all kiosks:", err);
+      alert(err instanceof Error ? err.message : "Failed to trigger sync");
+    } finally {
+      setSyncingAll(false);
+    }
+  };
+
   // Manager assignment functions
   const openManagersModal = async (kiosk: Kiosk) => {
     setSelectedKiosk(kiosk);
@@ -562,16 +620,26 @@ export default function KiosksAdminPage() {
                 Configure and manage kiosks deployed across your locations
               </p>
             </div>
-            <button
-              onClick={() => {
-                resetForm();
-                setShowCreateModal(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors"
-            >
-              <PlusIcon className="h-5 w-5" />
-              Add Kiosk
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSyncAllKiosks}
+                disabled={syncingAll || kiosks.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 transition-colors disabled:opacity-50"
+              >
+                <ArrowPathIcon className={`h-5 w-5 ${syncingAll ? 'animate-spin' : ''}`} />
+                {syncingAll ? 'Syncing...' : 'Sync All Kiosks'}
+              </button>
+              <button
+                onClick={() => {
+                  resetForm();
+                  setShowCreateModal(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors"
+              >
+                <PlusIcon className="h-5 w-5" />
+                Add Kiosk
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -619,21 +687,21 @@ export default function KiosksAdminPage() {
               const printerStatusSummary = !printerStatus
                 ? "No Status"
                 : hasErrors
-                ? "Error"
-                : hasWarnings
-                ? "Warning"
-                : printerStatus.online
-                ? "OK"
-                : "Offline";
+                  ? "Error"
+                  : hasWarnings
+                    ? "Warning"
+                    : printerStatus.online
+                      ? "OK"
+                      : "Offline";
               const printerStatusColor = !printerStatus
                 ? "bg-gray-100 text-gray-600"
                 : hasErrors
-                ? "bg-red-100 text-red-700"
-                : hasWarnings
-                ? "bg-yellow-100 text-yellow-700"
-                : printerStatus.online
-                ? "bg-green-100 text-green-700"
-                : "bg-red-100 text-red-700";
+                  ? "bg-red-100 text-red-700"
+                  : hasWarnings
+                    ? "bg-yellow-100 text-yellow-700"
+                    : printerStatus.online
+                      ? "bg-green-100 text-green-700"
+                      : "bg-red-100 text-red-700";
 
               return (
                 <div
@@ -659,9 +727,8 @@ export default function KiosksAdminPage() {
                       </div>
                       {/* Online/Offline dot */}
                       <span
-                        className={`flex-shrink-0 w-3 h-3 rounded-full ${
-                          kiosk.isOnline ? "bg-green-500" : "bg-red-500"
-                        }`}
+                        className={`flex-shrink-0 w-3 h-3 rounded-full ${kiosk.isOnline ? "bg-green-500" : "bg-red-500"
+                          }`}
                         title={kiosk.isOnline ? "Online" : "Offline"}
                       />
                     </div>
@@ -693,6 +760,18 @@ export default function KiosksAdminPage() {
                       >
                         <PencilSquareIcon className="h-3.5 w-3.5" />
                         Edit
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSyncKiosk(kiosk.kioskId);
+                        }}
+                        disabled={syncingKioskId === kiosk.kioskId}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors disabled:opacity-50"
+                        title="Sync Assets"
+                      >
+                        <ArrowPathIcon className={`h-3.5 w-3.5 ${syncingKioskId === kiosk.kioskId ? 'animate-spin' : ''}`} />
+                        {syncingKioskId === kiosk.kioskId ? 'Syncing' : 'Sync'}
                       </button>
                       <button
                         onClick={(e) => {
@@ -1069,19 +1148,19 @@ function KioskFormModal({
   const [promotedGiftCardsText, setPromotedGiftCardsText] = useState(
     formData.config.promotedGiftCardIds?.join(", ") || ""
   );
-  
+
   // Gift card brands for dropdown (SmartWish internal)
   const [giftCardBrands, setGiftCardBrands] = useState<GiftCardBrandOption[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
-  
+
   // Tillo brands for dropdown
   const [tilloBrands, setTilloBrands] = useState<TilloBrandOption[]>([]);
   const [loadingTilloBrands, setLoadingTilloBrands] = useState(false);
   const [tilloSearchQuery, setTilloSearchQuery] = useState("");
-  
+
   // Get current source (default to 'smartwish' for backward compatibility)
   const currentSource = formData.config.giftCardTile?.source || 'smartwish';
-  
+
   // Fetch SmartWish gift card brands when modal opens
   useEffect(() => {
     if (open && giftCardBrands.length === 0 && !loadingBrands) {
@@ -1099,7 +1178,7 @@ function KioskFormModal({
         });
     }
   }, [open, giftCardBrands.length]);
-  
+
   // Fetch Tillo brands when modal opens and source is tillo
   useEffect(() => {
     if (open && tilloBrands.length === 0 && !loadingTilloBrands) {
@@ -1126,23 +1205,23 @@ function KioskFormModal({
         });
     }
   }, [open, tilloBrands.length]);
-  
+
   // Filter Tillo brands by search query
   const filteredTilloBrands = tilloSearchQuery.trim()
-    ? tilloBrands.filter(b => 
-        b.name.toLowerCase().includes(tilloSearchQuery.toLowerCase()) ||
-        b.slug.toLowerCase().includes(tilloSearchQuery.toLowerCase())
-      )
+    ? tilloBrands.filter(b =>
+      b.name.toLowerCase().includes(tilloSearchQuery.toLowerCase()) ||
+      b.slug.toLowerCase().includes(tilloSearchQuery.toLowerCase())
+    )
     : tilloBrands.slice(0, 50); // Show first 50 if no search
 
   // Categories for featured categories dropdown (greeting cards)
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
-  
+
   // Sticker categories for featured sticker categories dropdown
   const [stickerCategories, setStickerCategories] = useState<string[]>([]);
   const [loadingStickerCategories, setLoadingStickerCategories] = useState(false);
-  
+
   // Fetch categories when modal opens
   useEffect(() => {
     if (open && categories.length === 0 && !loadingCategories) {
@@ -1160,7 +1239,7 @@ function KioskFormModal({
         });
     }
   }, [open, categories.length]);
-  
+
   // Fetch sticker categories when modal opens
   useEffect(() => {
     if (open && stickerCategories.length === 0 && !loadingStickerCategories) {
@@ -1193,18 +1272,18 @@ function KioskFormModal({
   // Filter brands for bundle selection (same data sources as gift card tile)
   // We keep them separate to maintain proper typing
   const filteredBundleTilloBrands = bundleSearchQuery.trim()
-    ? tilloBrands.filter(b => 
-        b.name.toLowerCase().includes(bundleSearchQuery.toLowerCase()) ||
-        b.slug.toLowerCase().includes(bundleSearchQuery.toLowerCase())
-      )
+    ? tilloBrands.filter(b =>
+      b.name.toLowerCase().includes(bundleSearchQuery.toLowerCase()) ||
+      b.slug.toLowerCase().includes(bundleSearchQuery.toLowerCase())
+    )
     : tilloBrands.slice(0, 50);
-  
+
   const filteredBundleSmartWishBrands = giftCardBrands;
 
   // Add a new bundle gift card
   const handleAddBundleGiftCard = () => {
     if (!bundleFormData.brandName) return;
-    
+
     const newCard: BundleGiftCardConfig = {
       id: crypto.randomUUID(),
       source: bundleFormData.source || 'smartwish',
@@ -1507,14 +1586,14 @@ function KioskFormModal({
                           })
                         }
                         className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.micEnabled
-                            ? "bg-indigo-600"
-                            : "bg-gray-200"
+                          ? "bg-indigo-600"
+                          : "bg-gray-200"
                           }`}
                       >
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.micEnabled
-                              ? "translate-x-5"
-                              : "translate-x-0"
+                            ? "translate-x-5"
+                            : "translate-x-0"
                             }`}
                         />
                       </button>
@@ -1541,14 +1620,14 @@ function KioskFormModal({
                           })
                         }
                         className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.giftCardRibbonEnabled !== false
-                            ? "bg-indigo-600"
-                            : "bg-gray-200"
+                          ? "bg-indigo-600"
+                          : "bg-gray-200"
                           }`}
                       >
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.giftCardRibbonEnabled !== false
-                              ? "translate-x-5"
-                              : "translate-x-0"
+                            ? "translate-x-5"
+                            : "translate-x-0"
                             }`}
                         />
                       </button>
@@ -1575,14 +1654,14 @@ function KioskFormModal({
                           })
                         }
                         className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.greetingCardsEnabled !== false
-                            ? "bg-indigo-600"
-                            : "bg-gray-200"
+                          ? "bg-indigo-600"
+                          : "bg-gray-200"
                           }`}
                       >
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.greetingCardsEnabled !== false
-                              ? "translate-x-5"
-                              : "translate-x-0"
+                            ? "translate-x-5"
+                            : "translate-x-0"
                             }`}
                         />
                       </button>
@@ -1609,14 +1688,14 @@ function KioskFormModal({
                           })
                         }
                         className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${formData.config.stickersEnabled !== false
-                            ? "bg-indigo-600"
-                            : "bg-gray-200"
+                          ? "bg-indigo-600"
+                          : "bg-gray-200"
                           }`}
                       >
                         <span
                           className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.stickersEnabled !== false
-                              ? "translate-x-5"
-                              : "translate-x-0"
+                            ? "translate-x-5"
+                            : "translate-x-0"
                             }`}
                         />
                       </button>
@@ -1632,10 +1711,10 @@ function KioskFormModal({
                         Featured Categories
                       </label>
                       <p className="text-xs text-gray-500 mb-3">
-                        Select categories to show as horizontal carousels on the greeting cards page. 
+                        Select categories to show as horizontal carousels on the greeting cards page.
                         Each category will display cards sorted by popularity.
                       </p>
-                      
+
                       {loadingCategories ? (
                         <div className="text-sm text-gray-500">Loading categories...</div>
                       ) : categories.length === 0 ? (
@@ -1727,7 +1806,7 @@ function KioskFormModal({
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Add Category Dropdown */}
                           <div className="flex gap-2">
                             <select
@@ -1739,14 +1818,14 @@ function KioskFormModal({
                                 if (!categoryId) return;
                                 const category = categories.find((c) => c.id === categoryId);
                                 if (!category) return;
-                                
+
                                 const existing = formData.config.featuredCategories || [];
                                 if (existing.some((fc) => fc.categoryId === categoryId)) return;
-                                
-                                const maxOrder = existing.length > 0 
-                                  ? Math.max(...existing.map((fc) => fc.displayOrder)) 
+
+                                const maxOrder = existing.length > 0
+                                  ? Math.max(...existing.map((fc) => fc.displayOrder))
                                   : 0;
-                                
+
                                 setFormData({
                                   ...formData,
                                   config: {
@@ -1761,7 +1840,7 @@ function KioskFormModal({
                                     ],
                                   },
                                 });
-                                
+
                                 // Reset dropdown
                                 e.target.value = "";
                               }}
@@ -1776,7 +1855,7 @@ function KioskFormModal({
                                 ))}
                             </select>
                           </div>
-                          
+
                           {(formData.config.featuredCategories || []).length === 0 && (
                             <p className="text-xs text-amber-600 mt-1">
                               No categories selected. The default 3-column grid view will be shown.
@@ -1792,10 +1871,10 @@ function KioskFormModal({
                         Featured Sticker Categories
                       </label>
                       <p className="text-xs text-gray-500 mb-3">
-                        Select categories to show as horizontal carousels on the stickers page. 
+                        Select categories to show as horizontal carousels on the stickers page.
                         Each category will display stickers sorted by popularity.
                       </p>
-                      
+
                       {loadingStickerCategories ? (
                         <div className="text-sm text-gray-500">Loading sticker categories...</div>
                       ) : stickerCategories.length === 0 ? (
@@ -1885,7 +1964,7 @@ function KioskFormModal({
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Add Sticker Category Dropdown */}
                           <div className="flex gap-2">
                             <select
@@ -1895,15 +1974,15 @@ function KioskFormModal({
                               onChange={(e) => {
                                 const categoryName = e.target.value;
                                 if (!categoryName) return;
-                                
+
                                 const existing = formData.config.featuredStickerCategories || [];
                                 // Use category name as both ID and name for stickers (they're string-based)
                                 if (existing.some((fc) => fc.categoryId === categoryName)) return;
-                                
-                                const maxOrder = existing.length > 0 
-                                  ? Math.max(...existing.map((fc) => fc.displayOrder)) 
+
+                                const maxOrder = existing.length > 0
+                                  ? Math.max(...existing.map((fc) => fc.displayOrder))
                                   : 0;
-                                
+
                                 setFormData({
                                   ...formData,
                                   config: {
@@ -1918,7 +1997,7 @@ function KioskFormModal({
                                     ],
                                   },
                                 });
-                                
+
                                 e.target.value = "";
                               }}
                             >
@@ -1932,7 +2011,7 @@ function KioskFormModal({
                                 ))}
                             </select>
                           </div>
-                          
+
                           {(formData.config.featuredStickerCategories || []).length === 0 && (
                             <p className="text-xs text-amber-600 mt-1">
                               No sticker categories selected. The default carousel view will be shown.
@@ -2179,18 +2258,16 @@ function KioskFormModal({
                               },
                             })
                           }
-                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 ${
-                            formData.config.surveillance?.enabled
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 ${formData.config.surveillance?.enabled
                               ? "bg-amber-500"
                               : "bg-gray-200"
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              formData.config.surveillance?.enabled
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.surveillance?.enabled
                                 ? "translate-x-5"
                                 : "translate-x-0"
-                            }`}
+                              }`}
                           />
                         </button>
                       </div>
@@ -2337,18 +2414,16 @@ function KioskFormModal({
                                   },
                                 })
                               }
-                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
-                                formData.config.recording?.recordWebcam !== false
+                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${formData.config.recording?.recordWebcam !== false
                                   ? "bg-blue-500"
                                   : "bg-gray-200"
-                              }`}
+                                }`}
                             >
                               <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                  formData.config.recording?.recordWebcam !== false
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.recording?.recordWebcam !== false
                                     ? "translate-x-5"
                                     : "translate-x-0"
-                                }`}
+                                  }`}
                               />
                             </button>
                           </div>
@@ -2382,18 +2457,16 @@ function KioskFormModal({
                                   },
                                 })
                               }
-                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
-                                formData.config.recording?.recordScreen !== false
+                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${formData.config.recording?.recordScreen !== false
                                   ? "bg-blue-500"
                                   : "bg-gray-200"
-                              }`}
+                                }`}
                             >
                               <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                  formData.config.recording?.recordScreen !== false
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.recording?.recordScreen !== false
                                     ? "translate-x-5"
                                     : "translate-x-0"
-                                }`}
+                                  }`}
                               />
                             </button>
                           </div>
@@ -2593,18 +2666,16 @@ function KioskFormModal({
                               },
                             })
                           }
-                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${
-                            formData.config.giftCardTile?.enabled
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${formData.config.giftCardTile?.enabled
                               ? "bg-emerald-500"
                               : "bg-gray-200"
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              formData.config.giftCardTile?.enabled
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.giftCardTile?.enabled
                                 ? "translate-x-5"
                                 : "translate-x-0"
-                            }`}
+                              }`}
                           />
                         </button>
                       </div>
@@ -2659,11 +2730,10 @@ function KioskFormModal({
                                     },
                                   })
                                 }
-                                className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${
-                                  currentSource === 'smartwish'
+                                className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${currentSource === 'smartwish'
                                     ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
                                     : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                                }`}
+                                  }`}
                               >
                                 🏪 SmartWish Internal
                               </button>
@@ -2683,17 +2753,16 @@ function KioskFormModal({
                                     },
                                   })
                                 }
-                                className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${
-                                  currentSource === 'tillo'
+                                className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${currentSource === 'tillo'
                                     ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
                                     : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                                }`}
+                                  }`}
                               >
                                 🌐 Tillo Marketplace
                               </button>
                             </div>
                             <p className="text-xs text-gray-400 mb-3">
-                              {currentSource === 'smartwish' 
+                              {currentSource === 'smartwish'
                                 ? 'Select from your internally managed gift card brands'
                                 : 'Select from Tillo\'s global gift card marketplace (Amazon, Starbucks, etc.)'}
                             </p>
@@ -3026,18 +3095,16 @@ function KioskFormModal({
                                   },
                                 })
                               }
-                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${
-                                (formData.config.giftCardTile?.allowCustomAmount ?? true)
+                              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${(formData.config.giftCardTile?.allowCustomAmount ?? true)
                                   ? "bg-emerald-500"
                                   : "bg-gray-200"
-                              }`}
+                                }`}
                             >
                               <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                  (formData.config.giftCardTile?.allowCustomAmount ?? true)
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${(formData.config.giftCardTile?.allowCustomAmount ?? true)
                                     ? "translate-x-5"
                                     : "translate-x-0"
-                                }`}
+                                  }`}
                               />
                             </button>
                           </div>
@@ -3072,25 +3139,23 @@ function KioskFormModal({
                               },
                             })
                           }
-                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2 ${
-                            formData.config.bundleDiscounts?.enabled
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2 ${formData.config.bundleDiscounts?.enabled
                               ? "bg-purple-500"
                               : "bg-gray-200"
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              formData.config.bundleDiscounts?.enabled
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.config.bundleDiscounts?.enabled
                                 ? "translate-x-5"
                                 : "translate-x-0"
-                            }`}
+                              }`}
                           />
                         </button>
                       </div>
                     </div>
-                    
+
                     <p className="text-sm text-gray-600 mb-4">
-                      Configure gift cards that give discounts when purchased with greeting cards or stickers. 
+                      Configure gift cards that give discounts when purchased with greeting cards or stickers.
                       This is separate from the Gift Card Tile (standalone purchases).
                     </p>
 
@@ -3100,15 +3165,15 @@ function KioskFormModal({
                         {(formData.config.bundleDiscounts?.eligibleGiftCards || []).length > 0 ? (
                           <div className="space-y-3">
                             {formData.config.bundleDiscounts?.eligibleGiftCards.map((card) => (
-                              <div 
-                                key={card.id} 
+                              <div
+                                key={card.id}
                                 className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200"
                               >
                                 {/* Logo */}
                                 {card.brandLogo ? (
-                                  <img 
-                                    src={card.brandLogo} 
-                                    alt={card.brandName} 
+                                  <img
+                                    src={card.brandLogo}
+                                    alt={card.brandName}
                                     className="w-12 h-12 rounded-lg object-contain bg-white shadow-sm"
                                   />
                                 ) : (
@@ -3116,16 +3181,15 @@ function KioskFormModal({
                                     <GiftIcon className="h-6 w-6 text-white" />
                                   </div>
                                 )}
-                                
+
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium text-gray-900 truncate">{card.brandName}</span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                      card.source === 'tillo' 
-                                        ? 'bg-blue-100 text-blue-700' 
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${card.source === 'tillo'
+                                        ? 'bg-blue-100 text-blue-700'
                                         : 'bg-emerald-100 text-emerald-700'
-                                    }`}>
+                                      }`}>
                                       {card.source === 'tillo' ? 'Tillo' : 'SmartWish'}
                                     </span>
                                   </div>
@@ -3203,9 +3267,9 @@ function KioskFormModal({
 
                         {/* Add/Edit Bundle Gift Card Modal */}
                         <Transition show={showBundleAddModal} as={Fragment}>
-                          <Dialog 
-                            as="div" 
-                            className="relative z-[60]" 
+                          <Dialog
+                            as="div"
+                            className="relative z-[60]"
                             onClose={() => {
                               setShowBundleAddModal(false);
                               setEditingBundleGiftCard(null);
@@ -3253,22 +3317,20 @@ function KioskFormModal({
                                           <button
                                             type="button"
                                             onClick={() => setBundleFormData({ ...bundleFormData, source: 'smartwish', brandId: undefined, brandSlug: undefined, brandName: undefined, brandLogo: undefined })}
-                                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                                              bundleFormData.source === 'smartwish'
+                                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${bundleFormData.source === 'smartwish'
                                                 ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400'
                                                 : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
-                                            }`}
+                                              }`}
                                           >
                                             SmartWish Internal
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => setBundleFormData({ ...bundleFormData, source: 'tillo', brandId: undefined, brandSlug: undefined, brandName: undefined, brandLogo: undefined })}
-                                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                                              bundleFormData.source === 'tillo'
+                                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${bundleFormData.source === 'tillo'
                                                 ? 'bg-blue-100 text-blue-700 border-2 border-blue-400'
                                                 : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
-                                            }`}
+                                              }`}
                                           >
                                             Tillo Marketplace
                                           </button>
@@ -3280,7 +3342,7 @@ function KioskFormModal({
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                           {bundleFormData.source === 'tillo' ? 'Search Tillo Brand' : 'Select SmartWish Brand'}
                                         </label>
-                                        
+
                                         {bundleFormData.source === 'tillo' ? (
                                           <>
                                             <input
@@ -3308,9 +3370,8 @@ function KioskFormModal({
                                                         maxAmount: brand.maxAmount,
                                                       });
                                                     }}
-                                                    className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
-                                                      bundleFormData.brandSlug === brand.slug ? 'bg-purple-50' : ''
-                                                    }`}
+                                                    className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${bundleFormData.brandSlug === brand.slug ? 'bg-purple-50' : ''
+                                                      }`}
                                                   >
                                                     {brand.logo ? (
                                                       <img src={brand.logo} alt={brand.name} className="w-8 h-8 rounded object-contain" />

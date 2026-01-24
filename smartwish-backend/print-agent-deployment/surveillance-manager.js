@@ -34,7 +34,7 @@ export class SurveillanceManager {
     this.restartCount = 0;
     this.maxRestarts = 10; // Max restarts before giving up
     this.scriptPath = path.join(__dirname, 'surveillance', 'count_people.py');
-    
+
     // Session-based recording processes (one per session)
     this.sessionProcesses = new Map(); // Map<sessionId, { process, config }>
   }
@@ -129,7 +129,7 @@ export class SurveillanceManager {
     this.process.on('error', (err) => {
       this.isRunning = false;
       console.error(`  [Surveillance] ❌ Error: ${err.message}`);
-      
+
       if (err.message.includes('ENOENT')) {
         console.error(`  [Surveillance] Python not found. Make sure Python is installed and in PATH.`);
         console.error(`  [Surveillance] Or set PYTHON_PATH environment variable.`);
@@ -160,10 +160,10 @@ export class SurveillanceManager {
 
     console.log('  [Surveillance] Stopping...');
     this.config.autoRestart = false; // Prevent auto-restart
-    
+
     // Try graceful shutdown first
     this.process.kill('SIGTERM');
-    
+
     // Force kill after timeout
     setTimeout(() => {
       if (this.isRunning) {
@@ -192,13 +192,13 @@ export class SurveillanceManager {
    */
   updateConfig(newConfig) {
     const wasRunning = this.isRunning;
-    
+
     if (wasRunning) {
       this.stop();
     }
 
     Object.assign(this.config, newConfig);
-    
+
     if (wasRunning) {
       setTimeout(() => this.start(), 1000);
     }
@@ -210,11 +210,11 @@ export class SurveillanceManager {
    */
   async startSessionRecording(sessionId, kioskConfig = {}) {
     const recordingConfig = kioskConfig.recording || {};
-    
+
     // Check if recording is enabled
     const recordWebcam = recordingConfig.recordWebcam !== false; // Default: enabled
     const recordScreen = recordingConfig.recordScreen !== false; // Default: enabled
-    
+
     if (!recordWebcam && !recordScreen) {
       console.log(`  [Session Recording] Recording disabled for session ${sessionId}`);
       return;
@@ -242,7 +242,7 @@ export class SurveillanceManager {
           },
         }),
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         console.log(`  [Session Recording] ✅ Recording started: ${result.message}`);
@@ -267,7 +267,7 @@ export class SurveillanceManager {
     }
 
     console.log(`  [Session Recording] 🛑 Stopping recording for session ${sessionId}`);
-    
+
     try {
       // Call the surveillance process HTTP endpoint to stop recording
       const response = await fetch(`http://localhost:${this.config.httpPort}/recording/stop`, {
@@ -275,7 +275,7 @@ export class SurveillanceManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: sessionId }),
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         console.log(`  [Session Recording] ✅ Recording stopped: ${result.message}`);
@@ -288,7 +288,7 @@ export class SurveillanceManager {
     } catch (err) {
       console.error(`  [Session Recording] ❌ Error stopping recording: ${err.message}`);
     }
-    
+
     this.sessionProcesses.delete(sessionId);
   }
 
@@ -302,18 +302,106 @@ export class SurveillanceManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: sessionId }),
       });
-      
+
       if (response.ok) {
         return await response.json();
       }
     } catch (err) {
       // Surveillance process may not be running
     }
-    
+
     return {
       recording: false,
       sessionId: sessionId,
     };
+  }
+
+  /**
+   * Save console logs for a session to a file and upload to cloud
+   */
+  async saveConsoleLogs(sessionId, kioskId, capturedAt, logs) {
+    if (!logs || logs.length === 0) {
+      console.log(`  [Console Logs] No logs to save for session ${sessionId}`);
+      return;
+    }
+
+    console.log(`  [Console Logs] 📝 Saving ${logs.length} logs for session ${sessionId}`);
+
+    try {
+      // Determine output directory - same structure as video recordings
+      const effectiveKioskId = kioskId || this.config.kioskId;
+      const logsDir = path.join(__dirname, 'recordings', effectiveKioskId, sessionId);
+
+      // Create directory if it doesn't exist
+      await fs.mkdir(logsDir, { recursive: true });
+
+      // Create log file
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const logFilePath = path.join(logsDir, `console_logs_${timestamp}.json`);
+
+      const logData = {
+        sessionId,
+        kioskId: effectiveKioskId,
+        capturedAt: capturedAt || new Date().toISOString(),
+        totalLogs: logs.length,
+        logs: logs,
+      };
+
+      await fs.writeFile(logFilePath, JSON.stringify(logData, null, 2), 'utf-8');
+      console.log(`  [Console Logs] ✅ Saved to: ${logFilePath}`);
+
+      // Upload to cloud server
+      await this.uploadConsoleLogs(sessionId, effectiveKioskId, logFilePath);
+
+    } catch (err) {
+      console.error(`  [Console Logs] ❌ Error saving logs: ${err.message}`);
+    }
+  }
+
+  /**
+   * Upload console log file to cloud storage
+   */
+  async uploadConsoleLogs(sessionId, kioskId, logFilePath) {
+    const url = `${this.config.serverUrl}/kiosk/session/recording/upload-python`;
+
+    console.log(`  [Console Logs] 📤 Uploading to: ${url}`);
+
+    try {
+      const fileContent = await fs.readFile(logFilePath);
+      const fileName = path.basename(logFilePath);
+
+      // Create form data
+      const FormData = (await import('form-data')).default;
+      const form = new FormData();
+      form.append('file', fileContent, {
+        filename: fileName,
+        contentType: 'application/json',
+      });
+      form.append('sessionId', sessionId);
+      form.append('kioskId', kioskId);
+      form.append('type', 'console_log');
+
+      const response = await fetch(url, {
+        method: 'POST',
+        body: form,
+        headers: {
+          ...form.getHeaders(),
+          'x-kiosk-api-key': this.config.apiKey,
+          'x-kiosk-id': kioskId,
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`  [Console Logs] ✅ Uploaded successfully`);
+        console.log(`    Storage URL: ${result.storageUrl || 'N/A'}`);
+      } else {
+        const error = await response.text();
+        console.error(`  [Console Logs] ❌ Upload failed: ${response.status} - ${error}`);
+      }
+    } catch (err) {
+      console.error(`  [Console Logs] ❌ Upload error: ${err.message}`);
+    }
   }
 }
 

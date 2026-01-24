@@ -20,7 +20,7 @@ import { Public } from '../auth/public.decorator';
  */
 @Controller('kiosk/session/recording')
 export class SessionRecordingsPublicController {
-  constructor(private readonly recordingsService: SessionRecordingsService) {}
+  constructor(private readonly recordingsService: SessionRecordingsService) { }
 
   /**
    * Start a new recording (create database record)
@@ -126,12 +126,12 @@ export class SessionRecordingsPublicController {
   }))
   async uploadPythonRecording(
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { sessionId: string; kioskId: string; type: 'webcam' | 'screen' },
+    @Body() body: { sessionId: string; kioskId: string; type: 'webcam' | 'screen' | 'console_log' },
     @Headers('x-kiosk-api-key') apiKey?: string,
     @Headers('x-kiosk-id') kioskIdHeader?: string,
   ) {
     const kioskId = body.kioskId || kioskIdHeader;
-    
+
     console.log('[Upload Python] Received upload request:', {
       hasFile: !!file,
       fileSize: file?.size || 0,
@@ -175,16 +175,31 @@ export class SessionRecordingsPublicController {
       });
     }
 
-    // Upload the video file
-    console.log(`[Upload Python] Uploading ${body.type} video for session ${body.sessionId}...`);
+    // Map upload type to service type
+    let uploadType: 'video' | 'thumbnail' | 'webcam' | 'console_log';
+    let mimeType = file.mimetype;
+
+    if (body.type === 'webcam') {
+      uploadType = 'webcam';
+      mimeType = mimeType || 'video/mp4';
+    } else if (body.type === 'console_log') {
+      uploadType = 'console_log';
+      mimeType = mimeType || 'application/json';
+    } else {
+      uploadType = 'video';
+      mimeType = mimeType || 'video/mp4';
+    }
+
+    // Upload the file
+    console.log(`[Upload Python] Uploading ${body.type} for session ${body.sessionId}...`);
     return this.recordingsService.uploadFile(
       file.buffer,
-      file.mimetype || 'video/mp4',
+      mimeType,
       {
         recordingId: recording.id,
         sessionId: body.sessionId,
         kioskId: kioskId,
-        type: body.type === 'webcam' ? 'webcam' : 'video',
+        type: uploadType,
       },
     );
   }
@@ -216,7 +231,7 @@ export class SessionRecordingsPublicController {
  */
 @Controller('admin/kiosks')
 export class SessionRecordingsAdminController {
-  constructor(private readonly recordingsService: SessionRecordingsService) {}
+  constructor(private readonly recordingsService: SessionRecordingsService) { }
 
   /**
    * Get recording for a specific session

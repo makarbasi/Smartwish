@@ -21,6 +21,8 @@ import { useDeviceMode } from "@/contexts/DeviceModeContext";
 import { useKioskInactivity } from "@/hooks/useKioskInactivity";
 import { useSessionTracking } from "@/hooks/useSessionTracking";
 import { useKioskSessionSafe } from "@/contexts/KioskSessionContext";
+import { useLocalStickers } from "@/hooks/useLocalStickers";
+import assetSyncService from "@/services/AssetSyncService";
 
 // Gift card data interface
 interface GiftCardData {
@@ -72,10 +74,10 @@ function StickersContent() {
   const searchParams = useSearchParams();
   const { isKiosk } = useDeviceMode();
   const { config: kioskConfig, kioskInfo } = useKiosk();
-  
+
   // Kiosk inactivity management - pause during QR upload and printing
   const { pauseForQRUpload, pauseForPrinting, resumeInactivity } = useKioskInactivity();
-  
+
   // Session tracking for analytics
   const {
     trackStickerBrowse,
@@ -93,7 +95,7 @@ function StickersContent() {
     trackPaymentFailure,
     endWithPrintedSticker,
   } = useSessionTracking();
-  
+
   // Track page browse on mount
   useEffect(() => {
     trackStickerBrowse();
@@ -102,11 +104,23 @@ function StickersContent() {
   // Use actual kiosk session from context for print log tracking
   const kioskSessionContext = useKioskSessionSafe();
   const actualKioskSessionId = kioskSessionContext?.sessionId;
-  
+
+  // Initialize sync service for kiosk mode
+  useEffect(() => {
+    if (isKiosk && kioskInfo?.id) {
+      assetSyncService.initialize(kioskInfo.id);
+    }
+    return () => {
+      if (isKiosk) {
+        assetSyncService.destroy();
+      }
+    };
+  }, [isKiosk, kioskInfo?.id]);
+
   // Fallback session ID for payment modal (if no active session)
   const [fallbackSessionId] = useState<string>(() => crypto.randomUUID());
   const kioskSessionId = actualKioskSessionId || fallbackSessionId;
-  
+
   // Generate a stable sticker session ID for gift card storage
   const [stickerSessionId] = useState<string>(() => {
     // Try to get existing session ID from localStorage, or generate new one
@@ -119,15 +133,15 @@ function StickersContent() {
     }
     return `sticker-${crypto.randomUUID()}`;
   });
-  
+
   // Gift card state
   const [giftCardData, setGiftCardData] = useState<GiftCardData | null>(null);
   const [pendingGiftCardQr, setPendingGiftCardQr] = useState<string>('');
   const [giftCardSlotIndex, setGiftCardSlotIndex] = useState<number | null>(null);
-  
+
   // Check if gift card is pending (not yet issued)
   const isGiftCardPending = giftCardData && (giftCardData.isIssued === false || giftCardData.status === 'pending');
-  
+
   // Generate pending QR code for gift cards not yet issued
   useEffect(() => {
     if (isGiftCardPending && typeof window !== 'undefined') {
@@ -150,11 +164,11 @@ function StickersContent() {
       setPendingGiftCardQr(''); // Clear pending QR when card is issued
     }
   }, [isGiftCardPending]);
-  
+
   // Load gift card from localStorage on mount (handles return from marketplace)
   useEffect(() => {
     const showGift = searchParams.get('showGift') === 'true';
-    
+
     // Try to load existing gift card data
     const loadGiftCard = () => {
       const storedData = localStorage.getItem(`giftCard_${stickerSessionId}`);
@@ -163,7 +177,7 @@ function StickersContent() {
           const giftData = JSON.parse(storedData);
           console.log('🎁 Loaded gift card for stickers:', giftData);
           setGiftCardData(giftData);
-          
+
           // If we have a stored slot index, use it
           const storedSlotIndex = localStorage.getItem(`giftCardSlot_${stickerSessionId}`);
           if (storedSlotIndex !== null) {
@@ -178,9 +192,9 @@ function StickersContent() {
         }
       }
     };
-    
+
     loadGiftCard();
-    
+
     // If showGift=true, we just returned from marketplace with a gift card selection
     if (showGift) {
       console.log('🎁 Returned from marketplace with gift card');
@@ -190,7 +204,7 @@ function StickersContent() {
       window.history.replaceState({}, '', url.toString());
     }
   }, [searchParams, stickerSessionId]);
-  
+
   // Remove gift card handler
   const handleRemoveGiftCard = useCallback(() => {
     setGiftCardData(null);
@@ -246,7 +260,7 @@ function StickersContent() {
   } | null>(null);
   const [pendingBundleAmount, setPendingBundleAmount] = useState<number>(0);
   const [customBundleAmount, setCustomBundleAmount] = useState<string>('');
-  
+
   // Confirmed bundle gift card (after user clicks Add)
   const [confirmedBundleGiftCard, setConfirmedBundleGiftCard] = useState<{
     id: string;
@@ -259,20 +273,20 @@ function StickersContent() {
     printDiscountPercent: number;
     amount: number;
   } | null>(null);
-  
+
   // Print status for tracking (same as greeting cards)
   const [printStatus, setPrintStatus] = useState<'idle' | 'sending' | 'printing' | 'completed' | 'failed'>('idle');
   const [printError, setPrintError] = useState<string | null>(null);
-  
+
   // Track current print log ID for status updates
   const [currentPrintLogId, setCurrentPrintLogId] = useState<string | null>(null);
-  
+
   // Category carousels view state (for kiosk mode with featured sticker categories)
   const featuredStickerCategories = kioskConfig?.featuredStickerCategories || [];
-  const bundleGiftCards = kioskConfig?.bundleDiscounts?.enabled 
+  const bundleGiftCards = kioskConfig?.bundleDiscounts?.enabled
     ? (kioskConfig.bundleDiscounts.eligibleGiftCards || []).filter(gc => gc.appliesTo?.includes('sticker') ?? true)
     : [];
-  
+
   // Determine if we should show carousels based on conditions
   const shouldShowCarousels = useMemo(() => {
     return (
@@ -282,37 +296,65 @@ function StickersContent() {
     );
   }, [isKiosk, featuredStickerCategories.length, bundleGiftCards.length, viewMode]);
 
-  // Fetch stickers for carousel - get all 200 for variety across 4 rows
-  const { data: stickersData, isLoading: isLoadingStickers, error: stickersError } = useSWR<StickersApiResponse>(
-    "/api/stickers?limit=200",
+  // Fetch stickers - use local-first in kiosk mode, SWR for regular mode
+  // Local-first: reads from IndexedDB instantly, then syncs from cloud in background
+  const {
+    stickers: localStickers,
+    isLoading: isLoadingLocal,
+    isFromCache,
+    isSyncing,
+  } = useLocalStickers({ enabled: isKiosk });
+
+  // SWR for non-kiosk mode (original behavior)
+  const { data: stickersData, isLoading: isLoadingSWR, error: stickersError } = useSWR<StickersApiResponse>(
+    isKiosk ? null : "/api/stickers?limit=200", // Disable SWR in kiosk mode
     fetcher
   );
-  
+
+  // Combine data sources based on mode
+  const isLoadingStickers = isKiosk ? isLoadingLocal : isLoadingSWR;
+
   // Debug logging for stickers data
   useEffect(() => {
-    console.log('🎯 [StickersPage] Data state:', {
-      isLoading: isLoadingStickers,
-      hasError: !!stickersError,
-      error: stickersError?.message,
-      stickersData: stickersData ? 'received' : 'null',
-      success: stickersData?.success,
-      dataLength: stickersData?.data?.length ?? 'no data array',
-      total: stickersData?.total,
-      sampleSticker: stickersData?.data?.[0] ? {
-        id: stickersData.data[0].id,
-        title: stickersData.data[0].title,
-        hasImageUrl: !!stickersData.data[0].imageUrl,
-      } : 'no stickers',
-    });
-  }, [stickersData, isLoadingStickers, stickersError]);
+    if (isKiosk) {
+      console.log('🎯 [StickersPage] Local-first data state:', {
+        isLoading: isLoadingLocal,
+        isFromCache,
+        isSyncing,
+        stickerCount: localStickers.length,
+        sampleSticker: localStickers[0] ? {
+          id: localStickers[0].id,
+          title: localStickers[0].title,
+          hasImageUrl: !!localStickers[0].imageUrl,
+        } : 'no stickers',
+      });
+    } else {
+      console.log('🎯 [StickersPage] SWR data state:', {
+        isLoading: isLoadingSWR,
+        hasError: !!stickersError,
+        error: stickersError?.message,
+        stickersData: stickersData ? 'received' : 'null',
+        success: stickersData?.success,
+        dataLength: stickersData?.data?.length ?? 'no data array',
+        total: stickersData?.total,
+      });
+    }
+  }, [isKiosk, localStickers, isLoadingLocal, isFromCache, isSyncing, stickersData, isLoadingSWR, stickersError]);
 
-  // Transform API data for carousel
-  const carouselStickers: StickerItem[] = (stickersData?.data || []).map((s) => ({
-    id: s.id,
-    title: s.title,
-    imageUrl: s.imageUrl,
-    thumbnailUrl: s.thumbnailUrl,
-  }));
+  // Transform data for carousel - use local stickers in kiosk mode
+  const carouselStickers: StickerItem[] = isKiosk
+    ? localStickers.map((s) => ({
+      id: s.id,
+      title: s.title,
+      imageUrl: s.imageUrl,
+      thumbnailUrl: s.thumbnailUrl,
+    }))
+    : (stickersData?.data || []).map((s) => ({
+      id: s.id,
+      title: s.title,
+      imageUrl: s.imageUrl,
+      thumbnailUrl: s.thumbnailUrl,
+    }));
 
   // Count filled slots (includes gift card slot if present)
   const filledSlotsCount = slots.filter((s, i) => s.imageUrl || (giftCardData && giftCardSlotIndex === i)).length;
@@ -325,7 +367,7 @@ function StickersContent() {
   // Handle paste to target slot
   const handleCopyToSlot = useCallback((targetIndex: number) => {
     if (copySourceIndex === null) return;
-    
+
     const sourceSlot = slots[copySourceIndex];
     if (!sourceSlot.imageUrl) return;
 
@@ -334,12 +376,12 @@ function StickersContent() {
       prev.map((slot, i) =>
         i === targetIndex
           ? {
-              ...slot,
-              imageUrl: sourceSlot.imageUrl,
-              editedImageBlob: sourceSlot.editedImageBlob,
-              originalImageUrl: sourceSlot.originalImageUrl,
-              isUpload: sourceSlot.isUpload,
-            }
+            ...slot,
+            imageUrl: sourceSlot.imageUrl,
+            editedImageBlob: sourceSlot.editedImageBlob,
+            originalImageUrl: sourceSlot.originalImageUrl,
+            isUpload: sourceSlot.isUpload,
+          }
           : slot
       )
     );
@@ -359,7 +401,7 @@ function StickersContent() {
       }
       return;
     }
-    
+
     // Show mode selector for this slot
     setSelectedSlotIndex(index);
     setViewMode("mode-selection");
@@ -381,7 +423,7 @@ function StickersContent() {
       // Save the slot index for gift card
       setGiftCardSlotIndex(selectedSlotIndex);
       localStorage.setItem(`giftCardSlot_${stickerSessionId}`, selectedSlotIndex.toString());
-      
+
       // Navigate to marketplace with return URL
       const returnUrl = encodeURIComponent(`/stickers?showGift=true`);
       router.push(`/marketplace?returnTo=${returnUrl}&mode=sticker&sessionId=${stickerSessionId}`);
@@ -437,7 +479,7 @@ function StickersContent() {
     // Find the first empty slot
     const emptySlotIndex = slots.findIndex(s => !s.imageUrl);
     const targetSlotIndex = emptySlotIndex >= 0 ? emptySlotIndex : 0;
-    
+
     // Add sticker to the slot
     setSlots((prev) =>
       prev.map((slot, i) =>
@@ -446,7 +488,7 @@ function StickersContent() {
           : slot
       )
     );
-    
+
     // Track sticker selection
     trackStickerSelect({
       itemId: sticker.id,
@@ -460,7 +502,7 @@ function StickersContent() {
     // Find the first empty slot
     const emptySlotIndex = slots.findIndex(s => !s.imageUrl);
     const targetSlotIndex = emptySlotIndex >= 0 ? emptySlotIndex : 0;
-    
+
     setSelectedSlotIndex(targetSlotIndex);
     setViewMode("upload-qr");
     pauseForQRUpload();
@@ -503,7 +545,7 @@ function StickersContent() {
   const handleCloseQR = useCallback(() => {
     // Resume inactivity timer
     resumeInactivity();
-    
+
     setSelectedSlotIndex(null);
     setViewMode("initial");
   }, [resumeInactivity]);
@@ -515,10 +557,10 @@ function StickersContent() {
 
     setSelectedSlotIndex(index);
     setViewMode("editing");
-    
+
     // Use the current imageUrl (which includes any edits) - NOT the original
     const imageUrl = slot.imageUrl;
-    
+
     // If it's already a blob, data URL or base64, use it directly
     if (imageUrl.startsWith("blob:") || imageUrl.startsWith("data:")) {
       setEditorImageSrc(imageUrl);
@@ -526,17 +568,17 @@ function StickersContent() {
       trackEditorOpen();
       return;
     }
-    
+
     // For external URLs, use our proxy to avoid CORS issues with Pintura
     try {
       // Use the proxy endpoint to fetch the external image
       const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
       const response = await fetch(proxyUrl);
-      
+
       if (!response.ok) {
         throw new Error(`Proxy failed: ${response.status}`);
       }
-      
+
       const blob = await response.blob();
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -655,16 +697,16 @@ function StickersContent() {
       console.log("⚠️ Please add at least one sticker before printing.");
       return;
     }
-    
+
     // Track checkout start
     trackCheckoutStart();
-    
+
     setIsPrinting(true);
     try {
       // Generate JPG (no PDF for stickers)
       await generateStickerJPGOnly();
       setIsPrinting(false);
-      
+
       // Generate a fresh UUID for this sticker order and open the payment modal
       setStickerOrderId(crypto.randomUUID());
       setShowPaymentModal(true);
@@ -677,11 +719,11 @@ function StickersContent() {
   // Handle payment success
   const handlePaymentSuccess = async (issuedGiftCard?: IssuedGiftCardData) => {
     console.log("🎯 handlePaymentSuccess called - starting sticker print flow");
-    
+
     // Extract payment info from the gift card data (CardPaymentModal attaches it)
     const paymentInfo: PaymentInfo | undefined = (issuedGiftCard as any)?.paymentInfo;
     console.log("💳 Payment info received:", paymentInfo);
-    
+
     // If a gift card was issued after payment, update our state with the real QR code
     if (issuedGiftCard && issuedGiftCard.storeName) {
       console.log("🎁 Gift card issued after payment:", issuedGiftCard.storeName, "$" + issuedGiftCard.amount);
@@ -699,28 +741,28 @@ function StickersContent() {
         isIssued: true,
       }));
     }
-    
+
     // Track payment success and print start
     const totalAmount = STICKER_SHEET_PRICE + (giftCardData?.amount || 0);
     trackPaymentSuccess({ printType: 'sticker', amount: totalAmount });
     trackPrintStart('sticker');
-    
+
     setIsPrinting(true);
     setPrintStatus('sending');
     setPrintError(null);
-    
+
     // Pause inactivity timer during printing (5 minute timeout)
     pauseForPrinting();
-    
+
     // Create print log for tracking and earnings calculation
     let printLogId: string | null = null;
     if (kioskInfo?.id) {
       try {
         // Use actual payment amount from paymentInfo, or calculate from sticker price + gift card
-        const actualPrice = paymentInfo?.amount !== undefined 
-          ? paymentInfo.amount 
+        const actualPrice = paymentInfo?.amount !== undefined
+          ? paymentInfo.amount
           : (STICKER_SHEET_PRICE + (giftCardData?.amount || 0));
-        
+
         const printLog = await logPrintJob({
           kioskId: kioskInfo.id,
           kioskSessionId: actualKioskSessionId || undefined,
@@ -739,7 +781,7 @@ function StickersContent() {
           paperSize: '8.5x11',
           copies: 1,
         });
-        
+
         if (printLog?.id) {
           printLogId = printLog.id;
           setCurrentPrintLogId(printLog.id);
@@ -750,63 +792,63 @@ function StickersContent() {
         // Continue with printing even if logging fails
       }
     }
-    
+
     try {
       // Generate JPG and print - returns jobId for polling
       console.log("📤 Calling printStickerSheet...");
       const result = await printStickerSheet();
       console.log("📥 printStickerSheet returned:", result);
       const jobId = result?.jobId;
-      
+
       // Update print log to processing status
       if (printLogId) {
         updatePrintLogStatus(printLogId, 'processing');
       }
-      
+
       if (jobId) {
         // Poll for actual print job completion from local agent
         console.log(`🔄 Polling for sticker print job status: ${jobId}`);
         setPrintStatus('printing');
-        
+
         let pollCount = 0;
         const maxPolls = 60; // 2 minutes at 2 second intervals
         let isComplete = false;
-        
+
         const pollInterval = setInterval(async () => {
           if (isComplete) return;
           pollCount++;
-          
+
           try {
             const statusResponse = await fetch(
               `${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/print-jobs/${jobId}`
             );
-            
+
             console.log(`📋 Polling sticker job ${jobId}... (poll ${pollCount}/${maxPolls})`);
-            
+
             if (statusResponse.ok) {
               const statusData = await statusResponse.json();
               const jobStatus = statusData.job?.status;
-              
+
               console.log(`📋 Sticker job ${jobId} status: ${jobStatus}`, statusData);
-              
+
               if (jobStatus === 'completed') {
                 isComplete = true;
                 clearInterval(pollInterval);
                 setPrintStatus('completed');
                 setIsPrinting(false);
-                
+
                 // Update print log to completed
                 if (printLogId) {
                   updatePrintLogStatus(printLogId, 'completed');
                 }
-                
+
                 // Track print completion and end session
                 trackPrintComplete('sticker');
                 endWithPrintedSticker();
-                
+
                 // Resume inactivity timer now that print is complete
                 resumeInactivity();
-                
+
                 // Reset state after 3 seconds
                 setTimeout(() => {
                   setShowPaymentModal(false);
@@ -831,18 +873,18 @@ function StickersContent() {
                 const errorMsg = statusData.job?.error || 'Sticker print job failed';
                 setPrintError(errorMsg);
                 setIsPrinting(false);
-                
+
                 // Update print log to failed
                 if (printLogId) {
                   updatePrintLogStatus(printLogId, 'failed', errorMsg);
                 }
-                
+
                 // Resume inactivity timer after print failure
                 resumeInactivity();
               }
               // If still 'pending' or 'processing', keep polling
             }
-            
+
             // Timeout after max polls
             if (pollCount >= maxPolls && !isComplete) {
               console.log('⏱️ Sticker poll timeout - assuming print completed');
@@ -850,12 +892,12 @@ function StickersContent() {
               clearInterval(pollInterval);
               setPrintStatus('completed');
               setIsPrinting(false);
-              
+
               // Update print log to completed (assume success on timeout)
               if (printLogId) {
                 updatePrintLogStatus(printLogId, 'completed');
               }
-              
+
               // Resume inactivity timer after poll timeout
               resumeInactivity();
             }
@@ -870,17 +912,17 @@ function StickersContent() {
         setTimeout(() => {
           setPrintStatus('completed');
           setIsPrinting(false);
-          
+
           // Update print log to completed (assume success)
           if (printLogId) {
             updatePrintLogStatus(printLogId, 'completed');
           }
-          
+
           // Resume inactivity timer after fallback delay
           resumeInactivity();
         }, 5000);
       }
-      
+
       console.log("✅ Sticker print job sent!", { jobId });
     } catch (error) {
       console.error("❌ Sticker print error:", error);
@@ -888,12 +930,12 @@ function StickersContent() {
       const errorMsg = error instanceof Error ? error.message : 'Print failed';
       setPrintError(errorMsg);
       setIsPrinting(false);
-      
+
       // Update print log to failed
       if (printLogId) {
         updatePrintLogStatus(printLogId, 'failed', errorMsg);
       }
-      
+
       // Resume inactivity timer after print error
       resumeInactivity();
       // Show error in alert for debugging
@@ -933,7 +975,7 @@ function StickersContent() {
           if (slot.imageUrl.startsWith("data:")) {
             return slot.imageUrl;
           }
-          
+
           const response = await fetch(slot.imageUrl);
           const blob = await response.blob();
           return new Promise<string>((resolve) => {
@@ -965,17 +1007,17 @@ function StickersContent() {
     // Draw each sticker on the canvas
     for (let i = 0; i < 6; i++) {
       const [centerX, centerY] = CIRCLE_CENTERS[i];
-      
+
       // Check if this slot is a gift card slot
       const isGiftCardSlot = giftCardData && giftCardSlotIndex === i;
-      
+
       if (isGiftCardSlot && giftCardData) {
         try {
           console.log(`🎁 Drawing gift card in slot ${i + 1}`);
-          
+
           // Get the QR code to use (real if issued, pending otherwise)
           const qrCodeSrc = giftCardData.isIssued ? giftCardData.qrCode : pendingGiftCardQr;
-          
+
           if (qrCodeSrc) {
             // Load QR code image
             const qrImg = new Image();
@@ -984,15 +1026,15 @@ function StickersContent() {
               qrImg.onerror = reject;
               qrImg.src = qrCodeSrc;
             });
-            
+
             // QR code takes 60% of the circle diameter (centered in upper portion)
             const qrSize = CIRCLE_DIAMETER_PX * 0.6;
             const qrX = centerX - qrSize / 2;
             const qrY = centerY - CIRCLE_DIAMETER_PX * 0.35;
-            
+
             ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
           }
-          
+
           // Draw store logo if available (below QR code)
           if (giftCardData.storeLogo) {
             try {
@@ -1003,42 +1045,42 @@ function StickersContent() {
                 logoImg.onerror = () => resolve(); // Continue even if logo fails
                 logoImg.src = giftCardData.storeLogo!;
               });
-              
+
               // Logo is smaller, positioned below QR code
               const logoSize = CIRCLE_DIAMETER_PX * 0.2;
               const logoX = centerX - CIRCLE_DIAMETER_PX * 0.25;
               const logoY = centerY + CIRCLE_DIAMETER_PX * 0.15;
-              
+
               ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
             } catch {
               console.log("Could not load store logo for print");
             }
           }
-          
+
           // Draw store name and amount text
           ctx.fillStyle = "#1f2937";
           ctx.font = "bold 18px Arial, sans-serif";
           ctx.textAlign = "center";
-          
+
           // Amount
           const amountText = `$${giftCardData.amount}`;
           ctx.fillText(amountText, centerX + CIRCLE_DIAMETER_PX * 0.1, centerY + CIRCLE_DIAMETER_PX * 0.25);
-          
+
           // Store name (smaller)
           ctx.font = "14px Arial, sans-serif";
           ctx.fillStyle = "#4b5563";
-          const storeName = giftCardData.storeName.length > 15 
-            ? giftCardData.storeName.substring(0, 15) + "..." 
+          const storeName = giftCardData.storeName.length > 15
+            ? giftCardData.storeName.substring(0, 15) + "..."
             : giftCardData.storeName;
           ctx.fillText(storeName, centerX, centerY + CIRCLE_DIAMETER_PX * 0.38);
-          
+
         } catch (error) {
           console.error(`Error adding gift card to slot ${i + 1}:`, error);
         }
       } else {
         // Regular sticker image
         const imageData = imageBase64Array[i];
-        
+
         if (imageData) {
           try {
             // Load image
@@ -1180,7 +1222,7 @@ function StickersContent() {
 
           // Calculate aspect ratio
           const imgAspect = img.width / img.height;
-          
+
           // Calculate scale factor to fit within 3" circle
           // Both width and height must fit within the 3" diameter
           // Scale based on the larger dimension to ensure both fit
@@ -1354,7 +1396,7 @@ function StickersContent() {
       console.error('❌ Kiosk not configured. Please activate kiosk first.');
       throw new Error('Kiosk not configured. Please contact staff.');
     }
-    
+
     console.log(`🖨️ Generating sticker JPG for kiosk: ${kioskInfo.name || kioskInfo.kioskId}`);
 
     // Generate JPG blob
@@ -1413,7 +1455,7 @@ function StickersContent() {
       <div className="flex-shrink-0 relative overflow-hidden">
         {/* Gradient background */}
         <div className="absolute inset-0 bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600" />
-        
+
         {/* Subtle pattern */}
         <div className="absolute inset-0 opacity-10">
           <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -1425,12 +1467,12 @@ function StickersContent() {
             <rect fill="url(#sticker-dots)" width="100%" height="100%" />
           </svg>
         </div>
-        
+
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             {/* Empty space for alignment */}
             <div className="w-20"></div>
-            
+
             {/* Title */}
             <div className="text-center">
               <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
@@ -1440,7 +1482,7 @@ function StickersContent() {
                 Design your custom sticker sheet
               </p>
             </div>
-            
+
             {/* Price badge */}
             <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-lg">
               <span className="text-white/70 text-xs">Sheet</span>
@@ -1452,7 +1494,7 @@ function StickersContent() {
 
       {/* ==================== MAIN CONTENT ==================== */}
       <div className="flex-1 flex flex-col min-h-0 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 overflow-y-auto scrollbar-hide">
-        
+
         {/* Copy Mode Banner */}
         {copySourceIndex !== null && (
           <div className="flex-shrink-0 mb-3 flex items-center justify-center">
@@ -1485,7 +1527,7 @@ function StickersContent() {
               <div className="relative">
                 {/* Decorative glow */}
                 <div className="absolute -inset-6 bg-gradient-to-r from-pink-200 via-purple-200 to-indigo-200 rounded-3xl blur-2xl opacity-50" />
-                
+
                 <div className="relative bg-white rounded-2xl shadow-2xl p-5 ring-1 ring-gray-100">
                   {/* Make sheet larger on portrait/kiosk displays */}
                   <div className="[&>div]:!w-80 [&>div]:sm:!w-96 [&>div]:lg:!w-[420px]">
@@ -1506,7 +1548,7 @@ function StickersContent() {
                   </div>
                 </div>
               </div>
-              
+
               {/* Side panel with instructions - NOW VISIBLE on all screens, below on mobile */}
               <div className="flex flex-col gap-3 w-full max-w-sm lg:w-72">
                 {/* Progress card - always visible */}
@@ -1516,18 +1558,18 @@ function StickersContent() {
                     <span className="text-lg font-bold text-gray-900">{filledSlotsCount}/6</span>
                   </div>
                   <div className="h-2.5 bg-white rounded-full overflow-hidden shadow-inner">
-                    <div 
+                    <div
                       className="h-full bg-gradient-to-r from-pink-500 to-purple-600 rounded-full transition-all duration-500"
                       style={{ width: `${(filledSlotsCount / 6) * 100}%` }}
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1.5 text-center">
-                    {filledSlotsCount === 0 ? 'Tap a circle to get started!' : 
-                     filledSlotsCount === 6 ? '🎉 Sheet complete!' :
-                     `${6 - filledSlotsCount} more to fill`}
+                    {filledSlotsCount === 0 ? 'Tap a circle to get started!' :
+                      filledSlotsCount === 6 ? '🎉 Sheet complete!' :
+                        `${6 - filledSlotsCount} more to fill`}
                   </p>
                 </div>
-                
+
                 {/* How it works - compact */}
                 <div className="bg-white rounded-xl shadow-md p-3 ring-1 ring-gray-100">
                   <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2 text-sm">
@@ -1674,12 +1716,12 @@ function StickersContent() {
                   </svg>
                 </button>
               </div>
-              
+
               {/* Preset amounts */}
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Select amount</label>
                 <div className="flex gap-2">
-                  {[25, 50, 100].filter(amt => 
+                  {[25, 50, 100].filter(amt =>
                     (!pendingBundleGiftCard.minAmount || amt >= pendingBundleGiftCard.minAmount) &&
                     (!pendingBundleGiftCard.maxAmount || amt <= pendingBundleGiftCard.maxAmount)
                   ).map((amount) => (
@@ -1689,18 +1731,17 @@ function StickersContent() {
                         setPendingBundleAmount(amount);
                         setCustomBundleAmount('');
                       }}
-                      className={`flex-1 px-4 py-3 rounded-xl text-base font-bold transition-all ${
-                        pendingBundleAmount === amount && !customBundleAmount
+                      className={`flex-1 px-4 py-3 rounded-xl text-base font-bold transition-all ${pendingBundleAmount === amount && !customBundleAmount
                           ? 'bg-purple-600 text-white shadow-lg scale-105'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                        }`}
                     >
                       ${amount}
                     </button>
                   ))}
                 </div>
               </div>
-              
+
               {/* Custom amount */}
               <div className="mb-4">
                 <div className="flex items-center gap-2">
@@ -1723,7 +1764,7 @@ function StickersContent() {
                   />
                 </div>
               </div>
-              
+
               {/* Price preview */}
               {pendingBundleAmount > 0 && (
                 <div className="p-3 bg-green-50 rounded-xl mb-4 text-center">
@@ -1733,7 +1774,7 @@ function StickersContent() {
                   <span className="text-gray-400 line-through ml-2">${pendingBundleAmount}</span>
                 </div>
               )}
-              
+
               {/* Add button */}
               <button
                 onClick={() => {
@@ -1750,11 +1791,10 @@ function StickersContent() {
                   }
                 }}
                 disabled={!pendingBundleAmount || pendingBundleAmount < (pendingBundleGiftCard.minAmount || 5) || pendingBundleAmount > (pendingBundleGiftCard.maxAmount || 500)}
-                className={`w-full py-4 rounded-xl text-lg font-bold transition-all ${
-                  pendingBundleAmount && pendingBundleAmount >= (pendingBundleGiftCard.minAmount || 5) && pendingBundleAmount <= (pendingBundleGiftCard.maxAmount || 500)
+                className={`w-full py-4 rounded-xl text-lg font-bold transition-all ${pendingBundleAmount && pendingBundleAmount >= (pendingBundleGiftCard.minAmount || 5) && pendingBundleAmount <= (pendingBundleGiftCard.maxAmount || 500)
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:shadow-xl'
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
+                  }`}
               >
                 Add ${pendingBundleAmount || 0} Gift Card
               </button>
@@ -1789,7 +1829,7 @@ function StickersContent() {
               </div>
               <div className="h-px w-12 sm:w-20 bg-gradient-to-r from-transparent via-purple-200 to-transparent" />
             </div>
-            
+
             {/* Carousel container - fills remaining space */}
             <div className="flex-1 flex flex-col justify-center overflow-hidden">
               <StickerCarousel
@@ -1810,7 +1850,7 @@ function StickersContent() {
           </div>
         )}
       </div>
-      
+
       {/* ==================== TRUST FOOTER ==================== */}
       {(viewMode === "initial" || viewMode === "mode-selection" || viewMode === "upload-qr") && (
         <div className="flex-shrink-0 py-3 border-t border-gray-100 bg-white/50">
@@ -1838,7 +1878,7 @@ function StickersContent() {
       )}
 
       {/* ==================== MODALS ==================== */}
-      
+
       {/* Mode Selector Modal */}
       {viewMode === "mode-selection" && selectedSlotIndex !== null && (
         <StickerSlotModeSelector

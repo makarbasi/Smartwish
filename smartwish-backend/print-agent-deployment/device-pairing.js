@@ -27,7 +27,7 @@ const PAIRING_PORT = 8766;
 export class DevicePairingServer {
   constructor(options = {}) {
     this.port = options.port || PAIRING_PORT;
-    this.onPaired = options.onPaired || (() => {});
+    this.onPaired = options.onPaired || (() => { });
     this.server = null;
     this.pairing = null;
     this.surveillanceManager = options.surveillanceManager || null;
@@ -103,13 +103,13 @@ export class DevicePairingServer {
             try {
               const data = JSON.parse(body);
               const { sessionId, kioskConfig } = data;
-              
+
               if (!sessionId) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'sessionId is required' }));
                 return;
               }
-              
+
               if (this.surveillanceManager) {
                 await this.surveillanceManager.startSessionRecording(sessionId, kioskConfig || {});
                 res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -134,17 +134,48 @@ export class DevicePairingServer {
             try {
               const data = JSON.parse(body);
               const { sessionId } = data;
-              
+
               if (!sessionId) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'sessionId is required' }));
                 return;
               }
-              
+
               if (this.surveillanceManager) {
                 await this.surveillanceManager.stopSessionRecording(sessionId);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: true, message: 'Recording stopped' }));
+              } else {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Surveillance manager not available' }));
+              }
+            } catch (err) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          });
+          return;
+        }
+
+        // POST /session/logs - Save console logs for a session
+        if (req.method === 'POST' && url.pathname === '/session/logs') {
+          let body = '';
+          req.on('data', chunk => body += chunk);
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body);
+              const { sessionId, kioskId, capturedAt, logs } = data;
+
+              if (!sessionId || !logs) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'sessionId and logs are required' }));
+                return;
+              }
+
+              if (this.surveillanceManager) {
+                await this.surveillanceManager.saveConsoleLogs(sessionId, kioskId, capturedAt, logs);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, message: `Saved ${logs.length} console logs` }));
               } else {
                 res.writeHead(503, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Surveillance manager not available' }));
@@ -164,7 +195,7 @@ export class DevicePairingServer {
           req.on('end', async () => {
             try {
               const data = JSON.parse(body);
-              
+
               if (!data.kioskId || !data.apiKey) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Missing kioskId or apiKey' }));
@@ -182,13 +213,13 @@ export class DevicePairingServer {
               };
 
               await this.savePairing(pairing);
-              
+
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ success: true, kioskId: pairing.kioskId }));
 
               // Notify callback
               this.onPaired(pairing);
-              
+
             } catch (err) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Invalid JSON' }));
@@ -241,11 +272,11 @@ export class DevicePairingServer {
     const frontendUrl = baseUrl || 'https://app.smartwish.us';
     const managerUrl = `${frontendUrl}/manager?pair=true&port=${this.port}`;
     console.log(`  🌐 Opening browser to: ${managerUrl}`);
-    
+
     // Open browser based on platform
     const platform = process.platform;
     let command;
-    
+
     if (platform === 'win32') {
       command = `start "" "${managerUrl}"`;
     } else if (platform === 'darwin') {
@@ -253,7 +284,7 @@ export class DevicePairingServer {
     } else {
       command = `xdg-open "${managerUrl}"`;
     }
-    
+
     exec(command, (err) => {
       if (err) {
         console.log(`  ⚠️ Could not open browser automatically`);
@@ -295,7 +326,7 @@ export async function fetchKioskConfig(serverUrl, kioskId, apiKey) {
 
     const kiosks = await response.json();
     const kiosk = kiosks.find(k => k.kioskId === kioskId);
-    
+
     if (!kiosk) {
       throw new Error(`Kiosk ${kioskId} not found`);
     }
