@@ -38,6 +38,11 @@ from functools import partial
 from io import BytesIO
 
 try:
+    # Suppress ultralytics verbose logging (the 'source is missing' warning)
+    import os
+    os.environ.setdefault('YOLO_VERBOSE', 'False')
+    import logging
+    logging.getLogger('ultralytics').setLevel(logging.WARNING)
     from ultralytics import YOLO
 except ImportError:
     print("ERROR: ultralytics not installed. Run: pip install ultralytics")

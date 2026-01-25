@@ -28,19 +28,19 @@ const execAsync = promisify(exec);
 
 const SNMP_OIDS = {
   // Basic status
-  hrPrinterStatus: '1.3.6.1.2.1.25.3.5.1.1.1', 
-  hrPrinterErrorState: '1.3.6.1.2.1.25.3.5.1.2.1', 
-  
+  hrPrinterStatus: '1.3.6.1.2.1.25.3.5.1.1.1',
+  hrPrinterErrorState: '1.3.6.1.2.1.25.3.5.1.2.1',
+
   // Ink/Toner levels
   inkLevel: '1.3.6.1.2.1.43.11.1.1.9',
   inkMax: '1.3.6.1.2.1.43.11.1.1.8',
   inkDesc: '1.3.6.1.2.1.43.11.1.1.6',
-  
+
   // Paper trays
   paperLevel: '1.3.6.1.2.1.43.8.2.1.10',
   paperMax: '1.3.6.1.2.1.43.8.2.1.9',
   paperDesc: '1.3.6.1.2.1.43.8.2.1.18',
-  
+
   // Alerts
   alertCode: '1.3.6.1.2.1.43.18.1.1.7',
   alertDesc: '1.3.6.1.2.1.43.18.1.1.8',
@@ -87,15 +87,15 @@ export class PrinterStatusMonitor {
     this.kioskId = options.kioskId || null;
     this.apiKey = options.apiKey || null;
     this.serverUrl = options.serverUrl || 'https://smartwish.onrender.com';
-    
+
     this.pollInterval = options.pollInterval || 30000; // 30 seconds
     this.reportInterval = options.reportInterval || 60000; // 1 minute
-    
+
     this.lastStatus = null;
     this.lastReportedStatus = null;
     this.pollTimer = null;
     this.reportTimer = null;
-    
+
     // Callbacks
     this.onStatusChange = options.onStatusChange || null;
     this.onError = options.onError || null;
@@ -106,23 +106,23 @@ export class PrinterStatusMonitor {
    */
   start() {
     console.log('  🖨️  [PrinterStatusMonitor] Starting printer monitoring...');
-    
+
     if (this.printerIP) {
       console.log(`  📡 Printer IP: ${this.printerIP}`);
     }
     if (this.printerName) {
       console.log(`  🏷️  Printer Name: ${this.printerName}`);
     }
-    
+
     // Initial status check
     this.checkStatus();
-    
+
     // Start polling
     this.pollTimer = setInterval(() => this.checkStatus(), this.pollInterval);
-    
+
     // Start reporting to server
     this.reportTimer = setInterval(() => this.reportStatus(), this.reportInterval);
-    
+
     // Report initial status after first check
     setTimeout(() => this.reportStatus(), 5000);
   }
@@ -236,6 +236,7 @@ export class PrinterStatusMonitor {
     const status = {
       printerState: 'unknown',
       displayStatus: 'UNKNOWN',
+      snmpSuccess: false, // Track if SNMP actually worked
       flags: {
         lowPaper: false,
         noPaper: false,
@@ -255,7 +256,7 @@ export class PrinterStatusMonitor {
       // 1. GET ALERTS FIRST (Needed for "fake door open" fix)
       const alertCodes = await this.walkSNMPTable(session, SNMP_OIDS.alertCode);
       const alertDescs = await this.walkSNMPTable(session, SNMP_OIDS.alertDesc);
-      
+
       const rawAlerts = [];
       Object.keys(alertCodes).forEach(key => {
         const index = key.split('.').pop();
@@ -276,21 +277,30 @@ export class PrinterStatusMonitor {
         session.get(basicOids, (err, varbinds) => {
           if (err) {
             console.log(`  ⚠️  SNMP basic query failed: ${err.message}`);
-            resolve({ stateVal: 2, errorVal: 0 }); // unknown state
+            resolve({ stateVal: null, errorVal: 0, failed: true }); // Mark as failed
             return;
           }
-          
+
           const stateVal = parseNumber(varbinds[0]?.value || 2);
           const errorVal = parseNumber(varbinds[1]?.value || 0);
-          resolve({ stateVal, errorVal });
+          resolve({ stateVal, errorVal, failed: false });
         });
       });
+
+      // If SNMP completely failed, return null to indicate no connection
+      if (basicStatus.failed) {
+        session.close();
+        return null; // SNMP not working - don't pretend printer is online
+      }
+
+      // SNMP succeeded
+      status.snmpSuccess = true;
 
       const { stateVal, errorVal } = basicStatus;
       status.printerState = PRINTER_STATUS[stateVal] || 'unknown';
 
       // Check for paper-related alerts (for "fake door open" fix)
-      const hasPaperAlert = rawAlerts.some(a => 
+      const hasPaperAlert = rawAlerts.some(a =>
         a.toLowerCase().includes('empty') || a.toLowerCase().includes('load')
       );
 
@@ -354,7 +364,7 @@ export class PrinterStatusMonitor {
         const val = parseNumber(inkLevels[key]);
         const max = maxKey ? parseNumber(inkMax[maxKey]) : 100;
         const name = descKey ? cleanString(inkDesc[descKey]) : "Supply";
-        
+
         let percent = 0;
         let state = 'unknown';
         if (max > 0 && val >= 0) {
@@ -373,9 +383,9 @@ export class PrinterStatusMonitor {
         else if (nameLower.includes('magenta')) color = 'magenta';
         else if (nameLower.includes('yellow')) color = 'yellow';
 
-        status.ink[color] = { 
-          level: percent, 
-          state, 
+        status.ink[color] = {
+          level: percent,
+          state,
           rawValue: val,
           description: name,
         };
@@ -404,11 +414,11 @@ export class PrinterStatusMonitor {
       const seenTrays = new Set();
 
       Object.keys(paperLevels).forEach((key) => {
-        const suffix = key.substring(SNMP_OIDS.paperLevel.length); 
+        const suffix = key.substring(SNMP_OIDS.paperLevel.length);
         const descOid = SNMP_OIDS.paperDesc + suffix;
         const val = parseNumber(paperLevels[key]);
         const name = paperDesc[descOid] ? cleanString(paperDesc[descOid]) : `Input ${suffix}`;
-        
+
         // Filter out manual feed slots
         const nameLower = name.toLowerCase();
         if (nameLower.includes('manual') || nameLower.includes('bypass')) {
@@ -418,20 +428,20 @@ export class PrinterStatusMonitor {
         let paperState = "unknown";
         if (val === -3 || val > 0) paperState = "ok";
         else if (val === 0) paperState = "empty";
-        
+
         // De-duplicate trays
         const uniqueId = `${name}-${paperState}`;
         if (!seenTrays.has(uniqueId)) {
           seenTrays.add(uniqueId);
-          
+
           // Extract tray number from name or use index
           const trayMatch = name.match(/tray\s*(\d+)/i);
           const trayNum = trayMatch ? parseInt(trayMatch[1], 10) : seenTrays.size;
           const trayName = `tray${trayNum}`;
 
-          status.paper[trayName] = { 
-            description: name, 
-            state: paperState, 
+          status.paper[trayName] = {
+            description: name,
+            state: paperState,
             rawValue: val,
             level: val === -3 ? -1 : (val > 0 ? 100 : 0), // -3 means "present but unknown level"
           };
@@ -453,7 +463,7 @@ export class PrinterStatusMonitor {
     } catch (e) {
       console.log(`  ⚠️  SNMP error: ${e.message}`);
       session.close();
-      return status; // Return partial status
+      return null; // Return null on failure - don't pretend printer is online
     }
   }
 
@@ -463,7 +473,7 @@ export class PrinterStatusMonitor {
   walkSNMPTable(session, baseOid) {
     return new Promise((resolve) => {
       const results = {};
-      
+
       session.subtree(baseOid, (varbinds) => {
         for (const varbind of varbinds) {
           if (!snmp.isVarbindError(varbind)) {
@@ -492,7 +502,7 @@ export class PrinterStatusMonitor {
       // Get print jobs
       const jobsCmd = `powershell -Command "Get-PrintJob -PrinterName '${this.printerName}' | Select-Object Id, JobStatus, DocumentName, Size, SubmittedTime | ConvertTo-Json"`;
       const { stdout: jobsOutput } = await execAsync(jobsCmd);
-      
+
       let jobs = [];
       if (jobsOutput.trim()) {
         const parsed = JSON.parse(jobsOutput);
@@ -502,16 +512,16 @@ export class PrinterStatusMonitor {
       // Get printer status
       const statusCmd = `powershell -Command "Get-Printer -Name '${this.printerName}' | Select-Object PrinterStatus, JobCount | ConvertTo-Json"`;
       const { stdout: statusOutput } = await execAsync(statusCmd);
-      
+
       let printerInfo = { PrinterStatus: 0, JobCount: 0 };
       if (statusOutput.trim()) {
         printerInfo = JSON.parse(statusOutput);
       }
 
       // Check for error jobs
-      const errorJobs = jobs.filter(j => 
+      const errorJobs = jobs.filter(j =>
         j.JobStatus && (
-          j.JobStatus.includes('Error') || 
+          j.JobStatus.includes('Error') ||
           j.JobStatus.includes('Paused') ||
           j.JobStatus.includes('Offline')
         )
@@ -617,19 +627,19 @@ export class PrinterStatusMonitor {
     const online = status.online ? '🟢' : '🔴';
     const inkSummary = Object.entries(status.ink || {})
       .map(([color, info]) => {
-        const icon = info.state === 'empty' || info.state === 'critical' ? '🔴' : 
-                     info.state === 'low' ? '🟡' : 
-                     info.state === 'unknown' ? '⚪' : '🟢';
+        const icon = info.state === 'empty' || info.state === 'critical' ? '🔴' :
+          info.state === 'low' ? '🟡' :
+            info.state === 'unknown' ? '⚪' : '🟢';
         const display = info.display || (info.level >= 0 ? `${info.level}%` : '?');
         return `${icon}${color[0].toUpperCase()}:${display}`;
       })
       .join(' ');
-    
+
     const paperSummary = Object.entries(status.paper || {})
       .map(([tray, info]) => {
-        const icon = info.state === 'empty' ? '🔴' : 
-                     info.state === 'low' || info.state === 'critical' ? '🟡' : 
-                     info.state === 'unknown' || info.state === 'unavailable' ? '⚪' : '🟢';
+        const icon = info.state === 'empty' ? '🔴' :
+          info.state === 'low' || info.state === 'critical' ? '🟡' :
+            info.state === 'unknown' || info.state === 'unavailable' ? '⚪' : '🟢';
         // Show the display value which now includes better descriptions
         return `${icon}${tray}:${info.display || '?'}`;
       })
@@ -639,7 +649,7 @@ export class PrinterStatusMonitor {
     const warnCount = status.warnings?.length || 0;
 
     console.log(`  🖨️  [Status] ${online} ${status.printerState} | Ink: ${inkSummary || 'N/A'} | Paper: ${paperSummary || 'N/A'} | Errors: ${errCount}, Warnings: ${warnCount}`);
-    
+
     // Log any errors or warnings
     if (errCount > 0) {
       status.errors.forEach(err => console.log(`     ❌ ${err.message}`));
@@ -744,7 +754,7 @@ export class MultiPrinterMonitor {
     this.printers = options.printers || [];
     this.pollInterval = options.pollInterval || 30000;
     this.reportInterval = options.reportInterval || 60000;
-    
+
     this.monitors = new Map(); // PrinterStatusMonitor per printer
     this.reportTimer = null;
   }
@@ -754,7 +764,7 @@ export class MultiPrinterMonitor {
    */
   async start() {
     console.log(`  🖨️  [MultiPrinterMonitor] Starting monitoring for ${this.printers.length} printer(s)...`);
-    
+
     for (const printer of this.printers) {
       const monitor = new PrinterStatusMonitor({
         printerIP: printer.ipAddress || null,
@@ -768,18 +778,18 @@ export class MultiPrinterMonitor {
           console.log(`  🖨️  [${printer.name}] Status changed: ${status.online ? 'online' : 'offline'}`);
         },
       });
-      
+
       // Store printer ID with the monitor
       monitor.printerId = printer.id;
       monitor.printerDisplayName = printer.name;
-      
+
       this.monitors.set(printer.id, monitor);
       monitor.start();
     }
-    
+
     // Start periodic reporting to server
     this.reportTimer = setInterval(() => this.reportAllStatuses(), this.reportInterval);
-    
+
     // Initial report after a short delay
     setTimeout(() => this.reportAllStatuses(), 5000);
   }
@@ -792,12 +802,12 @@ export class MultiPrinterMonitor {
       clearInterval(this.reportTimer);
       this.reportTimer = null;
     }
-    
+
     for (const monitor of this.monitors.values()) {
       monitor.stop();
     }
     this.monitors.clear();
-    
+
     console.log('  🖨️  [MultiPrinterMonitor] Stopped');
   }
 
@@ -806,11 +816,11 @@ export class MultiPrinterMonitor {
    */
   async reportAllStatuses() {
     const statuses = [];
-    
+
     for (const [printerId, monitor] of this.monitors) {
       const status = monitor.getStatus();
       if (!status) continue;
-      
+
       statuses.push({
         printerId,
         online: status.online,
@@ -823,11 +833,11 @@ export class MultiPrinterMonitor {
         fullStatus: status,
       });
     }
-    
+
     if (statuses.length === 0) {
       return;
     }
-    
+
     try {
       const response = await fetch(`${this.serverUrl}/local-agent/printer-status`, {
         method: 'PUT',
@@ -840,7 +850,7 @@ export class MultiPrinterMonitor {
           printers: statuses,
         }),
       });
-      
+
       if (response.ok) {
         console.log(`  📡 [MultiPrinterMonitor] Reported ${statuses.length} printer status(es)`);
       } else if (response.status === 404) {
