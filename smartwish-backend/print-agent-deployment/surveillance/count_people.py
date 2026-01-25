@@ -497,8 +497,9 @@ class WebSocketFrameStreamer:
         print(f"  🔌 Connecting to WebSocket: {self.ws_url}")
         
         # Create WebSocket connection
+        # Increased timeout to 30s to handle Render.com cold starts
         self.ws = websocket.WebSocket()
-        self.ws.connect(self.ws_url, timeout=10)
+        self.ws.connect(self.ws_url, timeout=30)
         self.connected = True
         print(f"  ✅ WebSocket connected")
         
@@ -512,7 +513,8 @@ class WebSocketFrameStreamer:
         })
         self.ws.send(auth_message)
         
-        # Wait for auth response
+        # Wait for auth response (30s timeout for cold start)
+        self.ws.settimeout(30)
         response = self.ws.recv()
         response_data = json.loads(response)
         
@@ -712,8 +714,9 @@ class ScreenFrameStreamer:
         print(f"  🖥️  Connecting to screen WebSocket: {self.ws_url}")
         
         # Create WebSocket connection
+        # Increased timeout to 30s to handle Render.com cold starts
         self.ws = websocket.WebSocket()
-        self.ws.connect(self.ws_url, timeout=10)
+        self.ws.connect(self.ws_url, timeout=30)
         self.connected = True
         print(f"  ✅ Screen WebSocket connected")
         
@@ -727,7 +730,8 @@ class ScreenFrameStreamer:
         })
         self.ws.send(auth_message)
         
-        # Wait for auth response
+        # Wait for auth response (30s timeout for cold start)
+        self.ws.settimeout(30)
         response = self.ws.recv()
         response_data = json.loads(response)
         
