@@ -5,9 +5,14 @@
  * them to the frontend public folder for display on the kiosk.
  */
 
-const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Paths
 const SCRAPER_DIR = path.join(__dirname, 'events-scraper');
@@ -58,7 +63,7 @@ function copyDirectory(src, dest) {
 function runScraper() {
   return new Promise((resolve, reject) => {
     log('🚀 Starting Eventbrite scraper...');
-    
+
     const python = spawn('python', [PYTHON_SCRIPT], {
       cwd: SCRAPER_DIR,
       env: process.env
@@ -102,35 +107,35 @@ function runScraper() {
 function deployToFrontend() {
   try {
     log('📦 Deploying content to frontend...');
-    
+
     // Check if required files exist
     const htmlFile = path.join(SCRAPER_DIR, 'index.html');
     const dataFile = path.join(SCRAPER_DIR, 'event_data.js');
     const imagesDir = path.join(SCRAPER_DIR, 'images');
-    
+
     if (!fs.existsSync(htmlFile)) {
       throw new Error('index.html not found');
     }
     if (!fs.existsSync(dataFile)) {
       throw new Error('event_data.js not found');
     }
-    
+
     // Create public events directory if it doesn't exist
     if (!fs.existsSync(FRONTEND_PUBLIC_EVENTS)) {
       fs.mkdirSync(FRONTEND_PUBLIC_EVENTS, { recursive: true });
     }
-    
+
     // Copy files
     fs.copyFileSync(htmlFile, path.join(FRONTEND_PUBLIC_EVENTS, 'index.html'));
     fs.copyFileSync(dataFile, path.join(FRONTEND_PUBLIC_EVENTS, 'event_data.js'));
-    
+
     // Copy images directory if it exists
     if (fs.existsSync(imagesDir)) {
       const destImagesDir = path.join(FRONTEND_PUBLIC_EVENTS, 'images');
       copyDirectory(imagesDir, destImagesDir);
       log(`✅ Copied images directory (${fs.readdirSync(imagesDir).length} files)`);
     }
-    
+
     log('✅ Content deployed successfully');
   } catch (error) {
     log(`❌ Deployment failed: ${error.message}`);
@@ -146,13 +151,13 @@ async function scrapeAndDeploy() {
     log('═══════════════════════════════════════════');
     log('Starting Events Scraper Workflow');
     log('═══════════════════════════════════════════');
-    
+
     // Run scraper
     await runScraper();
-    
+
     // Deploy to frontend
     deployToFrontend();
-    
+
     log('═══════════════════════════════════════════');
     log('✅ Workflow completed successfully!');
     log('═══════════════════════════════════════════');
@@ -169,14 +174,14 @@ async function scrapeAndDeploy() {
 function getMillisecondsUntilNextRun() {
   const now = new Date();
   const next = new Date();
-  
+
   next.setHours(SCRAPE_TIME.hour, SCRAPE_TIME.minute, 0, 0);
-  
+
   // If the time has already passed today, schedule for tomorrow
   if (next <= now) {
     next.setDate(next.getDate() + 1);
   }
-  
+
   return next - now;
 }
 
@@ -186,9 +191,9 @@ function getMillisecondsUntilNextRun() {
 function scheduleDailyScraping() {
   const msUntilNext = getMillisecondsUntilNextRun();
   const nextRun = new Date(Date.now() + msUntilNext);
-  
+
   log(`📅 Next scrape scheduled for: ${nextRun.toLocaleString()}`);
-  
+
   setTimeout(() => {
     scrapeAndDeploy();
     // Schedule next run
@@ -201,35 +206,36 @@ function scheduleDailyScraping() {
  */
 function main() {
   log('🎬 Events Scraper Manager started');
-  
+
   // Check if Python is available
   const pythonCheck = spawn('python', ['--version']);
-  
+
   pythonCheck.on('error', () => {
     log('❌ Python not found. Please install Python to run the scraper.');
     process.exit(1);
   });
-  
+
   pythonCheck.on('close', (code) => {
     if (code === 0) {
       log('✅ Python is available');
-      
+
       // Run immediately on startup (comment out if you don't want initial run)
       log('🏃 Running initial scrape...');
       scrapeAndDeploy();
-      
+
       // Schedule daily runs
       scheduleDailyScraping();
     }
   });
 }
 
-// Run if called directly
-if (require.main === module) {
+// Run if called directly (ES module equivalent of require.main === module)
+const isMainModule = import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
+if (isMainModule) {
   main();
 }
 
-module.exports = {
+export {
   runScraper,
   deployToFrontend,
   scrapeAndDeploy

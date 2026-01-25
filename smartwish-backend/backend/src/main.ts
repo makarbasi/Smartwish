@@ -40,7 +40,7 @@ async function bootstrap() {
       res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
       return next();
     }
-    
+
     helmet.default({
       contentSecurityPolicy: {
         directives: {
@@ -68,10 +68,10 @@ async function bootstrap() {
 
   // Check if we're in development mode
   const isDev = process.env.NODE_ENV !== 'production';
-  
+
   // Trust proxy for Render/cloud deployments (to get real client IP from X-Forwarded-For)
   app.set('trust proxy', 1);
-  
+
   // Helper to get real client IP (works behind proxies like Render, Cloudflare, etc.)
   const getClientIp = (req: any): string => {
     // Check X-Forwarded-For header (set by proxies)
@@ -88,7 +88,7 @@ async function bootstrap() {
     // Fall back to direct connection IP
     return req.ip || req.connection?.remoteAddress || 'unknown';
   };
-  
+
   // Rate limiting - DISABLED in development, configurable in production
   // Increased to 3000 requests/minute to accommodate:
   // - Multiple browser tabs
@@ -105,40 +105,40 @@ async function bootstrap() {
     skip: (req: any) => {
       // Skip rate limiting in development
       if (isDev) return true;
-      
+
       const path = req.path || '';
-      
+
       // Skip rate limiting for authenticated admin endpoints
       // These requests come from the frontend server (Vercel/Netlify) which has limited IPs
       // Authentication is handled by JWT tokens, not IP-based rate limiting
       if (path.startsWith('/admin/')) {
         return true;
       }
-      
+
       // Skip rate limiting for surveillance endpoints (high-frequency frame uploads)
       // These endpoints are authenticated via API key, not IP-based
-      if (path.startsWith('/surveillance/frame') || 
-          path.startsWith('/surveillance/stream') ||
-          path.startsWith('/surveillance/detection-image')) {
+      if (path.startsWith('/surveillance/frame') ||
+        path.startsWith('/surveillance/stream') ||
+        path.startsWith('/surveillance/detection-image')) {
         return true;
       }
-      
+
       // Skip rate limiting for print agent endpoints (frequent status updates)
       if (path.startsWith('/kiosk/printer-status') ||
-          path.startsWith('/local-agent/printer-status')) {
+        path.startsWith('/local-agent/printer-status')) {
         return true;
       }
-      
+
       // Skip rate limiting for SSE/streaming endpoints
       if (path.includes('/stream') || path.includes('/live')) {
         return true;
       }
-      
+
       // Skip rate limiting for kiosk config endpoints (authenticated via API key)
       if (path.startsWith('/kiosk/config')) {
         return true;
       }
-      
+
       return false;
     },
     keyGenerator: getClientIp,
@@ -154,7 +154,7 @@ async function bootstrap() {
     skipSuccessfulRequests: true,
     keyGenerator: getClientIp,
   });
-  
+
   console.log(`Login rate limit: ${isDev ? '50 requests per minute (dev mode)' : '10 requests per 15 minutes (production)'}`);
 
   // Configure CORS FIRST (before rate limiting so 429 responses include CORS headers)
@@ -175,13 +175,25 @@ async function bootstrap() {
       callback(null, true);
       return;
     }
-    
+
     // Check static allowed origins
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
     }
-    
+
+    // Allow Supabase storage origins (for surveillance image access)
+    if (origin.endsWith('.supabase.co') || origin.includes('supabase.co')) {
+      callback(null, true);
+      return;
+    }
+
+    // Allow Render.com origins (dynamic preview/deploy URLs)
+    if (origin.endsWith('.onrender.com')) {
+      callback(null, true);
+      return;
+    }
+
     // In development, also allow local network IPs (192.168.x.x, 10.x.x.x, etc.)
     if (isDev) {
       const localNetworkPattern = /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|localhost)(:\d+)?$/;
@@ -190,7 +202,10 @@ async function bootstrap() {
         return;
       }
     }
-    
+
+    // Log rejected origin for debugging in production
+    console.warn(`[CORS] Rejected origin: ${origin}`);
+
     // Reject other origins
     callback(new Error('Not allowed by CORS'));
   };
@@ -316,14 +331,14 @@ async function bootstrap() {
 
   // Configure raw body parser for surveillance endpoints FIRST (before JSON parser)
   // This captures the raw bytes for binary uploads (images, video frames)
-  expressApp.use('/surveillance/frame', bodyParser.raw({ 
+  expressApp.use('/surveillance/frame', bodyParser.raw({
     type: ['image/jpeg', 'image/png', 'application/octet-stream'],
     limit: '10mb',
     verify: (req: any, res, buf) => {
       req.rawBody = buf; // Store raw body for NestJS access
     }
   }));
-  expressApp.use('/surveillance/detection-image', bodyParser.raw({ 
+  expressApp.use('/surveillance/detection-image', bodyParser.raw({
     type: ['image/jpeg', 'image/png', 'application/octet-stream'],
     limit: '10mb',
     verify: (req: any, res, buf) => {
