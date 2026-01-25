@@ -8,7 +8,7 @@ import { CreateDetectionDto } from './dto/create-detection.dto';
 import { QueryDetectionsDto, DeleteDetectionsDto } from './dto/query-detections.dto';
 import { SupabaseStorageService } from '../saved-designs/supabase-storage.service';
 
-// In-memory storage for live frames (per kiosk)
+// In-memory storage for live frames (per kiosk) - MEMORY OPTIMIZED
 interface LiveFrame {
   data: Buffer;
   timestamp: Date;
@@ -17,16 +17,28 @@ interface LiveFrame {
 
 const liveFrames = new Map<string, LiveFrame>();
 
-// Clean up old frames every 30 seconds
+// Memory limits - prevent RAM exhaustion
+const MAX_KIOSKS_WITH_FRAMES = 10;      // Max kiosks with frames in memory
+const MAX_FRAME_SIZE_BYTES = 100 * 1024; // 100KB max per frame (will reject larger)
+const FRAME_STALE_MS = 15000;            // 15 seconds - frames older than this are stale
+const CLEANUP_INTERVAL_MS = 10000;       // Check every 10 seconds
+
+// Clean up old frames more aggressively to reduce memory
 setInterval(() => {
   const now = Date.now();
+  let removed = 0;
   for (const [kioskId, frame] of liveFrames.entries()) {
-    // Remove frames older than 60 seconds
-    if (now - frame.timestamp.getTime() > 60000) {
+    // Remove frames older than 15 seconds (more aggressive than before)
+    if (now - frame.timestamp.getTime() > FRAME_STALE_MS) {
       liveFrames.delete(kioskId);
+      removed++;
     }
   }
-}, 30000);
+  if (removed > 0) {
+    console.log(`[Surveillance] 🧹 Cleaned up ${removed} stale frame(s), ${liveFrames.size} kiosks active`);
+  }
+}, CLEANUP_INTERVAL_MS);
+
 
 @Injectable()
 export class SurveillanceService {
@@ -38,7 +50,7 @@ export class SurveillanceService {
     @InjectRepository(KioskConfig)
     private readonly kioskRepo: Repository<KioskConfig>,
     private readonly storageService: SupabaseStorageService,
-  ) {}
+  ) { }
 
   /**
    * Validate kiosk exists and API key matches
@@ -65,10 +77,10 @@ export class SurveillanceService {
     });
 
     const saved = await this.detectionRepo.save(detection);
-    
+
     // Update daily stats (trigger in DB handles this, but we can also do it here for reliability)
     await this.updateDailyStats(dto.kioskId, detection.detectedAt, dto.wasCounted ?? false);
-    
+
     return saved;
   }
 
@@ -90,7 +102,7 @@ export class SurveillanceService {
     }));
 
     await this.detectionRepo.save(detections);
-    
+
     return { created: detections.length };
   }
 
@@ -119,10 +131,10 @@ export class SurveillanceService {
       if (wasCounted) {
         stats.totalCounted += 1;
       }
-      
+
       const hourKey = hour.toString();
       stats.hourlyCounts[hourKey] = (stats.hourlyCounts[hourKey] || 0) + 1;
-      
+
       // Recalculate peak hour
       let maxCount = 0;
       let peakHour = 0;
@@ -306,7 +318,7 @@ export class SurveillanceService {
    */
   async deleteAllDetections(kioskId: string): Promise<{ deleted: number }> {
     const result = await this.detectionRepo.delete({ kioskId });
-    
+
     // Also delete daily stats
     await this.statsRepo.delete({ kioskId });
 
@@ -347,7 +359,7 @@ export class SurveillanceService {
         // Update counts
         stat.totalDetected = parseInt(counts.total, 10);
         stat.totalCounted = parseInt(counts.counted || '0', 10);
-        
+
         // Recalculate hourly counts
         const hourlyRaw = await this.detectionRepo
           .createQueryBuilder('d')
@@ -396,8 +408,32 @@ export class SurveillanceService {
   /**
    * Store a live frame from the kiosk
    * Called by the local surveillance script to relay frames through the server
+   * Memory-optimized: enforces size limits and max kiosk count
    */
   async storeLiveFrame(kioskId: string, frameData: Buffer, contentType: string = 'image/jpeg'): Promise<void> {
+    // Reject frames that are too large to prevent memory issues
+    if (frameData.length > MAX_FRAME_SIZE_BYTES) {
+      console.warn(`[Surveillance] ⚠️ Rejecting oversized frame from ${kioskId}: ${Math.round(frameData.length / 1024)}KB > ${Math.round(MAX_FRAME_SIZE_BYTES / 1024)}KB limit`);
+      return; // Silently reject - don't throw as it may break the kiosk
+    }
+
+    // If this kiosk doesn't have a frame yet and we're at capacity, 
+    // remove the oldest frame to make room
+    if (!liveFrames.has(kioskId) && liveFrames.size >= MAX_KIOSKS_WITH_FRAMES) {
+      let oldestKiosk: string | null = null;
+      let oldestTime = Date.now();
+      for (const [k, f] of liveFrames.entries()) {
+        if (f.timestamp.getTime() < oldestTime) {
+          oldestTime = f.timestamp.getTime();
+          oldestKiosk = k;
+        }
+      }
+      if (oldestKiosk) {
+        liveFrames.delete(oldestKiosk);
+        console.log(`[Surveillance] 🔄 Evicted oldest frame from ${oldestKiosk} to make room for ${kioskId}`);
+      }
+    }
+
     liveFrames.set(kioskId, {
       data: frameData,
       timestamp: new Date(),
@@ -407,7 +443,7 @@ export class SurveillanceService {
 
   /**
    * Get the latest live frame for a kiosk
-   * Returns null if no frame available or frame is stale (>10 seconds old)
+   * Returns null if no frame available or frame is stale
    */
   getLiveFrame(kioskId: string): { data: Buffer; contentType: string; timestamp: Date } | null {
     const frame = liveFrames.get(kioskId);
@@ -415,9 +451,9 @@ export class SurveillanceService {
       return null;
     }
 
-    // Check if frame is stale (older than 10 seconds)
+    // Check if frame is stale
     const age = Date.now() - frame.timestamp.getTime();
-    if (age > 10000) {
+    if (age > FRAME_STALE_MS) {
       return null; // Frame too old, kiosk might be offline
     }
 
@@ -430,7 +466,7 @@ export class SurveillanceService {
   isLiveStreamActive(kioskId: string): boolean {
     const frame = liveFrames.get(kioskId);
     if (!frame) return false;
-    
+
     // Active if frame is less than 10 seconds old
     return (Date.now() - frame.timestamp.getTime()) < 10000;
   }
@@ -462,7 +498,7 @@ export class SurveillanceService {
         filename,
         'image/jpeg',
       );
-      
+
       console.log(`[Surveillance] 📸 Uploaded detection image: ${publicUrl}`);
       return publicUrl;
     } catch (error) {
@@ -513,10 +549,10 @@ export class SurveillanceService {
     });
 
     const saved = await this.detectionRepo.save(detection);
-    
+
     // Update daily stats
     await this.updateDailyStats(dto.kioskId, detection.detectedAt, dto.wasCounted ?? false);
-    
+
     return saved;
   }
 }

@@ -54,8 +54,21 @@ class AssetSyncService {
 
     /**
      * Initialize the sync service with kiosk ID
+     * Safe to call multiple times - will skip if already initialized for same kiosk
      */
     async initialize(kioskId: string): Promise<void> {
+        // Skip if already initialized for this kiosk
+        if (this.kioskId === kioskId && this.wsConnection) {
+            console.log(`[AssetSyncService] Already initialized for kiosk: ${kioskId}, skipping`);
+            return;
+        }
+
+        // If changing kiosk, cleanup first
+        if (this.kioskId && this.kioskId !== kioskId) {
+            console.log(`[AssetSyncService] Switching from ${this.kioskId} to ${kioskId}`);
+            this.destroy();
+        }
+
         this.kioskId = kioskId;
         console.log(`[AssetSyncService] Initialized for kiosk: ${kioskId}`);
 
@@ -406,15 +419,24 @@ class AssetSyncService {
             return;
         }
 
-        const wsUrl = `${wsBase}/ws/kiosk/${this.kioskId}`;
+        // Connect to simple path and authenticate with kioskId in message
+        const wsUrl = `${wsBase}/ws/kiosk`;
 
         try {
             console.log(`[AssetSyncService] Connecting to WebSocket: ${wsUrl}`);
             this.wsConnection = new WebSocket(wsUrl);
 
             this.wsConnection.onopen = () => {
-                console.log('[AssetSyncService] WebSocket connected');
+                console.log('[AssetSyncService] WebSocket connected, sending auth...');
                 this.wsRetryCount = 0; // Reset retry counter on successful connection
+
+                // Send auth message with kioskId
+                if (this.wsConnection && this.wsConnection.readyState === WebSocket.OPEN) {
+                    this.wsConnection.send(JSON.stringify({
+                        type: 'auth',
+                        kioskId: this.kioskId,
+                    }));
+                }
             };
 
             this.wsConnection.onmessage = (event) => {

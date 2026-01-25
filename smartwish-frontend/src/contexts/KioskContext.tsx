@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, KioskConfigRow } from '@/lib/supabase';
 import { cachedFetch, fetchWithRetry, resetBackoff, getBackoffDelay } from '@/utils/requestUtils';
+import { assetSyncService } from '@/services/AssetSyncService';
 
 // ==================== Types ====================
 
@@ -254,10 +255,10 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Track if we've already fetched config for a specific kioskId to prevent duplicates
   const fetchedKioskIdRef = useRef<string | null>(null);
-  
+
   // OPTIMIZATION: Skip kiosk initialization on admin/manager pages to prevent unnecessary API calls
   const [shouldInitialize, setShouldInitialize] = useState(false);
-  
+
   // Check if we're on an admin or manager page (these don't need kiosk functionality)
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -274,10 +275,10 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchConfig = useCallback(async (id: string): Promise<KioskInfo | null> => {
     const url = `${getApiBase()}/kiosk/config/${id}`;
     const cacheKey = `kiosk-config:${id}`;
-    
+
     try {
       console.log(`[KioskContext] Fetching config from: ${url}`);
-      
+
       // Use cached fetch with 60-second TTL
       // Config rarely changes and we have realtime subscriptions for updates
       const data = await cachedFetch(
@@ -308,7 +309,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       console.log('[KioskContext] ✅ Config fetched successfully:', data.kioskId, data.name);
       resetBackoff(cacheKey);
-      
+
       return {
         id: data.id,
         kioskId: data.kioskId,
@@ -345,16 +346,16 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         (payload) => {
           const newData = payload.new as KioskConfigRow;
           const newConfig = newData.config as Record<string, unknown> || {};
-          
+
           // Check if this is a meaningful update (not just heartbeat/printerStatus)
           // These fields are updated frequently and don't require UI re-render
           const ignoredFields = ['lastHeartbeat', 'printerStatus'];
-          
+
           setKioskInfo((prev) => {
             if (!prev) return prev;
-            
+
             const prevConfig = prev.config as Record<string, unknown> || {};
-            
+
             // Compare configs excluding ignored fields
             const prevMeaningful = { ...prevConfig };
             const newMeaningful = { ...newConfig };
@@ -362,21 +363,21 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               delete prevMeaningful[field];
               delete newMeaningful[field];
             });
-            
+
             // Also check top-level fields
-            const topLevelChanged = 
+            const topLevelChanged =
               prev.name !== newData.name ||
               prev.storeId !== newData.store_id ||
               prev.version !== newData.version;
-            
+
             const configChanged = JSON.stringify(prevMeaningful) !== JSON.stringify(newMeaningful);
-            
+
             if (!topLevelChanged && !configChanged) {
               // Only heartbeat/printerStatus changed - skip update
               console.log('[KioskContext] Realtime: ignoring heartbeat/status-only update');
               return prev;
             }
-            
+
             console.log('[KioskContext] Realtime: meaningful config update detected');
             const updated: KioskInfo = {
               ...prev,
@@ -413,10 +414,10 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setLoading(false);
       return;
     }
-    
+
     const initializeKiosk = async () => {
       console.log('[KioskContext] 🚀 Initializing...');
-      
+
       // Try to get kiosk from local print agent pairing server
       // This ensures the browser syncs with whatever kiosk the print agent is configured for
       try {
@@ -425,20 +426,20 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const response = await fetch(`http://localhost:${localPairingPort}/pairing`, {
           signal: AbortSignal.timeout(2000), // 2 second timeout
         });
-        
+
         if (response.ok) {
           const pairing = await response.json();
           console.log('[KioskContext] Pairing response:', pairing);
           if (pairing && pairing.kioskId) {
             console.log(`[KioskContext] 🔗 Found local print agent pairing: ${pairing.kioskId} (${pairing.kioskName || 'unnamed'})`);
-            
+
             // Check if this is different from what we have stored
             const storedId = getStoredKioskId();
             if (storedId !== pairing.kioskId) {
               console.log(`[KioskContext] 📝 Syncing localStorage with local print agent (was: ${storedId || 'none'})`);
               setStoredKioskId(pairing.kioskId);
             }
-            
+
             setKioskId(pairing.kioskId);
             setLoading(false);
             return; // Successfully got kiosk from local pairing
@@ -452,7 +453,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Local pairing server not available - this is normal if print agent isn't running
         console.log('[KioskContext] ℹ️ Local print agent not detected, using localStorage. Error:', err);
       }
-      
+
       // Fall back to localStorage
       const storedId = getStoredKioskId();
       console.log('[KioskContext] Falling back to localStorage, stored ID:', storedId);
@@ -467,7 +468,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       setLoading(false);
     };
-    
+
     initializeKiosk();
   }, [shouldInitialize]);
 
@@ -517,20 +518,20 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Send heartbeat when kiosk is activated (with rate limit handling)
   const sendHeartbeat = useCallback(async (id: string) => {
     const cacheKey = `heartbeat:${id}`;
-    
+
     try {
       const response = await fetch('/api/kiosk/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kioskId: id }),
       });
-      
+
       if (response.status === 429) {
         // Rate limited - skip this heartbeat silently, will retry next interval
         console.log('[KioskContext] ⚠️ Heartbeat rate limited, will retry next interval');
         return;
       }
-      
+
       if (!response.ok) {
         console.error('[KioskContext] Heartbeat failed:', response.status);
       } else {
@@ -555,7 +556,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (kioskId && isActivated && shouldInitialize) {
       // Send initial heartbeat immediately
       sendHeartbeat(kioskId);
-      
+
       // Then send heartbeat every 60 seconds (increased from 30s to reduce request volume)
       // Heartbeat is mainly for "online" status which doesn't need frequent updates
       heartbeatIntervalRef.current = setInterval(() => {
@@ -584,6 +585,14 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [unsubscribeFromUpdates]);
 
+  // Initialize AssetSyncService when kiosk is activated
+  useEffect(() => {
+    if (kioskId && isActivated && shouldInitialize) {
+      console.log('[KioskContext] Initializing AssetSyncService for kiosk:', kioskId);
+      assetSyncService.initialize(kioskId);
+    }
+  }, [kioskId, isActivated, shouldInitialize]);
+
   // Actions
   const activateKiosk = useCallback(async (id: string) => {
     setLoading(true);
@@ -610,7 +619,7 @@ export const KioskProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
-    
+
     clearStoredKioskId();
     setKioskId(null);
     setKioskInfo(null);

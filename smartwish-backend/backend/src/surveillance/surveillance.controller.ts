@@ -33,7 +33,7 @@ import { Response, Request } from 'express';
  */
 @Controller('surveillance')
 export class SurveillancePublicController {
-  constructor(private readonly surveillanceService: SurveillanceService) {}
+  constructor(private readonly surveillanceService: SurveillanceService) { }
 
   /**
    * Receive detection events from local print agent
@@ -91,61 +91,12 @@ export class SurveillancePublicController {
   @Public()
   @Get('health')
   health() {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return { status: 'ok', timestamp: new Date().toISOString() }
   }
 
-  /**
-   * Receive live frame from kiosk surveillance script
-   * The frame is stored in memory and served to admin viewers
-   * This enables remote viewing of kiosk camera from admin dashboard
-   * 
-   * Accepts both:
-   * - Multipart file upload (preferred)
-   * - Raw body (fallback)
-   */
-  @Public()
-  @Post('frame')
-  @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file', {
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
-  }))
-  async uploadFrame(
-    @Headers('x-kiosk-api-key') apiKey: string,
-    @Headers('x-kiosk-id') kioskId: string,
-    @Headers('content-type') contentType: string,
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: RawBodyRequest<Request>,
-  ) {
-    if (!apiKey || !kioskId) {
-      throw new UnauthorizedException('Missing API key or kiosk ID');
-    }
-
-    const isValid = await this.surveillanceService.validateKioskApiKey(kioskId, apiKey);
-    if (!isValid) {
-      throw new UnauthorizedException('Invalid API key for kiosk');
-    }
-
-    // Try multiple sources for frame data:
-    // 1. Multipart file upload (if file interceptor caught it)
-    // 2. Raw body from NestJS
-    // 3. Body from bodyParser.raw()
-    let frameData: Buffer | undefined;
-    
-    if (file && file.buffer && file.buffer.length > 0) {
-      frameData = file.buffer;
-    } else if (req.rawBody && req.rawBody.length > 0) {
-      frameData = req.rawBody;
-    } else if ((req as any).body && Buffer.isBuffer((req as any).body) && (req as any).body.length > 0) {
-      frameData = (req as any).body;
-    }
-    
-    if (!frameData || frameData.length === 0) {
-      return { success: false, error: 'No frame data received' };
-    }
-
-    await this.surveillanceService.storeLiveFrame(kioskId, frameData, contentType || 'image/jpeg');
-    return { success: true, size: frameData.length };
-  }
+  // NOTE: The legacy POST /surveillance/frame endpoint has been removed.
+  // Live frame streaming now uses WebSocket via SurveillanceGateway (/ws/surveillance)
+  // This reduces RAM usage and provides better real-time performance.
 
   /**
    * Upload a detection image to cloud storage
@@ -197,8 +148,8 @@ export class SurveillancePublicController {
         imageData,
       );
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         id: detection.id,
         imageUrl: detection.imagePath,
       };
@@ -215,7 +166,7 @@ export class SurveillancePublicController {
 @Controller('admin/surveillance')
 @UseGuards(JwtAuthGuard)
 export class SurveillanceAdminController {
-  constructor(private readonly surveillanceService: SurveillanceService) {}
+  constructor(private readonly surveillanceService: SurveillanceService) { }
 
   /**
    * Get list of kiosks with surveillance enabled
@@ -305,7 +256,7 @@ export class SurveillanceAdminController {
   async getStreamStatus(@Param('kioskId') kioskId: string) {
     const isActive = this.surveillanceService.isLiveStreamActive(kioskId);
     const frame = this.surveillanceService.getLiveFrame(kioskId);
-    
+
     return {
       kioskId,
       isActive,
@@ -322,7 +273,7 @@ export class SurveillanceAdminController {
  */
 @Controller('surveillance/stream')
 export class SurveillanceStreamController {
-  constructor(private readonly surveillanceService: SurveillanceService) {}
+  constructor(private readonly surveillanceService: SurveillanceService) { }
 
   /**
    * Get the latest live frame from a kiosk
@@ -339,11 +290,11 @@ export class SurveillanceStreamController {
     // Token is optional - if not provided, we still serve the frame
     // This is acceptable since live frames are transient and low-risk
     // For production, you might want to validate the token
-    
+
     const frame = this.surveillanceService.getLiveFrame(kioskId);
-    
+
     if (!frame) {
-      res.status(503).json({ 
+      res.status(503).json({
         error: 'No live frame available',
         message: 'Camera feed not available. Make sure surveillance is running on the kiosk.',
       });
@@ -375,7 +326,7 @@ export class SurveillanceStreamController {
     @Res() res: Response,
   ) {
     // Token is optional for stream - same reasoning as frame endpoint
-    
+
     res.set({
       'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -386,7 +337,7 @@ export class SurveillanceStreamController {
     // Send frames continuously
     const sendFrame = () => {
       const frame = this.surveillanceService.getLiveFrame(kioskId);
-      
+
       if (frame) {
         try {
           res.write('--frame\r\n');

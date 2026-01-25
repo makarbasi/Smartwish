@@ -8,6 +8,10 @@ interface HtmlScreenSaverProps {
   overlayText?: string;
   interactive?: boolean;
   onActivity?: () => void;
+  /** Called when iframe is loaded and ready to display - used for pre-loading */
+  onReady?: () => void;
+  /** If true, iframe is hidden (used for pre-loading in background) */
+  isPreloading?: boolean;
 }
 
 /**
@@ -20,12 +24,13 @@ interface HtmlScreenSaverProps {
  * - Interactive mode: allows user to interact with iframe content
  * - Error handling with fallback display
  */
-export default function HtmlScreenSaver({ url, onExit, overlayText, interactive, onActivity }: HtmlScreenSaverProps) {
+export default function HtmlScreenSaver({ url, onExit, overlayText, interactive, onActivity, onReady, isPreloading }: HtmlScreenSaverProps) {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const cleanupActivityListenersRef = useRef<(() => void) | null>(null);
-  
+  const onReadyCalledRef = useRef(false);
+
   // Use ref to always have the latest onActivity callback
   // This prevents stale closure issues when iframe event handlers call onActivity
   const onActivityRef = useRef(onActivity);
@@ -37,6 +42,7 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
   useEffect(() => {
     setHasError(false);
     setIsLoading(true);
+    onReadyCalledRef.current = false;
   }, [url]);
 
   const attachActivityListeners = useCallback(() => {
@@ -94,10 +100,17 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
     console.log("[HtmlScreenSaver] Iframe loaded successfully");
     setIsLoading(false);
 
+    // Call onReady when loaded (for pre-loading)
+    if (onReady && !onReadyCalledRef.current) {
+      onReadyCalledRef.current = true;
+      console.log("[HtmlScreenSaver] Calling onReady");
+      onReady();
+    }
+
     if (interactive) {
       attachActivityListeners();
     }
-  }, [interactive, attachActivityListeners]);
+  }, [interactive, attachActivityListeners, onReady]);
 
   // Handle iframe error
   const handleError = useCallback(() => {
@@ -142,19 +155,19 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
   }
 
   return (
-    <div 
-      className="absolute inset-0 bg-black"
+    <div
+      className={`absolute inset-0 bg-black ${isPreloading ? 'opacity-0 pointer-events-none' : ''}`}
       onMouseMove={interactive ? handleActivityTracking : undefined}
       onTouchStart={interactive ? handleActivityTracking : undefined}
       onClick={interactive ? handleActivityTracking : undefined}
     >
-      {/* Loading indicator */}
-      {isLoading && (
+      {/* Loading indicator - only show if not preloading */}
+      {isLoading && !isPreloading && (
         <div className="absolute inset-0 flex items-center justify-center z-20">
           <div className="w-12 h-12 border-4 border-white/20 border-t-white/80 rounded-full animate-spin" />
         </div>
       )}
-      
+
       {/* HTML content iframe */}
       <iframe
         ref={iframeRef}
@@ -162,8 +175,8 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
         className="w-full h-full"
         onLoad={handleLoad}
         onError={handleError}
-        style={{ 
-          border: "none", 
+        style={{
+          border: "none",
           pointerEvents: interactive ? "auto" : "none",
           opacity: isLoading ? 0 : 1,
           transition: "opacity 0.3s ease-in-out",
@@ -171,7 +184,7 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         title="Screen Saver Content"
       />
-      
+
       {/* Overlay Text */}
       {overlayText && !isLoading && (
         <div className="absolute top-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
@@ -182,15 +195,15 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
           </div>
         </div>
       )}
-      
+
       {/* Overlay to capture clicks - only when NOT interactive */}
       {!interactive && (
-        <div 
+        <div
           className="absolute inset-0 z-10"
           style={{ pointerEvents: "auto" }}
         />
       )}
-      
+
       {/* Tap to dismiss hint - only show when not interactive */}
       {!isLoading && !interactive && (
         <div className="absolute bottom-8 left-0 right-0 flex justify-center pointer-events-none animate-fade-out-delayed z-30">
@@ -199,7 +212,7 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
           </div>
         </div>
       )}
-      
+
       {/* Interactive mode indicator */}
       {!isLoading && interactive && (
         <div className="absolute bottom-8 left-0 right-0 flex justify-center pointer-events-none z-30">
@@ -208,7 +221,7 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
           </div>
         </div>
       )}
-      
+
       <style jsx>{`
         @keyframes fadeOutDelayed {
           0%, 70% {

@@ -65,6 +65,8 @@ export function useKioskChat(): UseKioskChatReturn {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Track if we're intentionally closing the connection (to suppress error logs)
+  const isClosingRef = useRef(false);
 
   // Initialize session ID when kioskId is available
   useEffect(() => {
@@ -192,6 +194,7 @@ export function useKioskChat(): UseKioskChatReturn {
     // Close existing SSE connection immediately
     if (eventSourceRef.current) {
       console.log('[useKioskChat] Closing old SSE connection');
+      isClosingRef.current = true; // Mark as intentionally closing
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
@@ -252,6 +255,7 @@ export function useKioskChat(): UseKioskChatReturn {
     console.log('[useKioskChat] 🔌 Connecting SSE for session:', sessionId);
     const eventSource = new EventSource(`/api/kiosk/chat/stream?kioskId=${encodeURIComponent(kioskId)}&sessionId=${encodeURIComponent(sessionId)}`);
     eventSourceRef.current = eventSource;
+    isClosingRef.current = false; // Reset flag when creating new connection
 
     eventSource.onopen = () => {
       console.log('[useKioskChat] ✅ SSE connection opened');
@@ -259,11 +263,18 @@ export function useKioskChat(): UseKioskChatReturn {
     };
 
     eventSource.onerror = (error) => {
+      // Don't log errors if we're intentionally closing the connection
+      if (isClosingRef.current) {
+        return;
+      }
       // EventSource errors don't have much detail, check readyState for more info
       const state = eventSource.readyState;
       const stateText = state === 0 ? 'CONNECTING' : state === 1 ? 'OPEN' : 'CLOSED';
-      console.error(`[useKioskChat] ❌ SSE error (state: ${stateText}):`, error);
-      console.error('[useKioskChat] SSE URL:', `/api/kiosk/chat/stream?kioskId=${kioskId}&sessionId=${sessionId}`);
+      // Only log errors for unexpected disconnections (not CLOSED state during cleanup)
+      if (state !== 2) {
+        console.error(`[useKioskChat] ❌ SSE error (state: ${stateText}):`, error);
+        console.error('[useKioskChat] SSE URL:', `/api/kiosk/chat/stream?kioskId=${kioskId}&sessionId=${sessionId}`);
+      }
       setIsConnected(false);
       // EventSource will automatically reconnect
     };
@@ -330,6 +341,7 @@ export function useKioskChat(): UseKioskChatReturn {
 
     return () => {
       console.log('[useKioskChat] Cleaning up SSE connection');
+      isClosingRef.current = true; // Mark as intentionally closing
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;

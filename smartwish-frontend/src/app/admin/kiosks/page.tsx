@@ -465,20 +465,15 @@ export default function KiosksAdminPage() {
       }
 
       const result = await response.json();
-      alert(`✅ Sync command sent to kiosk.\n\n${result.message}`);
+      console.log(`[Admin] Sync command sent:`, result);
     } catch (err) {
       console.error("Error syncing kiosk:", err);
-      alert(err instanceof Error ? err.message : "Failed to trigger sync");
     } finally {
       setSyncingKioskId(null);
     }
   };
 
   const handleSyncAllKiosks = async () => {
-    if (!confirm("Are you sure you want to sync assets on ALL active kiosks? This may take a moment.")) {
-      return;
-    }
-
     setSyncingAll(true);
     try {
       const response = await fetch("/api/admin/kiosks/sync", {
@@ -493,10 +488,9 @@ export default function KiosksAdminPage() {
       }
 
       const result = await response.json();
-      alert(`✅ Sync command sent to ${result.kioskCount} kiosk(s).\n\n${result.message}`);
+      console.log(`[Admin] Sync all command sent:`, result);
     } catch (err) {
       console.error("Error syncing all kiosks:", err);
-      alert(err instanceof Error ? err.message : "Failed to trigger sync");
     } finally {
       setSyncingAll(false);
     }

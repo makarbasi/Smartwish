@@ -404,115 +404,10 @@ def start_http_server(port, base_directory, video_recorder=None, config=None):
 
 
 # =============================================================================
-# Frame Uploader - Sends live frames to cloud server for remote viewing
+# NOTE: The legacy FrameUploader class (HTTP polling) has been removed.
+# Live frame streaming now uses WebSocket via WebSocketFrameStreamer.
+# This reduces RAM usage and provides better real-time performance.
 # =============================================================================
-
-class FrameUploader:
-    """
-    Uploads live frames to the cloud server for remote viewing.
-    This enables admins to view the kiosk camera remotely through the web dashboard.
-    """
-    
-    def __init__(self, config: Config, frame_holder: FrameHolder):
-        self.config = config
-        self.frame_holder = frame_holder
-        self.running = True
-        self.upload_interval = 0.2  # Upload at 5 FPS (200ms between frames)
-        self.enabled = True  # Can be disabled if server doesn't support frame uploads
-        self.consecutive_failures = 0
-        self.max_failures = 50  # Increased from 10 - give more chances before disabling
-        self.frames_uploaded = 0
-        
-        # Start background upload thread
-        self.upload_thread = threading.Thread(target=self._upload_worker, daemon=True)
-        self.upload_thread.start()
-        print(f"  ☁️  Frame uploader started")
-        print(f"     URL: {self.config.server_url}/surveillance/frame")
-        print(f"     Kiosk ID: {self.config.kiosk_id}")
-    
-    def _upload_worker(self):
-        """Background worker that uploads frames to the server"""
-        while self.running:
-            if not self.enabled:
-                time.sleep(1)
-                continue
-            
-            try:
-                frame = self.frame_holder.get_frame(annotated=True)
-                if frame is not None:
-                    self._upload_frame(frame)
-                
-                time.sleep(self.upload_interval)
-                
-            except Exception as e:
-                print(f"  ⚠️ Frame uploader error: {e}")
-                time.sleep(1)
-    
-    def _upload_frame(self, frame):
-        """Upload a single frame to the server using multipart form upload"""
-        if not self.enabled:
-            return
-        
-        url = f"{self.config.server_url}/surveillance/frame"
-        headers = {
-            'x-kiosk-api-key': self.config.api_key,
-            'x-kiosk-id': self.config.kiosk_id,
-        }
-        
-        try:
-            # Encode frame as JPEG
-            _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            jpeg_bytes = jpeg.tobytes()
-            
-            # Use multipart form upload (more reliable than raw body)
-            files = {'file': ('frame.jpg', jpeg_bytes, 'image/jpeg')}
-            
-            response = requests.post(
-                url, 
-                files=files,
-                headers=headers, 
-                timeout=2  # Short timeout since we're uploading frequently
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('success'):
-                    self.consecutive_failures = 0  # Reset failure counter
-                    self.frames_uploaded += 1
-                    # Log success every 100 frames
-                    if self.frames_uploaded % 100 == 0:
-                        print(f"  ☁️  Live stream: {self.frames_uploaded} frames uploaded to server")
-                else:
-                    # Server returned 200 but with error
-                    self.consecutive_failures += 1
-                    if self.consecutive_failures == 1:
-                        print(f"  ⚠️ Frame upload error: {result.get('error', 'unknown')}")
-            elif response.status_code == 404:
-                # Endpoint not deployed yet
-                if self.consecutive_failures == 0:
-                    print(f"  ⚠️ Frame upload endpoint returned 404: {url}")
-                self.consecutive_failures += 1
-                if self.consecutive_failures >= self.max_failures:
-                    print("  🔇 Frame uploader disabled (server doesn't support it)")
-                    self.enabled = False
-            else:
-                self.consecutive_failures += 1
-                if self.consecutive_failures >= self.max_failures:
-                    print(f"  🔇 Frame uploader disabled after {self.max_failures} failures")
-                    self.enabled = False
-                    
-        except requests.RequestException as e:
-            self.consecutive_failures += 1
-            # Don't spam logs for connection errors
-            if self.consecutive_failures == 1:
-                print(f"  ⚠️ Frame upload failed: {e}")
-            if self.consecutive_failures >= self.max_failures:
-                print(f"  🔇 Frame uploader disabled after {self.max_failures} failures")
-                self.enabled = False
-    
-    def stop(self):
-        """Stop the upload worker"""
-        self.running = False
 
 
 # =============================================================================
@@ -716,6 +611,238 @@ class WebSocketFrameStreamer:
     
     def is_streaming(self):
         """Check if actively streaming frames"""
+        return self.streaming_active
+
+
+# =============================================================================
+# Screen Frame Streamer - Real-time screen streaming via WebSocket
+# =============================================================================
+
+class ScreenFrameStreamer:
+    """
+    Streams live screen frames to the cloud server via WebSocket for real-time viewing.
+    This allows admins to see the kiosk display remotely.
+    
+    IMPORTANT: Only streams when admin viewers are watching!
+    The server sends 'start_streaming' when a viewer subscribes and
+    'stop_streaming' when all viewers disconnect.
+    
+    Protocol (same as webcam):
+    1. Connect to WebSocket server at ws(s)://server/ws/screen
+    2. Send auth message: {"type": "auth", "kioskId": "...", "apiKey": "..."}
+    3. Wait for auth_success response
+    4. Wait for 'start_streaming' message (admin viewer watching)
+    5. Send binary JPEG frames until 'stop_streaming' received
+    """
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.running = True
+        self.connected = False
+        self.authenticated = False
+        self.streaming_active = False  # Only stream when viewers are watching
+        self.ws = None
+        self.stream_interval = 0.1  # 10 FPS (100ms between frames)
+        self.frames_sent = 0
+        self.reconnect_delay = 5  # Start with 5 seconds
+        self.max_reconnect_delay = 60  # Max 60 seconds
+        self.consecutive_failures = 0
+        
+        # Initialize screen capture
+        if mss:
+            self.sct = mss.mss()
+            self.monitor = self.sct.monitors[1]  # Primary monitor
+        else:
+            self.sct = None
+        
+        # Build WebSocket URL for screen endpoint
+        server_url = self.config.server_url
+        if server_url.startswith('https://'):
+            ws_url = 'wss://' + server_url[8:] + '/ws/screen'
+        elif server_url.startswith('http://'):
+            ws_url = 'ws://' + server_url[7:] + '/ws/screen'
+        else:
+            ws_url = 'ws://' + server_url + '/ws/screen'
+        self.ws_url = ws_url
+        
+        print(f"  🖥️  Screen frame streamer initializing...")
+        print(f"     URL: {self.ws_url}")
+        print(f"     Kiosk ID: {self.config.kiosk_id}")
+        print(f"     Streaming: ON-DEMAND (only when admin is viewing)")
+        
+        # Start background connection thread
+        self.connect_thread = threading.Thread(target=self._connect_loop, daemon=True)
+        self.connect_thread.start()
+    
+    def _connect_loop(self):
+        """Main connection loop - handles reconnection on failures"""
+        while self.running:
+            try:
+                self._connect_and_stream()
+            except Exception as e:
+                if self.running:
+                    print(f"  ⚠️ Screen WebSocket error: {e}")
+                    self.connected = False
+                    self.authenticated = False
+                    self.streaming_active = False
+                    
+                    # Exponential backoff
+                    self.consecutive_failures += 1
+                    delay = min(self.reconnect_delay * (2 ** (self.consecutive_failures - 1)), self.max_reconnect_delay)
+                    print(f"  🔄 Screen streamer reconnecting in {delay}s...")
+                    time.sleep(delay)
+    
+    def _connect_and_stream(self):
+        """Connect to WebSocket and stream screen frames when requested"""
+        if not WEBSOCKET_AVAILABLE:
+            print("  ⚠️ WebSocket not available for screen streaming")
+            self.running = False
+            return
+        
+        if not self.sct and not ImageGrab:
+            print("  ⚠️ No screen capture library available (mss or PIL)")
+            self.running = False
+            return
+        
+        print(f"  🖥️  Connecting to screen WebSocket: {self.ws_url}")
+        
+        # Create WebSocket connection
+        self.ws = websocket.WebSocket()
+        self.ws.connect(self.ws_url, timeout=10)
+        self.connected = True
+        print(f"  ✅ Screen WebSocket connected")
+        
+        # Authenticate
+        auth_message = json.dumps({
+            "event": "auth",
+            "data": {
+                "kioskId": self.config.kiosk_id,
+                "apiKey": self.config.api_key
+            }
+        })
+        self.ws.send(auth_message)
+        
+        # Wait for auth response
+        response = self.ws.recv()
+        response_data = json.loads(response)
+        
+        if response_data.get('type') == 'auth_success':
+            self.authenticated = True
+            self.consecutive_failures = 0  # Reset on successful auth
+            print(f"  ✅ Screen WebSocket authenticated for kiosk: {self.config.kiosk_id}")
+            print(f"  ⏸️  Waiting for admin viewer to start screen stream...")
+        elif response_data.get('type') == 'error':
+            print(f"  ❌ Screen WebSocket auth failed: {response_data.get('message')}")
+            self.ws.close()
+            self.running = False
+            return
+        
+        # Set socket to non-blocking for checking incoming messages
+        self.ws.settimeout(0.05)  # 50ms timeout for recv
+        
+        # Main loop - wait for commands and stream when active
+        last_frame_time = 0
+        while self.running and self.connected:
+            try:
+                # Check for incoming messages (start/stop streaming)
+                try:
+                    message = self.ws.recv()
+                    if message:
+                        msg_data = json.loads(message)
+                        msg_type = msg_data.get('type')
+                        
+                        if msg_type == 'start_streaming':
+                            if not self.streaming_active:
+                                self.streaming_active = True
+                                print(f"  ▶️  Admin viewer connected - starting screen stream")
+                        elif msg_type == 'stop_streaming':
+                            if self.streaming_active:
+                                self.streaming_active = False
+                                print(f"  ⏹️  No viewers - stopping screen stream (saving resources)")
+                except websocket.WebSocketTimeoutException:
+                    pass  # No message, continue
+                except json.JSONDecodeError:
+                    pass  # Invalid JSON, ignore
+                
+                # Only stream if viewers are watching
+                if not self.streaming_active:
+                    time.sleep(0.1)  # Sleep longer when not streaming
+                    continue
+                
+                current_time = time.time()
+                if current_time - last_frame_time < self.stream_interval:
+                    time.sleep(0.01)  # Small sleep to prevent busy waiting
+                    continue
+                
+                # Capture screen
+                frame = self._capture_screen()
+                if frame is not None:
+                    # Encode frame as JPEG
+                    _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
+                    jpeg_bytes = jpeg.tobytes()
+                    
+                    # Send as binary frame with a frame message wrapper
+                    frame_message = json.dumps({"event": "frame", "data": {}})
+                    self.ws.send(frame_message)
+                    self.ws.send_binary(jpeg_bytes)
+                    
+                    self.frames_sent += 1
+                    last_frame_time = current_time
+                    
+                    # Log progress every 100 frames
+                    if self.frames_sent % 100 == 0:
+                        print(f"  🖥️  Screen stream: {self.frames_sent} frames sent")
+                
+            except websocket.WebSocketConnectionClosedException:
+                print("  ⚠️ Screen WebSocket connection closed")
+                self.connected = False
+                break
+            except Exception as e:
+                print(f"  ⚠️ Screen WebSocket send error: {e}")
+                self.connected = False
+                break
+        
+        # Clean up
+        self.streaming_active = False
+        try:
+            self.ws.close()
+        except:
+            pass
+    
+    def _capture_screen(self):
+        """Capture a single screen frame"""
+        try:
+            if self.sct:
+                img = self.sct.grab(self.monitor)
+                frame = np.array(img)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                return frame
+            elif ImageGrab:
+                screenshot = ImageGrab.grab()
+                frame = np.array(screenshot)
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                return frame
+        except Exception as e:
+            print(f"  ⚠️ Screen capture error: {e}")
+        return None
+    
+    def stop(self):
+        """Stop the screen streamer"""
+        self.running = False
+        self.connected = False
+        self.streaming_active = False
+        if self.ws:
+            try:
+                self.ws.close()
+            except:
+                pass
+    
+    def is_connected(self):
+        """Check if WebSocket is connected and authenticated"""
+        return self.connected and self.authenticated
+    
+    def is_streaming(self):
+        """Check if actively streaming screen frames"""
         return self.streaming_active
 
 
@@ -1523,15 +1650,21 @@ def main():
     # Initialize reporter, frame streamer, tracker
     reporter = DetectionReporter(config)
     
-    # Use WebSocket for real-time streaming (preferred) with HTTP fallback
+    # Use WebSocket for real-time streaming (WebSocket is required)
     ws_streamer = None
-    frame_uploader = None
-    if WEBSOCKET_AVAILABLE:
-        ws_streamer = WebSocketFrameStreamer(config, frame_holder)  # WebSocket streaming (preferred)
-        print("  🔌 Using WebSocket for real-time frame streaming")
-    else:
-        frame_uploader = FrameUploader(config, frame_holder)  # HTTP fallback
-        print("  📡 Using HTTP for frame upload (WebSocket unavailable)")
+    screen_streamer = None
+    if not WEBSOCKET_AVAILABLE:
+        print("  ❌ ERROR: websocket-client package not installed. Install with: pip install websocket-client")
+        print("     WebSocket is required for live streaming. Exiting.")
+        return
+    
+    ws_streamer = WebSocketFrameStreamer(config, frame_holder)  # WebSocket streaming
+    print("  🔌 Using WebSocket for real-time webcam streaming")
+    
+    # Also start screen streamer for live screen viewing
+    if mss or ImageGrab:
+        screen_streamer = ScreenFrameStreamer(config)
+        print("  🖥️  Screen streaming enabled (on-demand)")
     
     tracker = PersonTracker(config, reporter)
     

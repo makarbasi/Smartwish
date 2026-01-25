@@ -40,7 +40,7 @@ export default function KioskScreenSaverManager({
   const { kioskInfo } = useKiosk();
   const kioskSession = useKioskSessionSafe();
   const pathname = usePathname();
-  
+
   // Get screen saver configuration from kiosk config
   const screenSavers = useMemo(() => {
     const configuredScreenSavers = kioskInfo?.config?.screenSavers;
@@ -64,6 +64,8 @@ export default function KioskScreenSaverManager({
 
   // Current screen saver state
   const [currentScreenSaver, setCurrentScreenSaver] = useState<ScreenSaverItem | null>(null);
+  // Pending screen saver that is being pre-loaded (rendered hidden until ready)
+  const [pendingScreenSaver, setPendingScreenSaver] = useState<ScreenSaverItem | null>(null);
   const [cachedScreenSavers, setCachedScreenSavers] = useState<ScreenSaverItem[]>([]);
   const rotationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const interactiveIdleTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -91,13 +93,14 @@ export default function KioskScreenSaverManager({
     }
   }, []);
 
-  // Select and set a new screen saver
+  // Select and set a new screen saver (used for initial selection)
   const selectNewScreenSaver = useCallback(() => {
-    const enabledScreenSavers = screenSavers.filter(ss => ss.enabled !== false);
-    
+    const enabledScreenSavers = screenSavers.filter((ss: ScreenSaverItem) => ss.enabled !== false);
+
     if (enabledScreenSavers.length === 0) {
       // No enabled screen savers - don't show anything
       setCurrentScreenSaver(null);
+      setPendingScreenSaver(null);
       previousScreenSaverIdRef.current = null;
       return;
     }
@@ -113,7 +116,7 @@ export default function KioskScreenSaverManager({
 
     // Filter out the previous screen saver to avoid immediate repeats
     const availableScreenSavers = enabledScreenSavers.filter(
-      ss => ss.id !== previousScreenSaverIdRef.current
+      (ss: ScreenSaverItem) => ss.id !== previousScreenSaverIdRef.current
     );
 
     // If we filtered out the only option, use all screen savers (fallback)
@@ -126,48 +129,80 @@ export default function KioskScreenSaverManager({
       totalAvailable: enabledScreenSavers.length,
       candidatesCount: candidates.length
     });
-    
+
     setCurrentScreenSaver(selected);
     previousScreenSaverIdRef.current = selected?.id || null;
   }, [screenSavers]);
 
+  // Start pre-loading the next screen saver (renders hidden, waits for onReady)
+  const startPreloadingNext = useCallback(() => {
+    const enabledScreenSavers = screenSavers.filter((ss: ScreenSaverItem) => ss.enabled !== false);
+
+    if (enabledScreenSavers.length <= 1) {
+      // Only one screen saver - just restart the timer, no rotation needed
+      return;
+    }
+
+    // Filter out the current screen saver to avoid showing the same one
+    const currentId = currentScreenSaver?.id;
+    const availableScreenSavers = enabledScreenSavers.filter(
+      (ss: ScreenSaverItem) => ss.id !== currentId
+    );
+
+    const candidates = availableScreenSavers.length > 0 ? availableScreenSavers : enabledScreenSavers;
+    const selected = selectWeightedScreenSaver(candidates);
+
+    console.log("[ScreenSaverManager] Pre-loading next screen saver:", selected?.name || selected?.type);
+    setPendingScreenSaver(selected);
+  }, [screenSavers, currentScreenSaver?.id]);
+
+  // Called when pending screen saver is ready - switch it to current
+  const handlePendingReady = useCallback(() => {
+    if (!pendingScreenSaver) return;
+
+    console.log("[ScreenSaverManager] Pending screen saver ready - switching now");
+    previousScreenSaverIdRef.current = pendingScreenSaver.id;
+    setCurrentScreenSaver(pendingScreenSaver);
+    setPendingScreenSaver(null);
+  }, [pendingScreenSaver]);
+
   // Start rotation timer for the current screen saver
   const startRotationTimer = useCallback(() => {
     clearRotationTimer();
-    
+
     if (!settings.enableRotation) {
       return;
     }
 
     // Get duration from current screen saver or use default rotation interval
     const duration = currentScreenSaver?.duration || settings.rotationInterval || 30;
-    
+
     console.log(`[ScreenSaverManager] Starting rotation timer: ${duration}s`);
-    
+
     rotationTimerRef.current = setTimeout(() => {
-      console.log("[ScreenSaverManager] Rotation timer fired - selecting new screen saver");
-      selectNewScreenSaver();
+      console.log("[ScreenSaverManager] Rotation timer fired - pre-loading next screen saver");
+      startPreloadingNext();
     }, duration * 1000);
-  }, [clearRotationTimer, settings.enableRotation, settings.rotationInterval, currentScreenSaver?.duration, selectNewScreenSaver]);
+  }, [clearRotationTimer, settings.enableRotation, settings.rotationInterval, currentScreenSaver?.duration, startPreloadingNext]);
 
   // Start or reset the interactive idle timer
   const startInteractiveIdleTimer = useCallback(() => {
     clearInteractiveIdleTimer();
     clearRotationTimer();
-    
+
     if (!currentScreenSaver?.interactive) return;
-    
+
     const idleTimeout = (currentScreenSaver.interactiveIdleTimeout || DEFAULT_INTERACTIVE_IDLE_TIMEOUT) * 1000;
     console.log(`[ScreenSaverManager] Starting interactive idle timer: ${idleTimeout / 1000}s`);
-    
+
     interactiveIdleTimerRef.current = setTimeout(() => {
-      console.log("[ScreenSaverManager] Interactive idle timeout - rotating to next screen saver");
-      
+      console.log("[ScreenSaverManager] Interactive idle timeout - pre-loading next screen saver");
+
       // Check if there are other enabled screen savers to rotate to
-      const enabledScreenSavers = screenSavers.filter(ss => ss.enabled !== false);
+      const enabledScreenSavers = screenSavers.filter((ss: ScreenSaverItem) => ss.enabled !== false);
       if (enabledScreenSavers.length > 1 && settings.enableRotation) {
-        // Rotate to next screen saver
-        selectNewScreenSaver();
+        // Pre-load next screen saver (will switch when ready)
+        startPreloadingNext();
       } else {
         // Only one screen saver or rotation disabled - exit entirely
         console.log("[ScreenSaverManager] No rotation available - exiting screen saver");
@@ -177,12 +212,12 @@ export default function KioskScreenSaverManager({
         onExit();
       }
     }, idleTimeout);
-  }, [currentScreenSaver, screenSavers, settings.enableRotation, clearInteractiveIdleTimer, clearRotationTimer, onExit, selectNewScreenSaver]);
+  }, [currentScreenSaver, screenSavers, settings.enableRotation, clearInteractiveIdleTimer, clearRotationTimer, onExit, startPreloadingNext]);
 
   // Handle interaction on interactive screen saver (reset idle timer)
   const handleInteractiveActivity = useCallback(() => {
     if (!currentScreenSaver?.interactive) return;
-    
+
     console.log("[ScreenSaverManager] Interactive activity detected - resetting idle timer");
     startInteractiveIdleTimer();
   }, [currentScreenSaver?.interactive, startInteractiveIdleTimer]);
@@ -232,7 +267,7 @@ export default function KioskScreenSaverManager({
       setCurrentScreenSaver(null);
       // Don't reset previousScreenSaverIdRef here - keep it for next time
     }
-    
+
     return () => {
       clearRotationTimer();
       clearInteractiveIdleTimer();
@@ -250,7 +285,7 @@ export default function KioskScreenSaverManager({
         startRotationTimer();
       }
     }
-    
+
     return () => {
       clearRotationTimer();
       clearInteractiveIdleTimer();
@@ -273,24 +308,24 @@ export default function KioskScreenSaverManager({
     console.log("[ScreenSaverManager] handleInteraction called:", e.type, {
       interactive: currentScreenSaver?.interactive,
     });
-    
+
     // If this is an interactive screen saver, don't exit - just reset idle timer
     if (currentScreenSaver?.interactive) {
       console.log("[ScreenSaverManager] Interactive mode - resetting idle timer instead of exiting");
       handleInteractiveActivity();
       return;
     }
-    
+
     // Prevent double-exit
     if (hasExitedRef.current) {
       console.log("[ScreenSaverManager] BLOCKED - already exiting");
       return;
     }
     hasExitedRef.current = true;
-    
+
     e.stopPropagation();
     e.preventDefault();
-    
+
     clearRotationTimer();
     clearInteractiveIdleTimer();
     console.log("[ScreenSaverManager] Calling onExit()");
@@ -324,67 +359,58 @@ export default function KioskScreenSaverManager({
   // Check if current screen saver is interactive
   const isInteractive = currentScreenSaver.interactive === true;
 
-  // Render the appropriate screen saver based on type
-  const renderScreenSaver = () => {
-    const overlayText = settings.overlayText;
-    
-    switch (currentScreenSaver.type) {
+  // Helper to render a single screen saver by type
+  const renderSingleScreenSaver = (
+    screenSaver: ScreenSaverItem,
+    isPreloading: boolean = false,
+    onReadyCallback?: () => void
+  ) => {
+    const overlayText = isPreloading ? undefined : settings.overlayText;
+
+    switch (screenSaver.type) {
       case "video":
         return (
           <VideoScreenSaver
-            url={currentScreenSaver.url || ""}
+            key={screenSaver.id}
+            url={screenSaver.url || ""}
             onExit={handleInteraction}
             overlayText={overlayText}
+            isPreloading={isPreloading}
+            onReady={onReadyCallback}
           />
         );
-      
+
       case "html":
-        const cachedHtmlScreenSavers = cachedScreenSavers.filter(
-          (ss) => ss.type === "html"
-        );
-        const activeHtmlId = currentScreenSaver.id;
-        const activeHtmlIsCached = cachedHtmlScreenSavers.some(
-          (ss) => ss.id === activeHtmlId
+        // For HTML, check if it's already cached
+        const isCached = cachedScreenSavers.some(ss => ss.id === screenSaver.id);
+        if (isCached && !isPreloading) {
+          // Render from cache for active HTML screen savers
+          return null; // Will be handled in the cached section
+        }
+        return (
+          <HtmlScreenSaver
+            key={screenSaver.id}
+            url={screenSaver.url || ""}
+            onExit={handleInteraction}
+            overlayText={overlayText}
+            interactive={!isPreloading && isInteractive}
+            onActivity={!isPreloading ? handleInteractiveActivity : undefined}
+            isPreloading={isPreloading}
+            onReady={onReadyCallback}
+          />
         );
 
-        return (
-          <div className="absolute inset-0">
-            {cachedHtmlScreenSavers.map((ss) => {
-              const isActive = ss.id === activeHtmlId;
-              return (
-                <div
-                  key={ss.id}
-                  className={`absolute inset-0 ${
-                    isActive ? "opacity-100" : "opacity-0 pointer-events-none"
-                  }`}
-                >
-                  <HtmlScreenSaver
-                    url={ss.url || ""}
-                    onExit={handleInteraction}
-                    overlayText={isActive ? overlayText : undefined}
-                    interactive={isActive ? isInteractive : false}
-                    onActivity={isActive ? handleInteractiveActivity : undefined}
-                  />
-                </div>
-              );
-            })}
-            {!activeHtmlIsCached && (
-              <HtmlScreenSaver
-                url={currentScreenSaver.url || ""}
-                onExit={handleInteraction}
-                overlayText={overlayText}
-                interactive={isInteractive}
-                onActivity={handleInteractiveActivity}
-              />
-            )}
-          </div>
-        );
-      
       case "default":
       default:
+        // Default screen saver is instant - call onReady immediately
+        if (onReadyCallback) {
+          // Use setTimeout to avoid calling during render
+          setTimeout(onReadyCallback, 0);
+        }
         return (
           <DefaultScreenSaver
-            isVisible={true}
+            key={screenSaver.id}
+            isVisible={!isPreloading}
             onExit={() => {
               if (!hasExitedRef.current) {
                 hasExitedRef.current = true;
@@ -399,11 +425,80 @@ export default function KioskScreenSaverManager({
     }
   };
 
+  // Render the appropriate screen saver based on type
+  const renderScreenSaver = () => {
+    const overlayText = settings.overlayText;
+
+    // For HTML screen savers with caching
+    if (currentScreenSaver.type === "html") {
+      const cachedHtmlScreenSavers = cachedScreenSavers.filter(
+        (ss) => ss.type === "html"
+      );
+      const activeHtmlId = currentScreenSaver.id;
+      const activeHtmlIsCached = cachedHtmlScreenSavers.some(
+        (ss) => ss.id === activeHtmlId
+      );
+
+      return (
+        <div className="absolute inset-0">
+          {/* Render cached HTML screen savers */}
+          {cachedHtmlScreenSavers.map((ss) => {
+            const isActive = ss.id === activeHtmlId;
+            return (
+              <div
+                key={ss.id}
+                className={`absolute inset-0 ${isActive ? "opacity-100" : "opacity-0 pointer-events-none"
+                  }`}
+              >
+                <HtmlScreenSaver
+                  url={ss.url || ""}
+                  onExit={handleInteraction}
+                  overlayText={isActive ? overlayText : undefined}
+                  interactive={isActive ? isInteractive : false}
+                  onActivity={isActive ? handleInteractiveActivity : undefined}
+                />
+              </div>
+            );
+          })}
+          {!activeHtmlIsCached && (
+            <HtmlScreenSaver
+              url={currentScreenSaver.url || ""}
+              onExit={handleInteraction}
+              overlayText={overlayText}
+              interactive={isInteractive}
+              onActivity={handleInteractiveActivity}
+            />
+          )}
+          {/* Pre-load pending screen saver (hidden) */}
+          {pendingScreenSaver && (
+            <div className="absolute inset-0 opacity-0 pointer-events-none">
+              {renderSingleScreenSaver(pendingScreenSaver, true, handlePendingReady)}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // For video and default screen savers
+    return (
+      <div className="absolute inset-0">
+        {/* Current screen saver */}
+        {renderSingleScreenSaver(currentScreenSaver, false)}
+
+        {/* Pre-load pending screen saver (hidden) */}
+        {pendingScreenSaver && (
+          <div className="absolute inset-0 opacity-0 pointer-events-none">
+            {renderSingleScreenSaver(pendingScreenSaver, true, handlePendingReady)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div
-      className={`fixed inset-0 z-[2147483647] select-none ${
-        isInteractive ? "cursor-default" : "cursor-pointer touch-none"
-      }`}
+      className={`fixed inset-0 z-[2147483647] select-none ${isInteractive ? "cursor-default" : "cursor-pointer touch-none"
+        }`}
       onClick={handleInteraction}
       onTouchStart={isInteractive ? handleInteractiveActivity : undefined}
       onTouchEnd={isInteractive ? undefined : handleInteraction}

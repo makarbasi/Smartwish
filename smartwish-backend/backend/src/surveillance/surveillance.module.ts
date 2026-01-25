@@ -5,6 +5,7 @@ import { SurveillanceDailyStats } from './surveillance-daily-stats.entity';
 import { SurveillanceService } from './surveillance.service';
 import { SurveillancePublicController, SurveillanceAdminController, SurveillanceStreamController } from './surveillance.controller';
 import { SurveillanceGateway } from './surveillance.gateway';
+import { ScreenGateway } from './screen.gateway';
 import { KioskConfig } from '../kiosks/kiosk-config.entity';
 import { SupabaseStorageService } from '../saved-designs/supabase-storage.service';
 
@@ -21,7 +22,7 @@ import { SupabaseStorageService } from '../saved-designs/supabase-storage.servic
     SurveillanceAdminController,
     SurveillanceStreamController,
   ],
-  providers: [SurveillanceService, SupabaseStorageService, SurveillanceGateway],
-  exports: [SurveillanceService, SurveillanceGateway],
+  providers: [SurveillanceService, SupabaseStorageService, SurveillanceGateway, ScreenGateway],
+  exports: [SurveillanceService, SurveillanceGateway, ScreenGateway],
 })
-export class SurveillanceModule {}
+export class SurveillanceModule { }

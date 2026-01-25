@@ -8,6 +8,10 @@ interface VideoScreenSaverProps {
   url: string;
   onExit: (e: React.MouseEvent | React.TouchEvent | React.KeyboardEvent) => void;
   overlayText?: string;
+  /** Called when video is loaded and ready to display - used for pre-loading */
+  onReady?: () => void;
+  /** If true, video is hidden (used for pre-loading in background) */
+  isPreloading?: boolean;
 }
 
 /**
@@ -20,23 +24,31 @@ interface VideoScreenSaverProps {
  * - Autoplay with loop
  * - Fullscreen display
  * - Touch/click to dismiss (handled by parent)
+ * - **Pre-loading support** - onReady callback when loaded
  */
-export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScreenSaverProps) {
+export default function VideoScreenSaver({ url, onExit, overlayText, onReady, isPreloading }: VideoScreenSaverProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isYouTube, setIsYouTube] = useState(false);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const onReadyCalledRef = useRef(false);
 
   // Determine video type and load from cache or cloud
   useEffect(() => {
+    onReadyCalledRef.current = false; // Reset on URL change
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
       // YouTube videos can't be cached, use embed
       setIsYouTube(true);
       const embed = getYouTubeEmbedUrl(url);
       setEmbedUrl(embed);
       setIsLoading(false);
+      // YouTube is ready immediately (iframe loads async but we can't track it)
+      if (onReady && !onReadyCalledRef.current) {
+        onReadyCalledRef.current = true;
+        onReady();
+      }
     } else {
       // Direct video URL - try to load from cache first
       setIsYouTube(false);
@@ -161,9 +173,9 @@ export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScre
 
   // Render direct video
   return (
-    <div className="absolute inset-0 bg-black">
-      {/* Loading indicator */}
-      {isLoading && (
+    <div className={`absolute inset-0 bg-black ${isPreloading ? 'opacity-0 pointer-events-none' : ''}`}>
+      {/* Loading indicator - only show if not preloading */}
+      {isLoading && !isPreloading && (
         <div className="absolute inset-0 flex items-center justify-center z-20">
           <div className="w-12 h-12 border-4 border-white/20 border-t-white/80 rounded-full animate-spin" />
         </div>
@@ -175,11 +187,19 @@ export default function VideoScreenSaver({ url, onExit, overlayText }: VideoScre
           ref={videoRef}
           src={videoSrc}
           className="w-full h-full object-cover"
-          autoPlay
+          autoPlay={!isPreloading}
           loop
           muted
           playsInline
           onError={handleVideoError}
+          onCanPlay={() => {
+            console.log('[VideoScreenSaver] Video can play - calling onReady');
+            setIsLoading(false);
+            if (onReady && !onReadyCalledRef.current) {
+              onReadyCalledRef.current = true;
+              onReady();
+            }
+          }}
           style={{ pointerEvents: "none", opacity: isLoading ? 0 : 1 }}
         />
       )}

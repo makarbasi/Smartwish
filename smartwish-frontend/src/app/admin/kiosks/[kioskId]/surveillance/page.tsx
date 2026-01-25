@@ -26,6 +26,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { Dialog, Transition } from "@headlessui/react";
 import { useSurveillanceStream } from "@/hooks/useSurveillanceStream";
+import { useScreenStream } from "@/hooks/useScreenStream";
+import { ComputerDesktopIcon } from "@heroicons/react/24/outline";
 
 interface Detection {
   id: string;
@@ -61,9 +63,9 @@ interface DetectionsResponse {
 }
 
 // Use local backend for development, cloud for production
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost' 
-    ? "http://localhost:3001" 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? "http://localhost:3001"
     : "https://smartwish.onrender.com");
 
 export default function KioskSurveillancePage({
@@ -80,7 +82,7 @@ export default function KioskSurveillancePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [kioskName, setKioskName] = useState<string | null>(null);
-  
+
   // Data states
   const [summaryStats, setSummaryStats] = useState<SummaryStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
@@ -99,7 +101,7 @@ export default function KioskSurveillancePage({
 
   // Selection for bulk delete
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  
+
   // Delete modals
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
@@ -113,26 +115,39 @@ export default function KioskSurveillancePage({
 
   // Image server URL - use backend for live stream (works remotely), local for static images
   const [localImageServerUrl, setLocalImageServerUrl] = useState<string>("http://localhost:8765");
-  
+
   // Live stream URL - served from backend (works remotely via frame relay)
   // Using public stream endpoint that doesn't require JWT in Authorization header
   const liveStreamUrl = `${BACKEND_URL}/surveillance/stream/${kioskId}`;
   const singleFrameUrl = `${BACKEND_URL}/surveillance/stream/${kioskId}/frame`;
-  
+
   // Live preview state
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [liveStreamError, setLiveStreamError] = useState(false);
   const [streamStatus, setStreamStatus] = useState<{ isActive: boolean; lastFrameAt: string | null } | null>(null);
-  
+
   // WebSocket stream for real-time video (preferred over MJPEG polling)
   const { status: wsStatus, frameUrl: wsFrameUrl } = useSurveillanceStream({
     kioskId,
     enabled: showLivePreview,
   });
-  
+
+  // Screen stream state
+  const [showScreenPreview, setShowScreenPreview] = useState(false);
+  const [screenStreamError, setScreenStreamError] = useState(false);
+
+  // WebSocket stream for screen viewing
+  const { status: screenStatus, frameUrl: screenFrameUrl } = useScreenStream({
+    kioskId,
+    enabled: showScreenPreview,
+  });
+
   // Use WebSocket stream if available, fallback to MJPEG
   const useWebSocket = wsStatus.connected || wsStatus.framesReceived > 0;
   const effectiveFrameUrl = useWebSocket ? wsFrameUrl : liveStreamUrl;
+
+  // Screen stream uses only WebSocket
+  const useScreenWebSocket = screenStatus.connected || screenStatus.framesReceived > 0;
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -151,7 +166,7 @@ export default function KioskSurveillancePage({
         if (response.ok) {
           const kiosk = await response.json();
           setKioskName(kiosk.name || kiosk.kioskId);
-          
+
           // Get local image server URL from kiosk config if available (for static detection images)
           if (kiosk.config?.surveillance?.httpPort) {
             setLocalImageServerUrl(`http://localhost:${kiosk.config.surveillance.httpPort}`);
@@ -289,7 +304,7 @@ export default function KioskSurveillancePage({
 
     // Only fetch once when authenticated
     let isMounted = true;
-    
+
     const loadData = async () => {
       if (!isMounted) return;
       await Promise.all([
@@ -298,9 +313,9 @@ export default function KioskSurveillancePage({
         fetchDetections(),
       ]);
     };
-    
+
     loadData();
-    
+
     return () => {
       isMounted = false;
     };
@@ -310,11 +325,11 @@ export default function KioskSurveillancePage({
   // Re-fetch detections when filters/pagination change
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.access_token) return;
-    
+
     // Skip initial load (handled above)
     const isInitialLoad = page === 1 && !startDate && !endDate && !countedOnly;
     if (isInitialLoad) return;
-    
+
     fetchDetections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, startDate, endDate, countedOnly]);
@@ -481,12 +496,12 @@ export default function KioskSurveillancePage({
 
   const getImageUrl = (imagePath: string | null): string | null => {
     if (!imagePath) return null;
-    
+
     // Check if it's a cloud URL (Supabase or other HTTPS URL)
     if (imagePath.startsWith('https://') || imagePath.startsWith('http://')) {
       return imagePath; // Already a full URL, use directly
     }
-    
+
     // Otherwise, it's a local path - serve from local print agent
     // Note: Local paths won't be accessible remotely
     return `${localImageServerUrl}/${imagePath}`;
@@ -499,8 +514,8 @@ export default function KioskSurveillancePage({
   };
 
   // Check if we're likely viewing remotely (not on localhost)
-  const isRemoteViewing = typeof window !== 'undefined' && 
-    !window.location.hostname.includes('localhost') && 
+  const isRemoteViewing = typeof window !== 'undefined' &&
+    !window.location.hostname.includes('localhost') &&
     !window.location.hostname.includes('127.0.0.1');
 
   // Calculate change percentage
@@ -526,7 +541,7 @@ export default function KioskSurveillancePage({
   }
 
   const totalPages = Math.ceil(totalDetections / pageSize);
-  const todayChange = summaryStats 
+  const todayChange = summaryStats
     ? getChangePercent(summaryStats.today.counted, summaryStats.yesterday.counted)
     : null;
 
@@ -621,11 +636,10 @@ export default function KioskSurveillancePage({
                     setShowLivePreview(!showLivePreview);
                     setLiveStreamError(false);
                   }}
-                  className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    showLivePreview
-                      ? "bg-red-100 text-red-700 hover:bg-red-200"
-                      : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                  }`}
+                  className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${showLivePreview
+                    ? "bg-red-100 text-red-700 hover:bg-red-200"
+                    : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                    }`}
                 >
                   {showLivePreview ? (
                     <>
@@ -718,8 +732,122 @@ export default function KioskSurveillancePage({
 
               {!showLivePreview && (
                 <p className="text-sm text-gray-500">
-                  Click &quot;Start Preview&quot; to view the live webcam feed from the kiosk. 
+                  Click &quot;Start Preview&quot; to view the live webcam feed from the kiosk.
                   Requires the surveillance process to be running on the kiosk computer.
+                </p>
+              )}
+            </div>
+
+            {/* Live Screen Preview Section */}
+            <div className="bg-white rounded-xl shadow-sm ring-1 ring-gray-200 p-4 mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <ComputerDesktopIcon className="h-5 w-5 text-blue-500" />
+                  <h3 className="text-lg font-semibold text-gray-900">Live Screen Preview</h3>
+                  {showScreenPreview && !screenStreamError && screenStatus.framesReceived > 0 && (
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                      LIVE
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowScreenPreview(!showScreenPreview);
+                    setScreenStreamError(false);
+                  }}
+                  className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${showScreenPreview
+                      ? "bg-red-100 text-red-700 hover:bg-red-200"
+                      : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    }`}
+                >
+                  {showScreenPreview ? (
+                    <>
+                      <XMarkIcon className="h-4 w-4" />
+                      Hide Screen
+                    </>
+                  ) : (
+                    <>
+                      <ComputerDesktopIcon className="h-4 w-4" />
+                      View Screen
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {showScreenPreview && (
+                <div className="relative">
+                  {(screenStreamError || (!useScreenWebSocket && !screenStatus.connected)) ? (
+                    <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
+                      <div className="text-center text-gray-400">
+                        <ComputerDesktopIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg font-medium">Unable to connect to screen stream</p>
+                        <p className="text-sm mt-2">
+                          Make sure the surveillance process is running on the kiosk
+                        </p>
+                        <p className="text-xs mt-4 text-gray-500">
+                          The kiosk must be running and connected to the server
+                        </p>
+                        {screenStatus.error && (
+                          <p className="text-xs mt-2 text-red-400">
+                            Error: {screenStatus.error}
+                          </p>
+                        )}
+                        <button
+                          onClick={() => {
+                            setScreenStreamError(false);
+                          }}
+                          className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-500"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="aspect-video bg-gray-900 rounded-lg overflow-hidden">
+                      {screenFrameUrl ? (
+                        <img
+                          src={screenFrameUrl}
+                          alt="Live screen feed"
+                          className="w-full h-full object-contain"
+                          onError={() => setScreenStreamError(true)}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <div className="text-center text-gray-400">
+                            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                            <p className="text-sm">Connecting to screen stream...</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-center gap-4 mt-2 text-xs text-gray-500">
+                    <span>Live screen view from kiosk display</span>
+                    {useScreenWebSocket ? (
+                      <span className="flex items-center gap-1 text-green-500">
+                        <SignalIcon className="h-3 w-3" />
+                        WebSocket ({screenStatus.framesReceived} frames)
+                      </span>
+                    ) : screenStatus.connected ? (
+                      <span className="flex items-center gap-1 text-blue-500">
+                        <SignalIcon className="h-3 w-3" />
+                        Connected (waiting for frames)
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-gray-400">
+                        <SignalSlashIcon className="h-3 w-3" />
+                        Connecting...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!showScreenPreview && (
+                <p className="text-sm text-gray-500">
+                  Click &quot;View Screen&quot; to see what is displayed on the kiosk screen in real-time.
+                  This allows you to monitor the kiosk display remotely.
                 </p>
               )}
             </div>
@@ -981,11 +1109,10 @@ export default function KioskSurveillancePage({
                   {detections.map((detection) => (
                     <div
                       key={detection.id}
-                      className={`relative group rounded-lg overflow-hidden border-2 transition-all ${
-                        selectedIds.has(detection.id)
-                          ? "border-amber-500 ring-2 ring-amber-200"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
+                      className={`relative group rounded-lg overflow-hidden border-2 transition-all ${selectedIds.has(detection.id)
+                        ? "border-amber-500 ring-2 ring-amber-200"
+                        : "border-gray-200 hover:border-gray-300"
+                        }`}
                     >
                       {/* Selection checkbox */}
                       <div className="absolute top-2 left-2 z-10">
@@ -1167,7 +1294,7 @@ export default function KioskSurveillancePage({
                   <p className="mt-2 text-sm text-gray-500">
                     Delete all detections within the specified date range.
                   </p>
-                  
+
                   <div className="mt-4 space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1306,7 +1433,7 @@ export default function KioskSurveillancePage({
                   >
                     <XMarkIcon className="h-8 w-8" />
                   </button>
-                  
+
                   {previewImage?.imagePath && (isCloudUrl(previewImage.imagePath) || !isRemoteViewing) ? (
                     <img
                       src={getImageUrl(previewImage.imagePath) || ""}
@@ -1327,7 +1454,7 @@ export default function KioskSurveillancePage({
                       </p>
                     </div>
                   )}
-                  
+
                   <div className="mt-4 text-white text-center">
                     <p className="text-lg font-medium">
                       Person ID: {previewImage?.personTrackId}
