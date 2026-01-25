@@ -1,0 +1,46 @@
+{
+    "_readme": "=== SMARTWISH PRINT AGENT CONFIGURATION ===",
+    "_instructions": [
+        "1. Copy this file to 'config.json'",
+        "2. For PRODUCTION: Update cloudServerUrl and frontendUrl to production URLs",
+        "3. For DEVELOPMENT: Use localhost URLs as shown below",
+        "4. Run 'start-print-agent.bat' and follow the pairing process"
+    ],
+    "_production_urls": {
+        "cloudServerUrl": "https://smartwish.onrender.com",
+        "frontendUrl": "https://app.smartwish.us"
+    },
+    "_development_urls": {
+        "cloudServerUrl": "http://localhost:3001",
+        "frontendUrl": "http://localhost:3000"
+    },
+    "cloudServerUrl": "https://smartwish.onrender.com",
+    "frontendUrl": "https://app.smartwish.us",
+    "defaultPrinter": "",
+    "pollInterval": 10000,
+    "localServices": {
+        "_note": "These ports are for LOCAL HTTP servers on THIS machine (not cloud)",
+        "pairingPort": 8766,
+        "surveillancePort": 8765
+    },
+    "surveillance": {
+        "_note": "These are DEFAULT values - actual values come from cloud after pairing",
+        "enabled": true,
+        "webcamIndex": 0,
+        "httpPort": 8765,
+        "showPreview": false,
+        "dwellThresholdSeconds": 8,
+        "frameThreshold": 10
+    },
+    "eventsScraper": {
+        "enabled": true,
+        "runOnStartup": true,
+        "scheduleTime": "03:00",
+        "_comment": "Events scraper runs daily to fetch Eventbrite events"
+    },
+    "_troubleshooting": {
+        "webcam_not_found": "Try webcamIndex: 1, 2, or 3",
+        "python_not_found": "Add pythonPath: 'C:/Python39/python.exe' to surveillance section",
+        "camera_preview": "Set showPreview: true to see what camera sees"
+    }
+}

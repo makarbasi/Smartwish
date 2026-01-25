@@ -1,20 +1,22 @@
 {
-    "version":  "1.0.0",
-    "dependencies":  {
-                         "pdf-lib":  "^1.17.1",
-                         "sharp":  "^0.33.5",
-                         "pdf-to-printer":  "^5.6.0",
-                         "ipp":  "^1.1.0",
-                         "net-snmp":  "^3.11.2"
-                     },
-    "name":  "smartwish-print-agent",
-    "type":  "module",
-    "description":  "SmartWish Local Print Agent - Production",
-    "engines":  {
-                    "node":  "\u003e=18.0.0"
-                },
-    "scripts":  {
-                    "start":  "node local-print-agent.js"
-                },
-    "main":  "local-print-agent.js"
+    "version": "1.0.0",
+    "dependencies": {
+        "pdf-lib": "^1.17.1",
+        "sharp": "^0.33.5",
+        "pdf-to-printer": "^5.6.0",
+        "ipp": "^1.1.0",
+        "net-snmp": "^3.11.2"
+    },
+    "name": "smartwish-print-agent",
+    "type": "module",
+    "description": "SmartWish Local Print Agent - Production",
+    "engines": {
+        "node": "\u003e=18.0.0"
+    },
+    "scripts": {
+        "start": "node local-print-agent.js",
+        "setup": "npm install && pip install -r surveillance/requirements.txt",
+        "setup:python": "pip install -r surveillance/requirements.txt"
+    },
+    "main": "local-print-agent.js"
 }

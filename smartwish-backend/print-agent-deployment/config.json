@@ -1,43 +1,27 @@
 {
   "_readme": "=== SMARTWISH PRINT AGENT CONFIGURATION ===",
-  
-  "cloudServerUrl": "http://localhost:3001",
-    "frontendUrl": "http://localhost:3000",
+  "_note": "DO NOT commit this file with real API keys. Use config.example.json as template.",
+  "cloudServerUrl": "https://smartwish.onrender.com",
+  "frontendUrl": "https://app.smartwish.us",
   "defaultPrinter": "",
   "pollInterval": 10000,
-  
   "localServices": {
     "_note": "These ports are for LOCAL HTTP servers on THIS machine (not cloud)",
     "pairingPort": 8766,
     "surveillancePort": 8765
   },
-  
   "surveillance": {
     "enabled": true,
-    "kioskId": "PC_KIOSK_2",
-    "apiKey": "c00bc4c8772d235c9baea1d0faa9d31bb41d57001d5305cc",
     "webcamIndex": 0,
     "httpPort": 8765,
-    "showPreview": true,
+    "showPreview": false,
     "dwellThresholdSeconds": 8,
     "frameThreshold": 10
   },
-
   "eventsScraper": {
     "enabled": true,
     "runOnStartup": true,
     "scheduleTime": "03:00",
     "_comment": "Events scraper runs daily to fetch Eventbrite events for San Diego"
-  },
-
-  "_comments": {
-    "cloudServerUrl": "Backend API (Render)",
-    "frontendUrl": "Frontend URL for browser (Vercel/custom domain)",
-    "localServices": "localhost:8765 = camera stream, localhost:8766 = device pairing",
-    "localDev": "For local dev: cloudServerUrl=http://localhost:3001, frontendUrl=http://localhost:3000",
-    "cloudServerUrl": "https://smartwish.onrender.com",
-    "frontendUrl": "https://app.smartwish.us",
-    "cloudServerUrl": "http://localhost:3001",
-    "frontendUrl": "http://localhost:3000"
   }
 }
