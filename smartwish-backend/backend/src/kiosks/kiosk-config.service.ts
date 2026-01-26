@@ -147,6 +147,31 @@ export class KioskConfigService {
     return { ...saved, config: this.mergeConfig(saved.config) };
   }
 
+  /**
+   * Update kiosk heartbeat (called from WebSocket gateway)
+   * This provides redundancy if the frontend is stuck or backgrounded
+   */
+  async updateHeartbeat(kioskId: string) {
+    const record = await this.kioskRepo.findOne({
+      where: { kioskId },
+      select: ['id', 'kioskId', 'config']
+    });
+
+    if (!record) return false;
+
+    // Use query builder for efficient update without triggering full save hooks/fetches
+    // This updates the 'lastHeartbeat' property in the config JSONB column
+    await this.kioskRepo.createQueryBuilder()
+      .update(KioskConfig)
+      .set({
+        config: () => `config || '{"lastHeartbeat": "${new Date().toISOString()}"}'::jsonb`
+      })
+      .where("id = :id", { id: record.id })
+      .execute();
+
+    return true;
+  }
+
   async getMergedConfig(kioskId: string, apiKey?: string) {
     const record = await this.kioskRepo.findOne({ where: { kioskId } });
     if (!record) throw new NotFoundException('Kiosk not found');
@@ -169,19 +194,19 @@ export class KioskConfigService {
   async getConfigById(id: string) {
     // Check if input looks like a UUID (simple regex check)
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    
+
     let record: KioskConfig | null = null;
-    
+
     if (isUuid) {
       // Search by UUID
       record = await this.kioskRepo.findOne({ where: { id } });
     }
-    
+
     if (!record) {
       // Fallback: try finding by kioskId (human-readable ID like "PC_KIOSK_2")
       record = await this.kioskRepo.findOne({ where: { kioskId: id } });
     }
-    
+
     if (!record) throw new NotFoundException('Kiosk not found');
     if (!record.isActive) throw new BadRequestException('Kiosk is not active');
     const merged = this.mergeConfig(record.config);
@@ -743,7 +768,7 @@ export class KioskConfigService {
     let printCode: string | undefined;
     try {
       printCode = this.generatePrintCode();
-      
+
       // Ensure uniqueness (retry if collision)
       let retries = 0;
       while (retries < 5) {
@@ -866,9 +891,9 @@ export class KioskConfigService {
   private async processEarningsForPrint(printLog: KioskPrintLog): Promise<void> {
     try {
       const isPromo = printLog.paymentMethod === PaymentMethod.PROMO_CODE;
-      const isGiftCardProduct = printLog.productType === 'gift-card' || 
-                                printLog.productType === 'generic-gift-card' ||
-                                !!printLog.giftCardBrand;
+      const isGiftCardProduct = printLog.productType === 'gift-card' ||
+        printLog.productType === 'generic-gift-card' ||
+        !!printLog.giftCardBrand;
       const price = parseFloat(printLog.price?.toString() || '0');
 
       // RULE: Gift card purchases = NO commission (pass-through)
@@ -900,9 +925,9 @@ export class KioskConfigService {
       if (printLog.paymentMethod === PaymentMethod.CARD && price > 0) {
         console.log(`[Earnings] Recording card payment with commission: ${printLog.printCode}, $${price}`);
         const processingFees = this.calculateStripeFees(price);
-        
+
         const transactionType = printLog.productType === 'sticker' ? 'sticker' : 'greeting_card';
-        
+
         const earning = await this.earningsService.recordPrintProductSale({
           kioskId: printLog.kioskId,
           orderId: printLog.id,
@@ -949,8 +974,8 @@ export class KioskConfigService {
       .orderBy('log.created_at', 'DESC');
 
     if (filters.printCode) {
-      query.andWhere('log.print_code ILIKE :printCode', { 
-        printCode: `%${filters.printCode.toUpperCase()}%` 
+      query.andWhere('log.print_code ILIKE :printCode', {
+        printCode: `%${filters.printCode.toUpperCase()}%`
       });
     }
     if (filters.sessionId) {
@@ -1120,7 +1145,7 @@ export class KioskConfigService {
 
     // Filter out assignments with missing kiosk relations (data integrity check)
     const validAssignments = assignments.filter(a => a.kiosk && a.kioskId);
-    
+
     if (validAssignments.length === 0) {
       return { logs: [], total: 0, kiosks: [] };
     }
@@ -1211,7 +1236,7 @@ export class KioskConfigService {
 
     // Filter out assignments with missing kiosk relations (data integrity check)
     const validAssignments = assignments.filter(a => a.kiosk && a.kioskId);
-    
+
     if (validAssignments.length === 0) {
       return {
         totalPrints: 0,
@@ -1230,7 +1255,7 @@ export class KioskConfigService {
     }
 
     const kioskIds = validAssignments.map(a => a.kioskId).filter(id => id != null);
-    
+
     if (kioskIds.length === 0) {
       return {
         totalPrints: 0,
@@ -1568,8 +1593,8 @@ export class KioskConfigService {
       printerName?: string;
       ink?: Record<string, { level: number; state: string }>;
       paper?: Record<string, { level: number; description: string; state: string }>;
-      errors?: Array<{ code: string; message: string; [key: string]: any }>;
-      warnings?: Array<{ code: string; message: string; [key: string]: any }>;
+      errors?: Array<{ code: string; message: string;[key: string]: any }>;
+      warnings?: Array<{ code: string; message: string;[key: string]: any }>;
       printQueue?: {
         jobCount: number;
         jobs: Array<{ id: number; status: string; name?: string }>;
@@ -1591,7 +1616,7 @@ export class KioskConfigService {
     };
 
     // Check if there are critical issues that need immediate attention
-    const hasCriticalErrors = status.errors?.some(e => 
+    const hasCriticalErrors = status.errors?.some(e =>
       ['no_paper', 'paper_jam', 'no_ink', 'door_open', 'offline'].includes(e.code)
     );
 
@@ -1684,12 +1709,12 @@ export class KioskConfigService {
     const jobs = await Promise.all(
       pendingLogs.map(async (log) => {
         const paperType = log.paperType || 'greeting-card';
-        
+
         // Find the printer configured for this paper type
         let printerName = log.printerName;
         let printerIP = null;
         let printMode: string = paperType === 'greeting-card' ? 'duplexshort' : 'simplex';  // Default based on type
-        
+
         if (log.kioskId) {
           const printer = await this.printerRepo.findOne({
             where: {
@@ -1698,7 +1723,7 @@ export class KioskConfigService {
               isEnabled: true,
             },
           });
-          
+
           if (printer) {
             printerName = printer.printerName;
             printerIP = printer.ipAddress;
@@ -1782,7 +1807,7 @@ export class KioskConfigService {
 
     // Use kioskId property to match KioskPrintLog entity
     const where: any = { kioskId: kiosk.id };
-    
+
     if (options.status) {
       where.status = options.status;
     }
@@ -1795,7 +1820,7 @@ export class KioskConfigService {
         where.createdAt = MoreThanOrEqual(options.startDate);
       }
       if (options.endDate) {
-        where.createdAt = options.startDate 
+        where.createdAt = options.startDate
           ? Between(options.startDate, options.endDate)
           : LessThanOrEqual(options.endDate);
       }
@@ -1878,7 +1903,7 @@ export class KioskConfigService {
 
     // Use kioskId property to match KioskPrintLog entity
     const where: any = { kioskId: kiosk.id };
-    
+
     if (startDate || endDate) {
       if (startDate && endDate) {
         where.createdAt = Between(startDate, endDate);
@@ -2180,7 +2205,7 @@ export class KioskConfigService {
       // Use the error message if available, otherwise use default
       const errorMsg = status.errors?.find(e => e.code === 'paper_empty' || (e.message?.toLowerCase().includes('paper') && e.message?.toLowerCase().includes('empty')))?.message;
       const message = errorMsg ? `${printer.name}: ${errorMsg}` : `${printer.name}: Paper tray is empty`;
-      
+
       await this.createOrUpdateAlert(
         printer.kioskId,
         printer.id,
@@ -2192,7 +2217,7 @@ export class KioskConfigService {
       // Use the warning message if available, otherwise use default
       const warningMsg = status.warnings?.find(w => w.code === 'paper_low' || (w.message?.toLowerCase().includes('paper') && w.message?.toLowerCase().includes('low')))?.message;
       const message = warningMsg ? `${printer.name}: ${warningMsg}` : `${printer.name}: Paper is low`;
-      
+
       await this.createOrUpdateAlert(
         printer.kioskId,
         printer.id,
@@ -2272,7 +2297,7 @@ export class KioskConfigService {
       alertType,
       resolvedAt: IsNull(),
     };
-    
+
     // IMPORTANT: For paper alerts, we want to resolve ALL alerts for this kiosk of this type
     // regardless of which printer they're associated with. This handles cases where:
     // 1. Alerts were created before the multi-printer system existed

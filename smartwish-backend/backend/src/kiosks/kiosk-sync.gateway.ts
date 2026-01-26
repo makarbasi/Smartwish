@@ -7,6 +7,7 @@ import {
 import { Server, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { Injectable } from '@nestjs/common';
+import { KioskConfigService } from './kiosk-config.service';
 
 interface KioskSocket extends WebSocket {
     kioskId?: string;
@@ -38,7 +39,7 @@ export class KioskSyncGateway implements OnGatewayConnection, OnGatewayDisconnec
     // Map of kioskId -> connected socket
     private kioskSockets = new Map<string, KioskSocket>();
 
-    constructor() {
+    constructor(private readonly kioskService: KioskConfigService) {
         console.log('[KioskSyncGateway] Gateway initialized');
     }
 
@@ -66,6 +67,14 @@ export class KioskSyncGateway implements OnGatewayConnection, OnGatewayDisconnec
                 }
                 ws.isAlive = false;
                 ws.ping();
+
+                // Update heartbeat in DB for authenticated kiosks
+                // This ensures "Online" status is accurate even if frontend loop fails
+                if (ws.kioskId) {
+                    this.kioskService.updateHeartbeat(ws.kioskId).catch((err: unknown) =>
+                        console.error(`[KioskSyncGateway] Failed to update heartbeat for ${ws.kioskId}`, err)
+                    );
+                }
             });
         }, 30000);
     }
@@ -123,6 +132,9 @@ export class KioskSyncGateway implements OnGatewayConnection, OnGatewayDisconnec
 
         this.kioskSockets.set(kioskId, client);
         console.log(`[KioskSyncGateway] Kiosk registered: ${kioskId}`);
+
+        // Initial heartbeat update
+        this.kioskService.updateHeartbeat(kioskId);
 
         client.send(JSON.stringify({
             type: 'connected',

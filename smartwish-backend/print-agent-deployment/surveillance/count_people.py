@@ -1303,10 +1303,44 @@ class VideoRecorder:
         - Always captures frames (for YOLO/streaming)
         - Optionally writes to video file when is_recording=True
         """
-        # Open camera
-        cap = cv2.VideoCapture(self.webcam_index)
-        if not cap.isOpened():
-            print(f"  [Capture] ERROR: Cannot open webcam {self.webcam_index}")
+        # Open camera - try configured index first, then scan
+        cap = None
+        
+        # 1. Try configured index
+        print(f"  [Capture] Trying configured webcam index: {self.webcam_index}")
+        temp_cap = cv2.VideoCapture(self.webcam_index)
+        if temp_cap.isOpened():
+            ret, _ = temp_cap.read()
+            if ret:
+                cap = temp_cap
+                print(f"  [Capture] ✅ specific webcam {self.webcam_index} opened successfully")
+            else:
+                print(f"  [Capture] ⚠️ Webcam {self.webcam_index} opened but returned no frame")
+                temp_cap.release()
+        else:
+            print(f"  [Capture] ❌ Failed to open webcam index {self.webcam_index}")
+            
+        # 2. If failed, scan other indices
+        if cap is None:
+            print(f"  [Capture] Scanning for available cameras (0-9)...")
+            for i in range(10):
+                if i == self.webcam_index: continue  # Skip already tried
+                
+                print(f"  [Capture] Checking index {i}...")
+                temp_cap = cv2.VideoCapture(i)
+                if temp_cap.isOpened():
+                    # Read a frame to be sure
+                    ret, _ = temp_cap.read()
+                    if ret:
+                        print(f"  [Capture] ✅ Found working camera at index {i}")
+                        cap = temp_cap
+                        self.webcam_index = i  # Update to working index
+                        break
+                    else:
+                         temp_cap.release()
+            
+        if cap is None:
+            print(f"  [Capture] ❌ ERROR: No working webcam found!")
             self.capture_running = False
             return
         
@@ -1780,8 +1814,7 @@ def main():
         # Stop frame streaming
         if ws_streamer:
             ws_streamer.stop()
-        if frame_uploader:
-            frame_uploader.stop()
+        # frame_uploader removed
         reporter.stop()
         cv2.destroyAllWindows()
         print("  ✅ Surveillance stopped")
