@@ -44,7 +44,7 @@ const generateStickerProps = (index: number, stickerId?: string) => {
   const r4 = seededRandom(seed + 3);
   const r5 = seededRandom(seed + 4);
   const r6 = seededRandom(seed + 5);
-  
+
   return {
     xPos: Math.round((r1 * 300 - 150) * 100) / 100,
     size: Math.round(100 + (r2 * 40)),
@@ -116,20 +116,20 @@ const fetcher = async (url: string) => {
       localStorage.removeItem(cacheKey);
     }
   }
-  
+
   // Fetch fresh data
   console.log(`🌐 [Fetch] Fetching fresh data for ${url}`);
   const response = await fetch(url, {
     cache: 'default', // Use browser cache
   });
   const data = await response.json();
-  
+
   console.log(`✅ [Fetch] Got response for ${url}:`, {
     success: data?.success,
     dataLength: Array.isArray(data?.data) ? data.data.length : 'not array',
     total: data?.total,
   });
-  
+
   // Only cache valid data
   if (data && data.success !== false && Array.isArray(data.data) && data.data.length > 0) {
     try {
@@ -142,7 +142,7 @@ const fetcher = async (url: string) => {
   } else {
     console.warn(`⚠️ [Fetch] Response for ${url} has no data, not caching`);
   }
-  
+
   return data;
 };
 
@@ -157,8 +157,9 @@ interface Template {
 interface Sticker {
   id: string;
   title: string;
-  imageUrl: string;
+  imageUrl: string | null;
   thumbnailUrl?: string;
+  category?: string;
 }
 
 interface TemplatesResponse {
@@ -179,7 +180,7 @@ function KioskHomePageContent() {
   const { startSession, trackTileSelect } = useKioskSession();
   const { activateKiosk, kioskInfo } = useKiosk();
   const kioskSessionContext = useKioskSessionSafe();
-  
+
   // Test print log state
   const [testingPrintLog, setTestingPrintLog] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -190,32 +191,32 @@ function KioskHomePageContent() {
     hasManager: boolean;
     hasSalesRep: boolean;
   } | null>(null);
-  
+
   // Test form values
   const [testPrice, setTestPrice] = useState('5.00');
   const [testProductName, setTestProductName] = useState('Test Greeting Card');
   const [testPaymentMethod, setTestPaymentMethod] = useState<'card' | 'promo_code'>('card');
   const [testPromoCode, setTestPromoCode] = useState('');
-  
+
   // Stripe fee calculation (2.9% + $0.30)
   const STRIPE_FEE_PERCENT = 0.029;
   const STRIPE_FEE_FIXED = 0.30;
-  
+
   // Calculate expected earnings breakdown
   const calculateExpectedEarnings = (grossPrice: number) => {
     if (!kioskCommissions) return null;
-    
+
     const stripeFees = (grossPrice * STRIPE_FEE_PERCENT) + STRIPE_FEE_FIXED;
     const netDistributable = grossPrice - stripeFees;
-    
-    const managerEarnings = kioskCommissions.hasManager 
-      ? netDistributable * (kioskCommissions.managerPercent / 100) 
+
+    const managerEarnings = kioskCommissions.hasManager
+      ? netDistributable * (kioskCommissions.managerPercent / 100)
       : 0;
-    const salesRepEarnings = kioskCommissions.hasSalesRep 
-      ? netDistributable * (kioskCommissions.salesRepPercent / 100) 
+    const salesRepEarnings = kioskCommissions.hasSalesRep
+      ? netDistributable * (kioskCommissions.salesRepPercent / 100)
       : 0;
     const smartwishEarnings = netDistributable - managerEarnings - salesRepEarnings;
-    
+
     return {
       gross: grossPrice,
       stripeFees: Math.round(stripeFees * 100) / 100,
@@ -229,7 +230,7 @@ function KioskHomePageContent() {
   // Fetch kiosk commission info when panel opens
   const fetchKioskCommissions = async () => {
     if (!kioskInfo?.id) return;
-    
+
     try {
       // Fetch kiosk details including manager/sales rep info
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'https://smartwish.onrender.com'}/admin/kiosks/${kioskInfo.id}`);
@@ -253,13 +254,13 @@ function KioskHomePageContent() {
       setTestResult('❌ ERROR: No kiosk activated!\n\nPlease activate a kiosk first via pairing.');
       return;
     }
-    
+
     setTestingPrintLog(true);
     setTestResult('Creating print log...');
-    
+
     const grossPrice = testPaymentMethod === 'promo_code' ? 0 : parseFloat(testPrice) || 5.00;
     const expectedEarnings = testPaymentMethod === 'card' ? calculateExpectedEarnings(grossPrice) : null;
-    
+
     const testData: Record<string, unknown> = {
       kioskId: kioskInfo.id,
       kioskSessionId: kioskSessionContext?.sessionId || undefined,
@@ -288,20 +289,20 @@ function KioskHomePageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(testData),
       });
-      
+
       const printLogResult = await response.json();
-      
+
       if (!response.ok) {
         console.error('🧪 TEST FAILED:', printLogResult);
         setTestResult(`❌ FAILED!\nStatus: ${response.status}\nError: ${JSON.stringify(printLogResult, null, 2)}`);
         return;
       }
-      
+
       console.log('🧪 Print log created:', printLogResult);
-      
+
       // Step 2: Wait a moment for earnings to be processed
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Step 3: Fetch the earnings entry to verify it was created
       let earningsInfo = 'Checking earnings...';
       try {
@@ -311,9 +312,9 @@ function KioskHomePageContent() {
         if (earningsResponse.ok) {
           const earningsData = await earningsResponse.json();
           const latestEarning = earningsData.earnings?.[0] || earningsData[0];
-          
+
           if (latestEarning && latestEarning.printLogId === printLogResult.id) {
-            earningsInfo = 
+            earningsInfo =
               `\n\n💰 EARNINGS RECORDED:\n` +
               `  Gross: $${latestEarning.grossAmount}\n` +
               `  Stripe Fees: $${latestEarning.processingFees}\n` +
@@ -329,7 +330,7 @@ function KioskHomePageContent() {
       } catch (earningsErr) {
         earningsInfo = '\n\n⚠️ Could not verify earnings (may require auth)';
       }
-      
+
       setTestResult(
         `✅ PRINT LOG CREATED!\n` +
         `ID: ${printLogResult.id}\n` +
@@ -340,7 +341,7 @@ function KioskHomePageContent() {
         earningsInfo +
         (expectedEarnings ? `\n\n📊 EXPECTED (if card):\n  Gross: $${expectedEarnings.gross}\n  Stripe: -$${expectedEarnings.stripeFees}\n  Net: $${expectedEarnings.netDistributable}\n  Manager: $${expectedEarnings.managerEarnings}\n  Sales Rep: $${expectedEarnings.salesRepEarnings}\n  SmartWish: $${expectedEarnings.smartwishEarnings}` : '')
       );
-      
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('🧪 TEST ERROR:', error);
@@ -349,7 +350,7 @@ function KioskHomePageContent() {
       setTestingPrintLog(false);
     }
   };
-  
+
   // Debug logging for page lifecycle
   console.log("🏠 [KioskHome] Render:", {
     isKiosk,
@@ -366,7 +367,7 @@ function KioskHomePageContent() {
       const url = new URL(window.location.href);
       url.searchParams.delete('pairingComplete');
       window.history.replaceState({}, '', url.toString());
-      
+
       // Sync kiosk from local print agent pairing
       const syncKioskFromPairing = async () => {
         try {
@@ -375,7 +376,7 @@ function KioskHomePageContent() {
           const response = await fetch(`http://localhost:${localPairingPort}/pairing`, {
             signal: AbortSignal.timeout(3000),
           });
-          
+
           if (response.ok) {
             const pairing = await response.json();
             console.log('🏠 [KioskHome] Pairing data received:', pairing);
@@ -398,9 +399,9 @@ function KioskHomePageContent() {
           console.error('🏠 [KioskHome] ❌ Could not sync with local print agent:', err);
         }
       };
-      
+
       syncKioskFromPairing();
-      
+
       // Enter fullscreen mode
       const enterFullscreen = () => {
         try {
@@ -421,7 +422,7 @@ function KioskHomePageContent() {
           console.error('Error entering fullscreen:', error);
         }
       };
-      
+
       // Small delay to ensure page is fully loaded
       setTimeout(enterFullscreen, 500);
     }
@@ -430,27 +431,27 @@ function KioskHomePageContent() {
   // Check if features are enabled (default to true if not set)
   const greetingCardsEnabled = kioskConfig?.greetingCardsEnabled !== false;
   const stickersEnabled = kioskConfig?.stickersEnabled !== false;
-  
+
   // Gift card tile configuration
   const giftCardTileConfig = kioskConfig?.giftCardTile;
   const giftCardTileEnabled = giftCardTileConfig?.enabled && giftCardTileConfig?.visibility === 'visible';
   const giftCardTileDisabled = giftCardTileConfig?.enabled && giftCardTileConfig?.visibility === 'disabled';
   const showGiftCardTile = giftCardTileEnabled || giftCardTileDisabled;
-  
+
   // Determine gift card source (default to 'smartwish' for backward compatibility)
   const giftCardSource = giftCardTileConfig?.source || 'smartwish';
   const isTilloSource = giftCardSource === 'tillo';
-  
+
   // For Tillo, check if tilloBrandSlug is set; for SmartWish, check brandId
-  const hasGiftCardBrandConfigured = isTilloSource 
-    ? !!giftCardTileConfig?.tilloBrandSlug 
+  const hasGiftCardBrandConfigured = isTilloSource
+    ? !!giftCardTileConfig?.tilloBrandSlug
     : !!giftCardTileConfig?.brandId;
 
   // Fetch gift card brand info when brandId is set (for SmartWish brands)
   // For Tillo brands, we use the cached values in the config
   const [giftCardBrand, setGiftCardBrand] = useState<GiftCardBrand | null>(null);
   const [logoBackgroundColor, setLogoBackgroundColor] = useState<string>('#ffffff');
-  
+
   // Extract dominant edge color from an image URL
   const extractEdgeColor = (imageUrl: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -464,18 +465,18 @@ function KioskHomePageContent() {
             resolve('#ffffff');
             return;
           }
-          
+
           // Use small canvas for performance
           canvas.width = 50;
           canvas.height = 50;
           ctx.drawImage(img, 0, 0, 50, 50);
-          
+
           // Sample colors from edges (corners and midpoints)
           const samplePoints = [
             [0, 0], [49, 0], [0, 49], [49, 49], // corners
             [25, 0], [25, 49], [0, 25], [49, 25], // edge midpoints
           ];
-          
+
           const colors: number[][] = [];
           for (const [x, y] of samplePoints) {
             const pixel = ctx.getImageData(x, y, 1, 1).data;
@@ -484,18 +485,18 @@ function KioskHomePageContent() {
               colors.push([pixel[0], pixel[1], pixel[2]]);
             }
           }
-          
+
           if (colors.length === 0) {
             resolve('#ffffff');
             return;
           }
-          
+
           // Average the sampled colors
           const avg = colors.reduce(
             (acc, c) => [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]],
             [0, 0, 0]
           ).map(v => Math.round(v / colors.length));
-          
+
           const hex = `#${avg.map(v => v.toString(16).padStart(2, '0')).join('')}`;
           resolve(hex);
         } catch {
@@ -506,7 +507,7 @@ function KioskHomePageContent() {
       img.src = imageUrl;
     });
   };
-  
+
   useEffect(() => {
     // For SmartWish brands, fetch from API
     if (!isTilloSource && giftCardTileConfig?.brandId) {
@@ -524,7 +525,7 @@ function KioskHomePageContent() {
         })
         .catch((err) => console.error('Failed to fetch gift card brand:', err));
     }
-    
+
     // For Tillo brands, use cached values from config
     if (isTilloSource && giftCardTileConfig?.tilloBrandSlug) {
       // Create a synthetic brand object from cached Tillo config
@@ -537,7 +538,7 @@ function KioskHomePageContent() {
         max_amount: giftCardTileConfig.tilloMaxAmount || 500,
       };
       setGiftCardBrand(tilloBrand);
-      
+
       // Extract background color from Tillo logo
       if (tilloBrand.logo_url) {
         extractEdgeColor(tilloBrand.logo_url).then(setLogoBackgroundColor);
@@ -547,7 +548,7 @@ function KioskHomePageContent() {
 
   // Track if component has mounted (for hydration-safe rendering)
   const [hasMounted, setHasMounted] = useState(false);
-  
+
   // Cache clearing utility for debugging
   useEffect(() => {
     // Check if clearCache query param is present
@@ -573,7 +574,7 @@ function KioskHomePageContent() {
       window.location.replace(newUrl);
       return;
     }
-    
+
     // Expose cache-clearing function for debugging via console
     (window as unknown as Record<string, unknown>).clearStickerCache = () => {
       console.log('🧹 Clearing sticker/template caches...');
@@ -582,23 +583,23 @@ function KioskHomePageContent() {
       localStorage.removeItem(STICKER_PROPS_CACHE_KEY);
       console.log('✅ Done! Reload the page to fetch fresh data.');
     };
-    
+
     console.log('💡 [Debug] To clear sticker cache, run: window.clearStickerCache() or add ?clearCache=true to URL');
-    
+
     // Check for reduced motion preference
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (mediaQuery.matches) {
       console.warn('⚠️ [Debug] User prefers reduced motion - this may affect sticker animations');
     }
   }, []);
-  
+
   // Get cached data on first client render using a ref (avoids re-computation)
   // This is initialized to undefined on server, then populated on client mount
   const cachedDataRef = useRef<{
     templates?: TemplatesResponse;
     stickers?: StickersResponse;
   } | null>(null);
-  
+
   // Initialize cached data ref on first client render
   if (typeof window !== 'undefined' && cachedDataRef.current === null) {
     cachedDataRef.current = {
@@ -606,11 +607,11 @@ function KioskHomePageContent() {
       stickers: getCachedData<StickersResponse>(STICKERS_CACHE_KEY),
     };
   }
-  
+
   useEffect(() => {
     console.log("🏠 [KioskHome] Component MOUNTED");
     setHasMounted(true);
-    
+
     return () => {
       console.log("🏠 [KioskHome] Component UNMOUNTED");
     };
@@ -645,10 +646,10 @@ function KioskHomePageContent() {
   );
 
   const templates = templatesData?.data || [];
-  
+
   // Get 30 unique stickers from different categories
   const allStickers = stickersDataAll?.data || [];
-  
+
   // Debug log for stickers data
   useEffect(() => {
     console.log('🎨 [Stickers] Data state:', {
@@ -664,7 +665,7 @@ function KioskHomePageContent() {
   }, [stickersDataAll]);
   const uniqueStickers = useMemo(() => {
     if (allStickers.length === 0) return [];
-    
+
     // Group by category
     const byCategory: Record<string, Sticker[]> = {};
     allStickers.forEach(sticker => {
@@ -672,13 +673,13 @@ function KioskHomePageContent() {
       if (!byCategory[cat]) byCategory[cat] = [];
       byCategory[cat].push(sticker);
     });
-    
+
     // Pick stickers from different categories
     const selected: Sticker[] = [];
     const categoryKeys = Object.keys(byCategory);
     let categoryIndex = 0;
     let stickerIndex = 0;
-    
+
     while (selected.length < 30 && allStickers.length > 0) {
       if (categoryKeys.length > 0) {
         // Try to get from different categories
@@ -692,7 +693,7 @@ function KioskHomePageContent() {
         }
         categoryIndex++;
       }
-      
+
       // Fallback: just take from all stickers if we can't get enough from categories
       if (selected.length < 30 && stickerIndex < allStickers.length) {
         const sticker = allStickers[stickerIndex];
@@ -703,13 +704,13 @@ function KioskHomePageContent() {
       } else {
         stickerIndex++;
       }
-      
+
       if (stickerIndex >= allStickers.length && selected.length < 30) break;
     }
-    
+
     return selected.slice(0, 30);
   }, [allStickers]);
-  
+
   const stickers = uniqueStickers;
 
   // Sticker properties - computed deterministically for instant rendering
@@ -719,7 +720,7 @@ function KioskHomePageContent() {
       // Return default properties for placeholders while loading
       return DEFAULT_STICKER_PROPERTIES;
     }
-    
+
     // Try to load cached properties first
     if (typeof window !== 'undefined') {
       try {
@@ -735,14 +736,14 @@ function KioskHomePageContent() {
         // Ignore cache errors
       }
     }
-    
+
     // Generate properties deterministically based on sticker IDs
     const props: Record<string, ReturnType<typeof generateStickerProps>> = {};
     stickers.slice(0, 30).forEach((sticker, i) => {
       const key = sticker.id || `sticker-${i}`;
       props[key] = generateStickerProps(i, sticker.id);
     });
-    
+
     // Cache the generated properties
     if (typeof window !== 'undefined') {
       try {
@@ -752,14 +753,14 @@ function KioskHomePageContent() {
         // Ignore cache errors
       }
     }
-    
+
     return props;
   }, [stickers]);
 
   // Preload images for faster display
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
+
     // Preload first 5 template images
     templates.slice(0, 5).forEach((template) => {
       const img = template.cover_image || template.image_1;
@@ -774,7 +775,7 @@ function KioskHomePageContent() {
         }
       }
     });
-    
+
     // Preload first 10 sticker images (most visible ones)
     stickers.slice(0, 10).forEach((sticker) => {
       const img = sticker.imageUrl || sticker.thumbnailUrl;
@@ -820,12 +821,12 @@ function KioskHomePageContent() {
     if (!giftCardTileEnabled || !hasGiftCardBrandConfigured) return;
     // Start session and track tile selection
     await startSession();
-    
+
     if (isTilloSource && giftCardTileConfig?.tilloBrandSlug) {
       // For Tillo brands, pass the slug and source
-      trackTileSelect('gift_card', { 
-        brandSlug: giftCardTileConfig.tilloBrandSlug, 
-        source: 'tillo' 
+      trackTileSelect('gift_card', {
+        brandSlug: giftCardTileConfig.tilloBrandSlug,
+        source: 'tillo'
       });
       router.push(`/kiosk/gift-card?source=tillo&brandSlug=${giftCardTileConfig.tilloBrandSlug}`);
     } else if (giftCardTileConfig?.brandId) {
@@ -839,7 +840,7 @@ function KioskHomePageContent() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-6 lg:p-10 overflow-hidden">
       {/* Printer Alert Banner - shows when there are printer issues */}
       <PrinterAlertBanner position="top" showWarnings={true} />
-      
+
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 -left-32 w-[500px] h-[500px] bg-purple-500/20 rounded-full blur-3xl animate-pulse" />
@@ -862,16 +863,15 @@ function KioskHomePageContent() {
 
       {/* Product Selection Cards - Main Row */}
       <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 max-w-7xl w-full">
-        
+
         {/* Greeting Cards Option */}
         <button
           onClick={handleSelectGreetingCards}
           disabled={!greetingCardsEnabled}
-          className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none min-h-[480px] lg:min-h-[520px] ${
-            greetingCardsEnabled
-              ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-indigo-400/50 cursor-pointer'
-              : 'opacity-50 cursor-not-allowed border-white/10'
-          }`}
+          className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none min-h-[480px] lg:min-h-[520px] ${greetingCardsEnabled
+            ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-indigo-400/50 cursor-pointer'
+            : 'opacity-50 cursor-not-allowed border-white/10'
+            }`}
         >
           {/* Price Ribbon */}
           <div className="absolute -top-1 -right-1 z-30 overflow-hidden w-32 h-32 pointer-events-none">
@@ -883,10 +883,10 @@ function KioskHomePageContent() {
               <div className="w-full h-full bg-gradient-to-r from-transparent via-white/40 to-transparent price-ribbon-shimmer" />
             </div>
           </div>
-          
+
           {/* Glow effect on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/0 to-purple-600/0 group-hover:from-indigo-600/20 group-hover:to-purple-600/20 transition-all duration-500" />
-          
+
           {/* Greeting Cards Display - Fanned cards */}
           <div className="absolute top-8 left-1/2 -translate-x-1/2 w-full flex justify-center perspective-1000">
             <div className="relative w-80 h-56 lg:w-96 lg:h-64">
@@ -900,7 +900,7 @@ function KioskHomePageContent() {
                 const translateY = Math.abs(offset) * 12;
                 const zIndex = totalCards - Math.abs(offset);
                 const scale = 1 - Math.abs(offset) * 0.05;
-                
+
                 return (
                   <div
                     key={template.id}
@@ -933,7 +933,7 @@ function KioskHomePageContent() {
               )}
             </div>
           </div>
-          
+
           {/* Content with semi-transparent overlay for readability */}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-32 pb-10 px-8">
             <div className="flex flex-col items-center text-center">
@@ -943,13 +943,12 @@ function KioskHomePageContent() {
               <p className="text-base md:text-lg text-gray-200 max-w-sm mb-6 drop-shadow-md">
                 Personalized cards for birthdays, holidays & special occasions
               </p>
-              
+
               {/* CTA */}
-              <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
-                greetingCardsEnabled
-                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/40 group-hover:shadow-indigo-500/60'
-                  : 'bg-gray-600/50 text-gray-400'
-              }`}>
+              <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${greetingCardsEnabled
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-500/40 group-hover:shadow-indigo-500/60'
+                : 'bg-gray-600/50 text-gray-400'
+                }`}>
                 <span>{greetingCardsEnabled ? 'Create Now' : 'Coming Soon'}</span>
                 {greetingCardsEnabled && (
                   <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -965,11 +964,10 @@ function KioskHomePageContent() {
         <button
           onClick={handleSelectStickers}
           disabled={!stickersEnabled}
-          className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none min-h-[480px] lg:min-h-[520px] ${
-            stickersEnabled
-              ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-pink-400/50 cursor-pointer'
-              : 'opacity-50 cursor-not-allowed border-white/10'
-          }`}
+          className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none min-h-[480px] lg:min-h-[520px] ${stickersEnabled
+            ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-pink-400/50 cursor-pointer'
+            : 'opacity-50 cursor-not-allowed border-white/10'
+            }`}
         >
           {/* Price Ribbon */}
           <div className="absolute -top-1 -right-1 z-30 overflow-hidden w-32 h-32 pointer-events-none">
@@ -981,10 +979,10 @@ function KioskHomePageContent() {
               <div className="w-full h-full bg-gradient-to-r from-transparent via-white/40 to-transparent price-ribbon-shimmer" />
             </div>
           </div>
-          
+
           {/* Glow effect on hover */}
           <div className="absolute inset-0 bg-gradient-to-br from-pink-600/0 to-orange-600/0 group-hover:from-pink-600/20 group-hover:to-orange-600/20 transition-all duration-500" />
-          
+
           {/* Stickers Display - Rain effect: falling from top, fading in/out */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full flex justify-center overflow-hidden">
             <div className="relative w-full h-full min-h-[400px] lg:min-h-[480px]">
@@ -993,7 +991,7 @@ function KioskHomePageContent() {
                 // Get properties for this sticker - use fallback if not found
                 const key = sticker.id || `sticker-${i}`;
                 const props = stickerProperties[key] || DEFAULT_STICKER_PROPERTIES[`sticker-${i}`] || generateStickerProps(i);
-                
+
                 const {
                   xPos,
                   size,
@@ -1006,10 +1004,10 @@ function KioskHomePageContent() {
                   speedVariation,
                   zIndex: stableZIndex,
                 } = props;
-                
+
                 // Calculate final duration with speed variation - rounded
                 const finalDuration = Math.round((duration / speedVariation) * 100) / 100;
-                
+
                 return (
                   <div
                     key={`${sticker.id || `sticker-${i}`}-${i}`}
@@ -1036,7 +1034,7 @@ function KioskHomePageContent() {
                     } as React.CSSProperties}
                   >
                     {/* Circle container */}
-                    <div 
+                    <div
                       className="w-full h-full rounded-full overflow-visible border-2 border-white/40 shadow-lg bg-white/5 backdrop-blur-sm"
                     >
                       {/* Image container */}
@@ -1067,7 +1065,7 @@ function KioskHomePageContent() {
               })}
             </div>
           </div>
-          
+
           {/* Content with semi-transparent overlay for readability */}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-32 pb-10 px-8">
             <div className="flex flex-col items-center text-center">
@@ -1077,13 +1075,12 @@ function KioskHomePageContent() {
               <p className="text-base md:text-lg text-gray-200 max-w-sm mb-6 drop-shadow-md">
                 Custom round stickers for decorations, labels & fun designs
               </p>
-              
+
               {/* CTA */}
-              <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${
-                stickersEnabled
-                  ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow-lg shadow-pink-500/40 group-hover:shadow-pink-500/60'
-                  : 'bg-gray-600/50 text-gray-400'
-              }`}>
+              <div className={`flex items-center gap-3 px-8 py-4 rounded-full font-semibold text-lg transition-all duration-300 ${stickersEnabled
+                ? 'bg-gradient-to-r from-pink-600 to-orange-500 text-white shadow-lg shadow-pink-500/40 group-hover:shadow-pink-500/60'
+                : 'bg-gray-600/50 text-gray-400'
+                }`}>
                 <span>{stickersEnabled ? 'Create Now' : 'Coming Soon'}</span>
                 {stickersEnabled && (
                   <svg className="w-6 h-6 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1102,15 +1099,14 @@ function KioskHomePageContent() {
           <button
             onClick={handleSelectGiftCard}
             disabled={giftCardTileDisabled || !hasGiftCardBrandConfigured}
-            className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none w-full max-w-xl min-h-[320px] lg:min-h-[360px] ${
-              giftCardTileEnabled && hasGiftCardBrandConfigured
-                ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-emerald-400/50 cursor-pointer'
-                : 'opacity-50 cursor-not-allowed border-white/10'
-            }`}
+            className={`group relative bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-[2rem] shadow-2xl transition-all duration-500 transform overflow-hidden border focus:outline-none w-full max-w-xl min-h-[320px] lg:min-h-[360px] ${giftCardTileEnabled && hasGiftCardBrandConfigured
+              ? 'hover:scale-[1.02] active:scale-[0.98] border-white/20 hover:border-emerald-400/50 cursor-pointer'
+              : 'opacity-50 cursor-not-allowed border-white/10'
+              }`}
           >
             {/* Glow effect on hover */}
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/0 to-teal-600/0 group-hover:from-emerald-600/20 group-hover:to-teal-600/20 transition-all duration-500" />
-            
+
             {/* Discount badge */}
             {giftCardTileConfig?.discountPercent && giftCardTileConfig.discountPercent > 0 && (
               <div className="absolute top-4 right-4 z-20">
@@ -1119,7 +1115,7 @@ function KioskHomePageContent() {
                 </div>
               </div>
             )}
-            
+
             {/* Horizontal layout for gift card tile */}
             <div className="absolute inset-0 flex items-center">
               {/* Left side - Gift Card Brand Logo or Generic Visuals */}
@@ -1127,7 +1123,7 @@ function KioskHomePageContent() {
                 <div className="relative w-64 h-40 flex items-center justify-center">
                   {/* Show brand logo if available - fills the entire space */}
                   {hasMounted && giftCardBrand?.logo_url ? (
-                    <div 
+                    <div
                       className="relative w-full h-full rounded-2xl shadow-2xl overflow-hidden transition-all duration-500 group-hover:shadow-emerald-500/50 group-hover:scale-105"
                       style={{ backgroundColor: logoBackgroundColor }}
                     >
@@ -1143,7 +1139,7 @@ function KioskHomePageContent() {
                     /* Gift card stack animation - fallback when no brand logo */
                     <>
                       {/* Back card */}
-                      <div 
+                      <div
                         className="absolute w-40 h-24 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-2xl border-2 border-white/30 transition-all duration-500 group-hover:shadow-emerald-500/40"
                         style={{
                           transform: 'translateY(-6px) rotate(-6deg) scale(0.9)',
@@ -1155,9 +1151,9 @@ function KioskHomePageContent() {
                           <div className="w-10 h-1.5 rounded bg-white/30" />
                         </div>
                       </div>
-                      
+
                       {/* Middle card */}
-                      <div 
+                      <div
                         className="absolute w-40 h-24 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-500 shadow-2xl border-2 border-white/30 transition-all duration-500 group-hover:shadow-teal-500/40"
                         style={{
                           transform: 'translateY(0px) rotate(0deg) scale(0.95)',
@@ -1168,9 +1164,9 @@ function KioskHomePageContent() {
                           <div className="text-white/60 text-lg">🎁</div>
                         </div>
                       </div>
-                      
+
                       {/* Front card */}
-                      <div 
+                      <div
                         className="absolute w-40 h-24 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 shadow-2xl border-2 border-white/40 transition-all duration-500 group-hover:shadow-emerald-500/50 group-hover:scale-105"
                         style={{
                           transform: 'translateY(6px) rotate(6deg)',
@@ -1200,7 +1196,7 @@ function KioskHomePageContent() {
                   )}
                 </div>
               </div>
-              
+
               {/* Right side - Content */}
               <div className="flex-1 pr-8 py-8">
                 <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-2 group-hover:text-emerald-200 transition-colors duration-300 drop-shadow-lg">
@@ -1209,13 +1205,12 @@ function KioskHomePageContent() {
                 <p className="text-sm md:text-base text-gray-300 mb-6 drop-shadow-md">
                   {giftCardTileConfig?.description || 'Purchase a gift card for yourself or a loved one'}
                 </p>
-                
+
                 {/* CTA */}
-                <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-full font-semibold text-base transition-all duration-300 ${
-                  giftCardTileEnabled && giftCardTileConfig?.brandId
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/40 group-hover:shadow-emerald-500/60'
-                    : 'bg-gray-600/50 text-gray-400'
-                }`}>
+                <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-full font-semibold text-base transition-all duration-300 ${giftCardTileEnabled && giftCardTileConfig?.brandId
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/40 group-hover:shadow-emerald-500/60'
+                  : 'bg-gray-600/50 text-gray-400'
+                  }`}>
                   <span>{giftCardTileEnabled && giftCardTileConfig?.brandId ? 'Buy Now' : 'Customize your card now!'}</span>
                   {giftCardTileEnabled && giftCardTileConfig?.brandId && (
                     <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1244,150 +1239,150 @@ function KioskHomePageContent() {
 
       {/* TEST PANEL - Remove after testing */}
       {false && (
-      <div className="fixed bottom-4 right-4 z-50">
-        {!showTestPanel ? (
-          <button
-            onClick={() => {
-              setShowTestPanel(true);
-              fetchKioskCommissions();
-            }}
-            className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full shadow-lg"
-          >
-            🧪 Test
-          </button>
-        ) : (
-          <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 shadow-lg w-96 max-h-[85vh] overflow-auto">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="font-bold text-yellow-800">🧪 Test Payment & Earnings</h3>
-              <button onClick={() => setShowTestPanel(false)} className="text-yellow-800 hover:text-yellow-900">✕</button>
-            </div>
-            
-            {/* Kiosk Info */}
-            <div className={`text-xs p-2 rounded mb-2 ${kioskInfo?.id ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-              <strong>Active Kiosk:</strong> {kioskInfo?.name || kioskInfo?.kioskId || 'NOT ACTIVATED!'}<br/>
-              <span className="font-mono text-[10px]">{kioskInfo?.id || 'Pair a kiosk first!'}</span>
-            </div>
-
-            {/* Commission Info */}
-            {kioskCommissions && (
-              <div className="text-xs p-2 rounded mb-2 bg-blue-100 text-blue-800">
-                <strong>Commission Config:</strong><br/>
-                <div className="grid grid-cols-2 gap-1 mt-1">
-                  <span>Manager: {kioskCommissions.hasManager ? `${kioskCommissions.managerPercent}%` : '❌ Not assigned'}</span>
-                  <span>Sales Rep: {kioskCommissions.hasSalesRep ? `${kioskCommissions.salesRepPercent}%` : '❌ Not assigned'}</span>
-                </div>
-                <button 
-                  onClick={fetchKioskCommissions}
-                  className="text-[10px] underline mt-1"
-                >
-                  Refresh
-                </button>
-              </div>
-            )}
-
-            {/* Product Name */}
-            <label className="block text-xs font-medium text-yellow-800 mb-1">Product Name</label>
-            <input
-              type="text"
-              value={testProductName}
-              onChange={(e) => setTestProductName(e.target.value)}
-              className="w-full text-sm border rounded px-2 py-1 mb-2"
-              placeholder="Test Greeting Card"
-            />
-
-            {/* Payment Method */}
-            <label className="block text-xs font-medium text-yellow-800 mb-1">Payment Method</label>
-            <select
-              value={testPaymentMethod}
-              onChange={(e) => setTestPaymentMethod(e.target.value as 'card' | 'promo_code')}
-              className="w-full text-sm border rounded px-2 py-1 mb-2"
-            >
-              <option value="card">💳 Card Payment (with commissions)</option>
-              <option value="promo_code">🎟️ Promo Code (no commissions)</option>
-            </select>
-
-            {/* Price (only for card) */}
-            {testPaymentMethod === 'card' && (
-              <>
-                <label className="block text-xs font-medium text-yellow-800 mb-1">Card Sale Price ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={testPrice}
-                  onChange={(e) => setTestPrice(e.target.value)}
-                  className="w-full text-sm border rounded px-2 py-1 mb-2"
-                  placeholder="5.00"
-                />
-                
-                {/* Expected Earnings Preview */}
-                {kioskCommissions && parseFloat(testPrice) > 0 && (
-                  <div className="text-xs p-2 rounded mb-2 bg-purple-100 text-purple-800">
-                    <strong>📊 Expected Earnings Breakdown:</strong>
-                    {(() => {
-                      const preview = calculateExpectedEarnings(parseFloat(testPrice) || 0);
-                      if (!preview) return null;
-                      return (
-                        <div className="mt-1 font-mono text-[10px]">
-                          <div>Gross Sale: ${preview.gross.toFixed(2)}</div>
-                          <div>Stripe Fees (2.9% + $0.30): -${preview.stripeFees.toFixed(2)}</div>
-                          <div className="border-t border-purple-300 mt-1 pt-1">Net Distributable: ${preview.netDistributable.toFixed(2)}</div>
-                          <div className="mt-1">
-                            <span className="text-green-700">Manager ({kioskCommissions.managerPercent}%): ${preview.managerEarnings.toFixed(2)}</span>
-                          </div>
-                          <div>
-                            <span className="text-orange-700">Sales Rep ({kioskCommissions.salesRepPercent}%): ${preview.salesRepEarnings.toFixed(2)}</span>
-                          </div>
-                          <div>
-                            <span className="text-blue-700">SmartWish: ${preview.smartwishEarnings.toFixed(2)}</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Promo Code (only for promo) */}
-            {testPaymentMethod === 'promo_code' && (
-              <>
-                <label className="block text-xs font-medium text-yellow-800 mb-1">Promo Code Used</label>
-                <input
-                  type="text"
-                  value={testPromoCode}
-                  onChange={(e) => setTestPromoCode(e.target.value)}
-                  className="w-full text-sm border rounded px-2 py-1 mb-2"
-                  placeholder="MYPROMO"
-                />
-                <div className="text-xs p-2 rounded mb-2 bg-gray-100 text-gray-600">
-                  ℹ️ Promo codes = $0 earnings. The print will be logged but no commissions calculated.
-                </div>
-              </>
-            )}
-
-            {/* Test Button */}
+        <div className="fixed bottom-4 right-4 z-50">
+          {!showTestPanel ? (
             <button
-              onClick={testPrintLogCreation}
-              disabled={testingPrintLog || !kioskInfo?.id}
-              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => {
+                setShowTestPanel(true);
+                fetchKioskCommissions();
+              }}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full shadow-lg"
             >
-              {testingPrintLog ? '⏳ Processing...' : !kioskInfo?.id ? '❌ Pair Kiosk First!' : '🚀 Create Print Log & Earnings'}
+              🧪 Test
             </button>
+          ) : (
+            <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg p-4 shadow-lg w-96 max-h-[85vh] overflow-auto">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-bold text-yellow-800">🧪 Test Payment & Earnings</h3>
+                <button onClick={() => setShowTestPanel(false)} className="text-yellow-800 hover:text-yellow-900">✕</button>
+              </div>
 
-            {/* Result */}
-            {testResult && (
-              <pre className="mt-2 text-xs bg-white p-2 rounded border overflow-auto max-h-48 whitespace-pre-wrap">
-                {testResult}
-              </pre>
-            )}
+              {/* Kiosk Info */}
+              <div className={`text-xs p-2 rounded mb-2 ${kioskInfo?.id ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <strong>Active Kiosk:</strong> {kioskInfo?.name || kioskInfo?.kioskId || 'NOT ACTIVATED!'}<br />
+                <span className="font-mono text-[10px]">{kioskInfo?.id || 'Pair a kiosk first!'}</span>
+              </div>
 
-            {/* Info */}
-            <p className="mt-2 text-[10px] text-yellow-700">
-              💡 If commissions show as 0, check Admin → Kiosk → assign Manager and Sales Rep.
-            </p>
-          </div>
-        )}
-      </div>
+              {/* Commission Info */}
+              {kioskCommissions && (
+                <div className="text-xs p-2 rounded mb-2 bg-blue-100 text-blue-800">
+                  <strong>Commission Config:</strong><br />
+                  <div className="grid grid-cols-2 gap-1 mt-1">
+                    <span>Manager: {kioskCommissions.hasManager ? `${kioskCommissions.managerPercent}%` : '❌ Not assigned'}</span>
+                    <span>Sales Rep: {kioskCommissions.hasSalesRep ? `${kioskCommissions.salesRepPercent}%` : '❌ Not assigned'}</span>
+                  </div>
+                  <button
+                    onClick={fetchKioskCommissions}
+                    className="text-[10px] underline mt-1"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              )}
+
+              {/* Product Name */}
+              <label className="block text-xs font-medium text-yellow-800 mb-1">Product Name</label>
+              <input
+                type="text"
+                value={testProductName}
+                onChange={(e) => setTestProductName(e.target.value)}
+                className="w-full text-sm border rounded px-2 py-1 mb-2"
+                placeholder="Test Greeting Card"
+              />
+
+              {/* Payment Method */}
+              <label className="block text-xs font-medium text-yellow-800 mb-1">Payment Method</label>
+              <select
+                value={testPaymentMethod}
+                onChange={(e) => setTestPaymentMethod(e.target.value as 'card' | 'promo_code')}
+                className="w-full text-sm border rounded px-2 py-1 mb-2"
+              >
+                <option value="card">💳 Card Payment (with commissions)</option>
+                <option value="promo_code">🎟️ Promo Code (no commissions)</option>
+              </select>
+
+              {/* Price (only for card) */}
+              {testPaymentMethod === 'card' && (
+                <>
+                  <label className="block text-xs font-medium text-yellow-800 mb-1">Card Sale Price ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={testPrice}
+                    onChange={(e) => setTestPrice(e.target.value)}
+                    className="w-full text-sm border rounded px-2 py-1 mb-2"
+                    placeholder="5.00"
+                  />
+
+                  {/* Expected Earnings Preview */}
+                  {kioskCommissions && parseFloat(testPrice) > 0 && (
+                    <div className="text-xs p-2 rounded mb-2 bg-purple-100 text-purple-800">
+                      <strong>📊 Expected Earnings Breakdown:</strong>
+                      {(() => {
+                        const preview = calculateExpectedEarnings(parseFloat(testPrice) || 0);
+                        if (!preview) return null;
+                        return (
+                          <div className="mt-1 font-mono text-[10px]">
+                            <div>Gross Sale: ${preview.gross.toFixed(2)}</div>
+                            <div>Stripe Fees (2.9% + $0.30): -${preview.stripeFees.toFixed(2)}</div>
+                            <div className="border-t border-purple-300 mt-1 pt-1">Net Distributable: ${preview.netDistributable.toFixed(2)}</div>
+                            <div className="mt-1">
+                              <span className="text-green-700">Manager ({kioskCommissions.managerPercent}%): ${preview.managerEarnings.toFixed(2)}</span>
+                            </div>
+                            <div>
+                              <span className="text-orange-700">Sales Rep ({kioskCommissions.salesRepPercent}%): ${preview.salesRepEarnings.toFixed(2)}</span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700">SmartWish: ${preview.smartwishEarnings.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Promo Code (only for promo) */}
+              {testPaymentMethod === 'promo_code' && (
+                <>
+                  <label className="block text-xs font-medium text-yellow-800 mb-1">Promo Code Used</label>
+                  <input
+                    type="text"
+                    value={testPromoCode}
+                    onChange={(e) => setTestPromoCode(e.target.value)}
+                    className="w-full text-sm border rounded px-2 py-1 mb-2"
+                    placeholder="MYPROMO"
+                  />
+                  <div className="text-xs p-2 rounded mb-2 bg-gray-100 text-gray-600">
+                    ℹ️ Promo codes = $0 earnings. The print will be logged but no commissions calculated.
+                  </div>
+                </>
+              )}
+
+              {/* Test Button */}
+              <button
+                onClick={testPrintLogCreation}
+                disabled={testingPrintLog || !kioskInfo?.id}
+                className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testingPrintLog ? '⏳ Processing...' : !kioskInfo?.id ? '❌ Pair Kiosk First!' : '🚀 Create Print Log & Earnings'}
+              </button>
+
+              {/* Result */}
+              {testResult && (
+                <pre className="mt-2 text-xs bg-white p-2 rounded border overflow-auto max-h-48 whitespace-pre-wrap">
+                  {testResult}
+                </pre>
+              )}
+
+              {/* Info */}
+              <p className="mt-2 text-[10px] text-yellow-700">
+                💡 If commissions show as 0, check Admin → Kiosk → assign Manager and Sales Rep.
+              </p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Sticker rain animation styles - smooth, continuous fall with linear timing */}
@@ -1450,17 +1445,8 @@ function KioskHomePageContent() {
             opacity: 0.2;
           }
           100% {
-            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px)), 550px, 0) rotate(calc(var(--rotation, 0deg) + 180deg)) scale(calc(var(--min-scale, 1) * 0.85));
+            transform: translate3d(calc(-50% + var(--start-x, 0px) + var(--drift-x, 0px)), 800px, 0) rotate(calc(var(--rotation, 0deg) + 180deg)) scale(calc(var(--min-scale, 1) * 0.85));
             opacity: 0;
-          }
-        }
-        
-        /* Fallback for reduced motion - show stickers statically */
-        @media (prefers-reduced-motion: reduce) {
-          .sticker-rain {
-            animation: none !important;
-            opacity: 0.9 !important;
-            transform: translate3d(calc(-50% + var(--start-x, 0px)), calc(var(--fall-delay, 0s) * 50px), 0) rotate(var(--rotation, 0deg)) scale(var(--min-scale, 1)) !important;
           }
         }
       `}</style>
