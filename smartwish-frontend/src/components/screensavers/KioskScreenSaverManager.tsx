@@ -64,12 +64,9 @@ export default function KioskScreenSaverManager({
 
   // Current screen saver state
   const [currentScreenSaver, setCurrentScreenSaver] = useState<ScreenSaverItem | null>(null);
-  // Previous screen saver (fading out during transition)
-  const [previousScreenSaver, setPreviousScreenSaver] = useState<ScreenSaverItem | null>(null);
   // Pending screen saver that is being pre-loaded (rendered hidden until ready)
   const [pendingScreenSaver, setPendingScreenSaver] = useState<ScreenSaverItem | null>(null);
-  // Track if the current screen saver is ready to display
-  const [isCurrentReady, setIsCurrentReady] = useState(false);
+  // Cached screen savers (both HTML and video) to prevent re-mounting on rotation
   const [cachedScreenSavers, setCachedScreenSavers] = useState<ScreenSaverItem[]>([]);
   const rotationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const interactiveIdleTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -160,24 +157,17 @@ export default function KioskScreenSaverManager({
     setPendingScreenSaver(selected);
   }, [screenSavers, currentScreenSaver?.id]);
 
-  // Called when pending screen saver is ready - switch it to current with crossfade
+  // Called when pending screen saver is ready - switch it to current
+  // The caching system keeps both videos mounted, so transition is seamless
   const handlePendingReady = useCallback(() => {
     if (!pendingScreenSaver) return;
 
-    console.log("[ScreenSaverManager] Pending screen saver ready - starting crossfade");
-    // Keep current as previous for crossfade
-    setPreviousScreenSaver(currentScreenSaver);
+    console.log("[ScreenSaverManager] Pending screen saver ready - switching to it");
     previousScreenSaverIdRef.current = pendingScreenSaver.id;
-    // Move pending to current
+    // Move pending to current - the cached video will fade in via CSS
     setCurrentScreenSaver(pendingScreenSaver);
-    setIsCurrentReady(true); // Pending was already loaded, so it's ready
     setPendingScreenSaver(null);
-
-    // Clear the previous screen saver after transition completes
-    setTimeout(() => {
-      setPreviousScreenSaver(null);
-    }, 500); // Match the CSS transition duration
-  }, [pendingScreenSaver, currentScreenSaver]);
+  }, [pendingScreenSaver]);
 
   // Start rotation timer for the current screen saver
   const startRotationTimer = useCallback(() => {
@@ -278,8 +268,7 @@ export default function KioskScreenSaverManager({
       clearRotationTimer();
       clearInteractiveIdleTimer();
       setCurrentScreenSaver(null);
-      setPreviousScreenSaver(null);
-      setIsCurrentReady(false);
+      setCachedScreenSavers([]); // Clear cached screen savers on exit
       // Don't reset previousScreenSaverIdRef here - keep it for next time
     }
 
@@ -307,13 +296,16 @@ export default function KioskScreenSaverManager({
     };
   }, [isVisible, currentScreenSaver, hasActiveSession, startRotationTimer, startInteractiveIdleTimer, clearRotationTimer, clearInteractiveIdleTimer]);
 
-  // Cache HTML screen savers so they don't reload on rotation
+  // Cache HTML and video screen savers so they don't reload on rotation
   useEffect(() => {
-    if (!currentScreenSaver || currentScreenSaver.type !== "html") return;
+    if (!currentScreenSaver) return;
+    // Only cache HTML and video types (default doesn't need caching)
+    if (currentScreenSaver.type !== "html" && currentScreenSaver.type !== "video") return;
     setCachedScreenSavers((prev) => {
       if (prev.some((ss) => ss.id === currentScreenSaver.id)) {
         return prev;
       }
+      console.log(`[ScreenSaverManager] Caching ${currentScreenSaver.type} screen saver: ${currentScreenSaver.id}`);
       return [...prev, currentScreenSaver];
     });
   }, [currentScreenSaver]);
@@ -514,26 +506,57 @@ export default function KioskScreenSaverManager({
       );
     }
 
-    // For video and default screen savers - with crossfade support
+    // For video screen savers with caching (similar pattern to HTML)
+    if (currentScreenSaver.type === "video") {
+      const cachedVideoScreenSavers = cachedScreenSavers.filter(
+        (ss) => ss.type === "video"
+      );
+      const activeVideoId = currentScreenSaver.id;
+      const activeVideoIsCached = cachedVideoScreenSavers.some(
+        (ss) => ss.id === activeVideoId
+      );
+
+      return (
+        <div className="absolute inset-0">
+          {/* Render all cached video screen savers - active one visible, others hidden */}
+          {cachedVideoScreenSavers.map((ss) => {
+            const isActive = ss.id === activeVideoId;
+            return (
+              <div
+                key={ss.id}
+                className={`absolute inset-0 transition-opacity duration-500 ${isActive ? "opacity-100" : "opacity-0 pointer-events-none"
+                  }`}
+              >
+                <VideoScreenSaver
+                  url={ss.url || ""}
+                  onExit={handleInteraction}
+                  overlayText={isActive ? overlayText : undefined}
+                />
+              </div>
+            );
+          })}
+          {/* If active video not yet cached, render it directly */}
+          {!activeVideoIsCached && (
+            <VideoScreenSaver
+              url={currentScreenSaver.url || ""}
+              onExit={handleInteraction}
+              overlayText={overlayText}
+            />
+          )}
+          {/* Pre-load pending screen saver (hidden) */}
+          {pendingScreenSaver && (
+            <div className="absolute inset-0 opacity-0 pointer-events-none">
+              {renderSingleScreenSaver(pendingScreenSaver, true, handlePendingReady)}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // For default screen savers (no caching needed)
     return (
       <div className="absolute inset-0">
-        {/* Previous screen saver - fading out during transition */}
-        {previousScreenSaver && previousScreenSaver.type !== 'html' && (
-          <div
-            className="absolute inset-0 transition-opacity duration-500 ease-out"
-            style={{ opacity: 0, pointerEvents: 'none' }}
-          >
-            {renderSingleScreenSaver(previousScreenSaver, false)}
-          </div>
-        )}
-
-        {/* Current screen saver - fading in */}
-        <div
-          className="absolute inset-0 transition-opacity duration-500 ease-in"
-          style={{ opacity: 1 }}
-        >
-          {renderSingleScreenSaver(currentScreenSaver, false)}
-        </div>
+        {renderSingleScreenSaver(currentScreenSaver, false)}
 
         {/* Pre-load pending screen saver (hidden) */}
         {pendingScreenSaver && (

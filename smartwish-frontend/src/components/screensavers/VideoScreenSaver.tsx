@@ -12,6 +12,8 @@ interface VideoScreenSaverProps {
   onReady?: () => void;
   /** If true, video is hidden (used for pre-loading in background) */
   isPreloading?: boolean;
+  /** If true, video was pre-loaded and should not show loading spinner */
+  initiallyLoaded?: boolean;
 }
 
 /**
@@ -26,14 +28,15 @@ interface VideoScreenSaverProps {
  * - Touch/click to dismiss (handled by parent)
  * - **Pre-loading support** - onReady callback when loaded
  */
-export default function VideoScreenSaver({ url, onExit, overlayText, onReady, isPreloading }: VideoScreenSaverProps) {
+export default function VideoScreenSaver({ url, onExit, overlayText, onReady, isPreloading, initiallyLoaded }: VideoScreenSaverProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isYouTube, setIsYouTube] = useState(false);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const [hasError, setHasError] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  // Start with loading=false if the video was preloaded
+  const [isLoading, setIsLoading] = useState(!initiallyLoaded);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const onReadyCalledRef = useRef(false);
+  const onReadyCalledRef = useRef(initiallyLoaded || false);
 
   // Determine video type and load from cache or cloud
   useEffect(() => {
