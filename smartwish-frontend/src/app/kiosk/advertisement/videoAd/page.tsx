@@ -12,14 +12,54 @@ import { useEffect, useState, useRef } from "react";
  * Query Parameters:
  * - videoUrl: URL of the video to display
  * - text: Promotional text to show in the banner
+ * - color: Color theme for the banner (orange, blue, green, red, purple, pink)
  * 
  * Example URL:
- * /kiosk/advertisement/videoAd?videoUrl=https://example.com/video.mp4&text=Buy your Ice cream with a gift card and save 5%
+ * /kiosk/advertisement/videoAd?videoUrl=https://example.com/video.mp4&text=Buy your Ice cream with a gift card and save 5%&color=orange
  */
+
+// Color palette for ribbons
+const COLOR_PALETTES = {
+    orange: {
+        gradient: 'from-amber-400 via-amber-500 to-orange-500',
+        glow: 'rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4)',
+        glowPulse: 'rgba(255, 193, 7, 1), 0 0 80px rgba(255, 152, 0, 0.8), 0 0 120px rgba(255, 87, 34, 0.4)',
+    },
+    blue: {
+        gradient: 'from-blue-400 via-blue-500 to-blue-600',
+        glow: 'rgba(59, 130, 246, 0.6), 0 0 40px rgba(37, 99, 235, 0.4)',
+        glowPulse: 'rgba(59, 130, 246, 1), 0 0 80px rgba(37, 99, 235, 0.8), 0 0 120px rgba(29, 78, 216, 0.4)',
+    },
+    green: {
+        gradient: 'from-green-400 via-green-500 to-green-600',
+        glow: 'rgba(34, 197, 94, 0.6), 0 0 40px rgba(22, 163, 74, 0.4)',
+        glowPulse: 'rgba(34, 197, 94, 1), 0 0 80px rgba(22, 163, 74, 0.8), 0 0 120px rgba(21, 128, 61, 0.4)',
+    },
+    red: {
+        gradient: 'from-red-400 via-red-500 to-red-600',
+        glow: 'rgba(239, 68, 68, 0.6), 0 0 40px rgba(220, 38, 38, 0.4)',
+        glowPulse: 'rgba(239, 68, 68, 1), 0 0 80px rgba(220, 38, 38, 0.8), 0 0 120px rgba(185, 28, 28, 0.4)',
+    },
+    purple: {
+        gradient: 'from-purple-400 via-purple-500 to-purple-600',
+        glow: 'rgba(168, 85, 247, 0.6), 0 0 40px rgba(147, 51, 234, 0.4)',
+        glowPulse: 'rgba(168, 85, 247, 1), 0 0 80px rgba(147, 51, 234, 0.8), 0 0 120px rgba(126, 34, 206, 0.4)',
+    },
+    pink: {
+        gradient: 'from-pink-400 via-pink-500 to-pink-600',
+        glow: 'rgba(244, 114, 182, 0.6), 0 0 40px rgba(236, 72, 153, 0.4)',
+        glowPulse: 'rgba(244, 114, 182, 1), 0 0 80px rgba(236, 72, 153, 0.8), 0 0 120px rgba(219, 39, 119, 0.4)',
+    },
+};
+
 export default function VideoAdPage() {
     const searchParams = useSearchParams();
     const videoUrl = searchParams.get("videoUrl");
     const text = searchParams.get("text");
+    const colorParam = searchParams.get("color") || "orange";
+
+    // Get color palette, default to orange if invalid
+    const colorPalette = COLOR_PALETTES[colorParam as keyof typeof COLOR_PALETTES] || COLOR_PALETTES.orange;
 
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
@@ -106,10 +146,10 @@ export default function VideoAdPage() {
             {text && !isLoading && (
                 <div className="absolute top-0 left-0 right-0 z-50 flex justify-center pt-20 px-6">
                     <div
-                        className="relative bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-center py-5 px-8 rounded-2xl overflow-hidden shadow-2xl max-w-4xl w-full"
+                        className={`relative bg-gradient-to-r ${colorPalette.gradient} text-center py-5 px-8 rounded-2xl overflow-hidden shadow-2xl max-w-4xl w-full`}
                         style={{
                             animation: mounted ? 'pulseGlow 2s ease-in-out 0.5s infinite' : 'none',
-                            boxShadow: '0 0 20px rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4)',
+                            boxShadow: `0 0 20px ${colorPalette.glow}`,
                         }}
                     >
                         {/* Animated shine overlay */}
@@ -142,10 +182,10 @@ export default function VideoAdPage() {
         }
         @keyframes pulseGlow {
           0%, 100% { 
-            box-shadow: 0 0 20px rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4); 
+            box-shadow: 0 0 20px ${colorPalette.glow}; 
           }
           50% { 
-            box-shadow: 0 0 40px rgba(255, 193, 7, 1), 0 0 80px rgba(255, 152, 0, 0.8), 0 0 120px rgba(255, 87, 34, 0.4); 
+            box-shadow: 0 0 40px ${colorPalette.glowPulse}; 
           }
         }
       `}</style>

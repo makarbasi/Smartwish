@@ -77,6 +77,7 @@ function ScreenSaverFormModal({
     url: "",
     videoUrl: "",
     text: "",
+    color: "orange",
     weight: 50,
     duration: 30,
     enabled: true,
@@ -96,6 +97,7 @@ function ScreenSaverFormModal({
         url: screenSaver.url || "",
         videoUrl: screenSaver.videoUrl || "",
         text: screenSaver.text || "",
+        color: screenSaver.color || "orange",
         weight: screenSaver.weight,
         duration: screenSaver.duration || 30,
         enabled: screenSaver.enabled !== false,
@@ -109,6 +111,7 @@ function ScreenSaverFormModal({
         url: "",
         videoUrl: "",
         text: "",
+        color: "orange",
         weight: 50,
         duration: 30,
         enabled: true,
@@ -175,6 +178,7 @@ function ScreenSaverFormModal({
       url: formData.url || undefined,
       videoUrl: formData.videoUrl || undefined,
       text: formData.text || undefined,
+      color: formData.color || undefined,
       weight: formData.weight || 50,
       duration: formData.duration || 30,
       enabled: formData.enabled !== false,
@@ -337,6 +341,48 @@ function ScreenSaverFormModal({
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Text to display in the promotional banner overlay
+                  </p>
+                </div>
+
+                {/* Ribbon Color */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Ribbon Color
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { name: 'orange', label: 'Orange', gradient: 'from-amber-400 via-amber-500 to-orange-500' },
+                      { name: 'blue', label: 'Blue', gradient: 'from-blue-400 via-blue-500 to-blue-600' },
+                      { name: 'green', label: 'Green', gradient: 'from-green-400 via-green-500 to-green-600' },
+                      { name: 'red', label: 'Red', gradient: 'from-red-400 via-red-500 to-red-600' },
+                      { name: 'purple', label: 'Purple', gradient: 'from-purple-400 via-purple-500 to-purple-600' },
+                      { name: 'pink', label: 'Pink', gradient: 'from-pink-400 via-pink-500 to-pink-600' },
+                    ].map((color) => (
+                      <button
+                        key={color.name}
+                        type="button"
+                        onClick={() =>
+                          setFormData((prev) => ({ ...prev, color: color.name }))
+                        }
+                        className={`relative flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all ${formData.color === color.name
+                            ? "border-indigo-500 ring-2 ring-indigo-200"
+                            : "border-gray-300 hover:border-gray-400"
+                          }`}
+                      >
+                        <div className={`w-6 h-6 rounded bg-gradient-to-r ${color.gradient}`} />
+                        <span className="text-sm font-medium">{color.label}</span>
+                        {formData.color === color.name && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Choose the color theme for the promotional banner
                   </p>
                 </div>
               </div>
