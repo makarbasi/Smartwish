@@ -10,6 +10,7 @@ import {
   DEFAULT_SCREEN_SAVER_SETTINGS,
 } from "@/utils/kioskConfig";
 import { selectWeightedScreenSaver } from "@/utils/screenSaverUtils";
+import { useVideoPrecache } from "@/hooks/useVideoPrecache";
 import DefaultScreenSaver from "./DefaultScreenSaver";
 import VideoScreenSaver from "./VideoScreenSaver";
 import HtmlScreenSaver from "./HtmlScreenSaver";
@@ -42,30 +43,44 @@ export default function KioskScreenSaverManager({
   const pathname = usePathname();
 
   // Get screen saver configuration from kiosk config
+  // Use JSON.stringify dependency to ensure deep equality check and prevent re-calculations
+  // when the object reference changes but content is identical (common with polling/websocket updates)
+  const screenSaversRaw = kioskInfo?.config?.screenSavers as ScreenSaverItem[] | undefined;
   const screenSavers = useMemo(() => {
-    const configuredScreenSavers = kioskInfo?.config?.screenSavers;
-    console.log("[ScreenSaverManager] Configured screenSavers:", configuredScreenSavers);
-    if (configuredScreenSavers && configuredScreenSavers.length > 0) {
+    console.log("[ScreenSaverManager] Configured screenSavers update check");
+    const configuredScreenSavers = screenSaversRaw;
+    if (configuredScreenSavers && Array.isArray(configuredScreenSavers) && configuredScreenSavers.length > 0) {
       return configuredScreenSavers;
     }
     // Fallback to default screen saver
     console.log("[ScreenSaverManager] Using default screen saver");
     return [DEFAULT_SCREEN_SAVER];
-  }, [kioskInfo?.config?.screenSavers]);
+  }, [JSON.stringify(screenSaversRaw)]);
 
+  const settingsRaw = kioskInfo?.config?.screenSaverSettings;
   const settings = useMemo(() => {
     const merged = {
       ...DEFAULT_SCREEN_SAVER_SETTINGS,
-      ...kioskInfo?.config?.screenSaverSettings,
+      ...(settingsRaw || {}),
     };
-    console.log("[ScreenSaverManager] Settings:", merged);
+    console.log("[ScreenSaverManager] Settings update check");
     return merged;
-  }, [kioskInfo?.config?.screenSaverSettings]);
+  }, [JSON.stringify(settingsRaw)]);
+
+  // Use a ref for onExit to ensure unstable parent callbacks don't trigger re-renders
+  const onExitRef = useRef(onExit);
+  useEffect(() => {
+    onExitRef.current = onExit;
+  }, [onExit]);
+
+  // Pre-cache all videos from screen saver configuration
+  // This downloads videos to IndexedDB on startup so they load instantly
+  useVideoPrecache(screenSavers);
 
   // Current screen saver state
   const [currentScreenSaver, setCurrentScreenSaver] = useState<ScreenSaverItem | null>(null);
-  // Pending screen saver that is being pre-loaded (rendered hidden until ready)
-  const [pendingScreenSaver, setPendingScreenSaver] = useState<ScreenSaverItem | null>(null);
+  // Pending screen saver ID that is being pre-loaded (rendered hidden until ready)
+  const [pendingScreenSaverId, setPendingScreenSaverId] = useState<string | null>(null);
   // Cached screen savers (both HTML and video) to prevent re-mounting on rotation
   const [cachedScreenSavers, setCachedScreenSavers] = useState<ScreenSaverItem[]>([]);
   const rotationTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -101,7 +116,7 @@ export default function KioskScreenSaverManager({
     if (enabledScreenSavers.length === 0) {
       // No enabled screen savers - don't show anything
       setCurrentScreenSaver(null);
-      setPendingScreenSaver(null);
+      setPendingScreenSaverId(null);
       previousScreenSaverIdRef.current = null;
       return;
     }
@@ -132,6 +147,10 @@ export default function KioskScreenSaverManager({
     });
 
     setCurrentScreenSaver(selected);
+    // Initialize cache with the selected screen saver
+    if (selected && (selected.type === "html" || selected.type === "video")) {
+      setCachedScreenSavers([selected]);
+    }
     previousScreenSaverIdRef.current = selected?.id || null;
   }, [screenSavers]);
 
@@ -154,20 +173,49 @@ export default function KioskScreenSaverManager({
     const selected = selectWeightedScreenSaver(candidates);
 
     console.log("[ScreenSaverManager] Pre-loading next screen saver:", selected?.name || selected?.type);
-    setPendingScreenSaver(selected);
+
+    // Add to cached screen savers if not already present
+    if (selected && (selected.type === "html" || selected.type === "video")) {
+      setCachedScreenSavers(prev => {
+        if (prev.some(ss => ss.id === selected.id)) return prev;
+        return [...prev, selected];
+      });
+      setPendingScreenSaverId(selected.id);
+    } else {
+      // For types that don't support caching/preloading, just set pending ID
+      // They will be handled by logic to immediately switch
+      setPendingScreenSaverId(selected?.id || null);
+    }
   }, [screenSavers, currentScreenSaver?.id]);
 
   // Called when pending screen saver is ready - switch it to current
   // The caching system keeps both videos mounted, so transition is seamless
   const handlePendingReady = useCallback(() => {
-    if (!pendingScreenSaver) return;
+    if (!pendingScreenSaverId) return;
 
-    console.log("[ScreenSaverManager] Pending screen saver ready - switching to it");
-    previousScreenSaverIdRef.current = pendingScreenSaver.id;
-    // Move pending to current - the cached video will fade in via CSS
-    setCurrentScreenSaver(pendingScreenSaver);
-    setPendingScreenSaver(null);
-  }, [pendingScreenSaver]);
+    console.log(`[ScreenSaverManager] Pending screen saver ${pendingScreenSaverId} ready - switching to it`);
+
+    // Find the pending screen saver in our list (either cached or from config)
+    let nextScreenSaver: ScreenSaverItem | undefined;
+
+    // Check cached list first
+    nextScreenSaver = cachedScreenSavers.find(ss => ss.id === pendingScreenSaverId);
+
+    // If not in cache (e.g. non-cacheable type), look in full list
+    if (!nextScreenSaver) {
+      nextScreenSaver = screenSavers.find(ss => ss.id === pendingScreenSaverId);
+    }
+
+    if (!nextScreenSaver) {
+      console.error("[ScreenSaverManager] Pending screen saver not found!");
+      return;
+    }
+
+    previousScreenSaverIdRef.current = nextScreenSaver.id;
+    // Move pending to current - the cached video will simply become visible via opacity
+    setCurrentScreenSaver(nextScreenSaver);
+    setPendingScreenSaverId(null);
+  }, [pendingScreenSaverId, cachedScreenSavers, screenSavers]);
 
   // Start rotation timer for the current screen saver
   const startRotationTimer = useCallback(() => {
@@ -336,8 +384,37 @@ export default function KioskScreenSaverManager({
     clearRotationTimer();
     clearInteractiveIdleTimer();
     console.log("[ScreenSaverManager] Calling onExit()");
-    onExit();
-  }, [onExit, clearRotationTimer, clearInteractiveIdleTimer, currentScreenSaver?.interactive, handleInteractiveActivity]);
+    onExitRef.current();
+  }, [clearRotationTimer, clearInteractiveIdleTimer, currentScreenSaver?.interactive, handleInteractiveActivity]);
+
+  // Helper to construct URL with query parameters for video advertisement screensavers
+  // Memoized to prevent creating new references on every render
+  const constructScreenSaverUrl = useCallback((screenSaver: ScreenSaverItem): string => {
+    let url = screenSaver.url || "";
+
+    // Add query parameters if videoUrl, text, or color are provided
+    if (screenSaver.videoUrl || screenSaver.text || screenSaver.color) {
+      const params = new URLSearchParams();
+      if (screenSaver.videoUrl) params.append('videoUrl', screenSaver.videoUrl);
+      if (screenSaver.text) params.append('text', screenSaver.text);
+      if (screenSaver.color) params.append('color', screenSaver.color);
+
+      // If url already has query params, append with &, otherwise use ?
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}${params.toString()}`;
+    }
+
+    return url;
+  }, []);
+
+  // Pre-compute URLs for cached screen savers to avoid recalculating on every render
+  const cachedScreenSaverUrls = useMemo(() => {
+    const urlMap = new Map<string, string>();
+    for (const ss of cachedScreenSavers) {
+      urlMap.set(ss.id, constructScreenSaverUrl(ss));
+    }
+    return urlMap;
+  }, [cachedScreenSavers, constructScreenSaverUrl]);
 
   // Don't render if not visible, has active session, or no screen saver selected
   if (!isVisible || hasActiveSession) {
@@ -364,26 +441,7 @@ export default function KioskScreenSaverManager({
   }
 
   // Check if current screen saver is interactive
-  const isInteractive = currentScreenSaver.interactive === true;
-
-  // Helper to construct URL with query parameters for video advertisement screensavers
-  const constructScreenSaverUrl = (screenSaver: ScreenSaverItem): string => {
-    let url = screenSaver.url || "";
-
-    // Add query parameters if videoUrl, text, or color are provided
-    if (screenSaver.videoUrl || screenSaver.text || screenSaver.color) {
-      const params = new URLSearchParams();
-      if (screenSaver.videoUrl) params.append('videoUrl', screenSaver.videoUrl);
-      if (screenSaver.text) params.append('text', screenSaver.text);
-      if (screenSaver.color) params.append('color', screenSaver.color);
-
-      // If url already has query params, append with &, otherwise use ?
-      const separator = url.includes('?') ? '&' : '?';
-      url = `${url}${separator}${params.toString()}`;
-    }
-
-    return url;
-  };
+  const isInteractive = currentScreenSaver?.interactive === true;
 
   // Helper to render a single screen saver by type
   const renderSingleScreenSaver = (
@@ -468,9 +526,16 @@ export default function KioskScreenSaverManager({
 
       return (
         <div className="absolute inset-0">
-          {/* Render cached HTML screen savers */}
+          {/* Render cached HTML screen savers (Active AND Pending) */}
           {cachedHtmlScreenSavers.map((ss) => {
             const isActive = ss.id === activeHtmlId;
+            const isPending = ss.id === pendingScreenSaverId;
+            // Use pre-computed URL from the memoized map
+            const url = cachedScreenSaverUrls.get(ss.id) || constructScreenSaverUrl(ss);
+
+            // Render if active OR if it's the pending one warming up
+            if (!isActive && !isPending) return null;
+
             return (
               <div
                 key={ss.id}
@@ -478,15 +543,19 @@ export default function KioskScreenSaverManager({
                   }`}
               >
                 <HtmlScreenSaver
-                  url={constructScreenSaverUrl(ss)}
+                  url={url}
                   onExit={handleInteraction}
                   overlayText={isActive ? overlayText : undefined}
                   interactive={isActive ? isInteractive : false}
                   onActivity={isActive ? handleInteractiveActivity : undefined}
+                  isPreloading={isPending} /* Pass preloading flag */
+                  onReady={isPending ? handlePendingReady : undefined} /* Only pending triggers ready */
                 />
               </div>
             );
           })}
+
+          {/* Fallback: If active is NOT in cache, render it directly */}
           {!activeHtmlIsCached && (
             <HtmlScreenSaver
               url={constructScreenSaverUrl(currentScreenSaver)}
@@ -496,12 +565,8 @@ export default function KioskScreenSaverManager({
               onActivity={handleInteractiveActivity}
             />
           )}
-          {/* Pre-load pending screen saver (hidden) */}
-          {pendingScreenSaver && (
-            <div className="absolute inset-0 opacity-0 pointer-events-none">
-              {renderSingleScreenSaver(pendingScreenSaver, true, handlePendingReady)}
-            </div>
-          )}
+
+          {/* Note: Pending Logic for NON-HTML types or new items not yet in cache handled by startPreloadingNext adding to cache */}
         </div>
       );
     }
@@ -521,6 +586,12 @@ export default function KioskScreenSaverManager({
           {/* Render all cached video screen savers - active one visible, others hidden */}
           {cachedVideoScreenSavers.map((ss) => {
             const isActive = ss.id === activeVideoId;
+            const isPending = ss.id === pendingScreenSaverId;
+
+            // Optimization: Only render if active or pending (warming up)
+            // But we might want to keep *some* invisible to avoid reloading... 
+            // For now, let's keep all cached videos mounted as per original design for instant switching
+
             return (
               <div
                 key={ss.id}
@@ -531,6 +602,8 @@ export default function KioskScreenSaverManager({
                   url={ss.url || ""}
                   onExit={handleInteraction}
                   overlayText={isActive ? overlayText : undefined}
+                  isPreloading={isPending}
+                  onReady={isPending ? handlePendingReady : undefined}
                 />
               </div>
             );
@@ -543,12 +616,6 @@ export default function KioskScreenSaverManager({
               overlayText={overlayText}
             />
           )}
-          {/* Pre-load pending screen saver (hidden) */}
-          {pendingScreenSaver && (
-            <div className="absolute inset-0 opacity-0 pointer-events-none">
-              {renderSingleScreenSaver(pendingScreenSaver, true, handlePendingReady)}
-            </div>
-          )}
         </div>
       );
     }
@@ -558,11 +625,19 @@ export default function KioskScreenSaverManager({
       <div className="absolute inset-0">
         {renderSingleScreenSaver(currentScreenSaver, false)}
 
-        {/* Pre-load pending screen saver (hidden) */}
-        {pendingScreenSaver && (
-          <div className="absolute inset-0 opacity-0 pointer-events-none">
-            {renderSingleScreenSaver(pendingScreenSaver, true, handlePendingReady)}
-          </div>
+        {/* Pre-load pending screen saver for non-cacheable types (rare fallback) */}
+        {pendingScreenSaverId && (
+          (() => {
+            const pending = screenSavers.find(ss => ss.id === pendingScreenSaverId);
+            if (pending && pending.type !== "html" && pending.type !== "video") {
+              return (
+                <div className="absolute inset-0 opacity-0 pointer-events-none">
+                  {renderSingleScreenSaver(pending, true, handlePendingReady)}
+                </div>
+              );
+            }
+            return null;
+          })()
         )}
       </div>
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, memo } from "react";
 
 interface HtmlScreenSaverProps {
   url: string;
@@ -24,7 +24,7 @@ interface HtmlScreenSaverProps {
  * - Interactive mode: allows user to interact with iframe content
  * - Error handling with fallback display
  */
-export default function HtmlScreenSaver({ url, onExit, overlayText, interactive, onActivity, onReady, isPreloading }: HtmlScreenSaverProps) {
+const HtmlScreenSaver = memo(function HtmlScreenSaver({ url, onExit, overlayText, interactive, onActivity, onReady, isPreloading }: HtmlScreenSaverProps) {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -261,4 +261,6 @@ export default function HtmlScreenSaver({ url, onExit, overlayText, interactive,
       `}</style>
     </div>
   );
-}
+});
+
+export default HtmlScreenSaver;

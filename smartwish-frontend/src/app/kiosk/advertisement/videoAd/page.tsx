@@ -1,13 +1,19 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import localAssetDB from "@/lib/LocalAssetDB";
 
 /**
  * Video Advertisement Page
  * 
  * This page displays a full-screen video with a promotional banner overlay.
  * It's designed to be used as a screensaver with customizable content.
+ * 
+ * Video Loading Strategy:
+ * 1. Check IndexedDB cache first for the video
+ * 2. If cached, use the blob URL for instant playback
+ * 3. If not cached, download from URL, cache it, then play
  * 
  * Query Parameters:
  * - videoUrl: URL of the video to display
@@ -64,11 +70,104 @@ export default function VideoAdPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [videoSrc, setVideoSrc] = useState<string | null>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
+    const loadingUrlRef = useRef<string | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Load video from cache or download and cache it
+    const loadVideoWithCache = useCallback(async (url: string) => {
+        // Prevent duplicate loads for the same URL (handles Strict Mode double-invocation)
+        if (loadingUrlRef.current === url) {
+            console.log(`[VideoAd] ⚠️ Already loading this URL: ...${url.slice(-30)}`);
+            return;
+        }
+
+        // Cancel any previous pending request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        // Create new abort controller for this request
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        loadingUrlRef.current = url;
+
+        // Create a short hash of the URL for easier log reading
+        const urlHash = url.slice(-30);
+
+        try {
+            console.log(`[VideoAd] Loading video: ...${urlHash}`);
+
+            // Try to get from IndexedDB cache first
+            console.log("[VideoAd] Checking IndexedDB cache...");
+            const cachedBlob = await localAssetDB.getImageBlob(url);
+
+            if (controller.signal.aborted) return;
+
+            if (cachedBlob) {
+                console.log(`[VideoAd] ✅ CACHE HIT! Blob size: ${(cachedBlob.size / 1024 / 1024).toFixed(2)} MB`);
+                const blobUrl = URL.createObjectURL(cachedBlob);
+                setVideoSrc(blobUrl);
+                loadingUrlRef.current = null; // Clear loading flag
+                return;
+            }
+
+            console.log("[VideoAd] ❌ CACHE MISS - fetching from Supabase...");
+
+            // Fetch from cloud with abort signal
+            const response = await fetch(url, { signal: controller.signal });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+
+            if (controller.signal.aborted) return;
+
+            const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+            console.log(`[VideoAd] Downloaded ${sizeMB} MB from Supabase`);
+
+            // Cache for next time
+            console.log("[VideoAd] Saving to IndexedDB cache...");
+            await localAssetDB.cacheImageBlob(url, blob);
+            console.log("[VideoAd] ✅ Cached for future use");
+
+            // Create blob URL and use it
+            const blobUrl = URL.createObjectURL(blob);
+            setVideoSrc(blobUrl);
+            loadingUrlRef.current = null; // Clear loading flag
+
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.log("[VideoAd] 🛑 Request aborted");
+                return;
+            }
+            console.error("[VideoAd] ❌ ERROR loading video:", error);
+            // Fallback to direct URL (streaming without cache)
+            console.log("[VideoAd] Falling back to direct URL (no cache)");
+            setVideoSrc(url);
+            loadingUrlRef.current = null; // Clear loading flag
+        }
+    }, []);
 
     useEffect(() => {
         setMounted(true);
+        return () => {
+            // Cleanup on unmount
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
     }, []);
+
+    // Load video when URL is available
+    useEffect(() => {
+        if (videoUrl) {
+            loadVideoWithCache(videoUrl);
+        }
+    }, [videoUrl, loadVideoWithCache]);
 
     // Handle video load
     const handleVideoLoad = () => {
@@ -92,6 +191,15 @@ export default function VideoAdPage() {
             });
         }
     }, [isLoading, hasError]);
+
+    // Cleanup blob URL on unmount
+    useEffect(() => {
+        return () => {
+            if (videoSrc && videoSrc.startsWith('blob:')) {
+                URL.revokeObjectURL(videoSrc);
+            }
+        };
+    }, [videoSrc]);
 
     // Show error state
     if (!videoUrl) {
@@ -118,29 +226,31 @@ export default function VideoAdPage() {
 
     return (
         <div className="fixed inset-0 bg-black overflow-hidden">
-            {/* Loading indicator */}
-            {isLoading && (
+            {/* Loading indicator - show while loading from cache or video element */}
+            {(isLoading || !videoSrc) && (
                 <div className="absolute inset-0 flex items-center justify-center z-20 bg-black">
                     <div className="w-16 h-16 border-4 border-white/20 border-t-white/80 rounded-full animate-spin" />
                 </div>
             )}
 
-            {/* Full-screen video */}
-            <video
-                ref={videoRef}
-                src={videoUrl}
-                className="absolute inset-0 w-full h-full object-cover"
-                onLoadedData={handleVideoLoad}
-                onError={handleVideoError}
-                loop
-                muted
-                playsInline
-                autoPlay
-                style={{
-                    opacity: isLoading ? 0 : 1,
-                    transition: "opacity 0.5s ease-in-out",
-                }}
-            />
+            {/* Full-screen video - only render when we have a source */}
+            {videoSrc && (
+                <video
+                    ref={videoRef}
+                    src={videoSrc}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onLoadedData={handleVideoLoad}
+                    onError={handleVideoError}
+                    loop
+                    muted
+                    playsInline
+                    autoPlay
+                    style={{
+                        opacity: isLoading ? 0 : 1,
+                        transition: "opacity 0.5s ease-in-out",
+                    }}
+                />
+            )}
 
             {/* Promotional Banner - Premium Design (only show if text is provided) */}
             {text && !isLoading && (
