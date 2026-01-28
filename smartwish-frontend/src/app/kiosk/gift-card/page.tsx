@@ -53,19 +53,19 @@ type Step = "amount" | "success";
 function GiftCardPurchaseContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   // Support both SmartWish (brandId) and Tillo (source=tillo&brandSlug=xxx) params
   const brandId = searchParams.get("brandId");
   const source = searchParams.get("source") as 'smartwish' | 'tillo' | null;
   const brandSlug = searchParams.get("brandSlug");
-  
+
   // Determine if this is a Tillo brand purchase
   const isTilloSource = source === 'tillo' && !!brandSlug;
 
   const { isKiosk, isInitialized } = useDeviceMode();
   const { kioskInfo } = useKiosk();
   const { config: kioskConfig } = useKioskConfig();
-  
+
   // Session tracking for analytics
   const {
     trackGiftCardBrowse,
@@ -102,7 +102,7 @@ function GiftCardPurchaseContent() {
   const discountPercent = giftCardTileConfig?.discountPercent || 0;
   const rawPresetAmounts = giftCardTileConfig?.presetAmounts || [25, 50, 100, 200];
   const allowCustomAmount = giftCardTileConfig?.allowCustomAmount ?? true;
-  
+
   // Get min/max from config, falling back to brand limits if not set
   const configMinAmount = giftCardTileConfig?.minAmount;
   const configMaxAmount = giftCardTileConfig?.maxAmount;
@@ -111,11 +111,11 @@ function GiftCardPurchaseContent() {
   const actualAmount = selectedAmount
     ? selectedAmount * (1 - discountPercent / 100)
     : 0;
-  
+
   // Effective min/max amounts (config overrides brand defaults)
   const effectiveMinAmount = configMinAmount ?? brand?.min_amount ?? 5;
   const effectiveMaxAmount = configMaxAmount ?? brand?.max_amount ?? 500;
-  
+
   // Filter preset amounts to only include those within the min/max range
   const presetAmounts = rawPresetAmounts.filter(
     amount => amount >= effectiveMinAmount && amount <= effectiveMaxAmount
@@ -147,7 +147,7 @@ function GiftCardPurchaseContent() {
         if (isTilloSource && brandSlug) {
           // For Tillo brands, use cached config data or fetch from Tillo API
           const tilloConfig = kioskConfig?.giftCardTile;
-          
+
           // If we have cached Tillo brand info in config, use it
           if (tilloConfig?.tilloBrandSlug === brandSlug && tilloConfig.tilloBrandName) {
             setBrand({
@@ -161,7 +161,7 @@ function GiftCardPurchaseContent() {
             setLoading(false);
             return;
           }
-          
+
           // Otherwise fetch from Tillo API
           const response = await fetch('/api/tillo/brands');
           if (!response.ok) {
@@ -169,7 +169,7 @@ function GiftCardPurchaseContent() {
           }
           const data = await response.json();
           const tilloBrand = data.brands?.find((b: TilloBrandResponse) => b.slug === brandSlug);
-          
+
           if (tilloBrand) {
             setBrand({
               id: tilloBrand.slug,
@@ -211,11 +211,11 @@ function GiftCardPurchaseContent() {
       console.log('🎁 Using pre-generated QR code from CardPaymentModal');
       return;
     }
-    
+
     // Fallback: Generate QR code if we have card data but no QR
     if (purchasedCard?.cardNumber) {
       console.log('🎁 Generating fallback QR code for gift card');
-      
+
       // For Tillo cards with redemption link, use that
       if (purchasedCard.source === 'tillo' && purchasedCard.redemptionLink) {
         QRCode.toDataURL(purchasedCard.redemptionLink, {
@@ -270,13 +270,13 @@ function GiftCardPurchaseContent() {
     }
 
     setError(null);
-    
+
     // Store gift card selection in localStorage for CardPaymentModal to pick up
     // This follows the same pattern as the marketplace gift card selection
     // Determine the correct source based on how we arrived at this page
     const giftCardSource = isTilloSource ? 'tillo' : 'smartwish';
     const giftCardIdentifier = isTilloSource ? brandSlug : brandId;
-    
+
     const giftCardSelection = {
       brandId: isTilloSource ? null : brandId, // Only set for SmartWish brands
       brandSlug: brand?.slug || brandSlug || '', // Use brand slug (works for both)
@@ -289,19 +289,19 @@ function GiftCardPurchaseContent() {
       source: giftCardSource, // 'smartwish' or 'tillo'
       selectedAt: new Date().toISOString(),
     };
-    
+
     // Use a unique key for this gift card purchase session
     const giftCardKey = `giftCard_kiosk_${giftCardIdentifier}_${Date.now()}`;
     localStorage.setItem(giftCardKey, JSON.stringify(giftCardSelection));
     // Store the key so CardPaymentModal can find it
     localStorage.setItem('kiosk_gift_card_key', giftCardKey);
-    
+
     setShowPaymentModal(true);
   };
-  
+
   const handlePaymentSuccess = async (issuedGiftCard?: IssuedGiftCardData) => {
     setShowPaymentModal(false);
-    
+
     // Track successful gift card purchase
     trackGiftCardPurchase({
       amount: selectedAmount || 0,
@@ -309,7 +309,7 @@ function GiftCardPurchaseContent() {
       itemTitle: brand?.name,
       paymentMethod: 'card',
     });
-    
+
     // If we got issued gift card data from the CardPaymentModal, use it
     if (issuedGiftCard && issuedGiftCard.isIssued) {
       // The gift card was issued successfully through CardPaymentModal
@@ -330,18 +330,18 @@ function GiftCardPurchaseContent() {
         source: isTilloSource ? 'tillo' : 'smartwish',
       };
       setPurchasedCard(purchasedCardData);
-      
+
       // Use the QR code from CardPaymentModal if available
       if (issuedGiftCard.qrCode) {
         setQrCodeDataUrl(issuedGiftCard.qrCode);
       }
-      
+
       setStep("success");
     } else {
       // Fallback: Payment succeeded but no gift card data returned
       // This shouldn't happen but handle it gracefully
       console.warn('Payment succeeded but no gift card data returned');
-      
+
       // Try to issue the gift card manually
       try {
         const response = await fetch('/api/gift-cards/purchase', {
@@ -354,7 +354,7 @@ function GiftCardPurchaseContent() {
             discountPercent: discountPercent,
           }),
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.giftCard) {
@@ -375,10 +375,10 @@ function GiftCardPurchaseContent() {
       } catch (err) {
         console.error('Failed to issue gift card:', err);
       }
-      
+
       setStep("success");
     }
-    
+
     // Clean up localStorage
     const storedKey = localStorage.getItem('kiosk_gift_card_key');
     if (storedKey) {
@@ -482,7 +482,57 @@ function GiftCardPurchaseContent() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-900 flex flex-col items-center justify-center p-6 lg:p-10">
       {/* Printer Alert Banner - shows when there are printer issues */}
       <PrinterAlertBanner position="top" showWarnings={false} />
-      
+
+      {/* Promotional Banner - Premium Design */}
+      <div className="absolute top-0 left-0 right-0 z-50 flex justify-center pt-20 px-6">
+        <div
+          className="relative bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-center py-5 px-8 rounded-2xl overflow-hidden shadow-2xl max-w-4xl w-full"
+          style={{
+            animation: 'pulseGlow 2s ease-in-out 0.5s infinite',
+            boxShadow: '0 0 20px rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4)',
+          }}
+        >
+          {/* Animated shine overlay */}
+          <div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+            style={{
+              animation: 'shine 2s infinite',
+            }}
+          />
+
+          {/* Content */}
+          <div className="relative flex items-center justify-center gap-4">
+            <span className="text-5xl">🍦</span>
+            <div>
+              <p
+                className="text-white font-black text-3xl lg:text-4xl tracking-tight drop-shadow-lg"
+                style={{
+                  textShadow: '0 0 20px rgba(255, 255, 255, 0.8), 0 0 40px rgba(255, 200, 0, 0.6)',
+                }}
+              >
+                Buy your Ice cream with a gift card and save 5%
+              </p>
+            </div>
+            <span className="text-5xl">🍦</span>
+          </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes shine {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        @keyframes pulseGlow {
+          0%, 100% { 
+            box-shadow: 0 0 20px rgba(255, 193, 7, 0.6), 0 0 40px rgba(255, 152, 0, 0.4); 
+          }
+          50% { 
+            box-shadow: 0 0 40px rgba(255, 193, 7, 1), 0 0 80px rgba(255, 152, 0, 0.8), 0 0 120px rgba(255, 87, 34, 0.4); 
+          }
+        }
+      `}</style>
+
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 -left-32 w-[500px] h-[500px] bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />
@@ -554,11 +604,10 @@ function GiftCardPurchaseContent() {
                 <button
                   key={amount}
                   onClick={() => handleAmountSelect(amount)}
-                  className={`p-6 rounded-2xl border-2 transition-all duration-300 ${
-                    selectedAmount === amount && customAmount === ""
-                      ? "border-emerald-400 bg-emerald-500/20 scale-[1.02]"
-                      : "border-white/20 bg-white/5 hover:border-emerald-400/50 hover:bg-white/10"
-                  }`}
+                  className={`p-6 rounded-2xl border-2 transition-all duration-300 ${selectedAmount === amount && customAmount === ""
+                    ? "border-emerald-400 bg-emerald-500/20 scale-[1.02]"
+                    : "border-white/20 bg-white/5 hover:border-emerald-400/50 hover:bg-white/10"
+                    }`}
                 >
                   <span className="text-3xl lg:text-4xl font-bold text-white">
                     ${amount}
@@ -595,7 +644,7 @@ function GiftCardPurchaseContent() {
                 />
               </div>
             )}
-            
+
             {/* Amount range hint when custom amounts are disabled */}
             {!allowCustomAmount && (
               <p className="text-center text-gray-400 text-sm mb-8">
@@ -614,11 +663,10 @@ function GiftCardPurchaseContent() {
             <button
               onClick={handleContinueToPayment}
               disabled={!selectedAmount}
-              className={`w-full py-5 rounded-2xl text-xl font-bold transition-all duration-300 ${
-                selectedAmount
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02]"
-                  : "bg-gray-600/50 text-gray-400 cursor-not-allowed"
-              }`}
+              className={`w-full py-5 rounded-2xl text-xl font-bold transition-all duration-300 ${selectedAmount
+                ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02]"
+                : "bg-gray-600/50 text-gray-400 cursor-not-allowed"
+                }`}
             >
               {selectedAmount
                 ? `Continue - Pay $${actualAmount.toFixed(2)}`
@@ -701,7 +749,7 @@ function GiftCardPurchaseContent() {
                   </p>
                 </div>
               </div>
-              
+
               {/* Redemption Link for Tillo cards */}
               {purchasedCard.source === 'tillo' && purchasedCard.redemptionLink && (
                 <div className="pt-4 border-t border-white/10">
@@ -757,11 +805,10 @@ function GiftCardPurchaseContent() {
                 <button
                   onClick={handleEmailGiftCard}
                   disabled={emailSending || emailSent || !email}
-                  className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 ${
-                    emailSent
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
-                      : "bg-white/10 text-white hover:bg-white/20"
-                  }`}
+                  className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 ${emailSent
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
+                    : "bg-white/10 text-white hover:bg-white/20"
+                    }`}
                 >
                   {emailSending
                     ? "Sending..."
