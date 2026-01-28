@@ -17,6 +17,8 @@ export interface ScreenSaverItem {
   type: ScreenSaverType;         // Type of screen saver
   name?: string;                 // Display name for admin UI
   url?: string;                  // Video URL or HTML page URL (for video/html types)
+  videoUrl?: string;             // Video URL for video advertisement pages (used with html type)
+  text?: string;                 // Promotional text for video advertisement pages (used with html type)
   weight: number;                // Weight for rotation (1-100)
   duration?: number;             // How long to show this screen saver (seconds) before rotating
   enabled?: boolean;             // Whether this screen saver is active

@@ -75,6 +75,8 @@ function ScreenSaverFormModal({
     type: "default",
     name: "",
     url: "",
+    videoUrl: "",
+    text: "",
     weight: 50,
     duration: 30,
     enabled: true,
@@ -92,6 +94,8 @@ function ScreenSaverFormModal({
         type: screenSaver.type,
         name: screenSaver.name || "",
         url: screenSaver.url || "",
+        videoUrl: screenSaver.videoUrl || "",
+        text: screenSaver.text || "",
         weight: screenSaver.weight,
         duration: screenSaver.duration || 30,
         enabled: screenSaver.enabled !== false,
@@ -103,6 +107,8 @@ function ScreenSaverFormModal({
         type: "default",
         name: "",
         url: "",
+        videoUrl: "",
+        text: "",
         weight: 50,
         duration: 30,
         enabled: true,
@@ -167,6 +173,8 @@ function ScreenSaverFormModal({
       type: formData.type as ScreenSaverType,
       name: formData.name || undefined,
       url: formData.url || undefined,
+      videoUrl: formData.videoUrl || undefined,
+      text: formData.text || undefined,
       weight: formData.weight || 50,
       duration: formData.duration || 30,
       enabled: formData.enabled !== false,
@@ -223,11 +231,10 @@ function ScreenSaverFormModal({
                       onClick={() =>
                         setFormData((prev) => ({ ...prev, type, url: type === "default" || type === "none" ? "" : prev.url }))
                       }
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
-                        formData.type === type
-                          ? "bg-indigo-50 border-indigo-500 text-indigo-700"
-                          : "bg-white border-gray-300 hover:bg-gray-50"
-                      }`}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${formData.type === type
+                        ? "bg-indigo-50 border-indigo-500 text-indigo-700"
+                        : "bg-white border-gray-300 hover:bg-gray-50"
+                        }`}
                     >
                       <ScreenSaverTypeIcon type={type} />
                       <span className="text-sm font-medium">
@@ -256,7 +263,7 @@ function ScreenSaverFormModal({
                     placeholder={
                       formData.type === "video"
                         ? "https://example.com/video.mp4"
-                        : "https://example.com/screensaver.html"
+                        : "https://example.com/screensaver.html or /kiosk/advertisement/videoAd"
                     }
                   />
                   {formData.type === "html" && (
@@ -278,6 +285,59 @@ function ScreenSaverFormModal({
                       </label>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Video Advertisement Fields (for HTML type) */}
+            {formData.type === "html" && (
+              <div className="border-t pt-4 mt-4 space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800 font-medium mb-1">
+                    💡 Video Advertisement Support
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    If using <code className="bg-blue-100 px-1 rounded">/kiosk/advertisement/videoAd</code>,
+                    you can specify the video URL and promotional text below. These will be passed as query parameters.
+                  </p>
+                </div>
+
+                {/* Video URL */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Video URL (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.videoUrl || ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, videoUrl: e.target.value }))
+                    }
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="https://example.com/promo-video.mp4"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Video to display full-screen (for video advertisement pages)
+                  </p>
+                </div>
+
+                {/* Promotional Text */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Promotional Text (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.text || ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, text: e.target.value }))
+                    }
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Buy your Ice cream with a gift card and save 5%"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Text to display in the promotional banner overlay
+                  </p>
                 </div>
               </div>
             )}
@@ -468,7 +528,7 @@ function PreviewModal({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
-      
+
       <div className="absolute bottom-4 left-4 z-10 px-4 py-2 bg-black/50 backdrop-blur-sm rounded-lg text-white text-sm">
         {screenSaver.name || getScreenSaverTypeName(screenSaver.type)} - Tap anywhere or press ESC to close
       </div>
@@ -862,9 +922,8 @@ export default function ScreenSaversPage() {
                   onDragStart={() => handleDragStart(index)}
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDragEnd={handleDragEnd}
-                  className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${
-                    draggedIndex === index ? "opacity-50 bg-indigo-50" : ""
-                  } ${ss.enabled === false ? "opacity-60" : ""}`}
+                  className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${draggedIndex === index ? "opacity-50 bg-indigo-50" : ""
+                    } ${ss.enabled === false ? "opacity-60" : ""}`}
                 >
                   {/* Drag handle */}
                   <div className="cursor-grab active:cursor-grabbing">
@@ -878,15 +937,14 @@ export default function ScreenSaversPage() {
 
                   {/* Type icon */}
                   <div
-                    className={`w-10 h-10 flex items-center justify-center rounded-lg ${
-                      ss.type === "video"
-                        ? "bg-purple-100 text-purple-600"
-                        : ss.type === "html"
+                    className={`w-10 h-10 flex items-center justify-center rounded-lg ${ss.type === "video"
+                      ? "bg-purple-100 text-purple-600"
+                      : ss.type === "html"
                         ? "bg-blue-100 text-blue-600"
                         : ss.type === "none"
-                        ? "bg-gray-100 text-gray-600"
-                        : "bg-green-100 text-green-600"
-                    }`}
+                          ? "bg-gray-100 text-gray-600"
+                          : "bg-green-100 text-green-600"
+                      }`}
                   >
                     <ScreenSaverTypeIcon type={ss.type} />
                   </div>
@@ -925,11 +983,10 @@ export default function ScreenSaversPage() {
                   {/* Enabled toggle */}
                   <button
                     onClick={() => toggleEnabled(ss.id)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      ss.enabled !== false
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-500"
-                    }`}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${ss.enabled !== false
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-500"
+                      }`}
                   >
                     {ss.enabled !== false ? "Enabled" : "Disabled"}
                   </button>

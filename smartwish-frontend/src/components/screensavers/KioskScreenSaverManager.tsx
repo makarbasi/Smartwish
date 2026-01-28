@@ -359,6 +359,24 @@ export default function KioskScreenSaverManager({
   // Check if current screen saver is interactive
   const isInteractive = currentScreenSaver.interactive === true;
 
+  // Helper to construct URL with query parameters for video advertisement screensavers
+  const constructScreenSaverUrl = (screenSaver: ScreenSaverItem): string => {
+    let url = screenSaver.url || "";
+
+    // Add query parameters if videoUrl or text are provided
+    if (screenSaver.videoUrl || screenSaver.text) {
+      const params = new URLSearchParams();
+      if (screenSaver.videoUrl) params.append('videoUrl', screenSaver.videoUrl);
+      if (screenSaver.text) params.append('text', screenSaver.text);
+
+      // If url already has query params, append with &, otherwise use ?
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}${params.toString()}`;
+    }
+
+    return url;
+  };
+
   // Helper to render a single screen saver by type
   const renderSingleScreenSaver = (
     screenSaver: ScreenSaverItem,
@@ -387,10 +405,11 @@ export default function KioskScreenSaverManager({
           // Render from cache for active HTML screen savers
           return null; // Will be handled in the cached section
         }
+
         return (
           <HtmlScreenSaver
             key={screenSaver.id}
-            url={screenSaver.url || ""}
+            url={constructScreenSaverUrl(screenSaver)}
             onExit={handleInteraction}
             overlayText={overlayText}
             interactive={!isPreloading && isInteractive}
@@ -451,7 +470,7 @@ export default function KioskScreenSaverManager({
                   }`}
               >
                 <HtmlScreenSaver
-                  url={ss.url || ""}
+                  url={constructScreenSaverUrl(ss)}
                   onExit={handleInteraction}
                   overlayText={isActive ? overlayText : undefined}
                   interactive={isActive ? isInteractive : false}
@@ -462,7 +481,7 @@ export default function KioskScreenSaverManager({
           })}
           {!activeHtmlIsCached && (
             <HtmlScreenSaver
-              url={currentScreenSaver.url || ""}
+              url={constructScreenSaverUrl(currentScreenSaver)}
               onExit={handleInteraction}
               overlayText={overlayText}
               interactive={isInteractive}
